@@ -1,0 +1,866 @@
+/**
+ * Global Configuration & Setup Manager (`components/SettingsTab.tsx`)
+ *
+ * Central hub for overall application configurations. For Admins, it permits
+ * structural changes such as enabling/disabling major layout modules (Studio,
+ * Payments, Leaderboard), controlling the theme colors, overriding admin roles,
+ * filling the club logo, and populating mock system data (seed data) for fast onboarding.
+ */
+import { useStore } from "@/hooks/useStore";
+import {
+  Settings,
+  Image as ImageIcon,
+  Users,
+  Upload,
+  Search,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { formatDate } from "@/lib/utils";
+import { LoadingScreen } from "./LoadingScreen";
+
+export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<typeof useStore>, setPreviewTheme?: (val: string | null) => void }) {
+  const { user } = useAuth();
+
+  // Check if current user is admin
+  const currentUserRecord = store.appUsers.find((u) => u.id === user?.uid);
+  const isAdmin = currentUserRecord?.role === "admin";
+
+  const [clubName, setClubName] = useState(
+    store.appConfig?.clubName || "KAVACH CRICKET CLUB",
+  );
+  const [logoUrl, setLogoUrl] = useState(store.appConfig?.logoUrl || "");
+  const [themeColor, setThemeColor] = useState(
+    store.appConfig?.themeColor || "#dc143c",
+  );
+  const [globalTheme, setGlobalTheme] = useState(
+    store.appConfig?.globalTheme || "",
+  );
+  const [loadingAnimationTheme, setLoadingAnimationTheme] = useState<
+    "radar" | "kinetic" | "minimal" | "staggered" | "breathe"
+  >(
+    store.appConfig?.loadingAnimationTheme || "radar"
+  );
+  const [razorpayKeyId, setRazorpayKeyId] = useState(
+    store.appConfig?.razorpayKeyId || "",
+  );
+  const [smtpHost, setSmtpHost] = useState(store.appConfig?.smtpHost || "");
+  const [smtpPort, setSmtpPort] = useState(store.appConfig?.smtpPort || "587");
+  const [smtpSecure, setSmtpSecure] = useState(
+    !!store.appConfig?.smtpSecure,
+  );
+  const [smtpUser, setSmtpUser] = useState(store.appConfig?.smtpUser || "");
+  const [smtpPassword, setSmtpPassword] = useState(
+    store.appConfig?.smtpPassword || "",
+  );
+  const [smtpFrom, setSmtpFrom] = useState(store.appConfig?.smtpFrom || "");
+
+  // Preview state
+  const [previewLoadingTheme, setPreviewLoadingTheme] = useState<
+    "radar" | "kinetic" | "minimal" | "staggered" | "breathe" | null
+  >(null);
+
+  // Collapsible sections state
+  const [isAppConfigOpen, setIsAppConfigOpen] = useState(true);
+  const [isRazorpayOpen, setIsRazorpayOpen] = useState(false);
+  const [isEmailServiceOpen, setIsEmailServiceOpen] = useState(false);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [isAppFeaturesOpen, setIsAppFeaturesOpen] = useState(false);
+
+  // Email template structures
+  const defaultTemplates = {
+    welcome: {
+      subject: "Welcome to {{clubName}}!",
+      body: "Hi {{playerName}},\n\nYour player profile at {{clubName}} has been successfully authenticated.\n\nEnjoy the games!\n\nBest regards,\n{{clubName}} Admin Team",
+    },
+    due_reminder: {
+      subject: "Pending Fee Reminder - {{clubName}}",
+      body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
+    },
+    payment_success: {
+      subject: "Receipt: Payment of {{amount}} Received",
+      body: "Hi {{playerName}},\n\nWe have received your payment of {{amount}} for: {{duesText}}.\n\nThank you for your timely payment!\n\nBest regards,\n{{clubName}} Admin Team",
+    },
+  };
+
+  const [emailTemplates, setEmailTemplates] = useState(
+    store.appConfig?.emailTemplates || defaultTemplates,
+  );
+
+  const [activeTemplateKey, setActiveTemplateKey] = useState<"welcome" | "due_reminder" | "payment_success">(
+    "welcome",
+  );
+
+  const [testTo, setTestTo] = useState("");
+  const [testPlayerName, setTestPlayerName] = useState("Alex Smith");
+  const [testAmount, setTestAmount] = useState("₹350");
+  const [testDuesText, setTestDuesText] = useState("Ground Fee (Eden Gardens)");
+  const [testLink, setTestLink] = useState("https://kavachplay.com/pay/123");
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
+  const [isStudioEnabled, setIsStudioEnabled] = useState(
+    store.appConfig?.isStudioEnabled || false,
+  );
+
+  const [features, setFeatures] = useState({
+    payments: store.appConfig?.features?.payments !== false,
+    studio: store.appConfig?.features?.studio !== false,
+    leaderboard: store.appConfig?.features?.leaderboard !== false,
+    feed: store.appConfig?.features?.feed !== false,
+    matches: store.appConfig?.features?.matches !== false,
+  });
+
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [seedStatus, setSeedStatus] = useState("");
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      // 5MB limit
+      alert("Image is too large. Please select an image under 5MB.");
+      return;
+    }
+
+    setUploadProgress(0);
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      alert("Failed to read file.");
+      setUploadProgress(null);
+    };
+
+    reader.onload = (event) => {
+      const base64String = event.target?.result as string;
+
+      const img = new window.Image();
+      img.onerror = () => {
+        alert("Invalid image file selected.");
+        setUploadProgress(null);
+      };
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_SIZE = 400; // Small size for logo
+        let { width, height } = img;
+
+        if (width > height && width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          try {
+            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+            setLogoUrl(compressedBase64);
+            setUploadProgress(100);
+            setTimeout(() => setUploadProgress(null), 1000);
+          } catch (err) {
+            console.error("Canvas export error:", err);
+            setLogoUrl(base64String); // fallback
+            setUploadProgress(null);
+          }
+        } else {
+          setLogoUrl(base64String); // fallback
+          setUploadProgress(null);
+        }
+      };
+      img.src = base64String;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ""; // Reset input so same file can be selected again
+  };
+
+  const renderTemplatePreview = (subjOrBody: string) => {
+    return subjOrBody
+      .replace(/{{clubName}}/g, clubName)
+      .replace(/{{playerName}}/g, testPlayerName)
+      .replace(/{{amount}}/g, testAmount)
+      .replace(/{{duesText}}/g, testDuesText)
+      .replace(/{{link}}/g, testLink);
+  };
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin) return;
+    await store.updateAppConfig({
+      clubName,
+      logoUrl,
+      themeColor,
+      globalTheme,
+      loadingAnimationTheme,
+      razorpayKeyId,
+      emailProvider: "smtp",
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpUser,
+      smtpPassword,
+      smtpFrom,
+      emailTemplates,
+      isStudioEnabled,
+      features,
+    });
+    if (setPreviewTheme) setPreviewTheme(null);
+    alert("Settings saved successfully.");
+  };
+
+  const handleTestEmail = async () => {
+    if (!testTo) {
+      alert("Please enter a recipient email address in the Test Email form below.");
+      return;
+    }
+    setIsSendingTest(true);
+
+    const currentTemplate = emailTemplates[activeTemplateKey] || defaultTemplates[activeTemplateKey];
+    const finalSubject = renderTemplatePreview(currentTemplate.subject);
+    const finalBody = renderTemplatePreview(currentTemplate.body);
+
+    const configPayload = {
+      emailProvider: "smtp",
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpUser,
+      smtpPassword,
+      smtpFrom,
+    };
+
+    try {
+      const res = await fetch("/api/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: testTo,
+          subject: finalSubject,
+          text: finalBody,
+          config: configPayload,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Test email ("${activeTemplateKey}") sent successfully! Check ${testTo}.`);
+      } else {
+        alert("Failed to send test email: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
+  const handleSeedData = async () => {
+    if (!isAdmin) return;
+    try {
+      // Add multiple sample players
+      const p1 = await store.addPlayer({
+        name: "Alice Sharma",
+        mobile: "9876543201",
+      });
+      const p2 = await store.addPlayer({
+        name: "Bob Kumar",
+        mobile: "9876543202",
+      });
+      const p3 = await store.addPlayer({
+        name: "Charlie Singh",
+        mobile: "9876543203",
+      });
+
+      const g1 = await store.addGround({
+        name: "Eden Gardens (Turf 1)",
+        mapUrl: "https://maps.google.com/?q=Eden+Gardens",
+        organiserName: "Eden Admin",
+        gpayNumber: "9876543200",
+      });
+
+      if (g1) {
+        // Find next Saturday
+        const d = new Date();
+        d.setDate(d.getDate() + (6 - d.getDay()));
+        const nextSatStr = d.toISOString().split("T")[0];
+
+        await store.addMatch({
+          date: nextSatStr,
+          time: "08:00 AM",
+          groundId: g1,
+          fee: 350,
+          format: "T20",
+          jerseyColor: "Scarlet Red",
+          opponent: "Internal Squad",
+          matchType: "Practice",
+          maxSquadSize: 15,
+        });
+      }
+
+      setSeedStatus("Sample data seeded! Check tabs.");
+      setTimeout(() => setSeedStatus(""), 3000);
+    } catch (err) {
+      console.error("Error seeding data:", err);
+      setSeedStatus("Error seeding data.");
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    if (!isAdmin) return;
+    // Don't let user demote themselves easily if they are the only admin
+    const adminCount = store.appUsers.filter((u) => u.role === "admin").length;
+    if (newRole === "player" && userId === user?.uid && adminCount <= 1) {
+      alert(
+        "You are the only admin. Promote someone else first before demoting yourself.",
+      );
+      return;
+    }
+    await store.updateAppUserRole(userId, newRole);
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="glass p-8 text-center text-white/50 rounded-xl space-y-3">
+        <Settings className="w-8 h-8 opacity-50 mx-auto" />
+        <h2 className="text-xl font-bold text-white">Access Denied</h2>
+        <p className="text-sm">You need admin privileges to view this page.</p>
+      </div>
+    );
+  }
+
+  if (previewLoadingTheme) {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col">
+        <LoadingScreen theme={previewLoadingTheme} />
+        <button 
+          onClick={() => setPreviewLoadingTheme(null)}
+          className="absolute top-6 right-6 z-[101] max-w-xs bg-black/80 border border-emerald-500/50 text-white font-medium py-2 px-4 rounded-xl shadow-lg hover:bg-black hover:scale-105 transition-all text-sm"
+        >
+          Close Preview
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Settings className="w-5 h-5 text-accent" />
+        <h2 className="text-xl font-bold tracking-tight text-white">
+          Admin Settings
+        </h2>
+      </div>
+
+      <div className="glass rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setIsAppConfigOpen(!isAppConfigOpen)}
+          className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between focus:outline-none"
+        >
+          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80">App Configuration</span>
+          {isAppConfigOpen ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
+        </button>
+        <form onSubmit={handleSaveConfig} className="p-4 space-y-4">
+          {isAppConfigOpen && (
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Club Name
+                </label>
+                <input
+                  type="text"
+                  value={clubName}
+                  onChange={(e) => setClubName(e.target.value)}
+                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  placeholder="e.g. KAVACH"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Logo URL or Upload
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex flex-1 gap-2">
+                    <span className="inline-flex items-center px-3 rounded-lg border border-glass-border bg-white/5 text-white/50">
+                      <ImageIcon className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="url"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      className="flex-1 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none min-w-0"
+                      placeholder="https://example.com/logo.png"
+                    />
+                  </div>
+                  <label className="shrink-0 flex items-center justify-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 transition rounded-lg px-4 py-2 text-sm font-bold border border-glass-border">
+                    <Upload className="w-4 h-4" />
+                    {uploadProgress !== null
+                      ? `${Math.round(uploadProgress)}%`
+                      : "Upload image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Global App Theme
+                </label>
+                <select
+                  value={globalTheme}
+                  onChange={(e) => {
+                    setGlobalTheme(e.target.value);
+                    if (setPreviewTheme) setPreviewTheme(e.target.value);
+                  }}
+                  className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                >
+                  <option value="">Let Users Choose</option>
+                  <option value="emerald">Emerald Pitch</option>
+                  <option value="ruby">Crimson Arena</option>
+                  <option value="cyber">Teal Cyber-Turf</option>
+                  <option value="amber">Golden Glory</option>
+                  <option value="royal">Midnight Royal</option>
+                  <option value="carbon">Elite Carbon</option>
+                  <option value="brown">Classic Brown</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Loading Screen Animation
+                </label>
+                <div className="flex flex-col gap-2">
+                  <select
+                    value={loadingAnimationTheme}
+                    onChange={(e) => setLoadingAnimationTheme(e.target.value as any)}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  >
+                    <option value="radar">Radar Pulse (Default)</option>
+                    <option value="kinetic">Kinetic Typing</option>
+                    <option value="minimal">Minimal Spin</option>
+                    <option value="staggered">Staggered Drop</option>
+                    <option value="breathe">Breathe</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewLoadingTheme(loadingAnimationTheme)}
+                    className="text-xs bg-accent/20 hover:bg-accent/30 text-accent font-medium py-1 px-3 rounded self-start mt-1"
+                  >
+                    Preview Animation
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="border-t border-glass-border pt-4 mt-2">
+            <button
+              type="button"
+              onClick={() => setIsRazorpayOpen(!isRazorpayOpen)}
+              className="w-full flex items-center justify-between focus:outline-none"
+            >
+              <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-0">
+                Payment Gateway (Razorpay)
+              </h3>
+              {isRazorpayOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
+            </button>
+            {isRazorpayOpen && (
+              <div className="space-y-4 mt-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    Key ID
+                  </label>
+                  <input
+                    type="text"
+                    value={razorpayKeyId}
+                    onChange={(e) => setRazorpayKeyId(e.target.value)}
+                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30 font-mono"
+                    placeholder="rzp_test_..."
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="border-t border-glass-border pt-4 mt-2 space-y-4">
+            <button
+              type="button"
+              onClick={() => setIsEmailServiceOpen(!isEmailServiceOpen)}
+              className="w-full flex items-center justify-between focus:outline-none"
+            >
+              <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent flex items-center justify-between mb-0">
+                <span>Email Service Core</span>
+              </h3>
+              {isEmailServiceOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
+            </button>
+
+            {isEmailServiceOpen && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-white/5 border border-glass-border animate-fade-in mt-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      SMTP Host Address
+                    </label>
+                    <input
+                      type="text"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      placeholder="e.g. smtp.gmail.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      SMTP Port
+                    </label>
+                    <input
+                      type="text"
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30 font-mono"
+                      placeholder="587, 465, or 25"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      SMTP User / Account
+                    </label>
+                    <input
+                      type="text"
+                      value={smtpUser}
+                      onChange={(e) => setSmtpUser(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      placeholder="e.g. club@gmail.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      SMTP Password
+                    </label>
+                    <input
+                      type="password"
+                      value={smtpPassword}
+                      onChange={(e) => setSmtpPassword(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      placeholder="Secret Key or App Password"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      SMTP Sender Email (From)
+                    </label>
+                    <input
+                      type="text"
+                      value={smtpFrom}
+                      onChange={(e) => setSmtpFrom(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      placeholder="e.g. Club Admin <club@gmail.com>"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 pt-6 pl-1">
+                    <input
+                      type="checkbox"
+                      checked={smtpSecure}
+                      onChange={(e) => setSmtpSecure(e.target.checked)}
+                      id="checkbox-smtp-secure"
+                      className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
+                    />
+                    <label htmlFor="checkbox-smtp-secure" className="text-[11px] font-bold uppercase tracking-wider text-white/70 cursor-pointer">
+                      Use SSL/TLS Secure Port (465)
+                    </label>
+                  </div>
+                </div>
+
+              {/* Email Templates Editor Module */}
+              <div className="space-y-4 p-4 rounded-xl bg-white/5 border border-glass-border">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-white/10 pb-2">
+                ✉️ Automated Email Templates Editor
+              </h4>
+
+              {/* Template Selectors */}
+              <div className="flex flex-wrap gap-1.5 bg-black/20 p-1 rounded-lg">
+                {[
+                  { key: "welcome", label: "Join verification" },
+                  { key: "due_reminder", label: "Pending Reminder" },
+                  { key: "payment_success", label: "Receipt Confirm" },
+                ].map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setActiveTemplateKey(t.key as any)}
+                    className={`flex-1 min-w-[100px] py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${
+                      activeTemplateKey === t.key
+                        ? "bg-white/15 text-white border border-white/10"
+                        : "text-white/40 hover:text-white/70"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Template Editor Form */}
+              <div className="space-y-3 pt-1">
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/60">
+                    Template Subject Line
+                  </label>
+                  <input
+                    type="text"
+                    value={emailTemplates[activeTemplateKey]?.subject || ""}
+                    onChange={(e) => {
+                      const updatedSubj = e.target.value;
+                      setEmailTemplates((prev: any) => ({
+                        ...prev,
+                        [activeTemplateKey]: {
+                          ...prev[activeTemplateKey],
+                          subject: updatedSubj,
+                        },
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                    placeholder="Enter email subject line..."
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/60">
+                    Template Content (Supports Markdown / Plaintext / Standard Placeholders)
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={emailTemplates[activeTemplateKey]?.body || ""}
+                    onChange={(e) => {
+                      const updatedBody = e.target.value;
+                      setEmailTemplates((prev: any) => ({
+                        ...prev,
+                        [activeTemplateKey]: {
+                          ...prev[activeTemplateKey],
+                          body: updatedBody,
+                        },
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none font-sans leading-relaxed"
+                    placeholder="Dear {{playerName}}..."
+                  />
+                </div>
+
+                {/* Variable Cheat Sheet */}
+                <div className="bg-black/30 p-2.5 rounded-lg border border-glass-border">
+                  <div className="text-[9px] uppercase font-bold text-white/40 tracking-wider mb-1">
+                    Available Live Placeholders:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { code: "{{clubName}}", desc: "Club's official name" },
+                      { code: "{{playerName}}", desc: "Player recipient's name" },
+                      { code: "{{amount}}", desc: "Due fee value" },
+                      { code: "{{duesText}}", desc: "Matched fees descriptions" },
+                      { code: "{{link}}", desc: "Dynamic checkout portal URL" },
+                    ].map((v) => (
+                      <span
+                        key={v.code}
+                        title={v.desc}
+                        className="text-[9.5px] font-mono bg-white/5 border border-white/5 text-accent px-1.5 py-0.5 rounded cursor-help"
+                      >
+                        {v.code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Test Email Delivery Module */}
+            <div className="space-y-3 p-4 rounded-xl bg-white/5 border border-glass-border mb-4">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-white/10 pb-2">
+                📬 Dynamic Live Test Email
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                    Target Recipient Address
+                  </label>
+                  <input
+                    type="email"
+                    value={testTo}
+                    onChange={(e) => setTestTo(e.target.value)}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                    placeholder="e.g. member@gmail.com"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                    Sample Player Name
+                  </label>
+                  <input
+                    type="text"
+                    value={testPlayerName}
+                    onChange={(e) => setTestPlayerName(e.target.value)}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                    Sample Fee Amount
+                  </label>
+                  <input
+                    type="text"
+                    value={testAmount}
+                    onChange={(e) => setTestAmount(e.target.value)}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                    Sample Dues Descriptor
+                  </label>
+                  <input
+                    type="text"
+                    value={testDuesText}
+                    onChange={(e) => setTestDuesText(e.target.value)}
+                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Collapsible live email render preview */}
+              <div className="p-3 bg-black/50 border border-glass-border rounded-xl space-y-2 mt-2">
+                <div className="text-[9px] uppercase font-bold text-white/40 tracking-widest border-b border-white/5 pb-1 flex justify-between items-center">
+                  <span>Live Render Preview</span>
+                  <span className="text-[10px] text-accent lowercase">Active Template: {activeTemplateKey}</span>
+                </div>
+                <div className="space-y-1.5 text-xs text-white/90">
+                  <div>
+                    <span className="text-white/30 font-bold uppercase text-[9px] tracking-wide mr-1.5">Subject:</span>
+                    {renderTemplatePreview(emailTemplates[activeTemplateKey]?.subject || defaultTemplates[activeTemplateKey].subject)}
+                  </div>
+                  <div>
+                    <span className="text-white/30 font-bold uppercase text-[9px] tracking-wide block mb-1">Body Content:</span>
+                    <pre className="whitespace-pre-wrap bg-black/40 p-2.5 rounded border border-white/5 text-[11px] font-sans text-white/70 leading-relaxed">
+                      {renderTemplatePreview(emailTemplates[activeTemplateKey]?.body || defaultTemplates[activeTemplateKey].body)}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestEmail}
+                  disabled={isSendingTest}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-accent/20 hover:bg-accent/30 text-accent py-2 text-xs font-bold transition shadow"
+                >
+                  {isSendingTest ? (
+                    <span className="animate-pulse">Delivering test message...</span>
+                  ) : (
+                    <span>🚀 Launch Test Email ("{activeTemplateKey}")</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+          )}
+          </div>
+
+          <div className="border-t border-glass-border pt-4 mt-2">
+            <button
+              type="button"
+              onClick={() => setIsStudioOpen(!isStudioOpen)}
+              className="w-full flex items-center justify-between focus:outline-none"
+            >
+              <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-0">
+                Studio Functionality
+              </h3>
+              {isStudioOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
+            </button>
+            {isStudioOpen && (
+              <div className="flex items-center gap-3 mt-3 mb-2">
+                <input
+                  type="checkbox"
+                  checked={isStudioEnabled}
+                  onChange={(e) => setIsStudioEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent mb-1"
+                />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Enable Studio Membership
+                </label>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-glass-border pt-4 mt-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setIsAppFeaturesOpen(!isAppFeaturesOpen)}
+              className="w-full flex items-center justify-between focus:outline-none"
+            >
+              <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-0">
+                App Features
+              </h3>
+              {isAppFeaturesOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
+            </button>
+            {isAppFeaturesOpen && (
+              <div className="space-y-3 mt-3">
+                {[
+                  { key: "payments", label: "Payments & Razorpay integration" },
+                  { key: "studio", label: "Studio Tab" },
+                  { key: "leaderboard", label: "Leaderboard Tab" },
+                  { key: "feed", label: "Club Feed Tab" },
+                  { key: "matches", label: "Match Fixtures Tab" },
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={(features as any)[key]}
+                      onChange={(e) =>
+                        setFeatures((prev) => ({
+                          ...prev,
+                          [key]: e.target.checked,
+                        }))
+                      }
+                      className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
+                    />
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      {label}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="pt-2 flex flex-col gap-2">
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black shadow hover:bg-accent/90 transition"
+            >
+              Save Configuration
+            </button>
+            <button
+              type="button"
+              onClick={handleSeedData}
+              className="w-full rounded-lg bg-white/10 border border-glass-border py-2.5 text-sm font-bold text-white shadow hover:bg-white/20 transition"
+            >
+              Seed Sample Data
+            </button>
+            {seedStatus && (
+              <div className="text-center text-accent text-sm font-bold mt-2">
+                {seedStatus}
+              </div>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

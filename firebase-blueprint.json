@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "Ground": {
+      "title": "Ground",
+      "description": "A cricket ground",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "mapUrl": { "type": "string" },
+        "organiserName": { "type": "string" },
+        "gpayNumber": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "name",
+        "mapUrl",
+        "organiserName",
+        "gpayNumber",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A cricket player",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "inviteStatus": {
+          "type": "string",
+          "enum": ["Pending", "Accepted", "Invited"]
+        },
+        "isStudioMember": { "type": "boolean" },
+        "lastPaidDate": { "type": "string" },
+        "lastPaidAmount": { "type": "number" },
+        "studioExpiryDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "mobile", "inviteStatus", "createdAt", "updatedAt"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A scheduled match",
+      "type": "object",
+      "properties": {
+        "groundId": { "type": "string" },
+        "format": { "type": "string", "enum": ["T20", "T30", "Other"] },
+        "jerseyColor": { "type": "string", "enum": ["Scarlet Red", "Whites"] },
+        "opponent": { "type": "string" },
+        "matchType": { "type": "string", "enum": ["Practice", "Tournament"] },
+        "fee": { "type": "number" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "maxSquadSize": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "groundId",
+        "format",
+        "jerseyColor",
+        "opponent",
+        "matchType",
+        "fee",
+        "date",
+        "time",
+        "maxSquadSize",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MatchPayment": {
+      "title": "MatchPayment",
+      "description": "A player's payment status for a match",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "playerId": { "type": "string" },
+        "guestName": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["Paid", "Unpaid", "Not Playing"]
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["matchId", "playerId", "status", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/grounds/{groundId}": {
+      "schema": "Ground",
+      "description": "Cricket grounds available"
+    },
+    "/players/{playerId}": {
+      "schema": "Player",
+      "description": "Registered and invited players"
+    },
+    "/matches/{matchId}": {
+      "schema": "Match",
+      "description": "Scheduled matches"
+    },
+    "/matches/{matchId}/payments/{paymentId}": {
+      "schema": "MatchPayment",
+      "description": "Payments for a specific match"
+    }
+  }
+}

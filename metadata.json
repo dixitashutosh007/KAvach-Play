@@ -1,0 +1,6 @@
+{
+  "name": "KAvach Play",
+  "description": "Mobile-first cricket club management app. Streamline match scheduling, player profiles, membership fee tracking, availability, and team performance with KAvach Play.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,330 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(playerId) {
+      return isSignedIn() && (
+        request.auth.uid == playerId ||
+        (exists(/databases/$(database)/documents/players/$(playerId)) && 
+         get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == request.auth.uid)
+      );
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (request.auth.token.email == 'dixitashutosh007@gmail.com' ||
+        (exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isStudioAdmin() {
+      return isSuperAdmin() || (isSignedIn() && 
+        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isStudioAdmin', false) == true);
+    }
+
+    function isMatchAdmin() {
+      return isSuperAdmin() || (isSignedIn() && 
+        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isMatchAdmin', false) == true);
+    }
+
+    function isFinanceAdmin() {
+      return isSuperAdmin() || (isSignedIn() && 
+        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isFinanceAdmin', false) == true);
+    }
+
+    function isAnyAdmin() {
+      return isSuperAdmin() || isStudioAdmin() || isMatchAdmin() || isFinanceAdmin();
+    }
+
+    function isVerified() {
+      return isAnyAdmin() || (request.auth.token.email_verified == true) || 
+        (exists(/databases/$(database)/documents/players/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/players/$(request.auth.uid)).data.inviteStatus in ['Verified', 'Accepted']);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_@\\.\\+\\s\\-]+$');
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    match /outOfPlays/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isAnyAdmin() || isSelf(incoming().playerId);
+      allow update: if isAnyAdmin() || isSelf(existing().playerId);
+      allow delete: if isAnyAdmin() || isSelf(existing().playerId);
+    }
+
+    match /appConfig/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /appUsers/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    function isValidGround(data) {
+      return data.keys().hasAll(['name', 'mapUrl', 'organiserName', 'gpayNumber', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() <= 100
+        && data.mapUrl is string && data.mapUrl.size() <= 500
+        && data.organiserName is string && data.organiserName.size() <= 100
+        && data.gpayNumber is string && data.gpayNumber.size() <= 20
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPlayer(data) {
+      return data.keys().hasAll(['name', 'mobile', 'inviteStatus', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() <= 100
+        && data.mobile is string && data.mobile.size() <= 20
+        && data.inviteStatus in ['Pending', 'Accepted', 'Invited', 'Unverified', 'Verified']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMatch(data) {
+      return data.keys().hasAll(['groundId', 'format', 'jerseyColor', 'opponent', 'matchType', 'fee', 'date', 'time', 'maxSquadSize', 'createdAt', 'updatedAt'])
+        && (!data.keys().hasAny(['isArchived']) || data.isArchived is bool)
+        && data.groundId is string && data.groundId.size() <= 128
+        && data.format in ['T20', 'T30', 'Other']
+        && data.jerseyColor in ['Scarlet Red', 'Whites']
+        && data.opponent is string && data.opponent.size() <= 100
+        && data.matchType in ['Practice', 'Tournament']
+        && (data.fee is int || data.fee is float)
+        && data.date is string && data.date.size() <= 50
+        && data.time is string && data.time.size() <= 10
+        && (data.maxSquadSize is int || data.maxSquadSize is float)
+        && data.get('matchUrl', '') is string
+        && data.get('streamingUrl', '') is string
+        && data.get('result', 'Pending') in ['KAvach Won', 'KAvach Lost', 'Draw', 'Tie', 'Abandoned', 'Pending']
+        && data.get('resultMarginType', 'runs') in ['runs', 'wickets']
+        && (data.get('resultMarginAmount', 0) is int || data.get('resultMarginAmount', 0) is float)
+        && data.get('playerOfTheMatch', '') is string
+        && data.get('potmId', '') is string
+        && (!data.keys().hasAny(['topPerformerIds']) || data.topPerformerIds is list)
+        && data.get('bestBatsman', '') is string
+        && data.get('bestBowler', '') is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMatchPayment(data) {
+      return data.keys().hasAll(['id', 'matchId', 'playerId', 'status', 'createdAt', 'updatedAt'])
+        && data.id is string
+        && data.matchId is string && data.matchId.size() <= 128
+        && data.playerId is string && data.playerId.size() <= 128
+        && data.status in ['Paid', 'Unpaid', 'Not Playing']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPlayerStat(data) {
+      return data.keys().hasAll(['playerId', 'year', 'runs', 'wickets', 'updatedAt'])
+        && data.playerId is string && data.playerId.size() <= 128
+        && data.year is int
+        && data.runs is int
+        && data.wickets is int
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSubscriptionPlan(data) {
+      return data.keys().hasAll(['name', 'durationDays', 'fee', 'benefits', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() <= 100
+        && (data.durationDays is int || data.durationDays is float)
+        && (data.fee is int || data.fee is float)
+        && data.benefits is string && data.benefits.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSubscriptionHistory(data) {
+      return data.keys().hasAll(['playerId', 'adminId', 'adminName', 'newExpiryDate', 'planId', 'planName', 'paidAmount', 'createdAt'])
+        && data.playerId is string
+        && data.adminId is string
+        && data.adminName is string
+        && data.newExpiryDate is string
+        && (!data.keys().hasAny(['oldExpiryDate']) || data.oldExpiryDate is string)
+        && data.planId is string
+        && data.planName is string
+        && (data.paidAmount is int || data.paidAmount is float)
+        && data.createdAt is timestamp;
+    }
+
+    match /paymentLinks/{linkId} {
+      allow read: if true;
+      allow create: if isAnyAdmin();
+      allow update: if true;
+    }
+
+    match /subscriptionPlans/{planId} {
+      allow read: if isSignedIn();
+      allow create: if isStudioAdmin()
+        && isValidSubscriptionPlan(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isStudioAdmin()
+        && isValidSubscriptionPlan(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isStudioAdmin();
+    }
+
+    match /subscriptionHistory/{historyId} {
+      allow read: if isSignedIn();
+      allow create: if isStudioAdmin()
+        && isValidSubscriptionHistory(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /feeTemplates/{templateId} {
+      allow read: if isSignedIn();
+      allow write: if isFinanceAdmin();
+    }
+
+    match /{path=**}/payments/{paymentId} {
+      allow read: if isSignedIn();
+    }
+
+    match /{path=**}/otherFees/{feeId} {
+      allow read: if isSignedIn();
+    }
+
+    match /admins/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /playerStats/{statId} {
+      allow read: if isSignedIn();
+      allow create: if isMatchAdmin()
+        && isValidId(statId)
+        && isValidPlayerStat(incoming())
+        && exists(/databases/$(database)/documents/players/$(incoming().playerId))
+        && incoming().updatedAt == request.time
+        && incoming().keys().size() == 5;
+
+      allow update: if isMatchAdmin()
+        && isValidId(statId)
+        && isValidPlayerStat(incoming())
+        && incoming().playerId == existing().playerId
+        && incoming().year == existing().year
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['runs', 'wickets', 'updatedAt']);
+
+      allow delete: if isMatchAdmin() && isValidId(statId);
+    }
+
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isAnyAdmin();
+      allow update: if isSignedIn();
+      allow delete: if isAnyAdmin();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /grounds/{groundId} {
+      allow read: if isSignedIn();
+      allow create: if isMatchAdmin()
+        && isValidId(groundId)
+        && isValidGround(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().keys().size() == 6;
+
+      allow update: if isMatchAdmin()
+        && isValidId(groundId)
+        && isValidGround(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'mapUrl', 'organiserName', 'gpayNumber', 'updatedAt']);
+
+      allow delete: if isMatchAdmin() && isValidId(groundId);
+    }
+
+    match /players/{playerId} {
+      allow read: if isSignedIn();
+      allow create: if isAnyAdmin() || isSelf(playerId);
+      allow update: if isAnyAdmin() || isSelf(playerId) ||
+        (isSignedIn() && existing().get('authUid', null) == null && incoming().get('authUid', null) == request.auth.uid && request.auth.token.phone_number != null && existing().get('mobile', '') != null && (request.auth.token.phone_number.matches('.*' + existing().mobile + '.*') || existing().mobile.matches('.*' + request.auth.token.phone_number.replace('\\+', '') + '.*')));
+      allow delete: if isAnyAdmin() && isValidId(playerId);
+
+      match /otherFees/{feeId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isAnyAdmin() || isSelf(playerId);
+        allow update: if isAnyAdmin() || isSelf(playerId) || (isSignedIn() && incoming().status == 'Paid');
+      }
+    }
+
+    match /matches/{matchId} {
+      allow read: if isSignedIn();
+      allow create: if isMatchAdmin()
+        && isValidId(matchId)
+        && isValidMatch(incoming())
+        && exists(/databases/$(database)/documents/grounds/$(incoming().groundId))
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isMatchAdmin()
+        && isValidId(matchId)
+        && isValidMatch(incoming())
+        && exists(/databases/$(database)/documents/grounds/$(incoming().groundId))
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isMatchAdmin();
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && incoming().matchId == matchId
+          && isSelf(incoming().playerId)
+          && incoming().keys().hasAll(['id', 'matchId', 'playerId', 'playerName', 'text', 'createdAt'])
+          && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 1000
+          && incoming().createdAt == request.time;
+        allow delete: if isMatchAdmin() || isSelf(existing().playerId);
+      }
+
+      match /payments/{paymentId} {
+        allow read: if isSignedIn();
+        allow create: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(incoming().playerId) && incoming().status == 'Not Playing'))
+          && isValidId(paymentId)
+          && isValidMatchPayment(incoming())
+          && incoming().matchId == matchId
+          && exists(/databases/$(database)/documents/players/$(incoming().playerId))
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(existing().playerId)) || (isSignedIn() && incoming().status == 'Paid'))
+          && isValidId(paymentId)
+          && isValidMatchPayment(incoming())
+          && incoming().matchId == existing().matchId
+          && incoming().playerId == existing().playerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time;
+
+        allow delete: if false; // Do not delete payments, mark as Not Playing
+      }
+    }
+  }
+}

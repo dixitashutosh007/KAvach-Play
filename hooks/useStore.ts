@@ -1,0 +1,1293 @@
+/**
+ * Global State & Database Synchronization Hook (`hooks/useStore.ts`)
+ *
+ * This hook is the core data layer of the application. It establishes real-time connections
+ * to Firebase Firestore for all primary collections (players, matches, payments, grounds, posts, etc.).
+ * It caches the data in local React state and provides mutation functions (add, update, delete)
+ * to interact with the database. Error handling for network and quota issues is centralized here.
+ */
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import {
+  Ground,
+  Match,
+  Player,
+  MatchPayment,
+  PlayerStat,
+  AppConfig,
+  AppUser,
+  Post,
+  PostComment,
+  SubscriptionPlan,
+  SubscriptionHistory,
+  Notification,
+  OtherFee,
+  FeeTemplate,
+  OutOfPlay,
+} from "@/lib/types";
+import { db, auth } from "@/lib/firebase";
+import {
+  collection,
+  onSnapshot,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  getDocs,
+  collectionGroup,
+} from "firebase/firestore";
+import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
+import { User } from "firebase/auth";
+import { createNotification } from "@/lib/notifications";
+
+function cleanPayload<T extends object>(obj: T): Partial<T> {
+  const result: any = {};
+  Object.keys(obj).forEach((key) => {
+    const val = (obj as any)[key];
+    if (val !== undefined) {
+      result[key] = val;
+    }
+  });
+  return result;
+}
+
+export function useStore(user: User | null, readOnly: boolean = false) {
+  const [grounds, setGrounds] = useState<Ground[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [payments, setPayments] = useState<MatchPayment[]>([]);
+  const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [appUsers, setAppUsers] = useState<AppUser[]>([]);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<
+    SubscriptionPlan[]
+  >([]);
+  const [subscriptionHistory, setSubscriptionHistory] = useState<
+    SubscriptionHistory[]
+  >([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [otherFees, setOtherFees] = useState<OtherFee[]>([]);
+  const [feeTemplates, setFeeTemplates] = useState<FeeTemplate[]>([]);
+  const [outOfPlays, setOutOfPlays] = useState<OutOfPlay[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    // Register the user if they don't exist in appUsers
+    const ensureUser = async () => {
+      if (readOnly || user.isAnonymous) return;
+      
+      const userDoc = doc(db, "appUsers", user.uid);
+      const playerDoc = doc(db, "players", user.uid);
+
+      const isDemo = user.email === "demo_player@kavach.com";
+      const isCurrentGoogleUser = user.email === "dixitashutosh007@gmail.com";
+      const rawSuffix = user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(-4);
+      const nameVal =
+        user.displayName ||
+        (isDemo
+          ? `Demo Player (${rawSuffix.toUpperCase()})`
+          : `Player (${user.uid.slice(0, 5)})`);
+
+      const numOnly = user.uid.replace(/[^0-9]/g, "");
+      const digitSuffix = (numOnly ? numOnly : "55555")
+        .slice(0, 5)
+        .padEnd(5, "7");
+      const mobileVal = isDemo ? `99900${digitSuffix}` : "";
+
+      let resolvedRole = isDemo
+        ? "player"
+        : isCurrentGoogleUser
+          ? "admin"
+          : "player";
+
+      try {
+        const userSnap = await getDoc(userDoc);
+        if (!userSnap.exists()) {
+          if (!isDemo && !isCurrentGoogleUser) {
+            // Do not auto-create for normal users (phone, google, etc.). let app/page.tsx handle registration
+            return;
+          }
+
+          if (!isDemo && !isCurrentGoogleUser) {
+            // Create the user as admin if NO users exist, else as player
+            try {
+              const u = await getDocs(collection(db, "appUsers"));
+              if (false) {
+                resolvedRole = "admin";
+              }
+            } catch (collectionErr) {
+              console.warn(
+                "Could not list appUsers, defaulting to player role:",
+                collectionErr,
+              );
+            }
+          }
+
+          const email =
+            user.email || `demo_player_${user.uid.slice(0, 5)}@example.com`;
+
+          if (isDemo) {
+            await setDoc(userDoc, {
+              email,
+              name: nameVal,
+              role: resolvedRole,
+              dob: "1998-05-18",
+              locality: "Sector 5, Kavach Arena",
+              bloodGroup: "O+",
+              emergencyContact: "9876543210",
+              battingStyle: "Right-hand bat",
+              bowlingStyle: "Right-arm medium",
+              isWicketKeeper: false,
+              chestSize: "40",
+              jerseyNumber: "10",
+              mobile: mobileVal,
+              isStudioMember: false,
+            });
+          } else {
+            await setDoc(userDoc, { email, name: nameVal, role: resolvedRole });
+          }
+        } else {
+          resolvedRole = userSnap.data()?.role || resolvedRole;
+          // Auto-upgrade dixitashutosh007@gmail.com to admin if they are player-role currently
+          if (isCurrentGoogleUser && resolvedRole !== "admin") {
+            await updateDoc(userDoc, { role: "admin" });
+            resolvedRole = "admin";
+          }
+        }
+      } catch (e) {
+        console.error("Error creating appUser:", e);
+      }
+
+      // Ensure they also exist in players collection so they show up in admin players tab
+      try {
+        const pSnap = await getDoc(playerDoc);
+        const initialStatus =
+          resolvedRole === "admin"
+            ? "Verified"
+            : isDemo
+              ? "Pending"
+              : "Unverified";
+
+        if (!pSnap.exists()) {
+          await setDoc(playerDoc, {
+            name: nameVal,
+            mobile: mobileVal,
+            inviteStatus: initialStatus,
+            dob: isDemo ? "1998-05-18" : "",
+            locality: isDemo ? "Sector 5, Kavach Arena" : "",
+            bloodGroup: isDemo ? "O+" : "",
+            emergencyContact: isDemo ? "9876543210" : "",
+            battingStyle: isDemo ? "Right-hand bat" : "",
+            bowlingStyle: isDemo ? "Right-arm medium" : "",
+            isWicketKeeper: isDemo ? false : false,
+            jerseyNumber: isDemo ? "10" : "",
+            chestSize: isDemo ? "40" : "",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          if (initialStatus === "Unverified" || initialStatus === "Pending") {
+            createNotification(
+              "admin",
+              "New Player Request",
+              `Player ${nameVal} has requested to join the club.`,
+              "email",
+              { type: "player_request", playerId: user.uid }
+            );
+            createNotification(
+              user.uid,
+              "Welcome to the Club",
+              `Welcome ${nameVal}! Your request to join is currently pending approval.`,
+              "email",
+            );
+          }
+        } else {
+          // If player document exists but status doesn't match verified status of an admin, auto-verify
+          if (
+            resolvedRole === "admin" &&
+            pSnap.data()?.inviteStatus !== "Verified" &&
+            pSnap.data()?.inviteStatus !== "Accepted"
+          ) {
+            await updateDoc(playerDoc, { inviteStatus: "Verified" });
+          }
+        }
+      } catch (e) {
+        console.error("Error creating player record:", e);
+      }
+    };
+    if (!readOnly) {
+      ensureUser();
+    }
+
+    // Default configuration doc
+    const ensureConfig = async () => {
+      const g = await getDocs(collection(db, "appConfig"));
+      if (g.empty) {
+        try {
+          await setDoc(doc(db, "appConfig", "default"), {
+            clubName: "KAVACH CRICKET CLUB",
+            logoUrl: "",
+            themeColor: "#dc143c",
+          });
+        } catch (e) {}
+      }
+    };
+    ensureConfig();
+
+    let unsubPayments: (() => void) | null = null;
+
+    unsubPayments = onSnapshot(
+      collectionGroup(db, "payments"),
+      (snapshot) => {
+        const matchPays = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() }) as MatchPayment,
+        );
+        matchPays.sort(
+          (a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0),
+        );
+        const dedupedMap = new Map<string, MatchPayment>();
+        matchPays.forEach((p) => {
+          const key = p.guestName ? p.id : `${p.matchId}_${p.playerId}`;
+          if (!dedupedMap.has(key)) {
+            dedupedMap.set(key, p);
+          }
+        });
+        setPayments(Array.from(dedupedMap.values()));
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "payments"),
+    );
+
+    const unsubConfig = onSnapshot(
+      doc(db, "appConfig", "default"),
+      (snap) => {
+        if (snap.exists()) {
+          const config = snap.data() as AppConfig;
+          if (config.loadingAnimationTheme && typeof window !== "undefined") {
+            localStorage.setItem("kavach_loading_theme", config.loadingAnimationTheme);
+          }
+          setAppConfig({ ...config, id: snap.id });
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "appConfig"),
+    );
+
+    const unsubAppUsers = onSnapshot(
+      collection(db, "appUsers"),
+      (snap) => {
+        setAppUsers(
+          snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }) as AppUser)
+            .filter((u) => {
+              const nameLower = (u.name || "").toLowerCase();
+              const emailLower = (u.email || "").toLowerCase();
+              return !nameLower.includes("demo") && !emailLower.includes("demo");
+            }),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "appUsers"),
+    );
+
+    const unsubGrounds = onSnapshot(
+      collection(db, "grounds"),
+      (snapshot) => {
+        setGrounds(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Ground),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "grounds"),
+    );
+
+    const unsubPlayers = onSnapshot(
+      collection(db, "players"),
+      (snapshot) => {
+        setPlayers(
+          snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }) as Player)
+            .filter((p) => {
+              const nameLower = (p.name || "").toLowerCase();
+              const emailLower = (p.email || "").toLowerCase();
+              return !nameLower.includes("demo") && !emailLower.includes("demo");
+            }),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "players"),
+    );
+
+    const unsubStats = onSnapshot(
+      collection(db, "playerStats"),
+      (snapshot) => {
+        setPlayerStats(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as PlayerStat,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "playerStats"),
+    );
+
+    const unsubPosts = onSnapshot(
+      collection(db, "posts"),
+      (snapshot) => {
+        setPosts(
+          snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }) as Post)
+            .sort((a, b) => {
+              const dateA = a.createdAt?.seconds || 0;
+              const dateB = b.createdAt?.seconds || 0;
+              return dateB - dateA;
+            }),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "posts"),
+    );
+
+    const unsubMatches = onSnapshot(
+      collection(db, "matches"),
+      (snapshot) => {
+        const ms = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() }) as Match,
+        );
+        setMatches(ms);
+        setIsLoaded(true);
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.LIST, "matches");
+        setIsLoaded(true);
+      },
+    );
+
+    const unsubSubscriptionPlans = onSnapshot(
+      collection(db, "subscriptionPlans"),
+      (snapshot) => {
+        setSubscriptionPlans(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as SubscriptionPlan,
+          ),
+        );
+      },
+      (err) =>
+        handleFirestoreError(err, OperationType.LIST, "subscriptionPlans"),
+    );
+
+    const unsubSubscriptionHistory = onSnapshot(
+      collection(db, "subscriptionHistory"),
+      (snapshot) => {
+        setSubscriptionHistory(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as SubscriptionHistory,
+          ),
+        );
+      },
+      (err) =>
+        handleFirestoreError(err, OperationType.LIST, "subscriptionHistory"),
+    );
+
+    const unsubNotifications = onSnapshot(
+      collection(db, "notifications"),
+      (snapshot) => {
+        setNotifications(
+          snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }) as Notification)
+            .sort((a, b) => {
+              return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+            }),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "notifications"),
+    );
+
+    const unsubOtherFees = onSnapshot(
+      collectionGroup(db, "otherFees"),
+      (snapshot) => {
+        setOtherFees(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as OtherFee,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "otherFees"),
+    );
+
+    const unsubFeeTemplates = onSnapshot(
+      collection(db, "feeTemplates"),
+      (snapshot) => {
+        setFeeTemplates(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as FeeTemplate,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "feeTemplates"),
+    );
+
+    const unsubOutOfPlays = onSnapshot(
+      collection(db, "outOfPlays"),
+      (snapshot) => {
+        setOutOfPlays(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as OutOfPlay,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "outOfPlays"),
+    );
+
+    return () => {
+      unsubGrounds();
+      unsubMatches();
+      unsubPlayers();
+      unsubStats();
+      unsubPosts();
+      unsubAppUsers();
+      unsubConfig();
+      unsubSubscriptionPlans();
+      unsubSubscriptionHistory();
+      unsubNotifications();
+      unsubOtherFees();
+      unsubFeeTemplates();
+      unsubOutOfPlays();
+      if (unsubPayments) unsubPayments();
+    };
+  }, [user]);
+
+  const updateAppConfig = async (config: Partial<AppConfig>) => {
+    try {
+      await updateDoc(doc(db, "appConfig", "default"), cleanPayload(config));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, "appConfig/default");
+    }
+  };
+
+  const updateAppUserRole = async (userId: string, role: string) => {
+    try {
+      await updateDoc(doc(db, "appUsers", userId), { role });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appUsers/${userId}`);
+    }
+  };
+
+  const updateAppUserProfile = async (
+    userId: string,
+    profile: Partial<AppUser>,
+  ) => {
+    try {
+      await setDoc(doc(db, "appUsers", userId), cleanPayload(profile), { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appUsers/${userId}`);
+    }
+  };
+
+  const addGround = async (
+    ground: Omit<Ground, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "grounds", id);
+    try {
+      await setDoc(docRef, {
+        ...ground,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `grounds/${id}`);
+    }
+  };
+
+  const updateGround = async (groundId: string, ground: Partial<Ground>) => {
+    const docRef = doc(db, "grounds", groundId);
+    try {
+      await updateDoc(
+        docRef,
+        cleanPayload({ ...ground, updatedAt: serverTimestamp() }),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `grounds/${groundId}`);
+    }
+  };
+
+  const deleteGround = async (groundId: string) => {
+    try {
+      await deleteDoc(doc(db, "grounds", groundId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `grounds/${groundId}`);
+    }
+  };
+
+  const addMatch = async (
+    match: Omit<Match, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "matches", id);
+    try {
+      await setDoc(docRef, {
+        ...match,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      // Notify all players individually so they can manage their own read/delete state
+      for (const p of players) {
+        if (!p.disabled && p.inviteStatus === "Verified") {
+          createNotification(
+            p.id,
+            "New Match Scheduled",
+            `A new ${match.format} match against ${match.opponent} on ${match.date} has been added.`,
+            "in_app",
+          );
+        }
+      }
+
+      // Generate payments
+      for (const p of players) {
+        const payId = crypto.randomUUID();
+        await setDoc(doc(db, "matches", id, "payments", payId), {
+          id: payId,
+          matchId: id,
+          playerId: p.id,
+          status: "Not Playing",
+          availability: "Pending",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `matches/${id}`);
+    }
+  };
+
+  const updateMatch = async (match: Match) => {
+    const docRef = doc(db, "matches", match.id);
+    const { id, createdAt, updatedAt, ...data } = match;
+    try {
+      await updateDoc(
+        docRef,
+        cleanPayload({ ...data, updatedAt: serverTimestamp() }),
+      );
+      // Notify all players individually
+      for (const p of players) {
+        if (!p.disabled && p.inviteStatus === "Verified") {
+          createNotification(
+            p.id,
+            "Match Updated",
+            `The match against ${match.opponent} on ${match.date} has been updated.`,
+            "in_app",
+          );
+        }
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `matches/${match.id}`);
+    }
+  };
+
+  const deleteMatch = async (matchId: string) => {
+    const docRef = doc(db, "matches", matchId);
+    try {
+      await deleteDoc(docRef);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `matches/${matchId}`);
+      throw err;
+    }
+  };
+
+  const addPlayer = async (
+    player: Partial<Player> & Pick<Player, "name" | "mobile">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "players", id);
+    try {
+      await setDoc(docRef, {
+        ...player,
+        inviteStatus: player.inviteStatus || "Unverified",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `players/${id}`);
+      throw err;
+    }
+  };
+
+  const updatePlayer = async (playerId: string, updates: Partial<Player>) => {
+    try {
+      const existingPlayer = players.find((p) => p.id === playerId);
+      if (existingPlayer) {
+        if (
+          (updates.inviteStatus === "Accepted" ||
+            updates.inviteStatus === "Verified") &&
+          existingPlayer.inviteStatus !== updates.inviteStatus
+        ) {
+          createNotification(
+            playerId,
+            "Membership Approved",
+            "Your club membership has been approved!",
+            "email",
+          );
+        }
+        if (
+          updates.isStudioMember === true &&
+          existingPlayer.isStudioMember !== true
+        ) {
+          createNotification(
+            playerId,
+            "Studio Membership Active",
+            "Welcome to the Studio! You now have access to premium features.",
+            "both",
+          );
+        }
+      }
+
+      const cleanedUpdates = cleanPayload({
+        ...updates,
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "players", playerId), cleanedUpdates);
+
+      // Auto-sync updates to appUsers if matching user is found
+      const playerObj = players.find((p) => p.id === playerId);
+      const appUserToUpdate =
+        appUsers.find((u) => u.id === playerId) ||
+        appUsers.find(
+          (u) => u.mobile && playerObj && u.mobile === playerObj.mobile,
+        );
+
+      if (appUserToUpdate) {
+        const appUserUpdates: Partial<AppUser> = {};
+        const fieldsToSync: (keyof Player & keyof AppUser)[] = [
+          "name",
+          "mobile",
+          "dob",
+          "locality",
+          "bloodGroup",
+          "emergencyContact",
+          "battingStyle",
+          "bowlingStyle",
+          "isWicketKeeper",
+          "chestSize",
+          "jerseyNumber",
+          "isStudioMember",
+          "studioStartDate",
+          "studioEndDate",
+          "studioPlan",
+          "lastPaidDate",
+          "lastPaidAmount",
+          "studioExpiryDate",
+        ];
+
+        fieldsToSync.forEach((field) => {
+          if (updates[field] !== undefined) {
+            (appUserUpdates as any)[field] = updates[field];
+          }
+        });
+
+        const cleanedAppUserUpdates = cleanPayload(appUserUpdates);
+        if (Object.keys(cleanedAppUserUpdates).length > 0) {
+          await updateDoc(
+            doc(db, "appUsers", appUserToUpdate.id),
+            cleanedAppUserUpdates,
+          );
+        }
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `players/${playerId}`);
+    }
+  };
+
+  const deletePlayer = async (playerId: string) => {
+    try {
+      const p = players.find(x => x.id === playerId);
+      await deleteDoc(doc(db, "players", playerId));
+
+      // Also attempt to delete from appUsers if they exist
+      if (p && p.authUid) {
+        try {
+          await deleteDoc(doc(db, "appUsers", p.authUid));
+        } catch (err) {
+          // Ignore if appUsers deletion fails (they might not have an appUsers doc, or permissions might not allow it)
+          console.warn("Could not delete appUsers document for player", err);
+        }
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `players/${playerId}`);
+    }
+  };
+
+  const notifyPlayerPayment = (playerId: string, matchId: string) => {
+    const p = players.find((p) => p.id === playerId);
+    const m = matches.find((m) => m.id === matchId);
+    if (p && p.mobile && m) {
+      const link = `${window.location.origin}/pay/${p.id}`;
+      const text = encodeURIComponent(
+        `Hi ${p.name}, gentle reminder to clear your match fee of ₹${m.fee} for the match against ${m.opponent} on ${m.date}.\n\nPlease clear them at your earliest convenience using this link: ${link}`
+      );
+      window.open(`https://wa.me/${p.mobile.replace("+", "")}?text=${text}`, "_blank");
+    } else if (p) {
+      alert(`No mobile number found for ${p.name}`);
+    }
+  };
+
+  const updatePaymentStatus = async (
+    paymentId: string,
+    status: MatchPayment["status"],
+    matchId: string,
+    availability?: MatchPayment["availability"],
+  ) => {
+    // Optimistic fallback update for React UI since we don't sync subcollections with onSnapshot above completely perfectly (we only fetch on match update)
+    setPayments((prev) =>
+      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}) } : p)),
+    );
+    const docRef = doc(db, "matches", matchId, "payments", paymentId);
+    try {
+      const updateData: any = { status, updatedAt: serverTimestamp() };
+      if (availability) updateData.availability = availability;
+      await updateDoc(docRef, updateData);
+
+      const payment = payments.find((p) => p.id === paymentId);
+      const player = players.find((p) => p.id === payment?.playerId);
+      const match = matches.find((m) => m.id === matchId);
+
+      if (status === "Paid" && match && player) {
+        // Notify player
+        createNotification(
+          player.id,
+          "Payment Successful",
+          `Your payment for the match against ${match.opponent} was successful.`,
+          "in_app"
+        );
+        // Notify Admin
+        createNotification(
+          "admin",
+          "Payment Received",
+          `${player.name} has paid for the match against ${match.opponent}.`,
+          "in_app"
+        );
+      } else if (status === "Failed" && match && player) {
+        // Notify Admin
+        createNotification(
+          "admin",
+          "Payment Failed",
+          `${player.name}'s payment for the match against ${match.opponent} failed.`,
+          "in_app"
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `matches/${matchId}/payments/${paymentId}`,
+      );
+    }
+  };
+
+  const updateMatchAvailability = async (
+    paymentId: string,
+    availability: MatchPayment["availability"],
+    matchId: string,
+  ) => {
+    setPayments((prev) =>
+      prev.map((p) => (p.id === paymentId ? { ...p, availability } : p)),
+    );
+    const docRef = doc(db, "matches", matchId, "payments", paymentId);
+    try {
+      const p = payments.find((p) => p.id === paymentId);
+      const playerObj = players.find((pl) => pl.id === p?.playerId);
+      await updateDoc(docRef, { availability, updatedAt: serverTimestamp() });
+      createNotification(
+        "admin",
+        "Player Availability Changed",
+        `${playerObj?.name || "A player"} changed their availability to ${availability}.`,
+        "in_app",
+      );
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `matches/${matchId}/payments/${paymentId}`,
+      );
+    }
+  };
+
+  const addPaymentWithAvailability = async (
+    matchId: string,
+    playerId: string,
+    availability: MatchPayment["availability"],
+  ) => {
+    const id = crypto.randomUUID();
+    const initialStatus =
+      availability === "Confirmed" ? "Unpaid" : "Not Playing";
+    setPayments((prev) => [
+      ...prev,
+      {
+        id,
+        matchId,
+        playerId,
+        status: initialStatus,
+        availability,
+      } as MatchPayment,
+    ]);
+    const docRef = doc(db, "matches", matchId, "payments", id);
+    try {
+      await setDoc(docRef, {
+        id,
+        matchId,
+        playerId,
+        status: initialStatus,
+        availability,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.CREATE,
+        `matches/${matchId}/payments/${id}`,
+      );
+    }
+  };
+
+  const addOtherFee = async (
+    playerId: string,
+    title: string,
+    amount: number,
+    comment?: string,
+    templateId?: string,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "players", playerId, "otherFees", id);
+    try {
+      await setDoc(docRef, {
+        id,
+        playerId,
+        title,
+        amount,
+        comment: comment || "",
+        templateId: templateId || "",
+        status: "Unpaid",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const p = players.find((p) => p.id === playerId);
+      createNotification(
+        playerId,
+        "Fee Added",
+        `A new fee "${title}" of ₹${amount} was added.`,
+        "email",
+      );
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.CREATE,
+        `players/${playerId}/otherFees/${id}`,
+      );
+    }
+  };
+
+  const updateOtherFeeStatus = async (
+    playerId: string,
+    feeId: string,
+    status: OtherFee["status"],
+  ) => {
+    const docRef = doc(db, "players", playerId, "otherFees", feeId);
+    try {
+      await updateDoc(docRef, { status, updatedAt: serverTimestamp() });
+      
+      const player = players.find((p) => p.id === playerId);
+      const fee = otherFees.find((f) => f.id === feeId);
+
+      if (status === "Paid" && player && fee) {
+        // Notify player
+        createNotification(
+          player.id,
+          "Payment Successful",
+          `Your payment for the fee "${fee.title}" was successful.`,
+          "in_app"
+        );
+        // Notify Admin
+        createNotification(
+          "admin",
+          "Fee Payment Received",
+          `${player.name} has paid the fee "${fee.title}".`,
+          "in_app"
+        );
+      } else if (status === "Failed" && player && fee) {
+        // Notify Admin
+        createNotification(
+          "admin",
+          "Fee Payment Failed",
+          `${player.name}'s payment for the fee "${fee.title}" failed.`,
+          "in_app"
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `players/${playerId}/otherFees/${feeId}`,
+      );
+    }
+  };
+
+  const deleteOtherFee = async (playerId: string, feeId: string) => {
+    const docRef = doc(db, "players", playerId, "otherFees", feeId);
+    try {
+      await deleteDoc(docRef);
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.DELETE,
+        `players/${playerId}/otherFees/${feeId}`,
+      );
+    }
+  };
+
+  const addFeeTemplate = async (name: string, amount: number) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "feeTemplates", id);
+    try {
+      await setDoc(docRef, {
+        id,
+        name,
+        amount,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `feeTemplates/${id}`);
+    }
+  };
+
+  const deleteFeeTemplate = async (templateId: string) => {
+    const docRef = doc(db, "feeTemplates", templateId);
+    try {
+      await deleteDoc(docRef);
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.DELETE,
+        `feeTemplates/${templateId}`,
+      );
+    }
+  };
+
+  const addPaymentStatus = async (
+    matchId: string,
+    playerId: string,
+    status: MatchPayment["status"] = "Unpaid",
+    availability: MatchPayment["availability"] = "Confirmed",
+    guestName?: string
+  ) => {
+    const id = crypto.randomUUID();
+    setPayments((prev) => [
+      ...prev,
+      {
+        id,
+        matchId,
+        playerId,
+        guestName,
+        status,
+        availability,
+      } as MatchPayment,
+    ]);
+    const docRef = doc(db, "matches", matchId, "payments", id);
+    try {
+      const data: any = {
+        id,
+        matchId,
+        playerId,
+        status,
+        availability,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      if (guestName) data.guestName = guestName;
+      await setDoc(docRef, data);
+      if (status === "Unpaid") {
+        createNotification(
+          playerId,
+          "Match Fee Due",
+          "You have been added to a match squad and your match fee is due.",
+          "both",
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.CREATE,
+        `matches/${matchId}/payments/${id}`,
+      );
+      throw err;
+    }
+  };
+
+  const updatePlayerStat = async (
+    playerId: string,
+    year: number,
+    runs: number,
+    wickets: number,
+  ) => {
+    const existingStat = playerStats.find(
+      (s) => s.playerId === playerId && s.year === year,
+    );
+    if (existingStat) {
+      const docRef = doc(db, "playerStats", existingStat.id);
+      try {
+        await updateDoc(docRef, {
+          runs,
+          wickets,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.UPDATE,
+          `playerStats/${existingStat.id}`,
+        );
+      }
+    } else {
+      const id = crypto.randomUUID();
+      const docRef = doc(db, "playerStats", id);
+      try {
+        await setDoc(docRef, {
+          playerId,
+          year,
+          runs,
+          wickets,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `playerStats/${id}`);
+      }
+    }
+  };
+
+  const addPost = async (
+    post: Omit<Post, "id" | "createdAt" | "updatedAt" | "comments">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "posts", id);
+    try {
+      await setDoc(docRef, {
+        ...post,
+        comments: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `posts/${id}`);
+    }
+  };
+
+  const updatePost = async (postId: string, text: string) => {
+    try {
+      await updateDoc(doc(db, "posts", postId), {
+        text,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `posts/${postId}`);
+    }
+  };
+
+  const deletePost = async (postId: string) => {
+    try {
+      await deleteDoc(doc(db, "posts", postId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+    }
+  };
+
+  const addComment = async (
+    postId: string,
+    userId: string,
+    userName: string,
+    text: string,
+  ) => {
+    const existingPost = posts.find((p) => p.id === postId);
+    if (!existingPost) return;
+
+    const newComment: PostComment = {
+      id: crypto.randomUUID(),
+      userId,
+      userName,
+      text,
+      createdAt: new Date().toISOString(), // Or use server timestamp appropriately, but simple string is easier for embedded array
+    };
+
+    const updatedComments = [...(existingPost.comments || []), newComment];
+
+    try {
+      await updateDoc(doc(db, "posts", postId), {
+        comments: updatedComments,
+      });
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `posts/${postId}/addComment`,
+      );
+    }
+  };
+
+  const addSubscriptionPlan = async (
+    plan: Omit<SubscriptionPlan, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "subscriptionPlans", id);
+    try {
+      await setDoc(docRef, {
+        ...plan,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return id;
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.CREATE,
+        `subscriptionPlans/${id}`,
+      );
+    }
+  };
+
+  const updateSubscriptionPlan = async (plan: SubscriptionPlan) => {
+    const docRef = doc(db, "subscriptionPlans", plan.id);
+    const { id, createdAt, updatedAt, ...data } = plan;
+    try {
+      await updateDoc(
+        docRef,
+        cleanPayload({ ...data, updatedAt: serverTimestamp() }),
+      );
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `subscriptionPlans/${plan.id}`,
+      );
+    }
+  };
+
+  const deleteSubscriptionPlan = async (planId: string) => {
+    try {
+      await deleteDoc(doc(db, "subscriptionPlans", planId));
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.DELETE,
+        `subscriptionPlans/${planId}`,
+      );
+    }
+  };
+
+  const addSubscriptionHistory = async (
+    history: Omit<SubscriptionHistory, "id" | "createdAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "subscriptionHistory", id);
+    try {
+      const dataToSave = cleanPayload({ ...history, createdAt: serverTimestamp() });
+      await setDoc(docRef, dataToSave);
+      return id;
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.CREATE,
+        `subscriptionHistory/${id}`,
+      );
+    }
+  };
+
+  const addOutOfPlay = async (data: Omit<OutOfPlay, "id" | "createdAt" | "updatedAt">) => {
+    const id = crypto.randomUUID();
+    try {
+      await setDoc(doc(db, "outOfPlays", id), cleanPayload({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `outOfPlays/${id}`);
+    }
+  };
+
+  const updateOutOfPlay = async (data: OutOfPlay) => {
+    const { id, createdAt, updatedAt, ...rest } = data;
+    try {
+      await updateDoc(doc(db, "outOfPlays", id), cleanPayload({ ...rest, updatedAt: serverTimestamp() }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `outOfPlays/${id}`);
+    }
+  };
+
+  const deleteOutOfPlay = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "outOfPlays", id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `outOfPlays/${id}`);
+    }
+  };
+
+  const filteredPayments = useMemo(() => {
+    return payments.filter((pay) => players.some((pl) => pl.id === pay.playerId));
+  }, [payments, players]);
+
+  const filteredOtherFees = useMemo(() => {
+    return otherFees.filter((fee) => players.some((pl) => pl.id === fee.playerId));
+  }, [otherFees, players]);
+
+  return {
+    grounds,
+    addGround,
+    updateGround,
+    deleteGround,
+    matches,
+    addMatch,
+    updateMatch,
+    deleteMatch,
+    players,
+    addPlayer,
+    updatePlayer,
+    deletePlayer,
+    posts,
+    addPost,
+    updatePost,
+    deletePost,
+    addComment,
+    payments: filteredPayments,
+    updatePaymentStatus,
+    addPaymentStatus,
+    notifyPlayerPayment,
+    updateMatchAvailability,
+    addPaymentWithAvailability,
+    playerStats,
+    updatePlayerStat,
+    appConfig,
+    updateAppConfig,
+    appUsers,
+    updateAppUserRole,
+    updateAppUserProfile,
+    subscriptionPlans,
+    addSubscriptionPlan,
+    updateSubscriptionPlan,
+    deleteSubscriptionPlan,
+    subscriptionHistory,
+    addSubscriptionHistory,
+    notifications,
+    otherFees: filteredOtherFees,
+    addOtherFee,
+    updateOtherFeeStatus,
+    deleteOtherFee,
+    feeTemplates,
+    addFeeTemplate,
+    deleteFeeTemplate,
+    outOfPlays,
+    addOutOfPlay,
+    updateOutOfPlay,
+    deleteOutOfPlay,
+    isLoaded,
+  };
+}

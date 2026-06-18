@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --color-glass-bg: var(--theme-glass-bg, rgba(255, 255, 255, 0.1));
+  --color-glass-border: var(--theme-glass-border, rgba(255, 255, 255, 0.2));
+  --color-accent: var(--theme-accent, #10b981);
+}
+
+body {
+  background-image: var(
+    --theme-bg,
+    radial-gradient(circle at 0% 0%, #064e3b 0%, #022c22 100%)
+  );
+  background-attachment: fixed;
+  color: #fff;
+  transition: all 0.3s ease-in-out;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+/* Hide scrollbars globally across panels and components */
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.glass {
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-glass-border);
+  transition:
+    background 0.3s ease,
+    border-color 0.3s ease;
+}
+
+/* Hide Next.js dev indicator from screen */
+nextjs-portal {
+  display: none !important;
+}
