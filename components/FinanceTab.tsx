@@ -919,6 +919,8 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterMatchId, setFilterMatchId] = useState("");
+  const [selectedDues, setSelectedDues] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const filteredMatches = useMemo(() => {
     let m = store.matches;
@@ -1018,50 +1020,88 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
       {subTab === "fee" && <FeeManagementView store={store} />}
 
       {subTab === "due_report" && (() => {
-        const unifiedData = store.players
-          .filter(
-            (p) =>
-              !searchPlayer ||
-              p.name.toLowerCase().includes(searchPlayer.toLowerCase()),
-          )
-          .map((p) => {
-            let pendingMatchDues: { type: string; amount: number; desc: string }[] = [];
-            if (dueType === "all" || dueType === "matches") {
-               pendingMatchDues = store.payments
-                 .filter((pay) => pay.playerId === p.id && pay.status === "Unpaid")
-                 .map((pay) => {
-                   const m = store.matches.find((mx) => mx.id === pay.matchId);
-                   return {
-                     type: 'match',
-                     amount: m?.fee || 0,
-                     desc: m ? `vs ${m.opponent} (${formatDate(m.date)})` : 'Unknown Match'
-                   };
-                 })
-                 .filter((x) => x.amount > 0 && (!filterMatchId || store.payments.find(pay => pay.playerId === p.id && pay.status === 'Unpaid' && pay.matchId === filterMatchId)));
-            }
+         const allDues: any[] = [];
+         store.players.forEach(p => {
+            store.payments.filter(pay => pay.playerId === p.id && pay.status === "Unpaid").forEach(pay => {
+              const m = store.matches.find(mx => mx.id === pay.matchId);
+              if(m) {
+                allDues.push({
+                   uid: pay.id,
+                   type: 'match',
+                   amount: m.fee,
+                   desc: `vs ${m.opponent} (${formatDate(m.date)})`,
+                   groupKey: `match_${m.id}`,
+                   groupTitle: `Match Fee: vs ${m.opponent} (${formatDate(m.date)})`,
+                   player: p
+                });
+              }
+            });
 
-            let pendingOtherFees: { type: string; amount: number; desc: string }[] = [];
-            if (dueType === "all" || dueType === "others") {
-               pendingOtherFees = store.otherFees
-                 .filter((f) => f.playerId === p.id && f.status === "Unpaid")
-                 .map((f) => ({
+            store.otherFees.filter(f => f.playerId === p.id && f.status === "Unpaid").forEach(f => {
+                allDues.push({
+                   uid: f.id,
                    type: 'other',
                    amount: f.amount,
-                   desc: f.title
-                 }));
-            }
+                   desc: f.title,
+                   groupKey: `other_${f.templateId || f.title}`,
+                   groupTitle: `Other Fee: ${f.title}`,
+                   player: p
+                });
+            });
+         });
 
-            const dues = [...pendingMatchDues, ...pendingOtherFees];
-            const totalDue = dues.reduce((s, x) => s + x.amount, 0);
+         const filteredDues = allDues.filter(d => {
+            if (dueType === "matches" && d.type !== "match") return false;
+            if (dueType === "others" && d.type !== "other") return false;
+            if (filterMatchId && d.groupKey !== `match_${filterMatchId}`) return false;
+            if (searchPlayer && !d.player.name.toLowerCase().includes(searchPlayer.toLowerCase())) return false;
+            return true;
+         });
 
+         const groupedDuesMap: Record<string, any[]> = filteredDues.reduce((acc: any, curr: any) => {
+            const k = curr.groupKey;
+            if(!acc[k]) acc[k] = [];
+            acc[k].push(curr);
+            return acc;
+         }, {});
+
+         const groupedDues = Object.keys(groupedDuesMap).map(key => {
+            const items = groupedDuesMap[key];
             return {
-              player: p,
-              dues,
-              totalDue
+              key,
+              title: items[0].groupTitle,
+              items
             };
-          }).filter(x => x.totalDue > 0);
+         });
 
-        const grandDue = unifiedData.reduce((sum, d) => sum + d.totalDue, 0);
+         const grandDue = filteredDues.reduce((sum, d) => sum + d.amount, 0);
+
+         const hasSelection = selectedDues.size > 0;
+
+         const toggleItem = (uid: string) => {
+            const next = new Set(selectedDues);
+            if(next.has(uid)) next.delete(uid);
+            else next.add(uid);
+            setSelectedDues(next);
+         };
+
+         const toggleGroup = (key: string, items: any[]) => {
+            const next = new Set(selectedDues);
+            const allInGroupSelected = items.every(i => next.has(i.uid));
+            if(allInGroupSelected) {
+               items.forEach(i => next.delete(i.uid));
+            } else {
+               items.forEach(i => next.add(i.uid));
+            }
+            setSelectedDues(next);
+         };
+
+         const toggleCollapse = (key: string) => {
+            const next = new Set(collapsedGroups);
+            if(next.has(key)) next.delete(key);
+            else next.add(key);
+            setCollapsedGroups(next);
+         };
 
         return (
         <div className="space-y-4">
@@ -1075,11 +1115,24 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                    <div className="w-px h-4 bg-glass-border"></div>
                    <button
                      onClick={async () => {
-                       if (!window.confirm("Send an email reminder to ALL players with pending dues who have their email saved?")) return;
+                       const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
+                       if (targetDues.length === 0) {
+                         alert("No dues found to remind."); return;
+                       }
+
+                       if (!window.confirm(`Send an email reminder to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?`)) return;
                        
-                       const playersWithEmail = unifiedData.filter(d => !!d.player.email);
+                       const byEmail: Record<string, any> = {};
+                       targetDues.forEach(d => {
+                          if (!d.player.email) return;
+                          if (!byEmail[d.player.email]) byEmail[d.player.email] = { player: d.player, dues: [], total: 0 };
+                          byEmail[d.player.email].dues.push(d);
+                          byEmail[d.player.email].total += d.amount;
+                       });
+
+                       const playersWithEmail = Object.values(byEmail);
                        if (playersWithEmail.length === 0) {
-                         alert("No players with pending dues have an email address stored.");
+                         alert("None of the included players have an email address stored.");
                          return;
                        }
                        
@@ -1097,8 +1150,8 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                               return txt
                                 .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
                                 .replace(/{{playerName}}/g, data.player.name || "Player")
-                                .replace(/{{amount}}/g, `₹${data.totalDue}`)
-                                .replace(/{{duesText}}/g, data.dues.map(d => `${d.desc} (₹${d.amount})`).join(", "))
+                                .replace(/{{amount}}/g, `₹${data.total}`)
+                                .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
                                 .replace(/{{link}}/g, link);
                             };
                             const res = await fetch("/api/email/send", {
@@ -1123,16 +1176,24 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                        }
                        alert(`Finished sending reminders. Sent: ${sentCount}, Failed: ${failCount}`);
                      }}
-                     className="bg-accent/20 text-accent hover:bg-accent/30 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap"
+                     className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
                    >
-                     Email Remind All
+                     {hasSelection ? "Email Remind Selected" : "Email Remind All"}
                    </button>
                    <button
                      onClick={() => {
-                        let text = `*Pending Dues Report*\n\n`;
-                        unifiedData.forEach((data) => {
-                          text += `*${data.player.name}* - ₹${data.totalDue}\n`;
-                          data.dues.forEach(d => {
+                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
+                        const byPlayer: Record<string, any> = {};
+                        targetDues.forEach(d => {
+                           if(!byPlayer[d.player.id]) byPlayer[d.player.id] = { player: d.player, dues: [], total: 0 };
+                           byPlayer[d.player.id].dues.push(d);
+                           byPlayer[d.player.id].total += d.amount;
+                        });
+
+                        let text = `*Pending Dues Report*` + (hasSelection ? ' (Selected)\n\n' : '\n\n');
+                        Object.values(byPlayer).forEach((data: any) => {
+                          text += `*${data.player.name}* - ₹${data.total}\n`;
+                          data.dues.forEach((d: any) => {
                             text += `  - ${d.desc} (₹${d.amount})\n`;
                           });
                           text += `\n`;
@@ -1181,109 +1242,137 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
              </div>
           </div>
           
-          <div className="space-y-3">
-            {unifiedData.length === 0 ? (
+          <div className="space-y-4">
+            {groupedDues.length === 0 ? (
                <div className="text-center py-10 text-white/40 italic text-sm glass rounded-xl border-dashed">
                  No dues found for the current filters.
                </div>
             ) : (
-                unifiedData.map((data) => (
-                  <div key={data.player.id} className="glass rounded-xl p-4 border border-glass-border">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-3">
-                       <div className="flex items-center justify-between w-full sm:w-auto">
-                         <div className="font-bold text-white text-base truncate">{data.player.name}</div>
-                         <div className="sm:hidden text-[11px] text-red-400 font-bold tracking-widest uppercase bg-red-500/10 px-2 py-1 rounded ml-2 whitespace-nowrap">
-                           Due: ₹{data.totalDue}
-                         </div>
-                       </div>
-                       <div className="flex flex-wrap items-center gap-2">
-                         <div className="hidden sm:block text-[11px] text-red-400 font-bold tracking-widest uppercase mr-2 whitespace-nowrap">
-                           Due: ₹{data.totalDue}
-                         </div>
-                         <button
-                           onClick={() => {
-                             if (!data.player.mobile) {
-                               alert("Player does not have a mobile number saved.");
-                               return;
-                             }
-                             const link = `${window.location.origin}/pay/${data.player.id}`;
-                             const text = `Hi ${data.player.name}, this is a gentle reminder regarding your pending dues of ₹${data.totalDue}.\n\nPlease clear them at your earliest convenience using this link: ${link}`;
-                             const encodedText = encodeURIComponent(text);
-                             window.open(`https://wa.me/${data.player.mobile.replace("+", "")}?text=${encodedText}`, "_blank");
-                           }}
-                           className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                         >
-                           WA Remind
-                         </button>
-                         {data.player.email && (
-                            <button
-                              onClick={async () => {
-                                const link = `${window.location.origin}/pay/${data.player.id}`;
-                                const text = `Hi ${data.player.name},\n\n This is a gentle reminder regarding your pending dues of ₹${data.totalDue}.\n\nPlease clear them at your earliest convenience using this link: ${link}`;
-                                try {
-                                  const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || {
-                                    subject: "Pending Fee Reminder - {{clubName}}",
-                                    body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
-                                  };
-                                  const renderTpl = (txt: string) => {
-                                    return txt
-                                      .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
-                                      .replace(/{{playerName}}/g, data.player.name || "Player")
-                                      .replace(/{{amount}}/g, `₹${data.totalDue}`)
-                                      .replace(/{{duesText}}/g, "Outstanding match and studio dues")
-                                      .replace(/{{link}}/g, link);
-                                  };
-                                  const res = await fetch("/api/email/send", {
-                                    method: "POST",
-                                    body: JSON.stringify({
-                                      to: [data.player.email],
-                                      subject: renderTpl(reminderTemplate.subject),
-                                      text: renderTpl(reminderTemplate.body),
-                                      config: store.appConfig,
-                                    })
-                                  });
+                groupedDues.map((group) => {
+                  const allInGroupSelected = group.items.every((i: any) => selectedDues.has(i.uid));
+                  const someInGroupSelected = group.items.some((i: any) => selectedDues.has(i.uid));
+                  const groupTotal = group.items.reduce((s: number, i: any) => s + i.amount, 0);
+                  const isCollapsed = collapsedGroups.has(group.key);
 
-                                  if (!res.ok) {
-                                    const errData = await res.json().catch(() => ({}));
-                                    throw new Error(errData.error || "Network error");
-                                  }
-
-                                  const respData = await res.json();
-                                  if (!respData.success) {
-                                    throw new Error(respData.error || "Failed to send");
-                                  }
-                                  alert("Email reminder sent successfully!");
-                                } catch (e: any) {
-                                  alert(`Failed: ${e.message || "Failed to send email reminder."}`);
-                                }
-                              }}
-                              className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                            >
-                              Email Remind
-                            </button>
-                         )}
-                         <button
-                           onClick={() => {
-                             const link = `${window.location.origin}/pay/${data.player.id}`;
-                             navigator.clipboard.writeText(link);
-                             alert("Payment link copied to clipboard!\n" + link);
-                           }}
-                           className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                         >
-                           Copy Link
-                         </button>
-                       </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                       {data.dues.map((d, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-xs text-white/60 pl-2 border-l border-white/10">
-                             <span className="truncate">{d.desc}</span>
-                             <span className="font-mono shrink-0 ml-2">₹{d.amount}</span>
+                  return (
+                    <div key={group.key} className="glass rounded-xl overflow-hidden border border-glass-border">
+                      <div 
+                        className="bg-white/5 p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-glass-border cursor-pointer hover:bg-white/10 transition-colors"
+                        onClick={() => toggleCollapse(group.key)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+                          <div className="text-white/50 hover:text-white/80 transition-colors">
+                            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                           </div>
-                       ))}
+                          <input 
+                            type="checkbox"
+                            checked={allInGroupSelected}
+                            ref={(input) => { if (input) { input.indeterminate = !allInGroupSelected && someInGroupSelected; } }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                               toggleGroup(group.key, group.items);
+                            }}
+                            className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
+                          />
+                          <h3 className="font-bold text-white text-sm truncate">{group.title}</h3>
+                        </div>
+                        <div className="text-[11px] font-bold uppercase tracking-widest text-white/50 shrink-0 pl-7 sm:pl-0">
+                           {group.items.length} Pending (₹{groupTotal})
+                        </div>
+                      </div>
+                      {!isCollapsed && (
+                        <div className="flex flex-col">
+                           {group.items.map((item: any, idx: number) => {
+                            const isSelected = selectedDues.has(item.uid);
+                            return (
+                              <div key={item.uid} className={`p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 transition ${idx !== group.items.length-1 ? 'border-b border-white/5' : ''} ${isSelected ? 'bg-accent/10' : 'hover:bg-white/5'}`}>
+                                <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+                                  <input 
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleItem(item.uid)}
+                                    className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
+                                  />
+                                  <span className="font-semibold text-white/90 text-sm truncate">{item.player.name}</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 sm:shrink-0 pl-7 sm:pl-0">
+                                  <span className="font-mono text-red-400 text-sm mr-2">₹{item.amount}</span>
+                                  <button
+                                    onClick={() => {
+                                      if (!item.player.mobile) {
+                                        alert("Player does not have a mobile number saved.");
+                                        return;
+                                      }
+                                      const link = `${window.location.origin}/pay/${item.player.id}`;
+                                      const text = `Hi ${item.player.name}, this is a gentle reminder regarding your pending due of ₹${item.amount} for ${item.desc}.\n\nPlease clear it at your earliest convenience using this link: ${link}`;
+                                      const encodedText = encodeURIComponent(text);
+                                      window.open(`https://wa.me/${item.player.mobile.replace("+", "")}?text=${encodedText}`, "_blank");
+                                    }}
+                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                                  >
+                                    WA
+                                  </button>
+                                  {item.player.email && (
+                                     <button
+                                       onClick={async () => {
+                                         const link = `${window.location.origin}/pay/${item.player.id}`;
+                                         try {
+                                           const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || {
+                                             subject: "Pending Fee Reminder - {{clubName}}",
+                                             body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
+                                           };
+                                           const renderTpl = (txt: string) => {
+                                             return txt
+                                               .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
+                                               .replace(/{{playerName}}/g, item.player.name || "Player")
+                                               .replace(/{{amount}}/g, `₹${item.amount}`)
+                                               .replace(/{{duesText}}/g, item.desc)
+                                               .replace(/{{link}}/g, link);
+                                           };
+                                           const res = await fetch("/api/email/send", {
+                                             method: "POST",
+                                             body: JSON.stringify({
+                                               to: [item.player.email],
+                                               subject: renderTpl(reminderTemplate.subject),
+                                               text: renderTpl(reminderTemplate.body),
+                                               config: store.appConfig,
+                                             })
+                                           });
+
+                                           if (!res.ok) {
+                                             const errData = await res.json().catch(() => ({}));
+                                             throw new Error(errData.error || "Network error");
+                                           }
+
+                                           alert("Email reminder sent successfully!");
+                                         } catch (e: any) {
+                                           alert(`Failed: ${e.message || "Failed to send email reminder."}`);
+                                         }
+                                       }}
+                                       className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                                     >
+                                       Email
+                                     </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      const link = `${window.location.origin}/pay/${item.player.id}`;
+                                      navigator.clipboard.writeText(link);
+                                      alert("Payment link copied to clipboard!\n" + link);
+                                    }}
+                                    className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                                  >
+                                    Copy Link
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                         })}
+                      </div>
+                      )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
             )}
           </div>
         </div>

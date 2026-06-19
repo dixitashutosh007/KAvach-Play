@@ -2,7 +2,8 @@
   "projectId": "gen-lang-client-0004191483",
   "appId": "1:796390269544:web:30bd268729df7d560dd1dd",
   "apiKey": "AIzaSyBx3ipqy94xW-F5BJYS4F3DRFTRACBDVus",
-  "authDomain": "gen-lang-client-0004191483.firebaseapp.com",
+  "authDomain": "auth.kavachcricket.com",
+  "firestoreDatabaseId": "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412",
   "storageBucket": "gen-lang-client-0004191483.firebasestorage.app",
   "messagingSenderId": "796390269544",
   "measurementId": ""

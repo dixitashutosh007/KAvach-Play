@@ -8,7 +8,7 @@
  */
 import { initializeApp } from "firebase/app";
 import { getAuth, browserLocalPersistence, setPersistence, indexedDBLocalPersistence } from "firebase/auth";
-import { initializeFirestore, doc, getDocFromServer } from "firebase/firestore";
+import { initializeFirestore, doc, getDocFromServer, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import firebaseConfig from "../firebase-applet-config.json";
 
@@ -16,10 +16,12 @@ export const app = initializeApp(firebaseConfig);
 const dbId =
   (firebaseConfig as any).firestoreDatabaseId ||
   "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
+
 export const db = initializeFirestore(
   app,
   {
     experimentalForceLongPolling: true,
+    localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
   },
   dbId,
 );

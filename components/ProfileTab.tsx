@@ -530,7 +530,16 @@ export function ProfileTab({
       </div>
 
       {!isEditing && (
-        <div className="pt-6 pb-2">
+        <div className="pt-6 pb-2 space-y-4">
+          <a
+            href="/legal"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-white/5 border border-white/10 py-3 text-sm font-bold text-white/50 hover:bg-white/10 hover:text-white transition"
+          >
+            Privacy Policy & Terms of Service
+            <CreditCard className="w-4 h-4 hidden" />
+          </a>
           <button
             onClick={() => logOut()}
             className="w-full rounded-lg bg-red-500/10 border border-red-500/20 py-3 text-sm font-bold text-red-400 hover:bg-red-500/20 transition flex items-center justify-center gap-2"
