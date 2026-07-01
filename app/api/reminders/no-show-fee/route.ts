@@ -31,8 +31,10 @@ export async function GET(req: NextRequest) {
     ]);
 
     const appConfig = appConfigSnap.data() || {};
+    const emailEnabled = appConfig.emailAutomationEnabled !== false;
+
     const playersMap = new Map<string, any>();
-    playersSnap.forEach((d) => playersMap.set(d.id, { id: d.id, name: d.data().name, email: d.data().email }));
+    playersSnap.forEach((d) => playersMap.set(d.id, { id: d.id, name: d.data().name, email: d.data().email, mobile: d.data().mobile }));
 
     const playerDues = new Map<string, { player: any, totalDue: number, dues: { desc: string, amount: number }[] }>();
 
@@ -53,46 +55,55 @@ export async function GET(req: NextRequest) {
       entry.dues.push({ desc: fee.title, amount });
     }
 
-    const playersToEmail = Array.from(playerDues.values()).filter(d => !!d.player.email && d.totalDue > 0);
+    const playersToRemind = Array.from(playerDues.values()).filter(d => d.totalDue > 0 && (emailEnabled && d.player.email));
     const origin = req.nextUrl.origin;
-    let sent = 0;
+    let emailSent = 0;
     let failed = 0;
 
-    for (const data of playersToEmail) {
+    for (const data of playersToRemind) {
       const link = `${origin}/pay/${data.player.id}`;
-      const reminderTemplate = appConfig.emailTemplates?.due_reminder || {
-        subject: "Pending No Show Fee Reminder - {{clubName}}",
-        body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
-      };
-      
-      const renderTpl = (txt: string) => {
-        return txt
-          .replace(/{{clubName}}/g, appConfig.clubName || "Kavach Play")
-          .replace(/{{playerName}}/g, data.player.name || "Player")
-          .replace(/{{amount}}/g, `₹${data.totalDue}`)
-          .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
-          .replace(/{{link}}/g, link);
-      };
+      let successForPlayer = false;
 
-      try {
-        const res = await fetch(`${origin}/api/email/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: [data.player.email],
-            subject: renderTpl(reminderTemplate.subject),
-            text: renderTpl(reminderTemplate.body),
-            config: appConfig,
-          })
-        });
-        if (res.ok) sent++;
-        else failed++;
-      } catch {
-        failed++;
+      // Email
+      if (emailEnabled && data.player.email) {
+        const reminderTemplate = appConfig.emailTemplates?.due_reminder || {
+          subject: "Pending No Show Fee Reminder - {{clubName}}",
+          body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
+        };
+        
+        const renderTpl = (txt: string) => {
+          return txt
+            .replace(/{{clubName}}/g, appConfig.clubName || "Kavach Play")
+            .replace(/{{playerName}}/g, data.player.name || "Player")
+            .replace(/{{amount}}/g, `₹${data.totalDue}`)
+            .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
+            .replace(/{{link}}/g, link);
+        };
+
+        try {
+          const res = await fetch(`${origin}/api/email/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: [data.player.email],
+              subject: renderTpl(reminderTemplate.subject),
+              text: renderTpl(reminderTemplate.body),
+              config: appConfig,
+            })
+          });
+          if (res.ok) {
+            emailSent++;
+            successForPlayer = true;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
       }
     }
 
-    return NextResponse.json({ success: true, processed: playersToEmail.length, sent, failed });
+    return NextResponse.json({ success: true, processed: playersToRemind.length, emailSent, failed });
 
   } catch (err: any) {
     console.error("No Show Fee Reminder Error", err);

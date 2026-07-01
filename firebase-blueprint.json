@@ -87,6 +87,71 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["matchId", "playerId", "status", "updatedAt"]
+    },
+    "Merchandise": {
+      "title": "Merchandise",
+      "description": "An item in the club shop",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string", "enum": ["Jersey", "Pant", "Round Hat", "Other"] },
+        "basePrice": { "type": "number" },
+        "sizes": { "type": "array" },
+        "specs": { "type": "array" },
+        "minOrderQuantity": { "type": "number" },
+        "status": { "type": "string", "enum": ["Accepting Orders", "Not Accepting Orders"] }
+      },
+      "required": ["name", "category", "basePrice", "minOrderQuantity", "status"]
+    },
+    "MerchOrder": {
+      "title": "MerchOrder",
+      "description": "An order placed for merchandise",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string" },
+        "playerName": { "type": "string" },
+        "merchId": { "type": "string" },
+        "merchName": { "type": "string" },
+        "size": { "type": "string" },
+        "spec": { "type": "string" },
+        "jerseyName": { "type": "string" },
+        "jerseyNumber": { "type": "string" },
+        "price": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["Paid", "Unpaid"] },
+        "orderStatus": { "type": "string", "enum": ["Order Placed", "Awaiting Min Order Qnty", "Ready to Place Order", "Order Received", "Fulfilled"] }
+      },
+      "required": ["playerId", "playerName", "merchId", "merchName", "size", "price", "paymentStatus", "orderStatus"]
+    },
+    "Poll": {
+      "title": "Poll",
+      "description": "An opinion poll",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["singleChoice", "multipleChoice", "slider"] },
+        "options": { "type": "array" },
+        "sliderMin": { "type": "number" },
+        "sliderMax": { "type": "number" },
+        "isSticked": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "type", "isSticked", "isActive", "createdAt", "updatedAt"]
+    },
+    "PollResponse": {
+      "title": "PollResponse",
+      "description": "A player's response to an opinion poll",
+      "type": "object",
+      "properties": {
+        "pollId": { "type": "string" },
+        "playerId": { "type": "string" },
+        "response": { "type": ["string", "array", "number"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pollId", "playerId", "response", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -105,6 +170,22 @@
     "/matches/{matchId}/payments/{paymentId}": {
       "schema": "MatchPayment",
       "description": "Payments for a specific match"
+    },
+    "/merchandises/{merchId}": {
+      "schema": "Merchandise",
+      "description": "Items in the shop"
+    },
+    "/merchOrders/{orderId}": {
+      "schema": "MerchOrder",
+      "description": "Orders for merchandise"
+    },
+    "/polls/{pollId}": {
+      "schema": "Poll",
+      "description": "Opinion polls"
+    },
+    "/pollResponses/{responseId}": {
+      "schema": "PollResponse",
+      "description": "Responses to opinion polls"
     }
   }
 }

@@ -39,12 +39,12 @@ export function PlayersTab({
   const isAdmin = persona === "admin" && isStudioAdmin !== false;
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({ name: "", mobile: "", email: "" });
-  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<
     "name" | "expiry" | "studio" | "due"
   >("name");
   const [searchQuery, setSearchQuery] = useState("");
   const [showDisabled, setShowDisabled] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,7 +343,8 @@ export function PlayersTab({
           {displayPlayers.map((player) => (
             <div
               key={player.id}
-              className="flex flex-col hover:bg-white/5 transition"
+              className="flex flex-col hover:bg-white/5 transition cursor-pointer"
+              onClick={() => setSelectedPlayer(player)}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3">
                 <div className="flex items-center gap-3">
@@ -395,18 +396,7 @@ export function PlayersTab({
                       : player.inviteStatus || "Unverified"}
                   </div>
                   {isAdmin && (
-                    <>
-                      <button
-                        onClick={() =>
-                          setEditingPlayerId(
-                            editingPlayerId === player.id ? null : player.id,
-                          )
-                        }
-                        title="Edit Profile"
-                        className="p-1.5 rounded-md hover:bg-white/10 text-white/60 hover:text-white transition cursor-pointer"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
+                    <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
                       <button
                         onClick={() => {
                           if (player.disabled) {
@@ -445,22 +435,197 @@ export function PlayersTab({
                           Perm Delete
                         </button>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
-
-              {editingPlayerId === player.id && (
-                <EditPlayerInline
-                  player={player}
-                  store={store}
-                  onCancel={() => setEditingPlayerId(null)}
-                />
-              )}
             </div>
           ))}
         </div>
       </>
+
+      {selectedPlayer && (
+        <SquadPlayerDetails
+          store={store}
+          player={selectedPlayer}
+          onClose={() => setSelectedPlayer(null)}
+          isAdmin={isAdmin}
+        />
+      )}
+    </div>
+  );
+}
+
+function SquadPlayerDetails({
+  store,
+  player,
+  onClose,
+  isAdmin,
+}: {
+  store: ReturnType<typeof useStore>;
+  player: Player;
+  onClose: () => void;
+  isAdmin: boolean;
+}) {
+  const matchPayments = store.payments.filter((p) => p.playerId === player.id);
+  const otherFees = store.otherFees.filter((f) => f.playerId === player.id);
+
+  // Separate ledgers
+  const unpaidMatchPayments = matchPayments.filter((p) => p.status === "Unpaid");
+  const paidMatchPayments = matchPayments.filter((p) => p.status === "Paid");
+  
+  const unpaidOtherFees = otherFees.filter((f) => f.status === "Unpaid");
+  const paidOtherFees = otherFees.filter((f) => f.status === "Paid");
+
+  let totalDue = 0;
+  unpaidMatchPayments.forEach((p) => {
+    const m = store.matches.find((mx) => mx.id === p.matchId);
+    if (m) totalDue += m.fee;
+  });
+  unpaidOtherFees.forEach((f) => (totalDue += f.amount));
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-lg my-8 bg-[#0f172a] rounded-xl border border-glass-border overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-[#0f172a] p-4 flex justify-between items-center z-10 border-b border-glass-border">
+          <h2 className="text-xl font-bold text-white tracking-tight">
+            {player.name}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/10 rounded-full transition"
+          >
+            <X className="w-5 h-5 text-white/70" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 custom-scrollbar">
+          <div className="mb-6 bg-white/5 border border-glass-border rounded-xl p-4">
+            <h4 className="text-[11px] font-bold uppercase tracking-widest text-accent mb-3 flex items-center justify-between">
+              <span>Ledger Details</span>
+              <span className={totalDue > 0 ? "text-red-400" : "text-emerald-400"}>
+                Due: ₹{totalDue}
+              </span>
+            </h4>
+
+            {unpaidMatchPayments.length === 0 && unpaidOtherFees.length === 0 ? (
+              <p className="text-xs text-white/50 italic mb-4">No unpaid dues.</p>
+            ) : (
+              <div className="mb-4">
+                <h5 className="text-[10px] uppercase font-bold text-red-400 mb-2">Unpaid Dues</h5>
+                <ul className="text-xs space-y-2">
+                  {unpaidMatchPayments.map((p) => {
+                    const m = store.matches.find((mx) => mx.id === p.matchId);
+                    return m ? (
+                      <li
+                        key={p.id}
+                        className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {isAdmin && (
+                            <input 
+                              type="checkbox" 
+                              checked={false} 
+                              onChange={() => store.updatePaymentStatus(p.id, "Paid", m.id)}
+                              className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
+                            />
+                          )}
+                          <span className="truncate">
+                            Match vs {m.opponent} ({formatDate(m.date)})
+                          </span>
+                        </div>
+                        <span className="font-mono text-red-300">₹{m.fee}</span>
+                      </li>
+                    ) : null;
+                  })}
+                  {unpaidOtherFees.map((f) => (
+                    <li
+                      key={f.id}
+                      className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        {isAdmin && (
+                           <input 
+                              type="checkbox" 
+                              checked={false} 
+                              onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Paid")}
+                              className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
+                           />
+                        )}
+                        <span className="truncate">{f.title}</span>
+                      </div>
+                      <span className="font-mono text-red-300">₹{f.amount}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {paidMatchPayments.length > 0 || paidOtherFees.length > 0 ? (
+              <div>
+                <h5 className="text-[10px] uppercase font-bold text-emerald-400 mb-2">Paid Dues</h5>
+                <ul className="text-xs space-y-2 opacity-70">
+                  {paidMatchPayments.map((p) => {
+                    const m = store.matches.find((mx) => mx.id === p.matchId);
+                    return m ? (
+                      <li
+                        key={p.id}
+                        className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {isAdmin && (
+                            <input 
+                               type="checkbox" 
+                               checked={true} 
+                               onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)}
+                               className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
+                            />
+                          )}
+                          <span className="truncate">
+                            Match vs {m.opponent} ({formatDate(m.date)})
+                          </span>
+                        </div>
+                        <span className="font-mono text-emerald-300 line-through">₹{m.fee}</span>
+                      </li>
+                    ) : null;
+                  })}
+                  {paidOtherFees.map((f) => (
+                    <li
+                      key={f.id}
+                      className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                          {isAdmin && (
+                            <input 
+                               type="checkbox" 
+                               checked={true} 
+                               onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Unpaid")}
+                               className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
+                            />
+                          )}
+                        <span className="truncate">{f.title}</span>
+                      </div>
+                      <span className="font-mono text-emerald-300 line-through">₹{f.amount}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <h4 className="text-[11px] font-bold uppercase tracking-widest text-white/50 mb-3 block border-b border-glass-border pb-2">
+              Edit Profile
+            </h4>
+            <EditPlayerInline player={player} store={store} onCancel={onClose} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

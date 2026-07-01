@@ -68,7 +68,7 @@ export function EditPlayerInline({
       className="p-4 bg-black/40 border-t border-glass-border space-y-4"
     >
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-bold text-accent">Edit Player Profile</h3>
+        <h3 className="text-sm font-bold text-accent">Edit Profile</h3>
         <button
           type="button"
           onClick={onCancel}
@@ -172,14 +172,18 @@ export function EditPlayerInline({
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
             Chest Size
           </label>
-          <input
-            type="text"
+          <select
             value={formData.chestSize}
             onChange={(e) =>
               setFormData({ ...formData, chestSize: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-          />
+            className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
+          >
+            <option value="">Select Size</option>
+            {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
+              <option key={sz} value={sz}>{sz}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
@@ -334,112 +338,10 @@ export function EditPlayerInline({
         )}
       </div>
 
-      {isSuperAdmin && (
-        <>
-          {appUserMatch ? (
-            <div className="border border-white/10 bg-white/5 rounded-xl p-4 space-y-4 relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-white uppercase tracking-widest">
-                    App Permissions
-                  </h4>
-                  <p className="text-[10px] text-white/50">
-                    Manage access level for {appUserMatch.email}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="pt-3 border-t border-white/5">
-                 <div className="flex flex-col gap-3">
-                    <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && user?.email !== "dixitashutosh007@gmail.com" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                      <input 
-                        type="checkbox" 
-                        className="accent-accent w-4 h-4 cursor-inherit"
-                        checked={appUserMatch.role === "admin"}
-                        disabled={appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && user?.email !== "dixitashutosh007@gmail.com"}
-                        onChange={async (e) => {
-                          const isChecked = e.target.checked;
-                          const updates: any = { role: isChecked ? "admin" : "player" };
-                          if (isChecked) {
-                            updates.isStudioAdmin = true;
-                            updates.isMatchAdmin = true;
-                            updates.isFinanceAdmin = true;
-                          } else {
-                            updates.isStudioAdmin = false;
-                            updates.isMatchAdmin = false;
-                            updates.isFinanceAdmin = false;
-                          }
-                          await store.updateAppUserProfile(appUserMatch.id, updates);
-                        }} 
-                      />
-                      <div>
-                        <div className="text-[11px] font-bold text-accent uppercase tracking-wider">Super Admin</div>
-                        <div className="text-[10px] text-white/50">Full access to all club features</div>
-                      </div>
-                    </label>
-
-                    <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                      <input 
-                        type="checkbox" 
-                        className="accent-accent w-4 h-4 cursor-inherit"
-                        checked={appUserMatch.role === "admin" || appUserMatch.isStudioAdmin || false}
-                        disabled={appUserMatch.role === "admin"}
-                        onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isStudioAdmin: e.target.checked })} 
-                      />
-                      <div>
-                        <div className="text-[11px] font-bold text-white uppercase tracking-wider">Studio Admin</div>
-                        <div className="text-[10px] text-white/50">Can manage Squad & Studio subscriptions</div>
-                      </div>
-                    </label>
-                    
-                    <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                      <input 
-                        type="checkbox" 
-                        className="accent-accent w-4 h-4 cursor-inherit"
-                        checked={appUserMatch.role === "admin" || appUserMatch.isMatchAdmin || false}
-                        disabled={appUserMatch.role === "admin"}
-                        onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isMatchAdmin: e.target.checked })} 
-                      />
-                      <div>
-                        <div className="text-[11px] font-bold text-white uppercase tracking-wider">Match Admin</div>
-                        <div className="text-[10px] text-white/50">Can manage matches, grounds & availability</div>
-                      </div>
-                    </label>
-
-                    <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                      <input 
-                        type="checkbox" 
-                        className="accent-accent w-4 h-4 cursor-inherit"
-                        checked={appUserMatch.role === "admin" || appUserMatch.isFinanceAdmin || false}
-                        disabled={appUserMatch.role === "admin"}
-                        onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: e.target.checked })} 
-                      />
-                      <div>
-                        <div className="text-[11px] font-bold text-white uppercase tracking-wider">Finance Admin</div>
-                        <div className="text-[10px] text-white/50">Can manage club finances and view reports</div>
-                      </div>
-                    </label>
-                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="border border-white/10 bg-white/5 rounded-xl p-4">
-              <h4 className="text-xs font-bold text-white/70 uppercase tracking-widest">
-                App Permissions
-              </h4>
-              <p className="text-[10px] text-white/40 mt-1">
-                Player has not logged into the app yet. They must sign in once
-                before they can be promoted to Admin.
-              </p>
-            </div>
-          )}
-        </>
-      )}
-
       <div className="flex gap-2 pt-2">
         <button
           type="submit"
-          className="flex-1 rounded-lg bg-accent py-2 text-sm font-bold text-black hover:bg-accent/90 transition"
+          className="flex-1 rounded-lg bg-accent py-2 text-sm font-bold text-black border border-accent/10 hover:bg-accent/90 transition shadow-lg"
         >
           Save Profile
         </button>

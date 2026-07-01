@@ -85,13 +85,21 @@ export function PlayerFinanceView({
         )
       : [];
 
+  const myMerchOrders = 
+    myPlayers.length > 0
+      ? store.merchOrders?.filter((o) => 
+          myPlayers.some((mp) => mp.id === o.playerId) || o.playerId === userId
+        ) || []
+      : [];
+
   type UnifiedDue = {
     id: string; // unique generic id for UI
-    type: "match" | "other";
+    type: "match" | "other" | "merch";
     title: string;
     subtitle?: string;
     amount: number;
     rawId: string;
+    playerId?: string;
     matchId?: string;
     status: "Paid" | "Unpaid" | "Not Playing" | "Failed";
     updatedAtSeconds: number;
@@ -101,13 +109,15 @@ export function PlayerFinanceView({
   myPayments.forEach((p) => {
     const match = store.matches.find((m) => m.id === p.matchId);
     if (match) {
+      const ground = store.grounds.find((g) => g.id === match.groundId);
       unifiedDues.push({
         id: `match_${p.id}`,
         type: "match",
-        title: match.opponent,
+        title: `vs ${match.opponent} at ${ground ? ground.name : 'Unknown Ground'}`,
         subtitle: `${formatDate(match.date)} • ${match.format}`,
         amount: match.fee,
         rawId: p.id,
+        playerId: p.playerId,
         matchId: match.id,
         status: p.status,
         updatedAtSeconds: p.updatedAt?.seconds || 0,
@@ -123,8 +133,23 @@ export function PlayerFinanceView({
       subtitle: `Custom Fee Added on ${formatDate(new Date((f.createdAt?.seconds || 0) * 1000).toISOString())}${f.comment ? ` • ${f.comment}` : ""}`,
       amount: f.amount,
       rawId: f.id,
+      playerId: f.playerId,
       status: f.status,
       updatedAtSeconds: f.updatedAt?.seconds || 0,
+    });
+  });
+
+  myMerchOrders.forEach((o) => {
+    unifiedDues.push({
+      id: `merch_${o.id}`,
+      type: "merch",
+      title: `Shop: ${o.merchName}`,
+      subtitle: `Ordered on ${formatDate(new Date((o.createdAt?.seconds || 0) * 1000).toISOString())}`,
+      amount: o.price,
+      rawId: o.id,
+      playerId: o.playerId,
+      status: o.paymentStatus as any,
+      updatedAtSeconds: o.updatedAt?.seconds || 0,
     });
   });
 
@@ -170,6 +195,8 @@ export function PlayerFinanceView({
       return;
     }
 
+    const duesToPay = dues.filter((d) => selectedDues.includes(d.id));
+
     setIsProcessingPayment(true);
     try {
       const rzpId =
@@ -189,6 +216,17 @@ export function PlayerFinanceView({
         },
         body: JSON.stringify({
           amount: totalAmountDue,
+          intentData: {
+            type: "finance_dues",
+            playerId: mePlayer?.id,
+            items: duesToPay.map(d => ({
+              type: d.type,
+              matchId: d.type === "match" ? d.matchId : null,
+              feeId: d.type === "other" ? d.rawId : null,
+              merchId: d.type === "merch" ? d.rawId : null,
+              paymentId: d.rawId,
+            }))
+          }
         }),
       });
 
@@ -212,11 +250,15 @@ export function PlayerFinanceView({
                 paidDuesDetails.push(`${due.title} (₹${due.amount})`);
                 if (due.type === "match" && due.matchId) {
                   updates.push(
-                    store.updatePaymentStatus(due.rawId, "Paid", due.matchId),
+                    store.updatePaymentStatus(due.rawId, "Paid", due.matchId, undefined, "razorpay"),
                   );
                 } else if (due.type === "other" && mePlayer) {
                   updates.push(
                     store.updateOtherFeeStatus(mePlayer.id, due.rawId, "Paid"),
+                  );
+                } else if (due.type === "merch") {
+                  updates.push(
+                    store.updateMerchOrder(due.rawId, { paymentStatus: "Paid" })
                   );
                 }
               }
@@ -305,6 +347,10 @@ export function PlayerFinanceView({
                 updates.push(
                   store.updateOtherFeeStatus(mePlayer.id, due.rawId, "Failed"),
                 );
+              } else if (due.type === "merch") {
+                updates.push(
+                  store.updateMerchOrder(due.rawId, { paymentStatus: "Failed" })
+                );
               }
             }
           }
@@ -368,28 +414,48 @@ export function PlayerFinanceView({
                   key={due.id}
                   className={`flex items-center justify-between p-3 rounded-lg border transition cursor-pointer ${isSelected ? "bg-accent/10 border-accent/30" : "bg-white/5 border-glass-border hover:bg-white/10"}`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
                       className={`w-5 h-5 rounded shrink-0 flex items-center justify-center border transition ${isSelected ? "bg-accent border-accent text-black" : "border-glass-border"}`}
                     >
                       {isSelected && <Check className="w-3.5 h-3.5" />}
                     </div>
-                    <div>
-                      <div className="font-bold text-sm tracking-tight leading-none mb-1 text-white flex items-center gap-2">
-                        {due.title}
+                    <div className="min-w-0 flex-1 pr-2">
+                      <div className="font-bold text-sm tracking-tight leading-snug mb-1 text-white flex flex-wrap items-center gap-2">
+                        <span className="break-words">{due.title}</span>
                         {due.type === "other" && (
-                          <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">
+                          <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest whitespace-nowrap shrink-0">
                             Other Fee
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-white/50">
+                      <div className="text-[10px] text-white/50 break-words">
                         {due.subtitle}
                       </div>
                     </div>
                   </div>
-                  <div className="font-mono font-bold text-red-400">
-                    ₹{due.amount}
+                  <div className="flex items-center gap-3 shrink-0 pl-2">
+                    <div className="font-mono font-bold text-red-400">
+                      ₹{due.amount}
+                    </div>
+                    {due.type !== "match" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (confirm("Are you sure you want to delete this fee?")) {
+                            if (due.type === "other" && due.playerId) {
+                              await store.deleteOtherFee(due.playerId, due.rawId);
+                            } else if (due.type === "merch") {
+                              await store.deleteMerchOrder(due.rawId);
+                            }
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-red-500/10 transition-colors"
+                        title="Delete Fee"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -912,15 +978,13 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
 
 function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof useStore>; defaultAction?: string | null }) {
   const [subTab, setSubTab] = useState<
-    "wix" | "due_report" | "fee" | "razor"
-  >((defaultAction as any) || "due_report");
+    "matches" | "wix" | "fee" | "razor"
+  >((defaultAction as any) || "matches");
   const [searchPlayer, setSearchPlayer] = useState("");
-  const [dueType, setDueType] = useState<"all" | "matches" | "others">("all");
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterMatchId, setFilterMatchId] = useState("");
-  const [selectedDues, setSelectedDues] = useState<Set<string>>(new Set());
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [isPastMatchesOpen, setIsPastMatchesOpen] = useState(false);
 
   const filteredMatches = useMemo(() => {
     let m = store.matches;
@@ -961,6 +1025,12 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         const unpaidCount = paymentsForMatch.filter(
           (p) => p.status === "Unpaid",
         ).length;
+        const razorpayPaidCount = paymentsForMatch.filter(
+          (p) => p.status === "Paid" && p.paymentMethod !== "manual"
+        ).length;
+        const manualPaidCount = paymentsForMatch.filter(
+          (p) => p.status === "Paid" && p.paymentMethod === "manual"
+        ).length;
 
         return {
           match,
@@ -968,7 +1038,11 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           playingCount,
           paidCount,
           unpaidCount,
+          razorpayPaidCount,
+          manualPaidCount,
           totalCollected: paidCount * match.fee,
+          razorpayCollected: razorpayPaidCount * match.fee,
+          manualCollected: manualPaidCount * match.fee,
           totalDue: unpaidCount * match.fee,
           hasResults: playingCount > 0,
         };
@@ -982,21 +1056,36 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
   );
   const grandTotalDue = reportData.reduce((t, d) => t + d.totalDue, 0);
 
+  const collectedMatches = useMemo(() => {
+    return reportData.filter((d) => d.totalCollected > 0);
+  }, [reportData]);
+
+  const { recentMatches, pastMatches } = useMemo(() => {
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    const oneMonthAgoStr = oneMonthAgo.toISOString().split("T")[0];
+
+    const recent = collectedMatches.filter((data) => data.match.date >= oneMonthAgoStr);
+    const past = collectedMatches.filter((data) => data.match.date < oneMonthAgoStr);
+    
+    return { recentMatches: recent, pastMatches: past };
+  }, [collectedMatches]);
+
   return (
     <div className="space-y-6">
       <div className="flex bg-white/5 p-1.5 rounded-2xl border border-glass-border mb-4 overflow-x-auto hide-scrollbar gap-2">
         {[
+          "matches",
           "razor",
-          "wix",
-          "due_report",
+          ...(store.appConfig?.features?.isWixEnabled ? ["wix"] : []),
           "fee",
         ].map((tab) => {
           const active = subTab === tab;
           const labels: Record<string, string> = {
+            matches: "Match Fees",
             razor: "Razor",
             wix: "Wix",
-            due_report: "Due",
-            fee: "Fees",
+            fee: "Other Fees",
           };
           return (
             <button
@@ -1014,370 +1103,153 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         })}
       </div>
 
+      {subTab === "matches" && (
+        <div className="space-y-4">
+          <div className="glass rounded-xl p-4 border border-glass-border overflow-hidden">
+            <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
+              Match Fees Collection
+            </h3>
+            <div className="space-y-4">
+              {recentMatches.map((data) => (
+                <div
+                  key={data.match.id}
+                  className="bg-black/40 rounded-lg p-4 border border-glass-border"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="font-bold text-white text-sm">
+                        {data.match.opponent}
+                      </div>
+                      <div className="text-xs text-white/50">
+                        {data.match.date}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-emerald-400">
+                        Total: ₹{data.totalCollected}
+                      </div>
+                      <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">
+                        Fee: ₹{data.match.fee || 0} / player
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-glass-border">
+                    <div className="bg-white/5 rounded-md p-2 text-center">
+                      <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
+                        Razorpay
+                      </div>
+                      <div className="text-sm font-bold text-emerald-300">
+                        ₹{data.razorpayCollected}
+                      </div>
+                      <div className="text-[9px] text-white/40 mt-0.5">
+                        {data.razorpayPaidCount} player(s)
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white/5 rounded-md p-2 text-center">
+                      <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
+                        Manual / Offset
+                      </div>
+                      <div className="text-sm font-bold text-blue-300">
+                        ₹{data.manualCollected}
+                      </div>
+                      <div className="text-[9px] text-white/40 mt-0.5">
+                        {data.manualPaidCount} player(s)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {collectedMatches.length === 0 && (
+                <div className="text-center text-white/50 text-sm py-4">
+                  No match collections found.
+                </div>
+              )}
+
+              {pastMatches.length > 0 && (
+                <div className="mt-6 pt-4 border-t border-glass-border">
+                  <button
+                    onClick={() => setIsPastMatchesOpen(!isPastMatchesOpen)}
+                    className="flex items-center justify-between w-full p-3 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5"
+                  >
+                    <span className="text-sm font-bold text-white uppercase tracking-wider">
+                      Past Matches ({pastMatches.length})
+                    </span>
+                    {isPastMatchesOpen ? (
+                      <ChevronUp className="w-5 h-5 text-white/70" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-white/70" />
+                    )}
+                  </button>
+                  
+                  {isPastMatchesOpen && (
+                    <div className="space-y-4 mt-4">
+                      {pastMatches.map((data) => (
+                        <div
+                          key={data.match.id}
+                          className="bg-black/40 rounded-lg p-4 border border-glass-border opacity-80"
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <div className="font-bold text-white text-sm">
+                                {data.match.opponent}
+                              </div>
+                              <div className="text-xs text-white/50">
+                                {data.match.date}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-emerald-400">
+                                Total: ₹{data.totalCollected}
+                              </div>
+                              <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">
+                                Fee: ₹{data.match.fee || 0} / player
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-glass-border">
+                            <div className="bg-white/5 rounded-md p-2 text-center">
+                              <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
+                                Razorpay
+                              </div>
+                              <div className="text-sm font-bold text-emerald-300">
+                                ₹{data.razorpayCollected}
+                              </div>
+                              <div className="text-[9px] text-white/40 mt-0.5">
+                                {data.razorpayPaidCount} player(s)
+                              </div>
+                            </div>
+                            
+                            <div className="bg-white/5 rounded-md p-2 text-center">
+                              <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
+                                Manual / Offset
+                              </div>
+                              <div className="text-sm font-bold text-blue-300">
+                                ₹{data.manualCollected}
+                              </div>
+                              <div className="text-[9px] text-white/40 mt-0.5">
+                                {data.manualPaidCount} player(s)
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {subTab === "razor" && <RazorReportView store={store} />}
       {subTab === "wix" && <WixFinanceView store={store} />}
 
       {subTab === "fee" && <FeeManagementView store={store} />}
-
-      {subTab === "due_report" && (() => {
-         const allDues: any[] = [];
-         store.players.forEach(p => {
-            store.payments.filter(pay => pay.playerId === p.id && pay.status === "Unpaid").forEach(pay => {
-              const m = store.matches.find(mx => mx.id === pay.matchId);
-              if(m) {
-                allDues.push({
-                   uid: pay.id,
-                   type: 'match',
-                   amount: m.fee,
-                   desc: `vs ${m.opponent} (${formatDate(m.date)})`,
-                   groupKey: `match_${m.id}`,
-                   groupTitle: `Match Fee: vs ${m.opponent} (${formatDate(m.date)})`,
-                   player: p
-                });
-              }
-            });
-
-            store.otherFees.filter(f => f.playerId === p.id && f.status === "Unpaid").forEach(f => {
-                allDues.push({
-                   uid: f.id,
-                   type: 'other',
-                   amount: f.amount,
-                   desc: f.title,
-                   groupKey: `other_${f.templateId || f.title}`,
-                   groupTitle: `Other Fee: ${f.title}`,
-                   player: p
-                });
-            });
-         });
-
-         const filteredDues = allDues.filter(d => {
-            if (dueType === "matches" && d.type !== "match") return false;
-            if (dueType === "others" && d.type !== "other") return false;
-            if (filterMatchId && d.groupKey !== `match_${filterMatchId}`) return false;
-            if (searchPlayer && !d.player.name.toLowerCase().includes(searchPlayer.toLowerCase())) return false;
-            return true;
-         });
-
-         const groupedDuesMap: Record<string, any[]> = filteredDues.reduce((acc: any, curr: any) => {
-            const k = curr.groupKey;
-            if(!acc[k]) acc[k] = [];
-            acc[k].push(curr);
-            return acc;
-         }, {});
-
-         const groupedDues = Object.keys(groupedDuesMap).map(key => {
-            const items = groupedDuesMap[key];
-            return {
-              key,
-              title: items[0].groupTitle,
-              items
-            };
-         });
-
-         const grandDue = filteredDues.reduce((sum, d) => sum + d.amount, 0);
-
-         const hasSelection = selectedDues.size > 0;
-
-         const toggleItem = (uid: string) => {
-            const next = new Set(selectedDues);
-            if(next.has(uid)) next.delete(uid);
-            else next.add(uid);
-            setSelectedDues(next);
-         };
-
-         const toggleGroup = (key: string, items: any[]) => {
-            const next = new Set(selectedDues);
-            const allInGroupSelected = items.every(i => next.has(i.uid));
-            if(allInGroupSelected) {
-               items.forEach(i => next.delete(i.uid));
-            } else {
-               items.forEach(i => next.add(i.uid));
-            }
-            setSelectedDues(next);
-         };
-
-         const toggleCollapse = (key: string) => {
-            const next = new Set(collapsedGroups);
-            if(next.has(key)) next.delete(key);
-            else next.add(key);
-            setCollapsedGroups(next);
-         };
-
-        return (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-4">
-             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                  Dues Report
-                </h2>
-                <div className="flex items-center gap-3 bg-white/5 py-1.5 px-3 rounded-xl border border-glass-border">
-                   <div className="text-[10px] font-bold uppercase tracking-widest text-red-400">Total Due: ₹{grandDue}</div>
-                   <div className="w-px h-4 bg-glass-border"></div>
-                   <button
-                     onClick={async () => {
-                       const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
-                       if (targetDues.length === 0) {
-                         alert("No dues found to remind."); return;
-                       }
-
-                       if (!window.confirm(`Send an email reminder to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?`)) return;
-                       
-                       const byEmail: Record<string, any> = {};
-                       targetDues.forEach(d => {
-                          if (!d.player.email) return;
-                          if (!byEmail[d.player.email]) byEmail[d.player.email] = { player: d.player, dues: [], total: 0 };
-                          byEmail[d.player.email].dues.push(d);
-                          byEmail[d.player.email].total += d.amount;
-                       });
-
-                       const playersWithEmail = Object.values(byEmail);
-                       if (playersWithEmail.length === 0) {
-                         alert("None of the included players have an email address stored.");
-                         return;
-                       }
-                       
-                       let sentCount = 0;
-                       let failCount = 0;
-                       
-                       for (const data of playersWithEmail) {
-                          const link = `${window.location.origin}/pay/${data.player.id}`;
-                          try {
-                            const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || {
-                              subject: "Pending Fee Reminder - {{clubName}}",
-                              body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
-                            };
-                            const renderTpl = (txt: string) => {
-                              return txt
-                                .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
-                                .replace(/{{playerName}}/g, data.player.name || "Player")
-                                .replace(/{{amount}}/g, `₹${data.total}`)
-                                .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
-                                .replace(/{{link}}/g, link);
-                            };
-                            const res = await fetch("/api/email/send", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                to: [data.player.email],
-                                subject: renderTpl(reminderTemplate.subject),
-                                text: renderTpl(reminderTemplate.body),
-                                config: store.appConfig,
-                              })
-                            });
-                            
-                            if (res.ok && (await res.json()).success) {
-                              sentCount++;
-                            } else {
-                              failCount++;
-                            }
-                          } catch (e) {
-                            failCount++;
-                          }
-                       }
-                       alert(`Finished sending reminders. Sent: ${sentCount}, Failed: ${failCount}`);
-                     }}
-                     className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
-                   >
-                     {hasSelection ? "Email Remind Selected" : "Email Remind All"}
-                   </button>
-                   <button
-                     onClick={() => {
-                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
-                        const byPlayer: Record<string, any> = {};
-                        targetDues.forEach(d => {
-                           if(!byPlayer[d.player.id]) byPlayer[d.player.id] = { player: d.player, dues: [], total: 0 };
-                           byPlayer[d.player.id].dues.push(d);
-                           byPlayer[d.player.id].total += d.amount;
-                        });
-
-                        let text = `*Pending Dues Report*` + (hasSelection ? ' (Selected)\n\n' : '\n\n');
-                        Object.values(byPlayer).forEach((data: any) => {
-                          text += `*${data.player.name}* - ₹${data.total}\n`;
-                          data.dues.forEach((d: any) => {
-                            text += `  - ${d.desc} (₹${d.amount})\n`;
-                          });
-                          text += `\n`;
-                        });
-                        navigator.clipboard.writeText(text);
-                        alert("WhatsApp Report Copied to Clipboard!");
-                     }}
-                     className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded"
-                   >
-                     Copy WhatsApp Report
-                   </button>
-                </div>
-             </div>
-
-             <div className="glass rounded-xl p-4 flex flex-col gap-3">
-               <div className="flex flex-col sm:flex-row gap-3">
-                 <select
-                    value={dueType}
-                    onChange={(e) => setDueType(e.target.value as any)}
-                    className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-emerald-950 flex-1"
-                 >
-                    <option value="all">All Types of Dues</option>
-                    <option value="matches">Match Fees Only</option>
-                    <option value="others">Other Fees Only</option>
-                 </select>
-                 <input
-                   type="text"
-                   placeholder="Filter by Player Name"
-                   value={searchPlayer}
-                   onChange={(e) => setSearchPlayer(e.target.value)}
-                   className="flex-1 bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
-                 />
-                 {dueType === "matches" && (
-                   <select
-                     value={filterMatchId}
-                     onChange={(e) => setFilterMatchId(e.target.value)}
-                     className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-emerald-950 flex-1"
-                   >
-                     <option value="">All Matches</option>
-                     {[...store.matches].sort((a, b) => b.date.localeCompare(a.date)).map((m) => (
-                       <option key={m.id} value={m.id}>{m.opponent} ({formatDate(m.date)})</option>
-                     ))}
-                   </select>
-                 )}
-               </div>
-             </div>
-          </div>
-          
-          <div className="space-y-4">
-            {groupedDues.length === 0 ? (
-               <div className="text-center py-10 text-white/40 italic text-sm glass rounded-xl border-dashed">
-                 No dues found for the current filters.
-               </div>
-            ) : (
-                groupedDues.map((group) => {
-                  const allInGroupSelected = group.items.every((i: any) => selectedDues.has(i.uid));
-                  const someInGroupSelected = group.items.some((i: any) => selectedDues.has(i.uid));
-                  const groupTotal = group.items.reduce((s: number, i: any) => s + i.amount, 0);
-                  const isCollapsed = collapsedGroups.has(group.key);
-
-                  return (
-                    <div key={group.key} className="glass rounded-xl overflow-hidden border border-glass-border">
-                      <div 
-                        className="bg-white/5 p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-glass-border cursor-pointer hover:bg-white/10 transition-colors"
-                        onClick={() => toggleCollapse(group.key)}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
-                          <div className="text-white/50 hover:text-white/80 transition-colors">
-                            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                          </div>
-                          <input 
-                            type="checkbox"
-                            checked={allInGroupSelected}
-                            ref={(input) => { if (input) { input.indeterminate = !allInGroupSelected && someInGroupSelected; } }}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                               toggleGroup(group.key, group.items);
-                            }}
-                            className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
-                          />
-                          <h3 className="font-bold text-white text-sm truncate">{group.title}</h3>
-                        </div>
-                        <div className="text-[11px] font-bold uppercase tracking-widest text-white/50 shrink-0 pl-7 sm:pl-0">
-                           {group.items.length} Pending (₹{groupTotal})
-                        </div>
-                      </div>
-                      {!isCollapsed && (
-                        <div className="flex flex-col">
-                           {group.items.map((item: any, idx: number) => {
-                            const isSelected = selectedDues.has(item.uid);
-                            return (
-                              <div key={item.uid} className={`p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 transition ${idx !== group.items.length-1 ? 'border-b border-white/5' : ''} ${isSelected ? 'bg-accent/10' : 'hover:bg-white/5'}`}>
-                                <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
-                                  <input 
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => toggleItem(item.uid)}
-                                    className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
-                                  />
-                                  <span className="font-semibold text-white/90 text-sm truncate">{item.player.name}</span>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 sm:shrink-0 pl-7 sm:pl-0">
-                                  <span className="font-mono text-red-400 text-sm mr-2">₹{item.amount}</span>
-                                  <button
-                                    onClick={() => {
-                                      if (!item.player.mobile) {
-                                        alert("Player does not have a mobile number saved.");
-                                        return;
-                                      }
-                                      const link = `${window.location.origin}/pay/${item.player.id}`;
-                                      const text = `Hi ${item.player.name}, this is a gentle reminder regarding your pending due of ₹${item.amount} for ${item.desc}.\n\nPlease clear it at your earliest convenience using this link: ${link}`;
-                                      const encodedText = encodeURIComponent(text);
-                                      window.open(`https://wa.me/${item.player.mobile.replace("+", "")}?text=${encodedText}`, "_blank");
-                                    }}
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                                  >
-                                    WA
-                                  </button>
-                                  {item.player.email && (
-                                     <button
-                                       onClick={async () => {
-                                         const link = `${window.location.origin}/pay/${item.player.id}`;
-                                         try {
-                                           const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || {
-                                             subject: "Pending Fee Reminder - {{clubName}}",
-                                             body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
-                                           };
-                                           const renderTpl = (txt: string) => {
-                                             return txt
-                                               .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
-                                               .replace(/{{playerName}}/g, item.player.name || "Player")
-                                               .replace(/{{amount}}/g, `₹${item.amount}`)
-                                               .replace(/{{duesText}}/g, item.desc)
-                                               .replace(/{{link}}/g, link);
-                                           };
-                                           const res = await fetch("/api/email/send", {
-                                             method: "POST",
-                                             body: JSON.stringify({
-                                               to: [item.player.email],
-                                               subject: renderTpl(reminderTemplate.subject),
-                                               text: renderTpl(reminderTemplate.body),
-                                               config: store.appConfig,
-                                             })
-                                           });
-
-                                           if (!res.ok) {
-                                             const errData = await res.json().catch(() => ({}));
-                                             throw new Error(errData.error || "Network error");
-                                           }
-
-                                           alert("Email reminder sent successfully!");
-                                         } catch (e: any) {
-                                           alert(`Failed: ${e.message || "Failed to send email reminder."}`);
-                                         }
-                                       }}
-                                       className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                                     >
-                                       Email
-                                     </button>
-                                  )}
-                                  <button
-                                    onClick={() => {
-                                      const link = `${window.location.origin}/pay/${item.player.id}`;
-                                      navigator.clipboard.writeText(link);
-                                      alert("Payment link copied to clipboard!\n" + link);
-                                    }}
-                                    className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                                  >
-                                    Copy Link
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                         })}
-                      </div>
-                      )}
-                    </div>
-                  );
-                })
-            )}
-          </div>
-        </div>
-        );
-      })()}
 
     </div>
   );

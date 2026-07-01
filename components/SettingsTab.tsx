@@ -15,6 +15,8 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
@@ -57,6 +59,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   );
   const [smtpFrom, setSmtpFrom] = useState(store.appConfig?.smtpFrom || "");
 
+
   // Preview state
   const [previewLoadingTheme, setPreviewLoadingTheme] = useState<
     "radar" | "kinetic" | "minimal" | "staggered" | "breathe" | null
@@ -68,16 +71,13 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   const [isEmailServiceOpen, setIsEmailServiceOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
   const [isAppFeaturesOpen, setIsAppFeaturesOpen] = useState(false);
+  const [isMatchConfigOpen, setIsMatchConfigOpen] = useState(false);
 
   // Email template structures
   const defaultTemplates = {
     welcome: {
       subject: "Welcome to {{clubName}}!",
       body: "Hi {{playerName}},\n\nYour player profile at {{clubName}} has been successfully authenticated.\n\nEnjoy the games!\n\nBest regards,\n{{clubName}} Admin Team",
-    },
-    due_reminder: {
-      subject: "Pending Fee Reminder - {{clubName}}",
-      body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
     },
     payment_success: {
       subject: "Receipt: Payment of {{amount}} Received",
@@ -89,7 +89,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     store.appConfig?.emailTemplates || defaultTemplates,
   );
 
-  const [activeTemplateKey, setActiveTemplateKey] = useState<"welcome" | "due_reminder" | "payment_success">(
+  const [activeTemplateKey, setActiveTemplateKey] = useState<"welcome" | "payment_success">(
     "welcome",
   );
 
@@ -110,6 +110,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     leaderboard: store.appConfig?.features?.leaderboard !== false,
     feed: store.appConfig?.features?.feed !== false,
     matches: store.appConfig?.features?.matches !== false,
+    isWixEnabled: store.appConfig?.features?.isWixEnabled === true,
+    shop: store.appConfig?.features?.shop !== false,
+  });
+
+  const [matchConfiguration, setMatchConfiguration] = useState({
+    directionsHoursBefore: store.appConfig?.matchConfiguration?.directionsHoursBefore ?? 18,
+    directionsHoursAfter: store.appConfig?.matchConfiguration?.directionsHoursAfter ?? 2,
+    enablePlayerAvailability: store.appConfig?.matchConfiguration?.enablePlayerAvailability ?? false,
   });
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -210,6 +218,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       emailTemplates,
       isStudioEnabled,
       features,
+      matchConfiguration,
     });
     if (setPreviewTheme) setPreviewTheme(null);
     alert("Settings saved successfully.");
@@ -591,7 +600,6 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               <div className="flex flex-wrap gap-1.5 bg-black/20 p-1 rounded-lg">
                 {[
                   { key: "welcome", label: "Join verification" },
-                  { key: "due_reminder", label: "Pending Reminder" },
                   { key: "payment_success", label: "Receipt Confirm" },
                 ].map((t) => (
                   <button
@@ -770,8 +778,8 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 </button>
               </div>
             </div>
-          </>
-          )}
+            </>
+            )}
           </div>
 
           <div className="border-t border-glass-border pt-4 mt-2">
@@ -802,6 +810,70 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           <div className="border-t border-glass-border pt-4 mt-2 mb-2">
             <button
               type="button"
+              onClick={() => setIsMatchConfigOpen(!isMatchConfigOpen)}
+              className="w-full flex items-center justify-between focus:outline-none"
+            >
+              <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-0">
+                Match Configuration
+              </h3>
+              {isMatchConfigOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
+            </button>
+            {isMatchConfigOpen && (
+              <div className="space-y-4 mt-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                    Get Directions Button - Show Hours Before Match
+                  </label>
+                  <input
+                    type="number"
+                    value={matchConfiguration.directionsHoursBefore}
+                    onChange={(e) =>
+                      setMatchConfiguration((prev) => ({
+                        ...prev,
+                        directionsHoursBefore: Number(e.target.value),
+                      }))
+                    }
+                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                    Get Directions Button - Hide Hours After Match
+                  </label>
+                  <input
+                    type="number"
+                    value={matchConfiguration.directionsHoursAfter}
+                    onChange={(e) =>
+                      setMatchConfiguration((prev) => ({
+                        ...prev,
+                        directionsHoursAfter: Number(e.target.value),
+                      }))
+                    }
+                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={matchConfiguration.enablePlayerAvailability}
+                    onChange={(e) =>
+                      setMatchConfiguration((prev) => ({
+                        ...prev,
+                        enablePlayerAvailability: e.target.checked,
+                      }))
+                    }
+                    className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent mb-1"
+                  />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    Enable Player Availability Selection
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-glass-border pt-4 mt-2 mb-2">
+            <button
+              type="button"
               onClick={() => setIsAppFeaturesOpen(!isAppFeaturesOpen)}
               className="w-full flex items-center justify-between focus:outline-none"
             >
@@ -818,6 +890,8 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   { key: "leaderboard", label: "Leaderboard Tab" },
                   { key: "feed", label: "Club Feed Tab" },
                   { key: "matches", label: "Match Fixtures Tab" },
+                  { key: "isWixEnabled", label: "Legacy Wix Feature" },
+                  { key: "shop", label: "Club Merchandise Shop Menu" },
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center gap-3">
                     <input
@@ -860,6 +934,126 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             )}
           </div>
         </form>
+      </div>
+
+      {/* User Permissions Management */}
+      <div className="glass rounded-xl overflow-hidden mt-6">
+        <div className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between">
+          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2"><Users className="w-4 h-4"/> Elevate Player's Role</span>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex flex-col gap-2">
+             <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">Select Player to Manage</label>
+             <div className="relative">
+               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+               <input
+                type="text"
+                placeholder="Search by name or mobile..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-lg border border-glass-border bg-black/40 pl-9 pr-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+               />
+             </div>
+             
+             {searchQuery.trim().length > 0 && (
+                <div className="bg-white/5 border border-glass-border rounded-lg max-h-48 overflow-y-auto mb-4">
+                   {store.players
+                      .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.mobile?.includes(searchQuery))
+                      .slice(0, 5)
+                      .map(p => {
+                         const appUserMatch = store.appUsers.find(u => u.id === p.id || (u.mobile && u.mobile === p.mobile));
+                         return (
+                            <div key={p.id} className="p-2 border-b border-glass-border last:border-0 hover:bg-white/10 transition">
+                               <div className="flex justify-between items-center">
+                                  <div>
+                                     <div className="text-sm font-bold text-white">{p.name}</div>
+                                     <div className="text-xs text-white/50">{p.mobile}</div>
+                                  </div>
+                                  {appUserMatch ? (
+                                    <div className="text-[10px] text-emerald-400 border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 rounded">App User</div>
+                                  ) : (
+                                    <div className="text-[10px] text-white/30 border border-white/10 bg-white/5 px-2 py-0.5 rounded">Not logged in</div>
+                                  )}
+                               </div>
+                               {appUserMatch && (
+                                   <div className="mt-3 flex flex-col gap-2 p-2 bg-black/40 rounded border border-white/5">
+                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && user?.email !== "dixitashutosh007@gmail.com" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                                          <input 
+                                          type="checkbox" 
+                                          className="accent-accent w-4 h-4 cursor-inherit"
+                                          checked={appUserMatch.role === "admin"}
+                                          disabled={appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && user?.email !== "dixitashutosh007@gmail.com"}
+                                          onChange={async (e) => {
+                                              const isChecked = e.target.checked;
+                                              const updates: any = { role: isChecked ? "admin" : "player" };
+                                              if (isChecked) {
+                                                updates.isStudioAdmin = true;
+                                                updates.isMatchAdmin = true;
+                                                updates.isFinanceAdmin = true;
+                                              } else {
+                                                updates.isStudioAdmin = false;
+                                                updates.isMatchAdmin = false;
+                                                updates.isFinanceAdmin = false;
+                                              }
+                                              await store.updateAppUserProfile(appUserMatch.id, updates);
+                                          }} 
+                                          />
+                                          <div>
+                                          <div className="text-[11px] font-bold text-accent uppercase tracking-wider">Super Admin</div>
+                                          <div className="text-[10px] text-white/50">Full access to all club features</div>
+                                          </div>
+                                      </label>
+
+                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                                          <input 
+                                          type="checkbox" 
+                                          className="accent-accent w-4 h-4 cursor-inherit"
+                                          checked={appUserMatch.role === "admin" || appUserMatch.isStudioAdmin || false}
+                                          disabled={appUserMatch.role === "admin"}
+                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isStudioAdmin: e.target.checked })} 
+                                          />
+                                          <div>
+                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Studio Admin</div>
+                                          <div className="text-[10px] text-white/50">Can manage Squad & Studio subscriptions</div>
+                                          </div>
+                                      </label>
+                                      
+                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                                          <input 
+                                          type="checkbox" 
+                                          className="accent-accent w-4 h-4 cursor-inherit"
+                                          checked={appUserMatch.role === "admin" || appUserMatch.isMatchAdmin || false}
+                                          disabled={appUserMatch.role === "admin"}
+                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isMatchAdmin: e.target.checked })} 
+                                          />
+                                          <div>
+                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Match Admin</div>
+                                          <div className="text-[10px] text-white/50">Can manage matches, grounds & availability</div>
+                                          </div>
+                                      </label>
+
+                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                                          <input 
+                                          type="checkbox" 
+                                          className="accent-accent w-4 h-4 cursor-inherit"
+                                          checked={appUserMatch.role === "admin" || appUserMatch.isFinanceAdmin || false}
+                                          disabled={appUserMatch.role === "admin"}
+                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: e.target.checked })} 
+                                          />
+                                          <div>
+                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Finance Admin</div>
+                                          <div className="text-[10px] text-white/50">Can manage club finances and view reports</div>
+                                          </div>
+                                      </label>
+                                  </div>
+                               )}
+                            </div>
+                         );
+                      })}
+                </div>
+             )}
+          </div>
+        </div>
       </div>
     </div>
   );

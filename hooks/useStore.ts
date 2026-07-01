@@ -25,6 +25,10 @@ import {
   OtherFee,
   FeeTemplate,
   OutOfPlay,
+  Merchandise,
+  MerchOrder,
+  Poll,
+  PollResponse,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -73,6 +77,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [otherFees, setOtherFees] = useState<OtherFee[]>([]);
   const [feeTemplates, setFeeTemplates] = useState<FeeTemplate[]>([]);
   const [outOfPlays, setOutOfPlays] = useState<OutOfPlay[]>([]);
+  const [merchandises, setMerchandises] = useState<Merchandise[]>([]);
+  const [merchOrders, setMerchOrders] = useState<MerchOrder[]>([]);
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [pollResponses, setPollResponses] = useState<PollResponse[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -439,6 +447,54 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "outOfPlays"),
     );
 
+    const unsubMerchandises = onSnapshot(
+      collection(db, "merchandises"),
+      (snapshot) => {
+        setMerchandises(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as Merchandise,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "merchandises"),
+    );
+
+    const unsubMerchOrders = onSnapshot(
+      collection(db, "merchOrders"),
+      (snapshot) => {
+        setMerchOrders(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as MerchOrder,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "merchOrders"),
+    );
+
+    const unsubPolls = onSnapshot(
+      collection(db, "polls"),
+      (snapshot) => {
+        setPolls(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as Poll,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "polls"),
+    );
+
+    const unsubPollResponses = onSnapshot(
+      collection(db, "pollResponses"),
+      (snapshot) => {
+        setPollResponses(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as PollResponse,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "pollResponses"),
+    );
+
     return () => {
       unsubGrounds();
       unsubMatches();
@@ -453,6 +509,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       unsubOtherFees();
       unsubFeeTemplates();
       unsubOutOfPlays();
+      unsubMerchandises();
+      unsubMerchOrders();
+      unsubPolls();
+      unsubPollResponses();
       if (unsubPayments) unsubPayments();
     };
   }, [user]);
@@ -490,11 +550,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     const docRef = doc(db, "grounds", id);
     try {
-      await setDoc(docRef, {
+      await setDoc(docRef, cleanPayload({
         ...ground,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }));
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `grounds/${id}`);
@@ -527,11 +587,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     const docRef = doc(db, "matches", id);
     try {
-      await setDoc(docRef, {
+      await setDoc(docRef, cleanPayload({
         ...match,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }));
       // Notify all players individually so they can manage their own read/delete state
       for (const p of players) {
         if (!p.disabled && p.inviteStatus === "Verified") {
@@ -603,12 +663,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     const docRef = doc(db, "players", id);
     try {
-      await setDoc(docRef, {
+      await setDoc(docRef, cleanPayload({
         ...player,
         inviteStatus: player.inviteStatus || "Unverified",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }));
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `players/${id}`);
@@ -739,15 +799,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     status: MatchPayment["status"],
     matchId: string,
     availability?: MatchPayment["availability"],
+    paymentMethod?: "manual" | "razorpay"
   ) => {
     // Optimistic fallback update for React UI since we don't sync subcollections with onSnapshot above completely perfectly (we only fetch on match update)
     setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}) } : p)),
+      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}) } : p)),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
       const updateData: any = { status, updatedAt: serverTimestamp() };
       if (availability) updateData.availability = availability;
+      if (paymentMethod) updateData.paymentMethod = paymentMethod;
       await updateDoc(docRef, updateData);
 
       const payment = payments.find((p) => p.id === paymentId);
@@ -1074,12 +1136,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     const docRef = doc(db, "posts", id);
     try {
-      await setDoc(docRef, {
+      await setDoc(docRef, cleanPayload({
         ...post,
         comments: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }));
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `posts/${id}`);
@@ -1143,11 +1205,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     const docRef = doc(db, "subscriptionPlans", id);
     try {
-      await setDoc(docRef, {
+      await setDoc(docRef, cleanPayload({
         ...plan,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }));
       return id;
     } catch (err) {
       handleFirestoreError(
@@ -1231,6 +1293,80 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const addMerchandise = async (
+    merch: Omit<Merchandise, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "merchandises", id);
+    try {
+      await setDoc(docRef, cleanPayload({
+        ...merch,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `merchandises/${id}`);
+    }
+  };
+
+  const updateMerchandise = async (id: string, merch: Partial<Merchandise>) => {
+    const docRef = doc(db, "merchandises", id);
+    try {
+      await updateDoc(
+        docRef,
+        cleanPayload({ ...merch, updatedAt: serverTimestamp() }),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `merchandises/${id}`);
+    }
+  };
+
+  const deleteMerchandise = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "merchandises", id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `merchandises/${id}`);
+    }
+  };
+
+  const addMerchOrder = async (
+    order: Omit<MerchOrder, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "merchOrders", id);
+    try {
+      await setDoc(docRef, cleanPayload({
+        ...order,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `merchOrders/${id}`);
+    }
+  };
+
+  const updateMerchOrder = async (id: string, order: Partial<MerchOrder>) => {
+    const docRef = doc(db, "merchOrders", id);
+    try {
+      await updateDoc(
+        docRef,
+        cleanPayload({ ...order, updatedAt: serverTimestamp() }),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `merchOrders/${id}`);
+    }
+  };
+
+  const deleteMerchOrder = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "merchOrders", id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `merchOrders/${id}`);
+    }
+  };
+
   const filteredPayments = useMemo(() => {
     return payments.filter((pay) => players.some((pl) => pl.id === pay.playerId));
   }, [payments, players]);
@@ -1288,6 +1424,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     addOutOfPlay,
     updateOutOfPlay,
     deleteOutOfPlay,
+    merchandises,
+    addMerchandise,
+    updateMerchandise,
+    deleteMerchandise,
+    merchOrders,
+    addMerchOrder,
+    updateMerchOrder,
+    deleteMerchOrder,
+    polls,
+    pollResponses,
     isLoaded,
   };
 }

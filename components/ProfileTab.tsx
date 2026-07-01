@@ -10,11 +10,14 @@
 import { useStore } from "@/hooks/useStore";
 import { useAuth } from "./AuthProvider";
 import { useState } from "react";
-import { Calendar, MapPin, User, Save, CreditCard, Plus, Trash2, Edit2 } from "lucide-react";
+import { Calendar, MapPin, User, Save, CreditCard, Plus, Trash2, Edit2, PieChart, ChevronDown, ChevronRight } from "lucide-react";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
 import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
+import { PollInteraction, PollResults } from "./OpinionTab";
+import { db } from "@/lib/firebase";
+import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 export function ProfileTab({
   store,
   forceEdit,
@@ -384,44 +387,57 @@ export function ProfileTab({
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
                   Wicket Keeper
                 </label>
-                <div className="flex items-center h-[38px] px-3 bg-white/5 border border-glass-border rounded-lg">
-                  <input
-                    type="checkbox"
-                    checked={formData.isWicketKeeper}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        isWicketKeeper: e.target.checked,
-                      })
-                    }
-                    className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
-                  />
-                  <span className="ml-2 text-sm text-white">Yes</span>
-                </div>
+                <select
+                  value={formData.isWicketKeeper ? "Yes" : "No"}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      isWicketKeeper: e.target.value === "Yes",
+                    })
+                  }
+                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
                   Jersey Size & No.
                 </label>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Size (e.g. L)"
+                  <select
                     value={formData.chestSize}
                     onChange={(e) =>
                       setFormData({ ...formData, chestSize: e.target.value })
                     }
-                    className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Number"
-                    value={formData.jerseyNumber}
-                    onChange={(e) =>
-                      setFormData({ ...formData, jerseyNumber: e.target.value })
-                    }
-                    className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                  />
+                    className="w-1/2 rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
+                  >
+                    <option value="">Select Size</option>
+                    {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
+                      <option key={sz} value={sz}>{sz}</option>
+                    ))}
+                  </select>
+                  {isAdmin ? (
+                    <input
+                      type="text"
+                      placeholder="Number"
+                      value={formData.jerseyNumber}
+                      onChange={(e) =>
+                        setFormData({ ...formData, jerseyNumber: e.target.value })
+                      }
+                      className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      placeholder="No."
+                      value={formData.jerseyNumber || "—"}
+                      className="w-1/2 rounded-lg border border-glass-border/40 bg-white/5 opacity-50 cursor-not-allowed px-3 py-2 text-sm text-white focus:outline-none font-mono"
+                      title="Jersey number can only be assigned or edited by administrators."
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -528,6 +544,12 @@ export function ProfileTab({
           userId={user?.uid}
         />
       </div>
+
+      {!isEditing && linkedPlayer?.id && (
+        <div className="pt-2">
+          <OpinionResults store={store} playerId={linkedPlayer.id} />
+        </div>
+      )}
 
       {!isEditing && (
         <div className="pt-6 pb-2 space-y-4">
@@ -736,6 +758,96 @@ function OutOfPlayConfig({
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore>, playerId: string }) {
+  const [editingPollId, setEditingPollId] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const myResponses = store.pollResponses.filter(r => r.playerId === playerId);
+  
+  if (myResponses.length === 0) return null;
+
+  const handleDelete = async (responseId: string) => {
+    if (!confirm("Delete your response?")) return;
+    try {
+      await deleteDoc(doc(db, "pollResponses", responseId));
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleUpdateVote = async (pollId: string, val: any) => {
+    const responseId = pollId + "_" + playerId;
+    try {
+      await updateDoc(doc(db, "pollResponses", responseId), {
+        response: val,
+        updatedAt: serverTimestamp(),
+      });
+      setEditingPollId(null);
+    } catch (err: any) {
+      alert("Error updating vote: " + err.message);
+    }
+  };
+
+  return (
+    <div className="glass rounded-xl sm:border border-glass-border p-5">
+      <button 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between cursor-pointer"
+      >
+        <div className="flex items-center gap-3">
+          <PieChart className="w-5 h-5 text-accent" />
+          <h3 className="text-sm font-bold text-white tracking-widest uppercase">
+            Pulse
+          </h3>
+        </div>
+        {isExpanded ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
+      </button>
+      {isExpanded && (
+        <div className="space-y-3 mt-4">
+          {myResponses.map(resp => {
+            const poll = store.polls.find(p => p.id === resp.pollId);
+            if (!poll) return null; 
+            if (!poll.isActive) return null; 
+
+            if (editingPollId === poll.id) {
+              return (
+                <div key={resp.id} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
+                  <div className="flex justify-between items-start gap-4">
+                    <h4 className="text-sm font-bold text-white leading-tight">{poll.title}</h4>
+                    <button onClick={() => setEditingPollId(null)} className="text-white/50 hover:text-white shrink-0">Cancel</button>
+                  </div>
+                  <PollInteraction poll={poll} onVote={(val) => handleUpdateVote(poll.id, val)} />
+                </div>
+              );
+            }
+
+            return (
+              <div key={resp.id} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3 group">
+                <div className="flex justify-between items-start gap-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-1 leading-tight">{poll.title}</h4>
+                    <p className="text-xs text-accent">
+                      Your Vote: {Array.isArray(resp.response) ? resp.response.join(", ") : resp.response}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition shrink-0">
+                    <button onClick={() => setEditingPollId(poll.id)} className="p-2 text-white/50 hover:text-white rounded bg-white/5 hover:bg-white/10 transition">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(resp.id)} className="p-2 text-red-500/50 hover:text-red-500 rounded bg-white/5 hover:bg-white/10 transition">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <PollResults poll={poll} store={store} />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

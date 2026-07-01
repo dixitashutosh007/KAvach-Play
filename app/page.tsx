@@ -30,6 +30,7 @@ import {
   Sparkles,
   Check,
   ChevronRight,
+  ShoppingBag,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -43,9 +44,12 @@ import { StudioTab } from "@/components/StudioTab";
 import { StudioAdminTab } from "@/components/StudioAdminTab";
 import { NotificationsTab } from "@/components/NotificationsTab";
 import { FinanceTab } from "@/components/FinanceTab";
+import { DuesAndRemindersTab } from "@/components/DuesAndRemindersTab";
+import { ShopTab } from "@/components/ShopTab";
+import { OpinionTab } from "@/components/OpinionTab";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { motion, AnimatePresence } from "motion/react";
-import { Bell } from "lucide-react";
+import { Bell, PieChart } from "lucide-react";
 import Image from "next/image";
 import { PhoneLoginForm } from "@/components/PhoneLoginForm";
 import {
@@ -209,6 +213,9 @@ export default function Home() {
     | "studio"
     | "notifications"
     | "finance"
+    | "dues_and_reminders"
+    | "shop"
+    | "opinion"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
 
@@ -306,6 +313,8 @@ export default function Home() {
       if (activeTab === "leaderboard" && !isFeatureEnabled("leaderboard"))
         redirect = true;
       if (activeTab === "studio" && !isFeatureEnabled("studio"))
+        redirect = true;
+      if (activeTab === "shop" && !isFeatureEnabled("shop"))
         redirect = true;
 
       if (redirect) {
@@ -1082,48 +1091,30 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1 text-left flex flex-col justify-end">
-                <label className="flex items-center gap-2 cursor-pointer pt-2 group">
-                  <div className="relative flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={registrationForm.isWicketKeeper}
-                      onChange={(e) =>
-                        setRegistrationForm({
-                          ...registrationForm,
-                          isWicketKeeper: e.target.checked,
-                        })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-5 h-5 rounded border border-white/20 bg-white/5 peer-checked:bg-emerald-500 peer-checked:border-emerald-500 transition-all flex items-center justify-center">
-                      <svg
-                        className={`w-3 h-3 text-emerald-950 opacity-0 peer-checked:opacity-100 transition-opacity`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 group-hover:text-white transition-colors">
-                    Wicket Keeper
-                  </span>
+              <div className="space-y-1 text-left">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
+                  Wicket Keeper
                 </label>
+                <select
+                  value={registrationForm.isWicketKeeper ? "Yes" : "No"}
+                  onChange={(e) =>
+                    setRegistrationForm({
+                      ...registrationForm,
+                      isWicketKeeper: e.target.value === "Yes",
+                    })
+                  }
+                  className="w-full px-3 py-2 bg-neutral-950 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
               </div>
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
                   Chest Size *
                 </label>
-                <input
+                <select
                   required
-                  type="text"
                   value={registrationForm.chestSize}
                   onChange={(e) =>
                     setRegistrationForm({
@@ -1131,16 +1122,19 @@ export default function Home() {
                       chestSize: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                  placeholder="e.g. L"
-                />
+                  className="w-full px-3 py-2 bg-neutral-950 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                >
+                  <option value="">Select Size</option>
+                  {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
+                    <option key={sz} value={sz}>{sz}</option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1 text-left">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Jersey No *
+                  Requested Jersey No. (Optional)
                 </label>
                 <input
-                  required
                   type="text"
                   value={registrationForm.jerseyNumber}
                   onChange={(e) =>
@@ -1149,9 +1143,12 @@ export default function Home() {
                       jerseyNumber: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                  placeholder="e.g. 10"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent font-mono"
+                  placeholder="e.g. 7"
                 />
+                <p className="text-[9px] text-white/40 mt-0.5 leading-tight">
+                  * Note: Jersey numbers are locked and assigned by administrators only.
+                </p>
               </div>
             </div>
 
@@ -1661,7 +1658,7 @@ export default function Home() {
                 )}
                 <div className="min-w-0">
                   <h3 className="font-extrabold text-white text-base leading-tight truncate">
-                    {appUser?.name || "Player Profile"}
+                    {appUser?.name || "Profile"}
                   </h3>
                   <p className="text-white/40 text-xs truncate mt-0.5">
                     {user.email}
@@ -1826,6 +1823,22 @@ export default function Home() {
                     </button>
                   )}
 
+                  {isFeatureEnabled("shop") && (
+                    <button
+                      onClick={() => setActiveTab("shop")}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                        activeTab === "shop"
+                          ? "bg-accent text-black"
+                          : "text-white/70 hover:bg-white/5"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <ShoppingBag className="w-4.5 h-4.5 shrink-0" /> Shop
+                      </span>
+                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setActiveTab("profile")}
                     className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
@@ -1835,8 +1848,7 @@ export default function Home() {
                     }`}
                   >
                     <span className="flex items-center gap-3">
-                      <Users className="w-4.5 h-4.5 shrink-0" /> My Player
-                      Profile
+                      <Users className="w-4.5 h-4.5 shrink-0" /> Profile
                     </span>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                   </button>
@@ -1845,20 +1857,25 @@ export default function Home() {
                 <div className="space-y-1">
                   {[
                     "finance",
+                    "dues_and_reminders",
                     "studio",
                     "matches",
                     "home",
                     "settings",
                     "leaderboard",
+                    "shop",
+                    "opinion",
                   ]
                     .filter((tab) => {
-                      if (tab === "finance")
+                      if (tab === "finance" || tab === "dues_and_reminders")
                         return isFinanceAdmin || isSuperAdmin;
                       if (tab === "studio")
                         return isStudioAdmin || isSuperAdmin;
                       if (tab === "matches")
                         return isMatchAdmin || isSuperAdmin;
                       if (tab === "settings") return isSuperAdmin;
+                      if (tab === "shop") return isFeatureEnabled("shop");
+                      if (tab === "opinion") return isFeatureEnabled("opinion");
                       return true;
                     })
                     .map((tab) => {
@@ -1869,6 +1886,9 @@ export default function Home() {
                         leaderboard: Trophy,
                         settings: SettingsIcon,
                         finance: Shield,
+                        dues_and_reminders: Bell,
+                        shop: ShoppingBag,
+                        opinion: PieChart,
                       };
                       const IconComp = iconMap[tab] || Trophy;
                       const uppercaseLabels: Record<string, string> = {
@@ -1878,6 +1898,9 @@ export default function Home() {
                         leaderboard: "Leaderboard",
                         settings: "Settings",
                         finance: "Finance",
+                        dues_and_reminders: "Dues",
+                        shop: "Shop",
+                        opinion: "Pulse",
                       };
                       return (
                         <button
@@ -2027,6 +2050,12 @@ export default function Home() {
                     <LeaderboardTab store={store} persona={persona} />
                   )}
                   {activeTab === "studio" && <StudioTab store={store} />}
+                  {activeTab === "shop" && (
+                    <ShopTab store={store} persona={persona} isAdmin={false} />
+                  )}
+                  {activeTab === "opinion" && (
+                    <OpinionTab store={store} persona={persona} />
+                  )}
                   {activeTab === "profile" && <ProfileTab store={store} />}
                 </motion.div>
               </AnimatePresence>
@@ -2044,7 +2073,10 @@ export default function Home() {
                   >
                     <option value="home">Admin Home</option>
                     {(isFinanceAdmin || isSuperAdmin) && (
-                      <option value="finance">Finance Dashboard</option>
+                      <>
+                        <option value="finance">Finance Dashboard</option>
+                        <option value="dues_and_reminders">Dues</option>
+                      </>
                     )}
                     {(isStudioAdmin || isSuperAdmin) && (
                       <option value="studio">Squad & Studio</option>
@@ -2053,6 +2085,8 @@ export default function Home() {
                       <option value="matches">Matches</option>
                     )}
                     <option value="leaderboard">Leaderboard</option>
+                    {isFeatureEnabled("shop") && <option value="shop">Shop</option>}
+                    {isFeatureEnabled("opinion") && <option value="opinion">Pulse</option>}
                     {isSuperAdmin && <option value="settings">Settings</option>}
                   </select>
                   <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/50">
@@ -2105,6 +2139,15 @@ export default function Home() {
                         isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                         defaultAction={tabAction}
                       />
+                    )}
+                    {activeTab === "dues_and_reminders" && (
+                      <DuesAndRemindersTab store={store} isFinanceAdmin={isFinanceAdmin || isSuperAdmin} />
+                    )}
+                    {activeTab === "shop" && (
+                      <ShopTab store={store} persona={persona} isAdmin={true} />
+                    )}
+                    {activeTab === "opinion" && (
+                      <OpinionTab store={store} persona={persona} />
                     )}
                   </motion.div>
                 </AnimatePresence>
@@ -2177,6 +2220,22 @@ export default function Home() {
               <Video className="w-5 h-5" />
               <span className="text-[9px] font-bold uppercase tracking-wider">
                 Studio
+              </span>
+            </button>
+          )}
+
+          {isFeatureEnabled("shop") && (
+            <button
+              onClick={() => setActiveTab("shop")}
+              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
+                activeTab === "shop"
+                  ? "text-accent font-extrabold scale-105"
+                  : "text-white/40 hover:text-white/80"
+              }`}
+            >
+              <ShoppingBag className="w-5 h-5" />
+              <span className="text-[9px] font-bold uppercase tracking-wider">
+                Shop
               </span>
             </button>
           )}

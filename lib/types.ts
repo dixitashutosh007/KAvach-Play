@@ -35,7 +35,23 @@ export type AppConfig = {
     leaderboard: boolean;
     feed: boolean;
     matches: boolean;
+    isWixEnabled?: boolean;
+    shop?: boolean;
+    opinion?: boolean;
   };
+  matchConfiguration?: {
+    directionsHoursBefore?: number;
+    directionsHoursAfter?: number;
+    enablePlayerAvailability?: boolean;
+  };
+  automaticReminders?: ReminderSchedule[];
+};
+
+export type ReminderSchedule = {
+  id: string;
+  days: string[]; // e.g. ["Monday", "Tuesday"]
+  time: string;   // e.g. "10:00"
+  feeTypes: string[]; // e.g. ["matches", "others"]
 };
 
 export type AppUser = {
@@ -56,6 +72,8 @@ export type AppUser = {
   isWicketKeeper?: boolean;
   chestSize?: string;
   jerseyNumber?: string;
+  jerseyName?: string;
+  waistSize?: string;
   mobile?: string;
   isStudioMember?: boolean;
   studioStartDate?: string;
@@ -103,6 +121,8 @@ export type Match = {
   topPerformerIds?: string[];
   bestBatsman?: string;
   bestBowler?: string;
+  isTentative?: boolean;
+  tentativelyBlockedBy?: string;
   isArchived?: boolean;
   createdAt?: any;
   updatedAt?: any;
@@ -132,6 +152,8 @@ export type Player = {
   isWicketKeeper?: boolean;
   chestSize?: string;
   jerseyNumber?: string;
+  jerseyName?: string;
+  waistSize?: string;
   isStudioMember?: boolean;
   studioStartDate?: string;
   studioEndDate?: string;
@@ -193,6 +215,7 @@ export type MatchPayment = {
   playerId: string;
   guestName?: string;
   status: "Paid" | "Unpaid" | "Not Playing" | "Failed";
+  paymentMethod?: "razorpay" | "manual";
   availability?:
     | "Yes"
     | "No"
@@ -260,5 +283,79 @@ export type PlayerStat = {
   year: number;
   runs: number;
   wickets: number;
+  updatedAt?: any;
+};
+
+export type MerchCustomFieldOption = {
+  value: string;
+  priceModifierType: "None" | "Add";
+  priceModifierValue?: number;
+};
+
+export type MerchCustomField = {
+  name: string;
+  options: MerchCustomFieldOption[];
+};
+
+export type Merchandise = {
+  id: string;
+  name: string;
+  description: string;
+  category: "Jersey" | "Pant" | "Jacket" | "Sweater" | "Cap" | "Cricket Gears" | "Stickers" | "Others";
+  basePrice: number;
+  sizes: string[]; // Legacy size specs
+  specs: string[]; // Legacy spec options
+  customFields?: MerchCustomField[];
+  requirePlayerDetails?: boolean;
+  minOrderQuantity: number;
+  status: "Accepting Orders" | "Not Accepting Orders";
+  imageUrl?: string;
+  isHidden?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type MerchOrder = {
+  id: string;
+  playerId: string;
+  playerName: string;
+  merchId: string;
+  merchName: string;
+  size: string; // Legacy size
+  spec?: string; // Legacy spec
+  customSelections?: Record<string, string>;
+  jerseyName?: string;
+  jerseyNumber?: string;
+  price: number;
+  paymentStatus: "Paid" | "Unpaid" | "Failed";
+  orderStatus: "Order Placed" | "Awaiting Min Order Qnty" | "Ready to Place Order" | "Order Received" | "Fulfilled";
+  isManual?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type Poll = {
+  id: string;
+  title: string;
+  type: "singleChoice" | "multipleChoice" | "slider";
+  options?: string[]; // For single/multiple choice
+  sliderMin?: number; // For slider
+  sliderMax?: number; // For slider
+  sliderMinLabel?: string;
+  sliderMaxLabel?: string;
+  isSticked: boolean;
+  isActive: boolean;
+  isEdited?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type PollResponse = {
+  id: string;
+  pollId: string;
+  playerId: string;
+  response: string | string[] | number;
+  isArchived?: boolean;
+  createdAt?: any;
   updatedAt?: any;
 };

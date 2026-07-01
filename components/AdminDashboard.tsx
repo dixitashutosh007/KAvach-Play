@@ -1,7 +1,7 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight } from "lucide-react";
+import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart } from "lucide-react";
 import { format, isPast, isFuture, parseISO } from "date-fns";
 
 export function AdminDashboard({
@@ -73,7 +73,7 @@ export function AdminDashboard({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("finance", "due_report")}>
+        <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("dues_and_reminders")}>
             <div>
                 <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
                 <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
@@ -114,7 +114,7 @@ export function AdminDashboard({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => setActiveTab("finance", "due_report")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+          <button onClick={() => setActiveTab("dues_and_reminders")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
              <div className="flex items-center gap-3">
                  <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
                      <Bell className="w-5 h-5" />
@@ -127,21 +127,21 @@ export function AdminDashboard({
              <ArrowRight className="w-4 h-4 text-white/30" />
           </button>
 
-          <button onClick={() => setActiveTab("finance", "fee")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+          <button onClick={() => setActiveTab("matches", "assign")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
              <div className="flex items-center gap-3">
                  <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
                      <Calculator className="w-5 h-5" />
                  </div>
                  <div className="text-left">
                      <p className="text-sm font-bold text-white">Assign Fees</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Custom Payments</p>
+                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">To Players</p>
                  </div>
              </div>
              <ArrowRight className="w-4 h-4 text-white/30" />
           </button>
       </div>
       
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-2 gap-4">
           <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
              <div className="flex items-center gap-3">
                  <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
@@ -150,6 +150,19 @@ export function AdminDashboard({
                  <div className="text-left">
                      <p className="text-sm font-bold text-white">View Calendar</p>
                      <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
+                 </div>
+             </div>
+             <ArrowRight className="w-4 h-4 text-white/30" />
+          </button>
+          
+          <button onClick={() => setActiveTab("opinion", "add_poll")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+             <div className="flex items-center gap-3">
+                 <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
+                     <PieChart className="w-5 h-5" />
+                 </div>
+                 <div className="text-left">
+                     <p className="text-sm font-bold text-white">Start a Poll</p>
+                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
                  </div>
              </div>
              <ArrowRight className="w-4 h-4 text-white/30" />

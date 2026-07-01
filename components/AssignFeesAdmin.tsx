@@ -8,7 +8,7 @@ export function AssignFeesAdmin({
 }: {
   store: ReturnType<typeof useStore>;
 }) {
-  const [feeType, setFeeType] = useState<"match" | "other">("other");
+  const [feeType, setFeeType] = useState<"match" | "other">("match");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [selectedMatch, setSelectedMatch] = useState<string>("");
   const [assignComment, setAssignComment] = useState("");
@@ -444,17 +444,7 @@ export function AssignFeesAdmin({
                         >
                           ₹{fee.amount}
                         </span>
-                        {p?.mobile && (
-                          <a
-                            href={`https://wa.me/${p.mobile.replace(/\D/g, "")}?text=${encodeURIComponent(`Hi ${p.name}, friendly reminder to clear your pending fee for "${fee.title}" amounting to ₹${fee.amount}.`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1 rounded-md text-emerald-400 hover:bg-emerald-500/20 bg-emerald-500/10 border border-emerald-500/20"
-                            title="Send WhatsApp Reminder"
-                          >
-                            <MessageSquare className="w-4 h-4" />
-                          </a>
-                        )}
+
                         <span
                           className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border ${isPaid ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10" : "text-red-400 border-red-400/30 bg-red-400/10"}`}
                         >
@@ -549,22 +539,12 @@ export function AssignFeesAdmin({
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-black font-mono text-red-400">₹{match.fee}</span>
-                                {p?.mobile && (
-                                  <a
-                                    href={`https://wa.me/${p.mobile.replace(/\D/g, "")}?text=${encodeURIComponent(`Hi ${p.name}, friendly reminder to clear your pending match fee for ${match.opponent} amounting to ₹${match.fee}.`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-1 rounded-md text-emerald-400 hover:bg-emerald-500/20 bg-emerald-500/10 border border-emerald-500/20"
-                                    title="Send WhatsApp Reminder"
-                                  >
-                                    <MessageSquare className="w-4 h-4" />
-                                  </a>
-                                )}
+
                                 <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border text-red-400 border-red-400/30 bg-red-400/10`}>
                                   Unpaid
                                 </span>
                                 <button
-                                  onClick={() => store.updatePaymentStatus(fee.id, "Paid", match.id, fee.availability || "Confirmed")}
+                                  onClick={() => store.updatePaymentStatus(fee.id, "Paid", match.id, fee.availability || "Confirmed", "manual")}
                                   className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/70 transition border border-white/10 whitespace-nowrap"
                                 >
                                   Mark Paid

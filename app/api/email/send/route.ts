@@ -3,6 +3,8 @@ import { db } from "@/lib/firebase";
 import { doc, getDocFromServer } from "firebase/firestore";
 import nodemailer from "nodemailer";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   try {
     const { to, subject, text, html, apiKey, config } = await req.json();

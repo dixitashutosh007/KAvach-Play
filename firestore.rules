@@ -19,7 +19,7 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isSignedIn() && (request.auth.token.email == 'dixitashutosh007@gmail.com' ||
+      return isSignedIn() && (request.auth.token.get('email', '') == 'dixitashutosh007@gmail.com' ||
         (exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -47,7 +47,7 @@ service cloud.firestore {
     }
 
     function isVerified() {
-      return isAnyAdmin() || (request.auth.token.email_verified == true) || 
+      return isAnyAdmin() || (request.auth.token.get('email_verified', false) == true) || 
         (exists(/databases/$(database)/documents/players/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/players/$(request.auth.uid)).data.inviteStatus in ['Verified', 'Accepted']);
     }
@@ -161,6 +161,32 @@ service cloud.firestore {
         && data.planName is string
         && (data.paidAmount is int || data.paidAmount is float)
         && data.createdAt is timestamp;
+    }
+
+    function isValidPoll(data) {
+      return data.keys().hasAll(['title', 'type', 'isSticked', 'isActive', 'createdAt', 'updatedAt'])
+        && data.title is string && data.title.size() <= 200
+        && data.type in ['singleChoice', 'multipleChoice', 'slider']
+        && (!data.keys().hasAny(['options']) || data.options is list)
+        && (!data.keys().hasAny(['sliderMin']) || (data.sliderMin is int || data.sliderMin is float))
+        && (!data.keys().hasAny(['sliderMax']) || (data.sliderMax is int || data.sliderMax is float))
+        && (!data.keys().hasAny(['sliderMinLabel']) || data.sliderMinLabel is string)
+        && (!data.keys().hasAny(['sliderMaxLabel']) || data.sliderMaxLabel is string)
+        && (!data.keys().hasAny(['isEdited']) || data.isEdited is bool)
+        && data.isSticked is bool
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPollResponse(data) {
+      return data.keys().hasAll(['pollId', 'playerId', 'response', 'createdAt', 'updatedAt'])
+        && data.pollId is string && data.pollId.size() <= 128
+        && data.playerId is string && data.playerId.size() <= 128
+        && (data.response is string || data.response is list || data.response is int || data.response is float)
+        && (!data.keys().hasAny(['isArchived']) || data.isArchived is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
     }
 
     match /paymentLinks/{linkId} {
@@ -325,6 +351,51 @@ service cloud.firestore {
 
         allow delete: if false; // Do not delete payments, mark as Not Playing
       }
+    }
+
+    match /merchandises/{merchId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    match /merchOrders/{orderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAnyAdmin() || (isSignedIn() && (existing().playerId == request.auth.uid || isSelf(existing().playerId)));
+      allow delete: if isAnyAdmin();
+    }
+
+    match /polls/{pollId} {
+      allow read: if isSignedIn();
+      allow create: if isAnyAdmin()
+        && isValidId(pollId)
+        && isValidPoll(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAnyAdmin()
+        && isValidId(pollId)
+        && isValidPoll(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isAnyAdmin();
+    }
+
+    match /pollResponses/{responseId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(responseId)
+        && isValidPollResponse(incoming())
+        && exists(/databases/$(database)/documents/polls/$(incoming().pollId))
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isSelf(existing().playerId)
+        && isValidId(responseId)
+        && isValidPollResponse(incoming())
+        && exists(/databases/$(database)/documents/polls/$(incoming().pollId))
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isAnyAdmin();
     }
   }
 }

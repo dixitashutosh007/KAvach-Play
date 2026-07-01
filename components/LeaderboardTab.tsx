@@ -32,6 +32,7 @@ export function LeaderboardTab({
     let tpCount = 0;
 
     const matchesForYear = store.matches.filter(m => {
+      if (m.isTentative) return false;
       if (year === "All Time") return true;
       if (!m.date) return false;
       return new Date(m.date).getFullYear() === Number(year);

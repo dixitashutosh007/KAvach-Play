@@ -8,7 +8,7 @@
  * It contains sub-components for assigning match outcomes and viewing venues.
  */
 import { useStore } from "@/hooks/useStore";
-import { Match, MatchComment } from "@/lib/types";
+import { Match, MatchComment, Player } from "@/lib/types";
 import {
   Plus,
   Edit2,
@@ -40,6 +40,8 @@ import {
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { GroundsTab } from "./GroundsTab";
 import { AssignFeesAdmin } from "./AssignFeesAdmin";
+import { EditPlayerInline } from "./EditPlayerInline";
+import { useAuth } from "./AuthProvider";
 
 export function MatchesTab({
   store,
@@ -53,7 +55,7 @@ export function MatchesTab({
   defaultAction?: string | null;
 }) {
   const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign">(
-    "matches",
+    defaultAction === "assign" ? "assign" : "matches"
   );
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
   const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useState(true);
@@ -72,6 +74,8 @@ export function MatchesTab({
       if (match) {
         setSelectedMatch(match);
       }
+    } else if (defaultAction === "assign") {
+      setSubTab("assign");
     }
   }, [defaultAction, store.matches]);
 
@@ -97,7 +101,13 @@ export function MatchesTab({
     topPerformerIds: [],
     bestBatsman: "",
     bestBowler: "",
+    isTentative: false,
+    tentativelyBlockedBy: "",
   });
+
+  const { user } = useAuth();
+  const currentUserObj = store.appUsers.find(u => u.id === user?.uid);
+  const currentUserName = currentUserObj?.name || "Admin";
 
   useEffect(() => {
     if (store.grounds.length > 0 && !formData.groundId) {
@@ -144,6 +154,8 @@ export function MatchesTab({
       topPerformerIds: [],
       bestBatsman: "",
       bestBowler: "",
+      isTentative: false,
+      tentativelyBlockedBy: "",
     });
   };
 
@@ -168,6 +180,8 @@ export function MatchesTab({
       topPerformerIds: match.topPerformerIds || [],
       bestBatsman: match.bestBatsman || "",
       bestBowler: match.bestBowler || "",
+      isTentative: match.isTentative || false,
+      tentativelyBlockedBy: match.tentativelyBlockedBy || "",
     });
     setEditingId(match.id);
     setIsAdding(true);
@@ -194,6 +208,8 @@ export function MatchesTab({
       topPerformerIds: [],
       bestBatsman: "",
       bestBowler: "",
+      isTentative: false,
+      tentativelyBlockedBy: "",
     });
     setEditingId(null);
     setIsAdding(true);
@@ -283,7 +299,7 @@ export function MatchesTab({
               )}
             </div>
 
-            {isAdmin && !isAdding && (
+            {!isAdding && (
               <div className="flex bg-white/5 p-1 rounded-xl border border-glass-border">
                 <button
                   onClick={() => setViewMode("list")}
@@ -317,6 +333,22 @@ export function MatchesTab({
               className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
             >
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 flex items-center gap-2 bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
+                  <input
+                    type="checkbox"
+                    id="tentative-block"
+                    checked={formData.isTentative || false}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      isTentative: e.target.checked,
+                      tentativelyBlockedBy: e.target.checked ? currentUserName : ""
+                    })}
+                    className="accent-orange-500 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="tentative-block" className="text-orange-400 font-bold text-sm cursor-pointer select-none">
+                    Tentatively Block Slot
+                  </label>
+                </div>
                 <div className="col-span-2">
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
                     Select Ground <span className="text-red-400">*</span>
@@ -830,7 +862,7 @@ export function MatchesTab({
                 return d;
               };
 
-              const allMatches = store.matches.filter(m => !m.isArchived);
+              const allMatches = store.matches.filter(m => !m.isArchived && (isAdmin || !m.isTentative));
 
               const renderMatchCard = (match: Match) => {
                 const ground = store.grounds.find(
@@ -861,6 +893,11 @@ export function MatchesTab({
                             <span className="bg-accent/20 text-accent px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                               {match.format}
                             </span>
+                            {match.isTentative && (
+                              <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                                Tentatively
+                              </span>
+                            )}
                           </div>
                           {getMatchDate(match) < now &&
                           !isAdmin &&
@@ -1186,7 +1223,7 @@ export function MatchesTab({
           ) : (
             <MatchCalendarView
               store={store}
-              matches={store.matches}
+              matches={store.matches.filter(m => isAdmin || !m.isTentative)}
               grounds={store.grounds}
               isAdmin={isAdmin}
               onMatchClick={(m: Match) => {
@@ -1220,8 +1257,6 @@ export function MatchesTab({
     </div>
   );
 }
-
-import { useAuth } from "./AuthProvider";
 
 export function MatchPayments({
   match,
@@ -1281,6 +1316,7 @@ export function MatchPayments({
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerMobile, setNewPlayerMobile] = useState("");
   const [confirmSquadDuplicates, setConfirmSquadDuplicates] = useState(false);
+  const [editingSquadPlayerId, setEditingSquadPlayerId] = useState<string | null>(null);
 
   const filteredPlayers = store.players.filter(
     (p) =>
@@ -1331,6 +1367,12 @@ export function MatchPayments({
         },
         body: JSON.stringify({
           amount: match.fee,
+          intentData: {
+            type: "match",
+            matchId: match.id,
+            paymentId: myPayment.id,
+            playerId: myPayment.playerId
+          }
         }),
       });
 
@@ -1346,13 +1388,16 @@ export function MatchPayments({
         order_id: data.id,
         handler: async function (response: any) {
           try {
-            await store.updatePaymentStatus(myPayment.id, "Paid", match.id);
+            await store.updatePaymentStatus(myPayment.id, "Paid", match.id, undefined, "razorpay");
             alert("Payment Successful!");
+            setIsProcessingPayment(false);
+            if (typeof onBack === 'function') onBack();
           } catch (err) {
             console.error("Failed to update status", err);
             alert(
               "Payment successful but status update failed. Please contact admin.",
             );
+            setIsProcessingPayment(false);
           }
         },
         prefill: {
@@ -1363,21 +1408,29 @@ export function MatchPayments({
         theme: {
           color: "#10b981", // Accent color
         },
+        modal: {
+          ondismiss: function () {
+            setIsProcessingPayment(false);
+            alert("Payment was cancelled or closed.");
+            if (typeof onBack === 'function') onBack();
+          },
+        },
       };
 
       const paymentObject = new (window as any).Razorpay(options);
       paymentObject.on("payment.failed", async function (response: any) {
+        setIsProcessingPayment(false);
         alert("Payment failed: " + response.error.description);
         try {
           await store.updatePaymentStatus(myPayment.id, "Failed", match.id);
         } catch (e) {
           console.error("Could not notify admin of failure");
         }
+        if (typeof onBack === 'function') onBack();
       });
       paymentObject.open();
     } catch (err: any) {
       alert("Error: " + err.message);
-    } finally {
       setIsProcessingPayment(false);
     }
   };
@@ -1545,6 +1598,16 @@ export function MatchPayments({
       </div>
 
       <div className="glass rounded-xl p-4">
+        {match.isTentative && isAdmin && (
+          <div className="mb-4 bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg text-orange-400 text-sm font-bold flex items-center justify-between">
+            <div className="flex items-center gap-2 animate-pulse">
+              <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+                Tentatively
+              </span>
+              <span>Temporarily Blocked by {match.tentativelyBlockedBy || "Admin"}</span>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
           <h2 className="text-xl font-bold">vs {match.opponent}</h2>
           {isAdmin && canArchive && (
@@ -1734,8 +1797,7 @@ export function MatchPayments({
           </div>
         )}
 
-        {isAdmin &&
-          (() => {
+        {(() => {
             const ground = store.grounds.find((g) => g.id === match.groundId);
             if (!ground) return null;
             return (
@@ -1782,7 +1844,7 @@ export function MatchPayments({
           </div>
         )}
 
-      {!isAdmin && mePlayer && (
+      {!isAdmin && mePlayer && store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
         <div className="glass rounded-xl p-4 text-center mt-4">
           {myPayment && myPayment.status === "Not Playing" && (
             <p className="text-white/70 text-sm mb-4">
@@ -1892,7 +1954,7 @@ export function MatchPayments({
         </div>
       )}
 
-      {!isAdmin && !mePlayer && (
+      {!isAdmin && !mePlayer && store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
         <div className="glass rounded-xl p-4 text-center mt-4 border border-red-500/20">
           <p className="text-white/70 text-sm mb-2">
             You need to complete your player profile in the Account tab or ask
@@ -1901,10 +1963,11 @@ export function MatchPayments({
         </div>
       )}
 
-      <div className="glass sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4 mb-4">
-        <div className="px-4 py-3 bg-white/5 border-b border-glass-border font-bold text-[12px] uppercase tracking-widest text-white/80">
-          Player Availability
-        </div>
+      {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
+        <div className="glass sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4 mb-4">
+          <div className="px-4 py-3 bg-white/5 border-b border-glass-border font-bold text-[12px] uppercase tracking-widest text-white/80">
+            Player Availability
+          </div>
 
         <div className="p-4 space-y-4">
           {["Yes", "No"].map((avStat) => {
@@ -1993,6 +2056,7 @@ export function MatchPayments({
           })}
         </div>
       </div>
+      )}
 
       {isAdmin && (
         <div className="glass sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))]">
@@ -2167,6 +2231,8 @@ export function MatchPayments({
                               payment.id,
                               e.target.value as any,
                               match.id,
+                              undefined,
+                              e.target.value === "Paid" ? "manual" : undefined
                             )
                           }
                           className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
@@ -2547,6 +2613,8 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
   }, []);
 
   const [isPastCollapsed, setIsPastCollapsed] = useState(true);
+  const [filterGround, setFilterGround] = useState<string>("all");
+  const [filterOpenSlots, setFilterOpenSlots] = useState<boolean>(false);
 
   const getMatchDateObj = (match: Match) => {
     const parts = dbToInputDate(match.date).split("/");
@@ -2577,7 +2645,12 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
     const upcomingEnd = new Date(upcomingStart);
     upcomingEnd.setMonth(upcomingEnd.getMonth() + 8);
 
-    const nonArchivedMatches = matches.filter(m => !m.isArchived);
+    const nonArchivedMatches = matches.filter(m => !m.isArchived).filter(m => {
+       if (filterGround !== "all" && m.groundId !== filterGround) return false;
+       return true;
+    });
+
+    const isMatchOpen = (m: Match) => m.format === "Other" || m.opponent === "TBD" || m.opponent.toLowerCase().includes("open") || m.format.toLowerCase().includes("open");
 
     // Compute earliest past match
     const pastMatches = nonArchivedMatches.filter(m => getMatchDateObj(m) < today);
@@ -2622,12 +2695,26 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
           });
           const dayOfWeek = d.getDay();
 
-          if (dayOfWeek === 0 || dayOfWeek === 6 || dayMatches.length > 0) {
+          let includeDay = false;
+          let appendMatches = dayMatches;
+
+          if (filterOpenSlots) {
+             const hasTournamentMatch = dayMatches.some(m => m.matchType === "Tournament");
+             if (!hasTournamentMatch && (dayOfWeek === 0 || dayOfWeek === 6)) {
+               includeDay = true;
+             }
+          } else {
+             if (dayOfWeek === 0 || dayOfWeek === 6 || dayMatches.length > 0) {
+               includeDay = true;
+             }
+          }
+
+          if (includeDay) {
             days.push({
               date: d,
               dateStr,
               dayOfWeek,
-              matches: dayMatches,
+              matches: appendMatches,
             });
           }
         }
@@ -2637,8 +2724,15 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
           year: "numeric",
         });
         
-        // Only include week in past data if it has any matches
-        if (days.some(d => d.matches.length > 0) || endData === upcomingEnd) {
+        let includeWeek = false;
+        if (filterOpenSlots) {
+            includeWeek = days.length > 0;
+        } else {
+            includeWeek = days.some(d => d.matches.length > 0) || endData === upcomingEnd;
+        }
+
+        // Only include week in past data if it has any matches, or if it's upcoming (unless filtering open slots)
+        if (includeWeek) {
              weeks.push({
               weekLabel: `Week of ${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric"})}`,
               monthLabel,
@@ -2658,7 +2752,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
     const upcomingCalendarData = generateWeeks(upcomingStart, upcomingEnd);
 
     return { pastCalendarData, upcomingCalendarData };
-  }, [matches]);
+  }, [matches, filterGround, filterOpenSlots]);
 
   const groupWeeksByMonth = (calendarData: any[]) => {
     const grouped: { [month: string]: any[] } = {};
@@ -2680,6 +2774,35 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
 
   return (
     <div className="space-y-8 pb-12 mt-4 text-left">
+      {isAdmin && (
+        <div className="glass p-4 rounded-xl flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-[10px] uppercase font-bold text-white/50 tracking-widest block mb-1">Ground</label>
+            <select
+              value={filterGround}
+              onChange={(e) => setFilterGround(e.target.value)}
+              className="w-full bg-black/30 border border-glass-border rounded-lg text-sm px-3 py-2 text-white focus:outline-none focus:border-accent"
+            >
+              <option value="all">All Grounds</option>
+              {grounds.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-none pt-4">
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-white/80 hover:text-white transition">
+              <input
+                type="checkbox"
+                checked={filterOpenSlots}
+                onChange={(e) => setFilterOpenSlots(e.target.checked)}
+                className="w-4 h-4 accent-accent"
+              />
+              Show Open Slots
+            </label>
+          </div>
+        </div>
+      )}
+
       {Object.keys(pastGrouped).length > 0 && (
         <div className="glass p-4 rounded-xl">
           <button
@@ -2737,6 +2860,11 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                         <div className="text-[10px] uppercase font-bold tracking-wider text-white opacity-70">
                                           {m.matchType} • {m.time}
                                         </div>
+                                        {m.isTentative && (
+                                          <span className="bg-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider animate-pulse ml-1 shrink-0">
+                                            Tentatively
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="font-bold text-sm leading-tight">
                                         vs {m.opponent}
@@ -2814,6 +2942,11 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                               <div className="text-[10px] uppercase font-bold tracking-wider text-white opacity-70">
                                 {m.matchType} • {m.time}
                               </div>
+                              {m.isTentative && (
+                                <span className="bg-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider animate-pulse ml-1 shrink-0">
+                                  Tentatively
+                                </span>
+                              )}
                             </div>
                             
                             {matchToDelete === m.id ? (

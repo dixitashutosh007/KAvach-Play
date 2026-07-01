@@ -68,12 +68,24 @@ export default function RazorReportView({
       }
     });
 
+    // Shop Merchandise Orders (Paid)
+    store.merchOrders?.filter((o) => o.paymentStatus === "Paid").forEach((o) => {
+      list.push({
+        id: `merch_${o.id}`,
+        date: o.updatedAt?.seconds || o.createdAt?.seconds || 0,
+        name: o.playerName,
+        product: `Shop: ${o.merchName}`,
+        amount: o.price,
+      });
+    });
+
     // Sort newest first
     return list.sort((a, b) => b.date - a.date);
   }, [
     store.payments,
     store.otherFees,
     store.subscriptionHistory,
+    store.merchOrders,
     store.matches,
     store.players,
   ]);

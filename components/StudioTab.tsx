@@ -90,6 +90,13 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
         },
         body: JSON.stringify({
           amount: plan.fee,
+          intentData: {
+            type: "subscription",
+            planId: plan.id,
+            userId: user?.uid,
+            amount: plan.fee,
+            durationDays: plan.durationDays || 30
+          }
         }),
       });
 

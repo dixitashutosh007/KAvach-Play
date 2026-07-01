@@ -6,7 +6,7 @@
  * creating, editing, deleting, and commenting on posts. Additionally, it calculates
  * and prominently displays upcoming player birthdays based on stored dates.
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Post, Player } from "@/lib/types";
 import {
@@ -20,10 +20,18 @@ import {
   Edit,
   Calendar,
   ChevronRight,
+  ChevronDown,
+  X,
+  PieChart,
+  CheckCircle2,
+  Archive,
 } from "lucide-react";
 import { format, isToday, isWithinInterval, addDays, parseISO } from "date-fns";
 import { motion } from "motion/react";
 import { PlayerFinanceView } from "./FinanceTab";
+import { PollInteraction, PollResults } from "./OpinionTab";
+import { db } from "@/lib/firebase";
+import { doc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 export function HomeTab({
   store,
@@ -43,6 +51,7 @@ export function HomeTab({
   const [commentText, setCommentText] = useState<{ [postId: string]: string }>(
     {},
   );
+  const [isPulseExpanded, setIsPulseExpanded] = useState(false);
 
   const { posts, players, addPost, updatePost, deletePost, addComment } = store;
 
@@ -178,6 +187,7 @@ export function HomeTab({
     if (!mePlayer) return [];
     return store.matches
       .filter((m) => {
+        if (m.isTentative) return false;
         let matchDateObj = new Date(m.date);
         if (m.time) {
           const [hours, minutes] = m.time.split(":");
@@ -204,6 +214,7 @@ export function HomeTab({
     const now = new Date().getTime();
     
     return store.matches.filter(m => {
+        if (m.isTentative) return false;
         const myPay = store.payments.find(p => p.playerId === mePlayer.id && p.matchId === m.id);
         const isPlaying = myPay && myPay.status !== "Not Playing" && (myPay.availability === "Confirmed" || myPay.availability === "Yes");
         if (!isPlaying) return false;
@@ -219,8 +230,12 @@ export function HomeTab({
         }
         
         const msDiff = matchDateObj.getTime() - now;
-        // 12 hours = 43200000 ms, 1 hour after = -3600000 ms
-        return msDiff <= 43200000 && msDiff > -3600000 && (!m.result || m.result === "Pending");
+        const hoursBefore = store.appConfig?.matchConfiguration?.directionsHoursBefore ?? 18;
+        const hoursAfter = store.appConfig?.matchConfiguration?.directionsHoursAfter ?? 2;
+        const msBefore = hoursBefore * 3600000;
+        const msAfter = -hoursAfter * 3600000;
+        
+        return msDiff <= msBefore && msDiff > msAfter && (!m.result || m.result === "Pending");
     }).sort((a, b) => {
         let aDate = new Date(a.date);
         let bDate = new Date(b.date);
@@ -260,6 +275,31 @@ export function HomeTab({
   const hasUpcomingBdays = upcomingBirthdays.length > 0;
   const hasBirthdays = hasTodayBdays || hasUpcomingBdays;
 
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    email: "",
+    dob: "",
+    chestSize: "",
+    jerseyNumber: "",
+  });
+
+  useEffect(() => {
+    if (mePlayer && !isAdmin) {
+      if (!mePlayer.email || !mePlayer.dob || !mePlayer.chestSize || !mePlayer.jerseyNumber) {
+        setProfileFormData({
+           email: mePlayer.email || appUser?.email || "",
+           dob: mePlayer.dob || "",
+           chestSize: mePlayer.chestSize || "",
+           jerseyNumber: mePlayer.jerseyNumber || "",
+        });
+        const hasDismissed = localStorage.getItem(`profilePromptDismissed_${mePlayer.id}`);
+        if (!hasDismissed) {
+          setShowProfilePrompt(true);
+        }
+      }
+    }
+  }, [mePlayer, isAdmin, appUser]);
+
   return (
     <div className="p-4 max-w-6xl mx-auto w-full pb-24 flex flex-col gap-6 items-center">
       <div className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6 auto-rows-max items-start">
@@ -284,7 +324,7 @@ export function HomeTab({
                     {isStarted ? "Match has started!" : `You are playing in ${diffStr}`}
                   </h2>
                   <p className="text-sm text-white/70 mb-4 font-medium">
-                    vs {match.opponent} • {match.format} • {match.time ? format(parseISO(`${match.date}T${match.time}`), "h:mm a") : "Time TBD"}
+                    vs {match.opponent} • {groundName} • {match.time ? format(parseISO(`${match.date}T${match.time}`), "h:mm a") : "Time TBD"}
                   </p>
                   
                   <a 
@@ -476,6 +516,99 @@ export function HomeTab({
               </div>
               <span className="text-sm">Write a new post...</span>
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Sticked Polls Section */}
+      {store.polls?.filter((p: any) => {
+        if (!p.isSticked || !p.isActive) return false;
+        const myResponse = store.pollResponses?.find((r: any) => r.pollId === p.id && r.playerId === currentUserId);
+        if (!myResponse) return true;
+        if (myResponse.isArchived) return false;
+        const createdAtMs = myResponse.createdAt?.toMillis ? myResponse.createdAt.toMillis() : (myResponse.createdAt?.seconds ? myResponse.createdAt.seconds * 1000 : Date.now());
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        return Date.now() - createdAtMs < ONE_DAY_MS;
+      }).length > 0 && (
+        <div className="space-y-3">
+          <button 
+            onClick={() => setIsPulseExpanded(!isPulseExpanded)}
+            className="w-full text-sm font-bold text-white tracking-widest uppercase flex items-center justify-between cursor-pointer"
+          >
+            <span className="flex items-center gap-2"><PieChart className="w-4 h-4 text-accent" /> Pulse</span>
+            {isPulseExpanded ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
+          </button>
+          {isPulseExpanded && (
+            <div className="flex overflow-x-auto gap-4 pb-2 -mx-2 px-2 snap-x hide-scrollbar">
+            {store.polls
+              .filter((p: any) => {
+                if (!p.isSticked || !p.isActive) return false;
+                const myResponse = store.pollResponses?.find((r: any) => r.pollId === p.id && r.playerId === currentUserId);
+                if (!myResponse) return true;
+                if (myResponse.isArchived) return false;
+                const createdAtMs = myResponse.createdAt?.toMillis ? myResponse.createdAt.toMillis() : (myResponse.createdAt?.seconds ? myResponse.createdAt.seconds * 1000 : Date.now());
+                const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+                return Date.now() - createdAtMs < ONE_DAY_MS;
+              })
+              .map((poll: any) => {
+                const myResponse = store.pollResponses?.find((r: any) => r.pollId === poll.id && r.playerId === currentUserId);
+                const handleVote = async (val: any) => {
+                  if (!currentUserId) return;
+                  const responseId = poll.id + "_" + currentUserId;
+                  try {
+                    await setDoc(doc(db, "pollResponses", responseId), {
+                      pollId: poll.id,
+                      playerId: currentUserId,
+                      response: val,
+                      isArchived: false,
+                      createdAt: serverTimestamp(),
+                      updatedAt: serverTimestamp(),
+                    });
+                  } catch (err: any) {
+                    alert("Error voting: " + err.message);
+                  }
+                };
+
+                const handleArchive = async () => {
+                  if (!myResponse) return;
+                  try {
+                    await updateDoc(doc(db, "pollResponses", myResponse.id), {
+                      isArchived: true,
+                      updatedAt: serverTimestamp(),
+                    });
+                  } catch (err: any) {
+                    alert("Error archiving: " + err.message);
+                  }
+                };
+
+                return (
+                  <div key={poll.id} className="min-w-[280px] max-w-[320px] snap-center glass rounded-2xl p-5 border border-white/10 relative shrink-0">
+                    <div className="absolute top-0 right-0 bg-accent text-black text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-bl-xl">
+                      Sticked
+                    </div>
+                    {poll.isEdited && (
+                      <div className="absolute top-0 left-0 bg-white/20 text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-br-xl">
+                        Edited
+                      </div>
+                    )}
+                    <h3 className={`text-sm font-bold text-white pr-12 leading-tight ${poll.isEdited ? 'mt-3' : 'mb-4'}`}>
+                      {poll.title}
+                    </h3>
+                    
+                    {myResponse ? (
+                      <div className="space-y-4">
+                        <PollResults poll={poll} store={store} />
+                        <button onClick={handleArchive} className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-white/50 hover:text-white transition flex items-center justify-center gap-2">
+                          <Archive className="w-4 h-4" /> Archive to Profile
+                        </button>
+                      </div>
+                    ) : (
+                      <PollInteraction poll={poll} onVote={handleVote} />
+                    )}
+                  </div>
+                );
+              })}
+          </div>
           )}
         </div>
       )}
@@ -700,6 +833,106 @@ export function HomeTab({
       )}
 
       </div>
+
+      {showProfilePrompt && mePlayer && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="glass rounded-xl p-6 w-full max-w-sm flex flex-col items-center">
+            <h2 className="text-xl font-bold mb-2">Complete Profile</h2>
+            <p className="text-sm text-white/70 text-center mb-6">
+              Please provide essential details to help us manage the team better.
+            </p>
+            <form
+              className="w-full flex md:flex-col flex-col gap-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                await store.updatePlayer(mePlayer.id, {
+                  email: profileFormData.email,
+                  dob: profileFormData.dob,
+                  chestSize: profileFormData.chestSize,
+                  jerseyNumber: profileFormData.jerseyNumber,
+                });
+                setShowProfilePrompt(false);
+              }}
+            >
+              <div>
+                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={profileFormData.email}
+                  onChange={(e) => setProfileFormData({ ...profileFormData, email: e.target.value })}
+                  className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Date of Birth</label>
+                <input
+                  type="date"
+                  required
+                  value={profileFormData.dob}
+                  onChange={(e) => setProfileFormData({ ...profileFormData, dob: e.target.value })}
+                  className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Jersey Size</label>
+                <select
+                  required
+                  value={profileFormData.chestSize}
+                  onChange={(e) => setProfileFormData({ ...profileFormData, chestSize: e.target.value })}
+                  className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                >
+                  <option value="">Select Size</option>
+                  {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
+                    <option key={sz} value={sz}>{sz}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Jersey Number</label>
+                {isAdmin ? (
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 7 or 18"
+                    value={profileFormData.jerseyNumber}
+                    onChange={(e) => setProfileFormData({ ...profileFormData, jerseyNumber: e.target.value })}
+                    className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="Assigned by Admin"
+                    value={profileFormData.jerseyNumber || ""}
+                    className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white/50 focus:outline-none opacity-50 cursor-not-allowed font-mono"
+                    title="Jersey number can only be assigned or edited by administrators."
+                  />
+                )}
+              </div>
+              
+              <div className="flex gap-3 justify-end mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem(`profilePromptDismissed_${mePlayer.id}`, "true");
+                    setShowProfilePrompt(false);
+                  }}
+                  className="w-full py-2 bg-white/5 text-white/60 hover:text-white rounded font-bold uppercase tracking-widest text-xs transition border border-white/10"
+                >
+                  Later
+                </button>
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-accent text-black rounded font-bold uppercase tracking-widest text-xs transition hover:bg-accent/90"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
