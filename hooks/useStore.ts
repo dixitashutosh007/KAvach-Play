@@ -298,9 +298,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     // for every logged-in user, which loaded 2000+ payment docs into every
     // browser regardless of what the user actually opened.
 
-    const unsubConfig = onSnapshot(
-      doc(db, "appConfig", "default"),
-      (snap) => {
+    // appConfig — one-shot on mount. Refreshed via refreshAppConfig() from
+    // updateAppConfig() so admins see their changes immediately without a
+    // permanent live subscription costing every user reads.
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "appConfig", "default"));
         if (snap.exists()) {
           const config = snap.data() as AppConfig;
           if (config.loadingAnimationTheme && typeof window !== "undefined") {
@@ -308,9 +311,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           }
           setAppConfig({ ...config, id: snap.id });
         }
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "appConfig"),
-    );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "appConfig");
+      }
+    })();
+    const unsubConfig = () => {};
 
     const unsubAppUsers = onSnapshot(
       collection(db, "appUsers"),
@@ -328,15 +333,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "appUsers"),
     );
 
-    const unsubGrounds = onSnapshot(
-      collection(db, "grounds"),
-      (snapshot) => {
-        setGrounds(
-          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Ground),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "grounds"),
-    );
+    // grounds — one-shot; refreshed by mutation methods below.
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "grounds"));
+        setGrounds(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Ground));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "grounds");
+      }
+    })();
+    const unsubGrounds = () => {};
 
     const unsubPlayers = onSnapshot(
       collection(db, "players"),
@@ -397,18 +403,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       },
     );
 
-    const unsubSubscriptionPlans = onSnapshot(
-      collection(db, "subscriptionPlans"),
-      (snapshot) => {
+    // subscriptionPlans — one-shot; refreshed by plan mutation methods.
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "subscriptionPlans"));
         setSubscriptionPlans(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as SubscriptionPlan,
-          ),
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SubscriptionPlan),
         );
-      },
-      (err) =>
-        handleFirestoreError(err, OperationType.LIST, "subscriptionPlans"),
-    );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "subscriptionPlans");
+      }
+    })();
+    const unsubSubscriptionPlans = () => {};
 
     const unsubSubscriptionHistory = onSnapshot(
       collection(db, "subscriptionHistory"),
@@ -457,17 +463,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
     // otherFees now lazy — see ensureOtherFees.
 
-    const unsubFeeTemplates = onSnapshot(
-      collection(db, "feeTemplates"),
-      (snapshot) => {
+    // feeTemplates — one-shot; refreshed by fee template mutation methods.
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "feeTemplates"));
         setFeeTemplates(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as FeeTemplate,
-          ),
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeeTemplate),
         );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "feeTemplates"),
-    );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "feeTemplates");
+      }
+    })();
+    const unsubFeeTemplates = () => {};
 
     const unsubOutOfPlays = onSnapshot(
       collection(db, "outOfPlays"),
@@ -481,17 +488,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "outOfPlays"),
     );
 
-    const unsubMerchandises = onSnapshot(
-      collection(db, "merchandises"),
-      (snapshot) => {
+    // merchandises — one-shot; refreshed by merch mutation methods.
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "merchandises"));
         setMerchandises(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as Merchandise,
-          ),
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Merchandise),
         );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "merchandises"),
-    );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "merchandises");
+      }
+    })();
+    const unsubMerchandises = () => {};
 
     const unsubMerchOrders = onSnapshot(
       collection(db, "merchOrders"),
@@ -636,6 +644,60 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   }, [user, notificationsLoadingMore, notificationsHasMore]);
 
+  // ---- Refresh helpers for one-shot static collections ----
+  const refreshAppConfig = useCallback(async () => {
+    try {
+      const snap = await getDoc(doc(db, "appConfig", "default"));
+      if (snap.exists()) {
+        setAppConfig({ ...(snap.data() as AppConfig), id: snap.id });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "appConfig");
+    }
+  }, []);
+
+  const refreshGrounds = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "grounds"));
+      setGrounds(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Ground));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "grounds");
+    }
+  }, []);
+
+  const refreshSubscriptionPlans = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "subscriptionPlans"));
+      setSubscriptionPlans(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SubscriptionPlan),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "subscriptionPlans");
+    }
+  }, []);
+
+  const refreshFeeTemplates = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "feeTemplates"));
+      setFeeTemplates(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeeTemplate),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "feeTemplates");
+    }
+  }, []);
+
+  const refreshMerchandises = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "merchandises"));
+      setMerchandises(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Merchandise),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "merchandises");
+    }
+  }, []);
+
   const ensureOtherFees = useCallback(() => {
     if (!user || lazySubsRef.current.has("allOtherFees")) return;
     const unsub = onSnapshot(
@@ -655,6 +717,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const updateAppConfig = async (config: Partial<AppConfig>) => {
     try {
       await updateDoc(doc(db, "appConfig", "default"), cleanPayload(config));
+      await refreshAppConfig();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "appConfig/default");
     }
@@ -690,6 +753,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      await refreshGrounds();
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `grounds/${id}`);
@@ -703,6 +767,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         docRef,
         cleanPayload({ ...ground, updatedAt: serverTimestamp() }),
       );
+      await refreshGrounds();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `grounds/${groundId}`);
     }
@@ -711,6 +776,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const deleteGround = async (groundId: string) => {
     try {
       await deleteDoc(doc(db, "grounds", groundId));
+      await refreshGrounds();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `grounds/${groundId}`);
     }
@@ -1156,6 +1222,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      await refreshFeeTemplates();
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `feeTemplates/${id}`);
     }
@@ -1165,6 +1232,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const docRef = doc(db, "feeTemplates", templateId);
     try {
       await deleteDoc(docRef);
+      await refreshFeeTemplates();
     } catch (err) {
       handleFirestoreError(
         err,
@@ -1345,6 +1413,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      await refreshSubscriptionPlans();
       return id;
     } catch (err) {
       handleFirestoreError(
@@ -1363,6 +1432,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         docRef,
         cleanPayload({ ...data, updatedAt: serverTimestamp() }),
       );
+      await refreshSubscriptionPlans();
     } catch (err) {
       handleFirestoreError(
         err,
@@ -1375,6 +1445,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const deleteSubscriptionPlan = async (planId: string) => {
     try {
       await deleteDoc(doc(db, "subscriptionPlans", planId));
+      await refreshSubscriptionPlans();
     } catch (err) {
       handleFirestoreError(
         err,
@@ -1439,6 +1510,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      await refreshMerchandises();
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `merchandises/${id}`);
@@ -1452,6 +1524,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         docRef,
         cleanPayload({ ...merch, updatedAt: serverTimestamp() }),
       );
+      await refreshMerchandises();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `merchandises/${id}`);
     }
@@ -1460,6 +1533,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const deleteMerchandise = async (id: string) => {
     try {
       await deleteDoc(doc(db, "merchandises", id));
+      await refreshMerchandises();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `merchandises/${id}`);
     }
@@ -1528,6 +1602,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     updatePost,
     deletePost,
     addComment,
+    refreshAppConfig,
+    refreshGrounds,
+    refreshSubscriptionPlans,
+    refreshFeeTemplates,
+    refreshMerchandises,
     payments: filteredPayments,
     ensurePayments,
     ensureMatchPayments,
