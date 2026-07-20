@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   try {
     const apps = getApps();
     const app = apps.length ? apps[0] : initializeApp({ projectId: firebaseConfig.projectId });
-    const dbId = (firebaseConfig as any).firestoreDatabaseId;
+    const dbId = process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID || (firebaseConfig as any).firestoreDatabaseId;
     let db;
     try { db = getFirestore(app, dbId); } catch { db = getFirestore(app); }
 

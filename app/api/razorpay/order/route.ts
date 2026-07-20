@@ -15,7 +15,7 @@ function getDb() {
   } else {
     app = apps[0];
   }
-  const dbId = "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
+  const dbId = process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID || "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
   try {
     return getFirestore(app, dbId);
   } catch (e) {
