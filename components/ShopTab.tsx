@@ -241,7 +241,12 @@ export function ShopTab({
 
   const openOrderModal = (merch: Merchandise) => {
     setSelectedMerch(merch);
-    setOrderSize(merch.sizes?.[0] || "");
+    // Pre-fill size from the player's saved chestSize when it's one of the
+    // available options, otherwise fall back to the first size. User can
+    // still change it in the modal.
+    const savedSize = playerProfile?.chestSize || userProfile?.chestSize || "";
+    const sizeMatches = savedSize && merch.sizes?.includes(savedSize);
+    setOrderSize(sizeMatches ? savedSize : (merch.sizes?.[0] || ""));
     setOrderSpec(merch.specs?.[0] || "");
 
     const initialSelections: Record<string, string> = {};
@@ -408,12 +413,29 @@ export function ShopTab({
       const reachedMoq = newPaidCount >= selectedMerch.minOrderQuantity;
       const hasJerseyDetails = selectedMerch.category === "Jersey" || selectedMerch.requirePlayerDetails;
 
+      // Extract the effective size from either the top-level size dropdown
+      // OR from a chest/size custom field. This ensures ord.size is always
+      // populated so Club Orders shows it. Also picks up waist for profile
+      // sync below.
+      let effectiveSize = orderSize;
+      let effectiveWaist = "";
+      Object.entries(orderCustomSelections).forEach(([key, value]) => {
+        const lowerKey = key.toLowerCase();
+        if (!value) return;
+        if (!effectiveSize && (lowerKey.includes("chest") || lowerKey === "size")) {
+          effectiveSize = value;
+        }
+        if (lowerKey.includes("waist")) {
+          effectiveWaist = value;
+        }
+      });
+
       const orderPayload = {
         playerId: playerProfile?.id || user?.uid || "unknown",
         playerName: playerProfile?.name || userProfile?.name || "Anonymous Player",
         merchId: selectedMerch.id,
         merchName: selectedMerch.name,
-        size: orderSize,
+        size: effectiveSize,
         spec: orderSpec || undefined,
         customSelections: Object.keys(orderCustomSelections).length > 0 ? orderCustomSelections : undefined,
         customPriceAdditions: customPriceAdditions > 0 ? customPriceAdditions : undefined,
@@ -426,27 +448,26 @@ export function ShopTab({
 
       const orderId = await store.addMerchOrder(orderPayload);
 
-      // Prompt to update profile
-      if (confirm("Order registered! Would you like to save these details (size, jersey name, number) to your player profile for future orders?")) {
-        const updatePayload: any = {};
-        if (orderSize) updatePayload.chestSize = orderSize;
-        
-        Object.entries(orderCustomSelections).forEach(([key, value]) => {
-          const lowerKey = key.toLowerCase();
-          if (lowerKey.includes("chest") && value) updatePayload.chestSize = value;
-          if (lowerKey.includes("waist") && value) updatePayload.waistSize = value;
-        });
-
-        if (hasJerseyDetails) {
-          updatePayload.jerseyName = customJerseyName;
-          updatePayload.jerseyNumber = customJerseyNumber;
-        }
-
-        if (playerProfile) {
-          await store.updatePlayer(playerProfile.id, updatePayload);
-        }
-        if (userProfile) {
-          await store.updateAppUserProfile(user?.uid || "", { ...userProfile, ...updatePayload });
+      // Silently sync the player profile with the details they used for this
+      // order (size, waist, jersey name, jersey number). Previously this was
+      // a confirm() prompt that most users dismissed, leaving profiles stale.
+      const updatePayload: any = {};
+      if (effectiveSize) updatePayload.chestSize = effectiveSize;
+      if (effectiveWaist) updatePayload.waistSize = effectiveWaist;
+      if (hasJerseyDetails) {
+        if (customJerseyName) updatePayload.jerseyName = customJerseyName;
+        if (customJerseyNumber) updatePayload.jerseyNumber = customJerseyNumber;
+      }
+      if (Object.keys(updatePayload).length > 0) {
+        try {
+          if (playerProfile) {
+            await store.updatePlayer(playerProfile.id, updatePayload);
+          }
+          if (userProfile) {
+            await store.updateAppUserProfile(user?.uid || "", { ...userProfile, ...updatePayload });
+          }
+        } catch (e) {
+          console.warn("Profile sync after order failed (order was still placed):", e);
         }
       }
 
@@ -1346,21 +1367,29 @@ export function ShopTab({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-glass-border text-white/90">
-                      {store.merchOrders.map((ord) => (
+                      {store.merchOrders.map((ord) => {
+                        // Legacy orders may store size inside customSelections
+                        // ("Chest Size" / "Size" custom field) instead of the
+                        // top-level `size` column. Prefer top-level, fall back.
+                        const displaySize = ord.size || Object.entries(ord.customSelections || {}).find(([k]) => {
+                          const kl = k.toLowerCase();
+                          return kl.includes("chest") || kl === "size";
+                        })?.[1] || "";
+                        return (
                         <tr key={ord.id} className="hover:bg-white/5 transition">
-                          <td className="py-3.5 px-2 font-bold">{ord.playerName}</td>
+                          <td className="py-3.5 px-2 font-bold whitespace-nowrap">{ord.playerName}</td>
                           <td className="py-3.5 px-2">
                             <span className="font-semibold text-accent">{ord.merchName}</span>
                             {ord.isManual && (
-                              <span className="ml-1.5 px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded text-[9px] uppercase tracking-wider font-bold">
+                              <span className="ml-1.5 px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">
                                 Cash Manual
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 px-2">
-                            {ord.size ? (
+                          <td className="py-3.5 px-2 whitespace-nowrap">
+                            {displaySize ? (
                               <span className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold">
-                                {ord.size}
+                                {displaySize}
                               </span>
                             ) : (
                               <span className="text-white/30">—</span>
@@ -1369,7 +1398,7 @@ export function ShopTab({
                               <span className="ml-1.5 text-white/60 font-semibold">{ord.spec}</span>
                             )}
                           </td>
-                          <td className="py-3.5 px-2">
+                          <td className="py-3.5 px-2 whitespace-nowrap">
                             {ord.jerseyName ? (
                               <div className="font-mono text-white/80">
                                 <span className="font-bold text-emerald-400">{ord.jerseyName}</span>
@@ -1379,7 +1408,7 @@ export function ShopTab({
                               <span className="text-white/30">—</span>
                             )}
                           </td>
-                          <td className="py-3.5 px-2 text-right font-mono font-bold text-accent">
+                          <td className="py-3.5 px-2 text-right font-mono font-bold text-accent whitespace-nowrap">
                             ₹{ord.price}
                           </td>
                           <td className="py-3.5 px-2 text-center">
@@ -1398,7 +1427,7 @@ export function ShopTab({
                             <select
                               value={ord.orderStatus}
                               onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as any)}
-                              className="bg-black/60 border border-glass-border rounded px-2 py-1 text-[10px] font-bold text-white focus:outline-none"
+                              className="bg-black/60 border border-glass-border rounded px-2 py-1 text-[10px] font-bold text-white focus:outline-none whitespace-nowrap"
                             >
                               <option value="Order Placed">Order Placed</option>
                               <option value="Awaiting Min Order Qnty">Awaiting Min Order Qnty</option>
@@ -1417,7 +1446,7 @@ export function ShopTab({
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                 </div>
@@ -1696,22 +1725,27 @@ export function ShopTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-glass-border text-white/90">
-                  {myOrders.map((o) => (
+                  {myOrders.map((o) => {
+                    const displaySize = o.size || Object.entries(o.customSelections || {}).find(([k]) => {
+                      const kl = k.toLowerCase();
+                      return kl.includes("chest") || kl === "size";
+                    })?.[1] || "";
+                    return (
                     <tr key={o.id} className="hover:bg-white/5 transition">
-                      <td className="py-3.5 px-2 font-bold text-accent">{o.merchName}</td>
-                      <td className="py-3.5 px-2">
-                        {o.size ? (
+                      <td className="py-3.5 px-2 font-bold text-accent whitespace-nowrap">{o.merchName}</td>
+                      <td className="py-3.5 px-2 whitespace-nowrap">
+                        {displaySize ? (
                           <span className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold">
-                            {o.size}
+                            {displaySize}
                           </span>
                         ) : (
                           <span className="text-white/30">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-2 font-semibold text-white/70">
+                      <td className="py-3.5 px-2 font-semibold text-white/70 whitespace-nowrap">
                         {o.spec || "Standard / None"}
                       </td>
-                      <td className="py-3.5 px-2">
+                      <td className="py-3.5 px-2 whitespace-nowrap">
                         {o.jerseyName ? (
                           <div className="font-mono text-white/80">
                             <span className="font-bold text-emerald-400">{o.jerseyName}</span>
@@ -1721,17 +1755,17 @@ export function ShopTab({
                           <span className="text-white/30">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-2 text-right font-mono font-bold">
+                      <td className="py-3.5 px-2 text-right font-mono font-bold whitespace-nowrap">
                         ₹{o.price}
                       </td>
                       <td className="py-3.5 px-2 text-center">
-                        <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 rounded-full text-[10px] uppercase font-bold tracking-wider">
+                        <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 rounded-full text-[10px] uppercase font-bold tracking-wider whitespace-nowrap inline-block">
                           {o.paymentStatus}
                         </span>
                       </td>
                       <td className="py-3.5 px-2 text-center">
                         <span
-                          className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 whitespace-nowrap ${
                             o.orderStatus === "Fulfilled"
                               ? "bg-emerald-950/60 text-emerald-400 border border-emerald-900/50"
                               : o.orderStatus === "Ready to Place Order" || o.orderStatus === "Order Received"
@@ -1747,7 +1781,7 @@ export function ShopTab({
                         </span>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
@@ -1832,30 +1866,35 @@ export function ShopTab({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-glass-border/20 text-white/80">
-                              {merchOrders.map((ord) => (
+                              {merchOrders.map((ord) => {
+                                const displaySize = ord.size || Object.entries(ord.customSelections || {}).find(([k]) => {
+                                  const kl = k.toLowerCase();
+                                  return kl.includes("chest") || kl === "size";
+                                })?.[1] || "";
+                                return (
                                 <tr key={ord.id} className="hover:bg-white/5 transition">
-                                  <td className="py-2.5 px-1 font-bold">{ord.playerName}</td>
-                                  <td className="py-2.5 px-1">
-                                    {ord.size ? (
+                                  <td className="py-2.5 px-1 font-bold whitespace-nowrap">{ord.playerName}</td>
+                                  <td className="py-2.5 px-1 whitespace-nowrap">
+                                    {displaySize ? (
                                       <span className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-[10px]">
-                                        {ord.size}
+                                        {displaySize}
                                       </span>
                                     ) : (
                                       <span className="text-white/30">—</span>
                                     )}
                                   </td>
-                                  <td className="py-2.5 px-1 font-semibold text-white/60">{ord.spec || "Standard"}</td>
+                                  <td className="py-2.5 px-1 font-semibold text-white/60 whitespace-nowrap">{ord.spec || "Standard"}</td>
                                   {merch.category === "Jersey" && (
                                     <>
-                                      <td className="py-2.5 px-1 font-mono font-extrabold text-emerald-400 uppercase">{ord.jerseyName || "—"}</td>
-                                      <td className="py-2.5 px-1 font-mono font-extrabold text-accent">
+                                      <td className="py-2.5 px-1 font-mono font-extrabold text-emerald-400 uppercase whitespace-nowrap">{ord.jerseyName || "—"}</td>
+                                      <td className="py-2.5 px-1 font-mono font-extrabold text-accent whitespace-nowrap">
                                         {ord.jerseyNumber ? `#${ord.jerseyNumber}` : "—"}
                                       </td>
                                     </>
                                   )}
-                                  <td className="py-2.5 px-1 text-right font-mono font-black text-accent text-[11px]">₹{ord.price}</td>
+                                  <td className="py-2.5 px-1 text-right font-mono font-black text-accent text-[11px] whitespace-nowrap">₹{ord.price}</td>
                                   <td className="py-2.5 px-1 text-center">
-                                    <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider border ${
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider border whitespace-nowrap inline-block ${
                                       ord.paymentStatus === 'Paid'
                                         ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40'
                                         : 'bg-amber-950/40 text-amber-400 border-amber-900/40'
@@ -1863,11 +1902,11 @@ export function ShopTab({
                                       {ord.paymentStatus}
                                     </span>
                                   </td>
-                                  <td className="py-2.5 px-1 text-center">
+                                  <td className="py-2.5 px-1 text-center whitespace-nowrap">
                                     <span className="text-[10px] font-bold text-white/70">{ord.orderStatus}</span>
                                   </td>
                                 </tr>
-                              ))}
+                              );})}
                             </tbody>
                           </table>
                         </div>

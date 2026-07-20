@@ -132,13 +132,13 @@ export async function POST(req: NextRequest) {
                     }
                   }
                } else if (data.type === "merch_order") {
-                  if (data.orderPayload) {
-                     await db.collection("merchOrders").add({
-                        ...data.orderPayload,
-                        createdAt: new Date(),
-                        updatedAt: new Date()
-                     });
-                  }
+                  // Intentionally no-op: the client's finalizeOrderPlacement()
+                  // creates the merchOrder document with full metadata
+                  // (orderStatus, MOQ sister updates, profile sync, notification
+                  // emails). Writing here as well produced duplicate, incomplete
+                  // orders in the Club Orders view. The razorpayIntents doc is
+                  // still marked "paid" above, which is the source of truth if
+                  // the client-side write ever fails.
                }
             }
          }
