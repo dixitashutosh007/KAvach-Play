@@ -265,10 +265,26 @@ service cloud.firestore {
     }
 
     match /notifications/{notifId} {
+      // A user can read any notification (client filters to their own). Since
+      // read is broad, keep the write surface tight: only the notification's
+      // owner or an admin can modify/delete. Broadcast notifs (userId ==
+      // "admin"/"all") are admin-owned by definition.
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow create: if isSignedIn() && (
+        incoming().userId == request.auth.uid ||
+        isAnyAdmin() ||
+        incoming().userId == "admin" ||
+        incoming().userId == "all"
+      );
+      allow update: if isSignedIn() && (
+        existing().userId == request.auth.uid ||
+        isAnyAdmin() ||
+        (existing().userId in ["admin", "all"] && isAnyAdmin())
+      );
+      allow delete: if isSignedIn() && (
+        existing().userId == request.auth.uid ||
+        isAnyAdmin()
+      );
     }
 
     match /grounds/{groundId} {
