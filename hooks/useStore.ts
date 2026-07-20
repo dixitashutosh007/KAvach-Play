@@ -42,6 +42,13 @@ import {
   serverTimestamp,
   getDocs,
   collectionGroup,
+  query,
+  orderBy,
+  limit,
+  startAfter,
+  Timestamp,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
@@ -74,6 +81,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     SubscriptionHistory[]
   >([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsHasMore, setNotificationsHasMore] = useState(true);
+  const [notificationsLoadingMore, setNotificationsLoadingMore] = useState(false);
+  const notificationsCursorRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const NOTIFICATIONS_PAGE_SIZE = 50;
   const [otherFees, setOtherFees] = useState<OtherFee[]>([]);
   const [feeTemplates, setFeeTemplates] = useState<FeeTemplate[]>([]);
   const [outOfPlays, setOutOfPlays] = useState<OutOfPlay[]>([]);
@@ -412,16 +423,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         handleFirestoreError(err, OperationType.LIST, "subscriptionHistory"),
     );
 
-    const unsubNotifications = onSnapshot(
+    // Paginated notifications: subscribe to the most recent 50 in real time.
+    // Older notifications are loaded on demand via loadMoreNotifications().
+    const notificationsQuery = query(
       collection(db, "notifications"),
+      orderBy("createdAt", "desc"),
+      limit(NOTIFICATIONS_PAGE_SIZE),
+    );
+    const unsubNotifications = onSnapshot(
+      notificationsQuery,
       (snapshot) => {
-        setNotifications(
-          snapshot.docs
-            .map((doc) => ({ id: doc.id, ...doc.data() }) as Notification)
-            .sort((a, b) => {
-              return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
-            }),
+        const recent = snapshot.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Notification,
         );
+        const recentIds = new Set(recent.map((n) => n.id));
+        setNotifications((prev) => {
+          // Keep any older notifications loaded via pagination, drop overlaps
+          const older = prev.filter((n) => !recentIds.has(n.id));
+          const merged = [...recent, ...older].sort(
+            (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0),
+          );
+          return merged;
+        });
+        // Cursor for loading older docs sits at the last of the recent page
+        notificationsCursorRef.current =
+          snapshot.docs[snapshot.docs.length - 1] || null;
+        if (snapshot.docs.length < NOTIFICATIONS_PAGE_SIZE) {
+          setNotificationsHasMore(false);
+        }
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "notifications"),
     );
@@ -569,6 +598,43 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     },
     [user, recomputePayments],
   );
+
+  const loadMoreNotifications = useCallback(async () => {
+    if (
+      !user ||
+      !notificationsCursorRef.current ||
+      notificationsLoadingMore ||
+      !notificationsHasMore
+    )
+      return;
+    setNotificationsLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, "notifications"),
+        orderBy("createdAt", "desc"),
+        startAfter(notificationsCursorRef.current),
+        limit(NOTIFICATIONS_PAGE_SIZE),
+      );
+      const snap = await getDocs(q);
+      const older = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() }) as Notification,
+      );
+      setNotifications((prev) => {
+        const seen = new Set(prev.map((n) => n.id));
+        const additions = older.filter((n) => !seen.has(n.id));
+        return [...prev, ...additions];
+      });
+      notificationsCursorRef.current =
+        snap.docs[snap.docs.length - 1] || notificationsCursorRef.current;
+      if (snap.docs.length < NOTIFICATIONS_PAGE_SIZE) {
+        setNotificationsHasMore(false);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "notifications");
+    } finally {
+      setNotificationsLoadingMore(false);
+    }
+  }, [user, notificationsLoadingMore, notificationsHasMore]);
 
   const ensureOtherFees = useCallback(() => {
     if (!user || lazySubsRef.current.has("allOtherFees")) return;
@@ -1484,6 +1550,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     subscriptionHistory,
     addSubscriptionHistory,
     notifications,
+    loadMoreNotifications,
+    notificationsHasMore,
+    notificationsLoadingMore,
     otherFees: filteredOtherFees,
     ensureOtherFees,
     addOtherFee,

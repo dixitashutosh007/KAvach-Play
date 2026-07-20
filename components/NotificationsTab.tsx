@@ -14,7 +14,7 @@ export function NotificationsTab({
 }) {
   const { user } = useAuth();
   const isAdmin = persona === "admin";
-  const { notifications } = store;
+  const { notifications, loadMoreNotifications, notificationsHasMore, notificationsLoadingMore } = store;
 
   // Filter notifications based on role
   const myNotifications = notifications.filter((n) => {
@@ -86,7 +86,8 @@ export function NotificationsTab({
             </p>
           </div>
         ) : (
-          myNotifications.map((notif) => (
+          <>
+          {myNotifications.map((notif) => (
             <div
               key={notif.id}
               className={`glass p-4 rounded-xl border transition ${notif.isRead ? "border-glass-border opacity-70" : "border-accent/40 bg-accent/5"}`}
@@ -150,7 +151,19 @@ export function NotificationsTab({
                 </div>
               </div>
             </div>
-          ))
+          ))}
+          {notificationsHasMore && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => loadMoreNotifications?.()}
+                disabled={notificationsLoadingMore}
+                className="text-[10px] uppercase font-bold tracking-widest text-white/60 hover:text-white border border-white/10 hover:border-white/30 px-4 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {notificationsLoadingMore ? "Loading..." : "Load Older Notifications"}
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>
