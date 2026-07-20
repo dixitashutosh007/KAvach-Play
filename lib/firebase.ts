@@ -14,8 +14,12 @@ import firebaseConfig from "../firebase-applet-config.json";
 
 export const app = initializeApp(firebaseConfig);
 const dbId =
+  process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
   (firebaseConfig as any).firestoreDatabaseId ||
   "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
+if (typeof window !== "undefined") {
+  console.log("[Firestore] Using database:", dbId, "(env var:", process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID || "(unset)", ")");
+}
 
 export const db = initializeFirestore(
   app,
