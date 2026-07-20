@@ -37,7 +37,9 @@ export async function POST(req: Request) {
     }
 
     if (provider === "resend") {
-      const activeResendKey = activeConfig?.resendApiKey || apiKey || process.env.RESEND_API_KEY;
+      // Secret is server-side only (env var). Never trust a key that came
+      // through the DB-backed appConfig, which is publicly readable.
+      const activeResendKey = process.env.RESEND_API_KEY;
       const activeSender = activeConfig?.resendSender || "Kavach Play <onboarding@resend.dev>";
 
       if (!activeResendKey) {
@@ -72,18 +74,18 @@ export async function POST(req: Request) {
 
       return NextResponse.json({ success: true, data });
     } else {
-      // SMTP provider option
-      const smtpHost = activeConfig?.smtpHost;
-      const smtpPort = parseInt(activeConfig?.smtpPort || "587", 10);
-      const smtpSecure = !!activeConfig?.smtpSecure;
-      const smtpUser = activeConfig?.smtpUser;
-      const smtpPassword = activeConfig?.smtpPassword;
+      // SMTP provider option. Host/port/user can live in appConfig (public
+      // info); the PASSWORD must be a server-side env var.
+      const smtpHost = activeConfig?.smtpHost || process.env.SMTP_HOST;
+      const smtpPort = parseInt(activeConfig?.smtpPort || process.env.SMTP_PORT || "587", 10);
+      const smtpUser = activeConfig?.smtpUser || process.env.SMTP_USER;
+      const smtpPassword = process.env.SMTP_PASSWORD;
       const smtpFrom = activeConfig?.smtpFrom || smtpUser;
 
       if (!smtpHost || !smtpUser || !smtpPassword) {
         return NextResponse.json({
           success: false,
-          error: "SMTP details are incomplete in App Configuration. Host, User, and Password are required."
+          error: "SMTP details are incomplete. Host and User can be set in App Configuration; the password must be set as the SMTP_PASSWORD env var."
         });
       }
 

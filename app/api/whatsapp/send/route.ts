@@ -28,7 +28,9 @@ export async function POST(req: Request) {
     }
 
     const phoneNumberId = appConfig.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = appConfig.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+    // Access token is server-side only (env var). Never read from the DB
+    // appConfig, which is publicly readable.
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     const whatsappTemplates = appConfig.whatsappTemplates || {};
     const whatsappTemplateVariables = appConfig.whatsappTemplateVariables || {};
 

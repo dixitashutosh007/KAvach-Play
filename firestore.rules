@@ -73,8 +73,18 @@ service cloud.firestore {
     }
 
     match /appConfig/{docId} {
+      // appConfig is read publicly (needed on the login page for club name,
+      // logo, theme). Secret fields must NEVER be written here — they live
+      // in server-side env vars. Any write that includes one of these keys
+      // is rejected.
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow write: if isSuperAdmin()
+        && !incoming().keys().hasAny([
+          'razorpayKeySecret',
+          'smtpPassword',
+          'resendApiKey',
+          'whatsappAccessToken'
+        ]);
     }
 
     match /appUsers/{userId} {

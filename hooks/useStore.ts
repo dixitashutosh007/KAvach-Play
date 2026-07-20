@@ -744,7 +744,20 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updateAppConfig = async (config: Partial<AppConfig>) => {
     try {
-      await updateDoc(doc(db, "appConfig", "default"), cleanPayload(config));
+      // Defense-in-depth: strip any secret field from writes. These belong in
+      // server-side env vars only. The Firestore rules also block them, but
+      // dropping them here means we don't burn a rejected write.
+      const SECRET_FIELDS = new Set([
+        "razorpayKeySecret",
+        "smtpPassword",
+        "resendApiKey",
+        "whatsappAccessToken",
+      ]);
+      const filtered: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(cleanPayload(config))) {
+        if (!SECRET_FIELDS.has(k)) filtered[k] = v;
+      }
+      await updateDoc(doc(db, "appConfig", "default"), filtered);
       await refreshAppConfig();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "appConfig/default");
