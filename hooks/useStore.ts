@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Ground,
   Match,
@@ -82,6 +82,38 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollResponses, setPollResponses] = useState<PollResponse[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
+  // restart subscriptions. Keys: "allPayments" | "allOtherFees" |
+  // `match-payments:${matchId}`. Values: the unsubscribe fn.
+  const lazySubsRef = useRef<Map<string, () => void>>(new Map());
+  const paymentsPerMatchRef = useRef<Map<string, MatchPayment[]>>(new Map());
+  const allPaymentsSnapshotRef = useRef<MatchPayment[]>([]);
+
+  const recomputePayments = useCallback(() => {
+    const dedupedMap = new Map<string, MatchPayment>();
+    const consider = (p: MatchPayment) => {
+      const key = p.guestName ? p.id : `${p.matchId}_${p.playerId}`;
+      const prior = dedupedMap.get(key);
+      if (
+        !prior ||
+        (p.updatedAt?.seconds || 0) > (prior.updatedAt?.seconds || 0)
+      ) {
+        dedupedMap.set(key, p);
+      }
+    };
+    // Prefer whichever snapshot has richer data. If "allPayments" is active it
+    // dominates; otherwise merge per-match snapshots.
+    if (lazySubsRef.current.has("allPayments")) {
+      allPaymentsSnapshotRef.current.forEach(consider);
+    } else {
+      paymentsPerMatchRef.current.forEach((list) => list.forEach(consider));
+    }
+    const merged = Array.from(dedupedMap.values()).sort(
+      (a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0),
+    );
+    setPayments(merged);
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -249,28 +281,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     };
     ensureConfig();
 
-    let unsubPayments: (() => void) | null = null;
-
-    unsubPayments = onSnapshot(
-      collectionGroup(db, "payments"),
-      (snapshot) => {
-        const matchPays = snapshot.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() }) as MatchPayment,
-        );
-        matchPays.sort(
-          (a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0),
-        );
-        const dedupedMap = new Map<string, MatchPayment>();
-        matchPays.forEach((p) => {
-          const key = p.guestName ? p.id : `${p.matchId}_${p.playerId}`;
-          if (!dedupedMap.has(key)) {
-            dedupedMap.set(key, p);
-          }
-        });
-        setPayments(Array.from(dedupedMap.values()));
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "payments"),
-    );
+    // Payments and otherFees are subscribed lazily via ensurePayments /
+    // ensureMatchPayments / ensureOtherFees. Tabs that need them call the
+    // ensure fn on mount. Previously we ran collectionGroup subscriptions
+    // for every logged-in user, which loaded 2000+ payment docs into every
+    // browser regardless of what the user actually opened.
 
     const unsubConfig = onSnapshot(
       doc(db, "appConfig", "default"),
@@ -411,17 +426,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "notifications"),
     );
 
-    const unsubOtherFees = onSnapshot(
-      collectionGroup(db, "otherFees"),
-      (snapshot) => {
-        setOtherFees(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as OtherFee,
-          ),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "otherFees"),
-    );
+    // otherFees now lazy — see ensureOtherFees.
 
     const unsubFeeTemplates = onSnapshot(
       collection(db, "feeTemplates"),
@@ -506,15 +511,79 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       unsubSubscriptionPlans();
       unsubSubscriptionHistory();
       unsubNotifications();
-      unsubOtherFees();
       unsubFeeTemplates();
       unsubOutOfPlays();
       unsubMerchandises();
       unsubMerchOrders();
       unsubPolls();
       unsubPollResponses();
-      if (unsubPayments) unsubPayments();
+      // Tear down lazy subscriptions (payments, otherFees, per-match payments)
+      lazySubsRef.current.forEach((unsub) => unsub());
+      lazySubsRef.current.clear();
+      paymentsPerMatchRef.current.clear();
+      allPaymentsSnapshotRef.current = [];
     };
+  }, [user]);
+
+  // ---- Lazy subscription helpers ----
+
+  const ensurePayments = useCallback(() => {
+    if (!user || lazySubsRef.current.has("allPayments")) return;
+    const unsub = onSnapshot(
+      collectionGroup(db, "payments"),
+      (snapshot) => {
+        allPaymentsSnapshotRef.current = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() }) as MatchPayment,
+        );
+        recomputePayments();
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "payments"),
+    );
+    lazySubsRef.current.set("allPayments", unsub);
+  }, [user, recomputePayments]);
+
+  const ensureMatchPayments = useCallback(
+    (matchId: string) => {
+      if (!user || !matchId) return;
+      const key = `match-payments:${matchId}`;
+      if (lazySubsRef.current.has(key)) return;
+      const unsub = onSnapshot(
+        collection(db, "matches", matchId, "payments"),
+        (snapshot) => {
+          paymentsPerMatchRef.current.set(
+            matchId,
+            snapshot.docs.map(
+              (doc) => ({ id: doc.id, ...doc.data() }) as MatchPayment,
+            ),
+          );
+          recomputePayments();
+        },
+        (err) =>
+          handleFirestoreError(
+            err,
+            OperationType.LIST,
+            `matches/${matchId}/payments`,
+          ),
+      );
+      lazySubsRef.current.set(key, unsub);
+    },
+    [user, recomputePayments],
+  );
+
+  const ensureOtherFees = useCallback(() => {
+    if (!user || lazySubsRef.current.has("allOtherFees")) return;
+    const unsub = onSnapshot(
+      collectionGroup(db, "otherFees"),
+      (snapshot) => {
+        setOtherFees(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as OtherFee,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "otherFees"),
+    );
+    lazySubsRef.current.set("allOtherFees", unsub);
   }, [user]);
 
   const updateAppConfig = async (config: Partial<AppConfig>) => {
@@ -1394,6 +1463,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     deletePost,
     addComment,
     payments: filteredPayments,
+    ensurePayments,
+    ensureMatchPayments,
     updatePaymentStatus,
     addPaymentStatus,
     notifyPlayerPayment,
@@ -1414,6 +1485,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     addSubscriptionHistory,
     notifications,
     otherFees: filteredOtherFees,
+    ensureOtherFees,
     addOtherFee,
     updateOtherFeeStatus,
     deleteOtherFee,

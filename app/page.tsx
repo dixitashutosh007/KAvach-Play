@@ -322,6 +322,33 @@ export default function Home() {
       }
     }
   }, [persona, activeTab, isFeatureEnabled]);
+
+  // Lazy Firestore subscriptions — only start the expensive payments and
+  // otherFees collectionGroup listeners when the user actually opens a tab
+  // that consumes them. Previously these ran for every logged-in user on
+  // login. Idempotent: calling ensurePayments twice does nothing.
+  const PAYMENT_TABS = new Set([
+    "home",
+    "matches",
+    "finance",
+    "dues_and_reminders",
+    "profile",
+    "players",
+    "studio",
+    "settings",
+  ]);
+  const OTHER_FEE_TABS = new Set([
+    "home",
+    "finance",
+    "dues_and_reminders",
+    "players",
+    "profile",
+  ]);
+  useEffect(() => {
+    if (!store.isLoaded) return;
+    if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.();
+    if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.();
+  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees]);
   const effectiveThemeId = previewThemeId || store.appConfig?.globalTheme || "emerald";
   const currentThemeObj =
     THEME_PRESETS.find((t) => t.id === effectiveThemeId) || THEME_PRESETS[0];
