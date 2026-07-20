@@ -1,12 +1,18 @@
 // export-firestore.js
-const fs = require('fs');
+// Exports all root collections AND recursively walks subcollections.
+// Subcollections are nested under `_subcollections: { name: [...docs] }` on
+// each parent doc, so cross-references stay obvious.
+
+const fs = require("fs");
+
+const MAX_DEPTH = 6;
 
 async function exportData() {
-  console.log("=== Firestore to JSON Exporter ===\n");
-  
-  const serviceAccountPath = './serviceAccountKey.json';
+  console.log("=== Firestore to JSON Exporter (with subcollections) ===\n");
+
+  const serviceAccountPath = "./serviceAccountKey.json";
   if (!fs.existsSync(serviceAccountPath)) {
-    console.error("❌ Error: serviceAccountKey.json not found!");
+    console.error("Error: serviceAccountKey.json not found!");
     console.error("\nTo run this script:");
     console.error("1. Go to Firebase Console -> Project Settings -> Service Accounts.");
     console.error("2. Click 'Generate new private key'.");
@@ -16,16 +22,14 @@ async function exportData() {
     process.exit(1);
   }
 
-  const { initializeApp, cert } = require('firebase-admin/app');
-  const { getFirestore } = require('firebase-admin/firestore');
+  const { initializeApp, cert } = require("firebase-admin/app");
+  const { getFirestore } = require("firebase-admin/firestore");
   const serviceAccount = require(serviceAccountPath);
 
   console.log("Initializing Firebase Admin...");
-  const app = initializeApp({
-    credential: cert(serviceAccount)
-  });
+  const app = initializeApp({ credential: cert(serviceAccount) });
 
-  const dbId = 'ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412';
+  const dbId = "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
   let db;
   try {
     db = getFirestore(app, dbId);
@@ -34,37 +38,70 @@ async function exportData() {
     db = getFirestore(app);
   }
 
+  const stats = { collections: 0, docs: 0, subcollections: 0 };
+
+  async function exportDoc(docRef, depth) {
+    const snap = await docRef.get();
+    const data = snap.exists ? { _id: snap.id, ...snap.data() } : { _id: docRef.id };
+
+    if (depth >= MAX_DEPTH) return data;
+
+    const subs = await docRef.listCollections().catch(() => []);
+    if (subs.length === 0) return data;
+
+    data._subcollections = {};
+    for (const sub of subs) {
+      stats.subcollections += 1;
+      const subDocs = await exportCollection(sub, depth + 1);
+      data._subcollections[sub.id] = subDocs;
+    }
+    return data;
+  }
+
+  async function exportCollection(colRef, depth) {
+    const snap = await colRef.get();
+    const out = [];
+    for (const d of snap.docs) {
+      stats.docs += 1;
+      const exported = await exportDoc(d.ref, depth);
+      out.push(exported);
+    }
+    return out;
+  }
+
   const backupData = {};
   console.log(`Connecting to Firestore database: ${dbId}...\n`);
 
   try {
-    // Get all root-level collections
-    const collections = await db.listCollections();
-    
-    if (collections.length === 0) {
+    const roots = await db.listCollections();
+    if (roots.length === 0) {
       console.log("No collections found in this database.");
     }
-    
-    for (const collection of collections) {
-      console.log(`Fetching collection: ${collection.id}...`);
-      backupData[collection.id] = [];
-      const snapshot = await collection.get();
-      
-      snapshot.forEach(doc => {
-        backupData[collection.id].push({
-          _id: doc.id,
-          ...doc.data()
-        });
-      });
-      console.log(`✅ Exported ${snapshot.size} documents from ${collection.id}`);
+
+    for (const collection of roots) {
+      stats.collections += 1;
+      console.log(`Fetching collection: ${collection.id} ...`);
+      const before = stats.docs;
+      backupData[collection.id] = await exportCollection(collection, 1);
+      console.log(
+        `  ${collection.id}: ${stats.docs - before} docs (cumulative subcollections walked so far: ${stats.subcollections})`,
+      );
     }
 
-    const exportPath = './firestore-backup.json';
+    const exportPath = "./firestore-backup.json";
     fs.writeFileSync(exportPath, JSON.stringify(backupData, null, 2));
-    console.log(`\n🎉 Success! Database exported to ${exportPath}`);
-    console.log("This JSON file contains all your data in a clean format that can easily be mapped and uploaded to AWS (DynamoDB, RDS, etc.).");
+
+    const sizeMB = (fs.statSync(exportPath).size / (1024 * 1024)).toFixed(2);
+    console.log("\n=== Done ===");
+    console.log(`  Root collections: ${stats.collections}`);
+    console.log(`  Total documents (including subcollection docs): ${stats.docs}`);
+    console.log(`  Subcollections walked: ${stats.subcollections}`);
+    console.log(`  File: ${exportPath} (${sizeMB} MB)`);
+    console.log(
+      "\nThis file now contains subcollections nested under each parent doc's _subcollections field.",
+    );
   } catch (err) {
-    console.error("\n❌ Error during export:", err);
+    console.error("\nError during export:", err);
   }
 }
 
