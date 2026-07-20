@@ -349,6 +349,21 @@ export default function Home() {
     if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.();
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.();
   }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees]);
+
+  // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
+  // subscriptionHistory audit trail. Non-admin players never load these.
+  useEffect(() => {
+    if (!store.isLoaded) return;
+    if (isAdminUser) {
+      store.ensureAllAppUsers?.();
+      store.ensureSubscriptionHistory?.();
+    }
+  }, [
+    isAdminUser,
+    store.isLoaded,
+    store.ensureAllAppUsers,
+    store.ensureSubscriptionHistory,
+  ]);
   const effectiveThemeId = previewThemeId || store.appConfig?.globalTheme || "emerald";
   const currentThemeObj =
     THEME_PRESETS.find((t) => t.id === effectiveThemeId) || THEME_PRESETS[0];

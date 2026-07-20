@@ -317,20 +317,24 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     })();
     const unsubConfig = () => {};
 
+    // appUsers: default subscription is ONLY the current user's own doc so
+    // role-checking works. The full collection is loaded on demand via
+    // ensureAllAppUsers() when an admin tab needs it. This keeps 100+ PII
+    // docs out of every player's browser.
     const unsubAppUsers = onSnapshot(
-      collection(db, "appUsers"),
-      (snap) => {
-        setAppUsers(
-          snap.docs
-            .map((doc) => ({ id: doc.id, ...doc.data() }) as AppUser)
-            .filter((u) => {
-              const nameLower = (u.name || "").toLowerCase();
-              const emailLower = (u.email || "").toLowerCase();
-              return !nameLower.includes("demo") && !emailLower.includes("demo");
-            }),
-        );
+      doc(db, "appUsers", user.uid),
+      (selfSnap) => {
+        if (!selfSnap.exists()) return;
+        const selfDoc = { id: selfSnap.id, ...selfSnap.data() } as AppUser;
+        const nameLower = (selfDoc.name || "").toLowerCase();
+        const emailLower = (selfDoc.email || "").toLowerCase();
+        if (nameLower.includes("demo") || emailLower.includes("demo")) return;
+        setAppUsers((prev) => {
+          const others = prev.filter((u) => u.id !== selfDoc.id);
+          return [...others, selfDoc];
+        });
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, "appUsers"),
+      (err) => handleFirestoreError(err, OperationType.LIST, "appUsers/self"),
     );
 
     // grounds — one-shot; refreshed by mutation methods below.
@@ -416,18 +420,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     })();
     const unsubSubscriptionPlans = () => {};
 
-    const unsubSubscriptionHistory = onSnapshot(
-      collection(db, "subscriptionHistory"),
-      (snapshot) => {
-        setSubscriptionHistory(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as SubscriptionHistory,
-          ),
-        );
-      },
-      (err) =>
-        handleFirestoreError(err, OperationType.LIST, "subscriptionHistory"),
-    );
+    // subscriptionHistory: no default subscription. Loaded via
+    // ensureSubscriptionHistory() only for admin tabs (RazorReportView,
+    // StudioAdminTab) that actually need audit data.
+    const unsubSubscriptionHistory = () => {};
 
     // Paginated notifications: subscribe to the most recent 50 in real time.
     // Older notifications are loaded on demand via loadMoreNotifications().
@@ -712,6 +708,43 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "otherFees"),
     );
     lazySubsRef.current.set("allOtherFees", unsub);
+  }, [user]);
+
+  const ensureAllAppUsers = useCallback(() => {
+    if (!user || lazySubsRef.current.has("allAppUsers")) return;
+    const unsub = onSnapshot(
+      collection(db, "appUsers"),
+      (snap) => {
+        setAppUsers(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }) as AppUser)
+            .filter((u) => {
+              const nameLower = (u.name || "").toLowerCase();
+              const emailLower = (u.email || "").toLowerCase();
+              return !nameLower.includes("demo") && !emailLower.includes("demo");
+            }),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "appUsers"),
+    );
+    lazySubsRef.current.set("allAppUsers", unsub);
+  }, [user]);
+
+  const ensureSubscriptionHistory = useCallback(() => {
+    if (!user || lazySubsRef.current.has("allSubscriptionHistory")) return;
+    const unsub = onSnapshot(
+      collection(db, "subscriptionHistory"),
+      (snap) => {
+        setSubscriptionHistory(
+          snap.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as SubscriptionHistory,
+          ),
+        );
+      },
+      (err) =>
+        handleFirestoreError(err, OperationType.LIST, "subscriptionHistory"),
+    );
+    lazySubsRef.current.set("allSubscriptionHistory", unsub);
   }, [user]);
 
   const updateAppConfig = async (config: Partial<AppConfig>) => {
@@ -1634,6 +1667,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     notificationsLoadingMore,
     otherFees: filteredOtherFees,
     ensureOtherFees,
+    ensureAllAppUsers,
+    ensureSubscriptionHistory,
     addOtherFee,
     updateOtherFeeStatus,
     deleteOtherFee,
