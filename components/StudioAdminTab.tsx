@@ -10,6 +10,7 @@ import {
   Calendar,
   CreditCard,
   Shield,
+  Bell,
 } from "lucide-react";
 import { SubscriptionPlan, Player } from "@/lib/types";
 import { PlayersTab } from "./PlayersTab";
@@ -241,6 +242,54 @@ function MembersView({
     setPaidDate(inputToDbDate(p.lastPaidDate || ""));
     setPaidAmount(p.lastPaidAmount || 0);
     setAutoCalculated({ start: false, expiry: false, paid: false });
+  };
+
+  const [remindingPlayerId, setRemindingPlayerId] = useState<string | null>(null);
+
+  const handleRemind = async (p: Player) => {
+    if (!p.mobile) {
+      alert("Player has no mobile number.");
+      return;
+    }
+    
+    const expiry = p.studioExpiryDate || p.studioEndDate;
+    if (!expiry) {
+      alert("No expiry date set.");
+      return;
+    }
+
+    const expiryDate = new Date(expiry);
+    const now = new Date();
+    const timeDiff = expiryDate.getTime() - now.getTime();
+    const daysLeft = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    
+    const confirmMsg = daysLeft < 0 
+      ? `Send WhatsApp reminder to ${p.name}? Their subscription expired ${Math.abs(daysLeft)} days ago.`
+      : daysLeft === 0
+      ? `Send WhatsApp reminder to ${p.name}? Their subscription expires today.`
+      : `Send WhatsApp reminder to ${p.name}? They have ${daysLeft} days left.`;
+
+    if (confirm(confirmMsg)) {
+      setRemindingPlayerId(p.id);
+      try {
+        const res = await fetch("/api/whatsapp/remind-studio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: p.mobile,
+            daysLeft,
+            playerName: p.name
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed");
+        alert("Reminder sent successfully!");
+      } catch (err: any) {
+        alert(`Error sending reminder: ${err.message}`);
+      } finally {
+        setRemindingPlayerId(null);
+      }
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -541,6 +590,14 @@ function MembersView({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleRemind(p)}
+                    disabled={remindingPlayerId === p.id}
+                    title="Send WhatsApp Reminder"
+                    className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition group border border-glass-border disabled:opacity-50"
+                  >
+                    <Bell className={`w-4 h-4 ${remindingPlayerId === p.id ? "animate-pulse text-accent" : ""}`} />
+                  </button>
                   <button
                     onClick={() => handleEdit(p)}
                     className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition group border border-glass-border"

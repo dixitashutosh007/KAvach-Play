@@ -1807,7 +1807,7 @@ export default function Home() {
                     </button>
                   )}
 
-                  {isFeatureEnabled("studio") && isStudioUser && (
+                  {isFeatureEnabled("studio") && (
                     <button
                       onClick={() => setActiveTab("studio")}
                       className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
@@ -2208,7 +2208,7 @@ export default function Home() {
             </button>
           )}
 
-          {isFeatureEnabled("studio") && isStudioUser && (
+          {isFeatureEnabled("studio") && (
             <button
               onClick={() => setActiveTab("studio")}
               className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${

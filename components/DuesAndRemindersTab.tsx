@@ -332,7 +332,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                 <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
                   Dues Report
                 </h2>
-                <div className="flex items-center gap-3 bg-white/5 py-1.5 px-3 rounded-xl border border-glass-border">
+                <div className="flex items-center flex-wrap gap-2 sm:gap-3 bg-white/5 py-1.5 px-3 rounded-xl border border-glass-border">
                    <div className="text-[10px] font-bold uppercase tracking-widest text-red-400">Total Due: ₹{grandDue}</div>
                    <div className="w-px h-4 bg-glass-border"></div>
 
@@ -346,7 +346,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                        if (!window.confirm(`Send an email reminder to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?`)) return;
                        
                        const byEmail: Record<string, any> = {};
-                       targetDues.forEach(d => {
+                       targetDues.forEach((d: any) => {
                           if (!d.player.email) return;
                           if (!byEmail[d.player.email]) byEmail[d.player.email] = { player: d.player, dues: [], total: 0 };
                           byEmail[d.player.email].dues.push(d);
@@ -394,11 +394,66 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                             failCount++;
                           }
                        }
-                       alert(`Finished sending reminders. Sent: ${sentCount}, Failed: ${failCount}`);
+                       alert(`Finished sending email reminders. Sent: ${sentCount}, Failed: ${failCount}`);
                      }}
                      className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
                    >
                      {hasSelection ? "Email Remind Selected" : "Email Remind All"}
+                   </button>
+                   <button
+                     onClick={async () => {
+                       const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
+                       if (targetDues.length === 0) {
+                         alert("No dues found to remind."); return;
+                       }
+
+                       if (!window.confirm(`Send WhatsApp API reminders to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?`)) return;
+                       
+                       const byMobile: Record<string, any> = {};
+                       targetDues.forEach((d: any) => {
+                          if (!d.player.mobile) return;
+                          if (!byMobile[d.player.mobile]) byMobile[d.player.mobile] = { player: d.player, dues: [], total: 0 };
+                          byMobile[d.player.mobile].dues.push(d);
+                          byMobile[d.player.mobile].total += d.amount;
+                       });
+
+                       const playersWithMobile = Object.values(byMobile);
+                       if (playersWithMobile.length === 0) {
+                         alert("None of the included players have a mobile number stored.");
+                         return;
+                       }
+                       
+                       let sentCount = 0;
+                       let failCount = 0;
+                       
+                       for (const data of playersWithMobile) {
+                          const link = `${window.location.origin}/pay/${data.player.id}`;
+                          try {
+                            const res = await fetch("/api/whatsapp/send", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                to: data.player.mobile,
+                                name: data.player.name,
+                                amount: data.total,
+                                link: link,
+                              })
+                            });
+                            
+                            if (res.ok) {
+                              sentCount++;
+                            } else {
+                              failCount++;
+                            }
+                          } catch (e) {
+                            failCount++;
+                          }
+                       }
+                       alert(`Finished sending WhatsApp reminders. Sent: ${sentCount}, Failed: ${failCount}`);
+                     }}
+                     className={`${hasSelection ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
+                   >
+                     {hasSelection ? "WA Remind Selected" : "WA Remind All"}
                    </button>
                    <button
                      onClick={() => {
@@ -419,14 +474,12 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                           byGroup[groupTitle].forEach((d: any, index: number) => {
                             let phone = d.player.mobile || '';
                             let digits = phone.replace(/\D/g, '');
-                            if (digits.startsWith('91') && digits.length === 12) {
-                               // format is fine
+                            if (digits.startsWith('0') && digits.length === 11) {
+                               digits = '91' + digits.substring(1);
                             } else if (digits.length === 10) {
                                digits = '91' + digits;
-                            } else if (digits.startsWith('0') && digits.length === 11) {
-                               digits = '91' + digits.substring(1);
                             }
-                            const tag = digits ? `@${digits}` : '';
+                            const tag = digits ? `@+${digits}` : '';
                             text += `${index + 1}. ${d.player.name} ${tag}\n`;
                           });
                           text += `\n`;
@@ -543,7 +596,43 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                                     }}
                                     className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
                                   >
-                                    WA App
+                                    WA (Manual)
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!item.player.mobile) {
+                                        alert("Player does not have a mobile number saved.");
+                                        return;
+                                      }
+                                      const link = `${window.location.origin}/pay/${item.player.id}`;
+                                      try {
+                                        const res = await fetch("/api/whatsapp/send", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            to: item.player.mobile,
+                                            name: item.player.name,
+                                            amount: item.amount,
+                                            link: link,
+                                          })
+                                        });
+                                        if (res.ok) {
+                                          alert("WhatsApp API reminder sent successfully!");
+                                        } else {
+                                          const err = await res.json();
+                                          let detailsStr = "";
+                                          if (err.details) {
+                                            detailsStr = `\nDetails: ${err.details.message || JSON.stringify(err.details)}`;
+                                          }
+                                          alert(`Failed: ${err.error || "Network error"}${detailsStr}`);
+                                        }
+                                      } catch(e: any) {
+                                        alert(`Failed: ${e.message || "Failed to send WhatsApp API reminder."}`);
+                                      }
+                                    }}
+                                    className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                                  >
+                                    WA API
                                   </button>
 
                                   {item.player.email && (

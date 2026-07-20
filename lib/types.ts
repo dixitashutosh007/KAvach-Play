@@ -28,6 +28,21 @@ export type AppConfig = {
     due_reminder?: { subject: string; body: string };
     payment_success?: { subject: string; body: string };
   };
+  whatsappProvider?: "meta" | "none";
+  whatsappPhoneNumberId?: string;
+  whatsappAccessToken?: string;
+  whatsappTemplates?: {
+    studio_expiry_reminder?: string;
+    studio_expired_reminder?: string;
+    studio_expires_today?: string;
+    payment_reminder?: string;
+  };
+  whatsappTemplateVariables?: {
+    studio_expiry_reminder?: string;
+    studio_expired_reminder?: string;
+    studio_expires_today?: string;
+    payment_reminder?: string;
+  };
   isStudioEnabled?: boolean;
   features?: {
     payments: boolean;
@@ -90,6 +105,8 @@ export type Ground = {
   mapUrl: string;
   organiserName: string;
   gpayNumber: string;
+  practiceFee?: number;
+  tournamentFee?: number;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -124,6 +141,8 @@ export type Match = {
   isTentative?: boolean;
   tentativelyBlockedBy?: string;
   isArchived?: boolean;
+  isGroundFeePaid?: boolean;
+  groundFeePaidAmount?: number;
   createdAt?: any;
   updatedAt?: any;
 };

@@ -321,10 +321,35 @@ export function ShopTab({
           return;
         }
 
+        const hasJerseyDetails = selectedMerch.category === "Jersey" || selectedMerch.requirePlayerDetails;
+
+        const orderPayload = {
+          playerId: playerProfile?.id || user?.uid || "unknown",
+          playerName: playerProfile?.name || userProfile?.name || "Anonymous Player",
+          merchId: selectedMerch.id,
+          merchName: selectedMerch.name,
+          size: orderSize,
+          spec: orderSpec || undefined,
+          customSelections: Object.keys(orderCustomSelections).length > 0 ? orderCustomSelections : undefined,
+          customPriceAdditions: customPriceAdditions > 0 ? customPriceAdditions : undefined,
+          jerseyName: hasJerseyDetails ? customJerseyName : undefined,
+          jerseyNumber: hasJerseyDetails ? customJerseyNumber : undefined,
+          price: finalPrice,
+          paymentStatus: "Paid",
+          deliveryStatus: "Processing" as const,
+        };
+
         const res = await fetch("/api/razorpay/order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: finalPrice, currency: "INR" }),
+          body: JSON.stringify({
+            amount: finalPrice,
+            currency: "INR",
+            intentData: {
+              type: "merch_order",
+              orderPayload: orderPayload
+            }
+          }),
         });
 
         if (!res.ok) {
@@ -345,7 +370,8 @@ export function ShopTab({
           },
           prefill: {
             name: playerProfile?.name || userProfile?.name || "Player",
-            email: user?.email || "",
+            email: user?.email || playerProfile?.email || userProfile?.email || "",
+            contact: playerProfile?.mobile || userProfile?.mobile || "",
           },
           theme: {
             color: "#FF3366", // Accent color

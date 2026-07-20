@@ -25,6 +25,8 @@ import {
   PieChart,
   CheckCircle2,
   Archive,
+  Shirt,
+  Circle,
 } from "lucide-react";
 import { format, isToday, isWithinInterval, addDays, parseISO } from "date-fns";
 import { motion } from "motion/react";
@@ -307,7 +309,9 @@ export function HomeTab({
         {hasAlerts && (
           <div className="md:col-span-12 flex flex-col gap-4">
           {activeMatchAlerts.map(({ match, isStarted, diffStr }) => {
-            const groundName = store.grounds.find((g) => g.id === match.groundId)?.name || 'Unknown Ground';
+            const ground = store.grounds.find((g) => g.id === match.groundId);
+            const groundName = ground?.name || 'Unknown Ground';
+            const mapUrl = `/api/map-redirect?url=${encodeURIComponent(ground?.mapUrl || "")}&name=${encodeURIComponent(groundName)}`;
             return (
               <div 
                 key={`alert-${match.id}`} 
@@ -317,9 +321,29 @@ export function HomeTab({
                   <Clock className="w-24 h-24 text-emerald-400" />
                 </div>
                 <div className="relative z-10">
-                  <span className="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-black uppercase tracking-widest rounded-full mb-3">
-                    Match Day
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-black uppercase tracking-widest rounded-full">
+                      Match Day
+                    </span>
+                    {match.jerseyColor === "Scarlet Red" && (
+                       <div className="flex items-center gap-1.5 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full text-xs font-bold text-red-400">
+                          <Shirt className="w-3.5 h-3.5 fill-red-500 text-red-500" />
+                          <span>Red Jersey</span>
+                          <span className="text-white/20 mx-0.5">•</span>
+                          <Circle className="w-3 h-3 fill-white text-white" />
+                          <span className="text-white">White Ball</span>
+                       </div>
+                    )}
+                    {match.jerseyColor === "Whites" && (
+                       <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-white">
+                          <Shirt className="w-3.5 h-3.5 fill-white text-white" />
+                          <span>White Jersey</span>
+                          <span className="text-white/20 mx-0.5">•</span>
+                          <Circle className="w-3 h-3 fill-red-600 text-red-600" />
+                          <span className="text-red-400">Red Ball</span>
+                       </div>
+                    )}
+                  </div>
                   <h2 className="text-xl font-bold text-white mb-1">
                     {isStarted ? "Match has started!" : `You are playing in ${diffStr}`}
                   </h2>
@@ -328,7 +352,7 @@ export function HomeTab({
                   </p>
                   
                   <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(groundName)}`}
+                    href={mapUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex w-full sm:w-auto items-center justify-center gap-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 py-2.5 px-4 rounded-xl transition text-sm font-bold border border-emerald-500/30"
@@ -385,82 +409,106 @@ export function HomeTab({
                     <h4 className="font-bold text-lg text-white mb-1 truncate">
                       vs {match.opponent}
                     </h4>
-                    <p className="text-xs text-white/60 mb-2">
-                       {format(new Date(match.date), "MMM do, yyyy")} • {match.format}
-                    </p>
+                    <div className="flex flex-col gap-1.5 mb-2">
+                       <p className="text-xs text-white/60">
+                          {format(new Date(match.date), "MMM do, yyyy")} • {match.format}
+                       </p>
+                       <div className="flex items-center gap-2">
+                         {match.jerseyColor === "Scarlet Red" && (
+                            <div className="flex items-center gap-1 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[10px] font-bold text-red-400">
+                               <Shirt className="w-3 h-3 fill-red-500 text-red-500" />
+                               <span>Red</span>
+                               <span className="text-white/20 mx-0.5">•</span>
+                               <Circle className="w-2.5 h-2.5 fill-white text-white" />
+                               <span className="text-white">White</span>
+                            </div>
+                         )}
+                         {match.jerseyColor === "Whites" && (
+                            <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] font-bold text-white">
+                               <Shirt className="w-3 h-3 fill-white text-white" />
+                               <span>White</span>
+                               <span className="text-white/20 mx-0.5">•</span>
+                               <Circle className="w-2.5 h-2.5 fill-red-600 text-red-600" />
+                               <span className="text-red-400">Red</span>
+                            </div>
+                         )}
+                       </div>
+                    </div>
                     <p className="text-xs font-bold text-accent mb-4">
                        {match.matchType} • {store.grounds.find((g) => g.id === match.groundId)?.name || 'Unknown Ground'}
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase font-bold text-white/50 tracking-wide text-center">
-                      Availability
-                    </p>
-                    <div className="flex gap-2">
-                      {["Yes", "No", "Tentative"].map((avStat) => {
-                        let isSelected = false;
-                        if (avStat === "Yes") isSelected = isConfirmed;
-                        if (avStat === "No") isSelected = isNo;
-                        if (avStat === "Tentative") isSelected = isTentative;
-
-                        return (
-                          <button
-                            key={avStat}
-                            onClick={async () => {
-                              let finalAvStat = avStat as any;
-                              if (avStat === "Yes") finalAvStat = "Confirmed";
-
-                              if (myPayment) {
-                                await store.updateMatchAvailability(
-                                  myPayment.id,
-                                  finalAvStat,
-                                  match.id
-                                );
-                                if (
-                                  finalAvStat === "Confirmed" &&
-                                  myPayment.status === "Not Playing"
-                                ) {
-                                  await store.updatePaymentStatus(
+                  {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] uppercase font-bold text-white/50 tracking-wide text-center">
+                        Availability
+                      </p>
+                      <div className="flex gap-2">
+                        {["Yes", "No", "Tentative"].map((avStat) => {
+                          let isSelected = false;
+                          if (avStat === "Yes") isSelected = isConfirmed;
+                          if (avStat === "No") isSelected = isNo;
+                          if (avStat === "Tentative") isSelected = isTentative;
+  
+                          return (
+                            <button
+                              key={avStat}
+                              onClick={async () => {
+                                let finalAvStat = avStat as any;
+                                if (avStat === "Yes") finalAvStat = "Confirmed";
+  
+                                if (myPayment) {
+                                  await store.updateMatchAvailability(
                                     myPayment.id,
-                                    "Unpaid",
+                                    finalAvStat,
                                     match.id
                                   );
-                                } else if (
-                                  (finalAvStat === "No" ||
-                                    finalAvStat === "Tentative") &&
-                                  myPayment.status === "Unpaid"
-                                ) {
-                                  await store.updatePaymentStatus(
-                                    myPayment.id,
-                                    "Not Playing",
-                                    match.id
+                                  if (
+                                    finalAvStat === "Confirmed" &&
+                                    myPayment.status === "Not Playing"
+                                  ) {
+                                    await store.updatePaymentStatus(
+                                      myPayment.id,
+                                      "Unpaid",
+                                      match.id
+                                    );
+                                  } else if (
+                                    (finalAvStat === "No" ||
+                                      finalAvStat === "Tentative") &&
+                                    myPayment.status === "Unpaid"
+                                  ) {
+                                    await store.updatePaymentStatus(
+                                      myPayment.id,
+                                      "Not Playing",
+                                      match.id
+                                    );
+                                  }
+                                } else {
+                                  await store.addPaymentWithAvailability(
+                                    match.id,
+                                    mePlayer.id,
+                                    finalAvStat
                                   );
                                 }
-                              } else {
-                                await store.addPaymentWithAvailability(
-                                  match.id,
-                                  mePlayer.id,
-                                  finalAvStat
-                                );
-                              }
-                            }}
-                            className={`flex-[1] py-2 rounded-lg font-bold text-xs border transition ${
-                              isSelected
-                                ? avStat === "Yes"
-                                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-md"
-                                  : avStat === "No"
-                                  ? "bg-red-500/20 text-red-500 border-red-500/50 shadow-md"
-                                  : "bg-amber-500/20 text-amber-500 border-amber-500/50 shadow-md"
-                                : "bg-transparent text-white border-glass-border hover:bg-white/5"
-                            }`}
-                          >
-                            {avStat}
-                          </button>
-                        );
-                      })}
+                              }}
+                              className={`flex-[1] py-2 rounded-lg font-bold text-xs border transition ${
+                                isSelected
+                                  ? avStat === "Yes"
+                                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-md"
+                                    : avStat === "No"
+                                    ? "bg-red-500/20 text-red-500 border-red-500/50 shadow-md"
+                                    : "bg-amber-500/20 text-amber-500 border-amber-500/50 shadow-md"
+                                  : "bg-transparent text-white border-glass-border hover:bg-white/5"
+                              }`}
+                            >
+                              {avStat}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}

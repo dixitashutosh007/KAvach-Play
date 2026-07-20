@@ -212,7 +212,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
         },
         prefill: {
           name: appUser?.name || player?.name || "Kavach Player",
-          email: appUser?.email || "",
+          email: appUser?.email || player?.email || "",
           contact: appUser?.mobile || player?.mobile || "",
         },
         theme: {
@@ -423,19 +423,44 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
     </div>
   );
 
-  if (!isStudioUser) {
+  const hasPastSubscription = !!(
+    player?.studioExpiryDate ||
+    player?.studioEndDate ||
+    appUser?.studioExpiryDate ||
+    appUser?.studioEndDate ||
+    player?.lastPaidDate ||
+    appUser?.lastPaidDate
+  );
+
+  if (!isStudioUser && !hasPastSubscription) {
     return (
-      <div className="glass p-6 text-center text-white/50 rounded-2xl border border-glass-border flex flex-col h-full min-h-[60vh]">
+      <div className="glass p-6 text-center text-white/50 rounded-2xl border border-glass-border flex flex-col h-full">
         <div className="flex-1 flex flex-col items-center justify-center space-y-4 pt-10 pb-8">
           <div className="w-16 h-16 bg-accent/10 border border-accent/20 rounded-full flex items-center justify-center mx-auto mb-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-            <Video className="w-8 h-8 text-accent animate-pulse" />
+            <Sparkles className="w-8 h-8 text-accent animate-pulse" />
           </div>
-          <h2 className="text-xl font-bold text-white">Studio Access Denied</h2>
-          <p className="text-sm max-w-sm mx-auto text-white/60">
-            You need an active{" "}
-            <strong className="text-white">Studio Membership</strong> to view
-            matches analysis, live streams, and coaching reels.
+          <h2 className="text-2xl font-bold text-white tracking-tight">Unlock Kavach Studio Membership</h2>
+          <p className="text-sm max-w-lg mx-auto text-white/70 leading-relaxed mb-6">
+            You are currently not a Kavach Studio Member. Subscribe to a plan that fits your needs and become an exclusive part of our Practice Session Club. Explore the premium benefits below:
           </p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full text-left mb-6">
+            {[
+              "Practice Nets",
+              "Daily Morning Practice Sessions",
+              "Weekday Evening Flood Light Practice Sessions",
+              "Usage of Bowling Machine",
+              "Usage of Quarter Fields",
+              "Studio Jersey (on selected plans)",
+              "20% Discount on Play Arena Activities*",
+              "20% Discount on Play Arena Dine-In"
+            ].map((benefit, i) => (
+              <div key={i} className="flex items-start gap-2 bg-white/5 p-3 rounded-xl border border-glass-border">
+                <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
+                <span className="text-sm font-medium text-white/90">{benefit}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {plansGrid}

@@ -17,6 +17,8 @@ export function GroundsTab({
     mapUrl: "",
     organiserName: "",
     gpayNumber: "",
+    practiceFee: 0,
+    tournamentFee: 0,
   });
 
   const handleCreateOrUpdate = (e: React.FormEvent) => {
@@ -28,27 +30,33 @@ export function GroundsTab({
       store.addGround(formData);
     }
     setIsAdding(false);
-    setFormData({ name: "", mapUrl: "", organiserName: "", gpayNumber: "" });
+    setFormData({ name: "", mapUrl: "", organiserName: "", gpayNumber: "", practiceFee: 0, tournamentFee: 0 });
   };
 
   const handleEdit = (ground: any) => {
     setFormData({
-      name: ground.name,
-      mapUrl: ground.mapUrl,
-      organiserName: ground.organiserName,
-      gpayNumber: ground.gpayNumber,
+      name: ground.name || "",
+      mapUrl: ground.mapUrl || "",
+      organiserName: ground.organiserName || "",
+      gpayNumber: ground.gpayNumber || "",
+      practiceFee: ground.practiceFee || 0,
+      tournamentFee: ground.tournamentFee || 0,
     });
     setEditingId(ground.id);
     setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDuplicate = (ground: any) => {
     store.addGround({
       name: `${ground.name} (Copy)`,
-      mapUrl: ground.mapUrl,
-      organiserName: ground.organiserName,
-      gpayNumber: ground.gpayNumber,
+      mapUrl: ground.mapUrl || "",
+      organiserName: ground.organiserName || "",
+      gpayNumber: ground.gpayNumber || "",
+      practiceFee: ground.practiceFee || 0,
+      tournamentFee: ground.tournamentFee || 0,
     });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = (id: string) => {
@@ -74,9 +82,12 @@ export function GroundsTab({
                   mapUrl: "",
                   organiserName: "",
                   gpayNumber: "",
+                  practiceFee: 0,
+                  tournamentFee: 0,
                 });
               } else {
                 setIsAdding(true);
+                window.scrollTo({ top: 0, behavior: "smooth" });
               }
             }}
             className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-black shadow hover:bg-accent/90 transition"
@@ -157,6 +168,42 @@ export function GroundsTab({
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <span>Practice Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.practiceFee}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    practiceFee: e.target.value === "" ? 0 : parseInt(e.target.value) || 0,
+                  })
+                }
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <span>Tournament Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.tournamentFee}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    tournamentFee: e.target.value === "" ? 0 : parseInt(e.target.value) || 0,
+                  })
+                }
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              />
+            </div>
+          </div>
           <div className="pt-2 flex gap-2">
             <button
               type="button"
@@ -168,6 +215,8 @@ export function GroundsTab({
                   mapUrl: "",
                   organiserName: "",
                   gpayNumber: "",
+                  practiceFee: 0,
+                  tournamentFee: 0,
                 });
               }}
               className="flex-1 rounded-lg bg-white/5 py-2.5 text-sm font-bold text-white hover:bg-white/10 transition"
@@ -255,6 +304,22 @@ export function GroundsTab({
                 </div>
               </div>
             </div>
+            {(ground.practiceFee || ground.tournamentFee) ? (
+              <div className="mt-3 flex items-center justify-between text-sm text-white/60 border-t border-glass-border pt-3">
+                {ground.practiceFee ? (
+                   <div>
+                     <p className="text-[11px] uppercase tracking-wider text-white/40">Practice</p>
+                     <p className="font-mono text-white font-medium text-[13px]">₹{ground.practiceFee}</p>
+                   </div>
+                ) : <div />}
+                {ground.tournamentFee ? (
+                   <div className="text-right">
+                     <p className="text-[11px] uppercase tracking-wider text-white/40">Tournament</p>
+                     <p className="font-mono text-white font-medium text-[13px]">₹{ground.tournamentFee}</p>
+                   </div>
+                ) : <div />}
+              </div>
+            ) : null}
           </div>
         ))}
         {store.grounds.length === 0 && (

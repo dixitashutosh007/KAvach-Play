@@ -20,6 +20,7 @@ import {
   MapPin,
   Search,
   Check,
+  CheckCircle2,
   MessageSquare,
   Trash2,
   X,
@@ -79,6 +80,14 @@ export function MatchesTab({
     }
   }, [defaultAction, store.matches]);
 
+  const getInitialFee = () => {
+     const ground = store.grounds[0];
+     if (ground && ground.practiceFee) {
+        return Math.round((ground.practiceFee / 12) * 1.04);
+     }
+     return "";
+  };
+
   const [formData, setFormData] = useState<
     Omit<Match, "id" | "createdAt" | "updatedAt" | "fee"> & { fee: number | "" }
   >({
@@ -87,7 +96,7 @@ export function MatchesTab({
     jerseyColor: "Scarlet Red",
     opponent: "",
     matchType: "Practice",
-    fee: "",
+    fee: getInitialFee(),
     date: dbToInputDate(new Date().toISOString().split("T")[0]),
     time: "09:00",
     maxSquadSize: 12,
@@ -112,7 +121,7 @@ export function MatchesTab({
   useEffect(() => {
     if (store.grounds.length > 0 && !formData.groundId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormData((prev) => ({ ...prev, groundId: store.grounds[0].id }));
+      setFormData((prev) => ({ ...prev, groundId: store.grounds[0].id, fee: getInitialFee() }));
     }
   }, [store.grounds, formData.groundId]);
 
@@ -140,7 +149,7 @@ export function MatchesTab({
       jerseyColor: "Scarlet Red",
       opponent: "",
       matchType: "Practice",
-      fee: "",
+      fee: getInitialFee(),
       date: dbToInputDate(new Date().toISOString().split("T")[0]),
       time: "09:00",
       maxSquadSize: 12,
@@ -356,9 +365,18 @@ export function MatchesTab({
                   <select
                     required
                     value={formData.groundId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, groundId: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const newGroundId = e.target.value;
+                      const ground = store.grounds.find(g => g.id === newGroundId);
+                      let newFee = formData.fee;
+                      if (ground) {
+                         const groundFee = formData.matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+                         if (groundFee > 0) {
+                             newFee = Math.round((groundFee / 12) * 1.04);
+                         }
+                      }
+                      setFormData({ ...formData, groundId: newGroundId, fee: newFee });
+                    }}
                     className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
                   >
                     <option value="" disabled>
@@ -537,12 +555,22 @@ export function MatchesTab({
                           name="matchType"
                           value={type}
                           checked={formData.matchType === type}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const newMatchType = e.target.value as Match["matchType"];
+                            const ground = store.grounds.find(g => g.id === formData.groundId);
+                            let newFee = formData.fee;
+                            if (ground) {
+                               const groundFee = newMatchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+                               if (groundFee > 0) {
+                                   newFee = Math.round((groundFee / 12) * 1.04);
+                               }
+                            }
                             setFormData({
                               ...formData,
-                              matchType: e.target.value as Match["matchType"],
-                            })
-                          }
+                              matchType: newMatchType,
+                              fee: newFee
+                            });
+                          }}
                         />
                         {type}
                       </label>
@@ -1003,6 +1031,11 @@ export function MatchesTab({
                         </div>
                         {isAdmin && (
                           <div className="flex items-center gap-1.5 text-xs">
+                            {match.isGroundFeePaid && (
+                               <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
+                                   Ground Fee Paid (₹{match.groundFeePaidAmount})
+                               </div>
+                            )}
                             <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">
                               ₹{paidCount * match.fee}
                             </div>
@@ -1329,6 +1362,9 @@ export function MatchPayments({
   const [newComment, setNewComment] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  
+  const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
+  const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
 
   useEffect(() => {
     // Dynamically load Razorpay SDK
@@ -1340,6 +1376,41 @@ export function MatchPayments({
       document.body.appendChild(script);
     }
   }, []);
+
+  const handleGroupRemind = () => {
+    const ground = store.grounds.find(g => g.id === match.groundId);
+    
+    let text = `🏏 *Upcoming Match Reminder* 🏏\n`;
+    text += `*Date*: ${formatDate(match.date)}\n`;
+    text += `*Time*: ${match.time || 'TBD'}\n`;
+    text += `*Ground*: ${ground?.name || 'TBD'}\n`;
+    if (ground?.mapUrl) {
+       text += `*Location*: ${ground.mapUrl}\n`;
+    }
+    
+    if (groupRemindCustomMsg.trim()) {
+       text += `\n${groupRemindCustomMsg.trim()}\n`;
+    }
+    
+    text += `\n*Squad*:\n`;
+    
+    const playing = matchPayments.filter(p => p.status !== "Not Playing");
+    playing.forEach(p => {
+       const player = store.players.find(pl => pl.id === p.playerId);
+       if (player?.mobile) {
+           let mob = player.mobile.replace(/\D/g, '');
+           if (mob.startsWith('0') && mob.length === 11) mob = "91" + mob.substring(1);
+           else if (mob.length === 10) mob = "91" + mob;
+           text += `@+${mob} `;
+       } else if (player) {
+           text += `${player.name} `;
+       }
+    });
+    
+    const encoded = encodeURIComponent(text);
+    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    setIsGroupRemindModalOpen(false);
+  };
 
   const handlePaySecure = async () => {
     if (!myPayment || !match.fee) return;
@@ -1402,7 +1473,7 @@ export function MatchPayments({
         },
         prefill: {
           name: appUser?.name || mePlayer?.name || "Player",
-          email: appUser?.email || "",
+          email: appUser?.email || mePlayer?.email || "",
           contact: appUser?.mobile || mePlayer?.mobile || "",
         },
         theme: {
@@ -1580,21 +1651,31 @@ export function MatchPayments({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <button
           onClick={onBack}
           className="text-[13px] font-bold uppercase tracking-wider text-white/50 flex items-center gap-1 hover:text-white transition"
         >
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
-        {isAdmin && onEdit && (
-          <button
-            onClick={onEdit}
-            className="text-[11px] font-bold uppercase tracking-widest text-accent bg-accent/10 px-3 py-1.5 rounded-lg hover:bg-accent/20 transition"
-          >
-            Edit Match
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {isAdmin && (
+            <button
+              onClick={() => setIsGroupRemindModalOpen(true)}
+              className="text-[11px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition flex items-center gap-1 border border-emerald-500/20"
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> Remind Group
+            </button>
+          )}
+          {isAdmin && onEdit && (
+            <button
+              onClick={onEdit}
+              className="text-[11px] font-bold uppercase tracking-widest text-accent bg-accent/10 px-3 py-1.5 rounded-lg hover:bg-accent/20 transition"
+            >
+              Edit Match
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="glass rounded-xl p-4">
@@ -1628,7 +1709,8 @@ export function MatchPayments({
             </label>
           )}
         </div>
-        <div className="flex gap-3 text-sm text-white/60 mb-4 font-mono flex-wrap">
+
+        <div className="flex gap-3 text-sm text-white/60 mb-4 font-mono flex-wrap items-center">
           <span>{formatDate(match.date)}</span>
           <span>•</span>
           <span>
@@ -1636,6 +1718,14 @@ export function MatchPayments({
           </span>
           <span>•</span>
           <span className="text-accent font-bold">Fee: ₹{match.fee}</span>
+          {match.isGroundFeePaid && (
+              <>
+                  <span>•</span>
+                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Ground Fee Paid (₹{match.groundFeePaidAmount})
+                  </span>
+              </>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1803,7 +1893,7 @@ export function MatchPayments({
             return (
               <div className="mt-4 pt-4 border-t border-glass-border">
                 <a
-                  href={ground.mapUrl}
+                  href={`/api/map-redirect?url=${encodeURIComponent(ground.mapUrl)}&name=${encodeURIComponent(ground.name)}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 text-sm text-white/80 hover:text-accent transition group"
@@ -2354,6 +2444,47 @@ export function MatchPayments({
           </button>
         </form>
       </div>
+
+      {/* Group Remind Modal */}
+      {isGroupRemindModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
+            <button
+              onClick={() => setIsGroupRemindModalOpen(false)}
+              className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" /> Remind Group
+            </h3>
+            <p className="text-xs text-white/60 mb-4 leading-relaxed">
+              This will open WhatsApp with the match details and squad list. You can select your club's WhatsApp group to send the message.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Optional Custom Message
+                </label>
+                <textarea
+                  value={groupRemindCustomMsg}
+                  onChange={(e) => setGroupRemindCustomMsg(e.target.value)}
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-white placeholder-white/30"
+                  placeholder="e.g., Please reach 15 mins early!"
+                  rows={3}
+                />
+              </div>
+              <button
+                onClick={handleGroupRemind}
+                className="w-full bg-emerald-500 text-black font-bold py-2.5 rounded-lg hover:bg-emerald-400 transition shadow flex items-center justify-center gap-2"
+              >
+                Continue to WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -2872,6 +3003,11 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                       <div className="text-[10px] text-white/50">
                                         {grounds.find((g) => g.id === m.groundId)?.name}
                                       </div>
+                                      {isAdmin && m.isGroundFeePaid && (
+                                        <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
+                                          <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -2983,6 +3119,12 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                 {m.groundId && (
                                   <div className="text-[9px] uppercase tracking-widest text-white/60 truncate mt-0.5">
                                     {grounds.find((g) => g.id === m.groundId)?.name || "Unknown Ground"}
+                                  </div>
+                                )}
+                                
+                                {isAdmin && m.isGroundFeePaid && (
+                                  <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
+                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
                                   </div>
                                 )}
                                 

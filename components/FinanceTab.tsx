@@ -323,7 +323,7 @@ export function PlayerFinanceView({
         },
         prefill: {
           name: appUser?.name || mePlayer?.name || "Player",
-          email: appUser?.email || "",
+          email: appUser?.email || mePlayer?.email || "",
           contact: appUser?.mobile || mePlayer?.mobile || "",
         },
         theme: {
@@ -438,24 +438,6 @@ export function PlayerFinanceView({
                     <div className="font-mono font-bold text-red-400">
                       ₹{due.amount}
                     </div>
-                    {due.type !== "match" && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (confirm("Are you sure you want to delete this fee?")) {
-                            if (due.type === "other" && due.playerId) {
-                              await store.deleteOtherFee(due.playerId, due.rawId);
-                            } else if (due.type === "merch") {
-                              await store.deleteMerchOrder(due.rawId);
-                            }
-                          }
-                        }}
-                        className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-red-500/10 transition-colors"
-                        title="Delete Fee"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -1118,7 +1100,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <div className="font-bold text-white text-sm">
-                        {data.match.opponent}
+                        {data.match.opponent} {data.match.isGroundFeePaid && <span className="text-emerald-400 font-normal block mt-0.5 text-xs">(Ground Fee Paid: ₹{data.match.groundFeePaidAmount})</span>}
                       </div>
                       <div className="text-xs text-white/50">
                         {data.match.date}

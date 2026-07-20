@@ -59,6 +59,39 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   );
   const [smtpFrom, setSmtpFrom] = useState(store.appConfig?.smtpFrom || "");
 
+  // WhatsApp state
+  const [whatsappProvider, setWhatsappProvider] = useState<"meta" | "none">(
+    store.appConfig?.whatsappProvider || "none"
+  );
+  const [whatsappPhoneNumberId, setWhatsappPhoneNumberId] = useState(
+    store.appConfig?.whatsappPhoneNumberId || ""
+  );
+  const [whatsappAccessToken, setWhatsappAccessToken] = useState(
+    store.appConfig?.whatsappAccessToken || ""
+  );
+
+  const defaultWhatsappTemplates = {
+    studio_expiry_reminder: "studio_expiry_reminder",
+    studio_expired_reminder: "studio_expired_reminder",
+    studio_expires_today: "studio_expires_today",
+    payment_reminder: "payment_reminder_v1",
+  };
+
+  const [whatsappTemplates, setWhatsappTemplates] = useState(
+    store.appConfig?.whatsappTemplates || defaultWhatsappTemplates
+  );
+
+  const defaultWhatsappTemplateVariables = {
+    studio_expiry_reminder: "daysLeft",
+    studio_expired_reminder: "daysLeft",
+    studio_expires_today: "",
+    payment_reminder: "playerName,amount,link"
+  };
+
+  const [whatsappTemplateVariables, setWhatsappTemplateVariables] = useState(
+    store.appConfig?.whatsappTemplateVariables || defaultWhatsappTemplateVariables
+  );
+
 
   // Preview state
   const [previewLoadingTheme, setPreviewLoadingTheme] = useState<
@@ -68,7 +101,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   // Collapsible sections state
   const [isAppConfigOpen, setIsAppConfigOpen] = useState(true);
   const [isRazorpayOpen, setIsRazorpayOpen] = useState(false);
-  const [isEmailServiceOpen, setIsEmailServiceOpen] = useState(false);
+  const [isNotificationHubOpen, setIsNotificationHubOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
   const [isAppFeaturesOpen, setIsAppFeaturesOpen] = useState(false);
   const [isMatchConfigOpen, setIsMatchConfigOpen] = useState(false);
@@ -216,6 +249,11 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       smtpPassword,
       smtpFrom,
       emailTemplates,
+      whatsappProvider,
+      whatsappPhoneNumberId,
+      whatsappAccessToken,
+      whatsappTemplates,
+      whatsappTemplateVariables,
       isStudioEnabled,
       features,
       matchConfiguration,
@@ -504,16 +542,16 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           <div className="border-t border-glass-border pt-4 mt-2 space-y-4">
             <button
               type="button"
-              onClick={() => setIsEmailServiceOpen(!isEmailServiceOpen)}
+              onClick={() => setIsNotificationHubOpen(!isNotificationHubOpen)}
               className="w-full flex items-center justify-between focus:outline-none"
             >
               <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent flex items-center justify-between mb-0">
-                <span>Email Service Core</span>
+                <span>Notification Hub (Email & WhatsApp)</span>
               </h3>
-              {isEmailServiceOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
+              {isNotificationHubOpen ? <ChevronDown className="w-4 h-4 text-accent" /> : <ChevronRight className="w-4 h-4 text-accent" />}
             </button>
 
-            {isEmailServiceOpen && (
+            {isNotificationHubOpen && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-white/5 border border-glass-border animate-fade-in mt-3">
                   <div>
@@ -687,6 +725,158 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* WhatsApp Module */}
+            <div className="space-y-4 p-4 rounded-xl bg-white/5 border border-glass-border">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-white/10 pb-2">
+                💬 WhatsApp Settings (Meta Graph API)
+              </h4>
+              <div className="flex items-center gap-3 mt-2">
+                <input
+                  type="checkbox"
+                  checked={whatsappProvider === "meta"}
+                  onChange={(e) => setWhatsappProvider(e.target.checked ? "meta" : "none")}
+                  className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
+                />
+                <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Enable WhatsApp Reminders
+                </label>
+              </div>
+              
+              {whatsappProvider === "meta" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      Phone Number ID
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappPhoneNumberId}
+                      onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      placeholder="e.g. 123456789012345"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      Access Token
+                    </label>
+                    <input
+                      type="password"
+                      value={whatsappAccessToken}
+                      onChange={(e) => setWhatsappAccessToken(e.target.value)}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      placeholder="EAAL..."
+                    />
+                  </div>
+                  
+                  <div className="sm:col-span-2 pt-2 border-t border-glass-border">
+                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-3">Approved Template Names</h5>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      General Expiry Reminder
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplates.studio_expiry_reminder || ""}
+                      onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expiry_reminder: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="studio_expiry_reminder"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Expires Today
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplates.studio_expires_today || ""}
+                      onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expires_today: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="studio_expires_today"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Already Expired
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplates.studio_expired_reminder || ""}
+                      onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expired_reminder: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="studio_expired_reminder"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Payment Reminder
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplates.payment_reminder || ""}
+                      onChange={(e) => setWhatsappTemplates({...whatsappTemplates, payment_reminder: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="payment_reminder_v1"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 pt-2 border-t border-glass-border mt-2">
+                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-3">Template Variables Map (Comma separated)</h5>
+                    <p className="text-[9px] text-white/40 mb-3">Map exactly to your Meta Template {"{{1}}"}, {"{{2}}"}, etc. Available: playerName, daysLeft, amount, link, clubName, duesText</p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      General Expiry Reminder Variables
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplateVariables?.studio_expiry_reminder || ""}
+                      onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, studio_expiry_reminder: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="e.g. daysLeft"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Expires Today Variables
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplateVariables?.studio_expires_today || ""}
+                      onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, studio_expires_today: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="Leave empty if none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Already Expired Variables
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplateVariables?.studio_expired_reminder || ""}
+                      onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, studio_expired_reminder: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="e.g. daysLeft"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Payment Reminder Variables
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplateVariables?.payment_reminder || ""}
+                      onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, payment_reminder: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="e.g. playerName,amount,link"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Test Email Delivery Module */}
