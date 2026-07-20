@@ -1,11 +1,20 @@
 // export-firestore.js
-// Exports all root collections AND recursively walks subcollections.
-// Subcollections are nested under `_subcollections: { name: [...docs] }` on
-// each parent doc, so cross-references stay obvious.
+// Exports all root collections AND walks subcollections efficiently.
+//
+// Strategy: for each collection, sample the first N docs to see if any have
+// subcollections. If none do, treat the whole collection as flat and skip
+// the expensive per-doc listCollections() call for the rest. This keeps big
+// leaf collections like `notifications` (8k+ docs) fast.
+//
+// Subcollections that are found are nested under `_subcollections` on the
+// parent doc so cross-references stay obvious.
 
 const fs = require("fs");
 
 const MAX_DEPTH = 6;
+const SAMPLE_SIZE = 10;        // check this many docs before deciding to skip
+const PARALLEL_LIST = 20;      // parallel listCollections() calls
+const PROGRESS_EVERY = 50;     // log every N docs
 
 async function exportData() {
   console.log("=== Firestore to JSON Exporter (with subcollections) ===\n");
@@ -38,33 +47,87 @@ async function exportData() {
     db = getFirestore(app);
   }
 
-  const stats = { collections: 0, docs: 0, subcollections: 0 };
+  const stats = { collections: 0, docs: 0, subcollections: 0, listCalls: 0 };
 
-  async function exportDoc(docRef, depth) {
-    const snap = await docRef.get();
-    const data = snap.exists ? { _id: snap.id, ...snap.data() } : { _id: docRef.id };
+  async function listSubs(docRef) {
+    stats.listCalls += 1;
+    try {
+      return await docRef.listCollections();
+    } catch (e) {
+      return [];
+    }
+  }
 
-    if (depth >= MAX_DEPTH) return data;
+  async function parallelMap(items, worker, batchSize) {
+    const results = new Array(items.length);
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const done = await Promise.all(batch.map((it, j) => worker(it, i + j)));
+      for (let k = 0; k < done.length; k += 1) results[i + k] = done[k];
+    }
+    return results;
+  }
 
-    const subs = await docRef.listCollections().catch(() => []);
-    if (subs.length === 0) return data;
-
-    data._subcollections = {};
+  async function walkSubcollections(doc, depth) {
+    const subs = await listSubs(doc.ref);
+    if (subs.length === 0) return null;
+    const out = {};
     for (const sub of subs) {
       stats.subcollections += 1;
-      const subDocs = await exportCollection(sub, depth + 1);
-      data._subcollections[sub.id] = subDocs;
+      out[sub.id] = await exportCollection(sub, depth + 1);
     }
-    return data;
+    return out;
   }
 
   async function exportCollection(colRef, depth) {
     const snap = await colRef.get();
+    const docs = snap.docs;
+
+    if (docs.length === 0) return [];
+    if (depth >= MAX_DEPTH) {
+      return docs.map((d) => ({ _id: d.id, ...d.data() }));
+    }
+
+    // Sample first N docs in parallel to see if this collection has any subcollections
+    const sampleCount = Math.min(SAMPLE_SIZE, docs.length);
+    const sampleSubs = await parallelMap(
+      docs.slice(0, sampleCount),
+      (d) => listSubs(d.ref),
+      PARALLEL_LIST,
+    );
+    const hasAnySubs = sampleSubs.some((subs) => subs.length > 0);
+
+    if (!hasAnySubs) {
+      // Flat leaf collection — return docs as-is, skip per-doc listCollections
+      return docs.map((d, i) => {
+        stats.docs += 1;
+        if (stats.docs % PROGRESS_EVERY === 0) {
+          process.stdout.write(`    ...${stats.docs} docs processed\n`);
+        }
+        return { _id: d.id, ...d.data() };
+      });
+    }
+
+    // At least one sampled doc has subcollections; walk them all
     const out = [];
-    for (const d of snap.docs) {
+    for (let i = 0; i < docs.length; i += 1) {
+      const d = docs[i];
+      const data = { _id: d.id, ...d.data() };
+
+      // Reuse sampled result if we already computed it
+      let subs = i < sampleCount ? sampleSubs[i] : await listSubs(d.ref);
+      if (subs.length > 0) {
+        data._subcollections = {};
+        for (const sub of subs) {
+          stats.subcollections += 1;
+          data._subcollections[sub.id] = await exportCollection(sub, depth + 1);
+        }
+      }
+      out.push(data);
       stats.docs += 1;
-      const exported = await exportDoc(d.ref, depth);
-      out.push(exported);
+      if (stats.docs % PROGRESS_EVERY === 0) {
+        process.stdout.write(`    ...${stats.docs} docs processed\n`);
+      }
     }
     return out;
   }
@@ -74,17 +137,18 @@ async function exportData() {
 
   try {
     const roots = await db.listCollections();
-    if (roots.length === 0) {
-      console.log("No collections found in this database.");
-    }
+    if (roots.length === 0) console.log("No collections found in this database.");
 
     for (const collection of roots) {
       stats.collections += 1;
+      const t0 = Date.now();
+      const beforeDocs = stats.docs;
       console.log(`Fetching collection: ${collection.id} ...`);
-      const before = stats.docs;
       backupData[collection.id] = await exportCollection(collection, 1);
+      const took = ((Date.now() - t0) / 1000).toFixed(1);
       console.log(
-        `  ${collection.id}: ${stats.docs - before} docs (cumulative subcollections walked so far: ${stats.subcollections})`,
+        `  ${collection.id}: ${stats.docs - beforeDocs} docs in ${took}s ` +
+          `(subcollections so far: ${stats.subcollections})`,
       );
     }
 
@@ -94,14 +158,13 @@ async function exportData() {
     const sizeMB = (fs.statSync(exportPath).size / (1024 * 1024)).toFixed(2);
     console.log("\n=== Done ===");
     console.log(`  Root collections: ${stats.collections}`);
-    console.log(`  Total documents (including subcollection docs): ${stats.docs}`);
+    console.log(`  Total documents: ${stats.docs}`);
     console.log(`  Subcollections walked: ${stats.subcollections}`);
+    console.log(`  listCollections() calls made: ${stats.listCalls}`);
     console.log(`  File: ${exportPath} (${sizeMB} MB)`);
-    console.log(
-      "\nThis file now contains subcollections nested under each parent doc's _subcollections field.",
-    );
   } catch (err) {
     console.error("\nError during export:", err);
+    process.exit(1);
   }
 }
 
