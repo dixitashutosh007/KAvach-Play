@@ -150,6 +150,7 @@ export default function Home() {
   const router = useRouter();
   const {
     user,
+    hasAdminClaim,
     signIn,
     signInDemo,
     signInWithEmail,
@@ -274,7 +275,7 @@ export default function Home() {
       currentUserObj?.isStudioAdmin ||
       currentUserObj?.isMatchAdmin ||
       currentUserObj?.isFinanceAdmin ||
-      user.email === "dixitashutosh007@gmail.com");
+      hasAdminClaim);
 
   useEffect(() => {
     if (isAdminUser && !hasInitializedAdminRef.current) {
@@ -282,7 +283,7 @@ export default function Home() {
       setPersona("admin");
       if (
         currentUserObj?.role === "admin" ||
-        user?.email === "dixitashutosh007@gmail.com"
+        hasAdminClaim
       ) {
         setActiveTab("home");
       } else if (currentUserObj?.isFinanceAdmin) {
@@ -1332,7 +1333,7 @@ export default function Home() {
   }
 
   const isSuperAdmin =
-    appUser?.role === "admin" || user?.email === "dixitashutosh007@gmail.com";
+    appUser?.role === "admin" || hasAdminClaim;
   const isFinanceAdmin = isSuperAdmin || appUser?.isFinanceAdmin;
   const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
   const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;

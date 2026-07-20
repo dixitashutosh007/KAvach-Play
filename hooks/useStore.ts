@@ -139,7 +139,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const playerDoc = doc(db, "players", user.uid);
 
       const isDemo = user.email === "demo_player@kavach.com";
-      const isCurrentGoogleUser = user.email === "dixitashutosh007@gmail.com";
+      // Super-admin identity now comes from the `admin: true` Firebase Auth
+      // custom claim, set via scripts/set-admin-claim.js. Read it once here
+      // to decide the initial role for a brand-new appUser doc.
+      let hasAdminClaim = false;
+      try {
+        const tokenResult = await user.getIdTokenResult();
+        hasAdminClaim = tokenResult.claims?.admin === true;
+      } catch {}
+
       const rawSuffix = user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(-4);
       const nameVal =
         user.displayName ||
@@ -155,31 +163,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
       let resolvedRole = isDemo
         ? "player"
-        : isCurrentGoogleUser
+        : hasAdminClaim
           ? "admin"
           : "player";
 
       try {
         const userSnap = await getDoc(userDoc);
         if (!userSnap.exists()) {
-          if (!isDemo && !isCurrentGoogleUser) {
+          if (!isDemo && !hasAdminClaim) {
             // Do not auto-create for normal users (phone, google, etc.). let app/page.tsx handle registration
             return;
-          }
-
-          if (!isDemo && !isCurrentGoogleUser) {
-            // Create the user as admin if NO users exist, else as player
-            try {
-              const u = await getDocs(collection(db, "appUsers"));
-              if (false) {
-                resolvedRole = "admin";
-              }
-            } catch (collectionErr) {
-              console.warn(
-                "Could not list appUsers, defaulting to player role:",
-                collectionErr,
-              );
-            }
           }
 
           const email =
@@ -207,8 +200,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           }
         } else {
           resolvedRole = userSnap.data()?.role || resolvedRole;
-          // Auto-upgrade dixitashutosh007@gmail.com to admin if they are player-role currently
-          if (isCurrentGoogleUser && resolvedRole !== "admin") {
+          // Anyone carrying the admin custom claim is granted the admin
+          // role at the doc level too, so downstream role checks stay
+          // consistent even where they read from appUsers.
+          if (hasAdminClaim && resolvedRole !== "admin") {
             await updateDoc(userDoc, { role: "admin" });
             resolvedRole = "admin";
           }

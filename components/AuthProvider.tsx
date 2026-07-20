@@ -13,6 +13,7 @@ import { LoadingScreen } from "./LoadingScreen";
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  hasAdminClaim: boolean;
   signIn: () => Promise<void>;
   signInDemo: () => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
@@ -23,6 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  hasAdminClaim: false,
   signIn: async () => {},
   signInDemo: async () => {},
   signInWithEmail: async () => {},
@@ -33,26 +35,37 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasAdminClaim, setHasAdminClaim] = useState(false);
 
   useEffect(() => {
     testConnection();
-    const unsubscribe = auth.onAuthStateChanged((u) => {
+    const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (u) {
         const lastActive = localStorage.getItem("kavach_session_time");
         const now = Date.now();
         const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
-        
+
         if (lastActive && now - parseInt(lastActive, 10) > THIRTY_DAYS) {
           console.warn("Session expired (1 month timeout)");
           auth.signOut();
           setUser(null);
+          setHasAdminClaim(false);
           localStorage.removeItem("kavach_session_time");
         } else {
           localStorage.setItem("kavach_session_time", now.toString());
           setUser(u);
+          // Pull the admin custom claim from the ID token. This is set
+          // server-side via scripts/set-admin-claim.js.
+          try {
+            const tokenResult = await u.getIdTokenResult();
+            setHasAdminClaim(tokenResult.claims?.admin === true);
+          } catch {
+            setHasAdminClaim(false);
+          }
         }
       } else {
         setUser(null);
+        setHasAdminClaim(false);
         localStorage.removeItem("kavach_session_time");
       }
       setLoading(false);
@@ -184,7 +197,7 @@ Error Details:
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, signIn, signInDemo, signInWithEmail, linkGoogleAccount, logOut }}
+      value={{ user, loading, hasAdminClaim, signIn, signInDemo, signInWithEmail, linkGoogleAccount, logOut }}
     >
       {children}
     </AuthContext.Provider>

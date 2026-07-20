@@ -24,11 +24,11 @@ import { formatDate } from "@/lib/utils";
 import { LoadingScreen } from "./LoadingScreen";
 
 export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<typeof useStore>, setPreviewTheme?: (val: string | null) => void }) {
-  const { user } = useAuth();
+  const { user, hasAdminClaim } = useAuth();
 
   // Check if current user is admin
   const currentUserRecord = store.appUsers.find((u) => u.id === user?.uid);
-  const isAdmin = currentUserRecord?.role === "admin";
+  const isAdmin = currentUserRecord?.role === "admin" || hasAdminClaim;
 
   const [clubName, setClubName] = useState(
     store.appConfig?.clubName || "KAVACH CRICKET CLUB",
@@ -1167,12 +1167,12 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                                </div>
                                {appUserMatch && (
                                    <div className="mt-3 flex flex-col gap-2 p-2 bg-black/40 rounded border border-white/5">
-                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && user?.email !== "dixitashutosh007@gmail.com" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && !hasAdminClaim ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
                                           <input 
                                           type="checkbox" 
                                           className="accent-accent w-4 h-4 cursor-inherit"
                                           checked={appUserMatch.role === "admin"}
-                                          disabled={appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && user?.email !== "dixitashutosh007@gmail.com"}
+                                          disabled={appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && !hasAdminClaim}
                                           onChange={async (e) => {
                                               const isChecked = e.target.checked;
                                               const updates: any = { role: isChecked ? "admin" : "player" };

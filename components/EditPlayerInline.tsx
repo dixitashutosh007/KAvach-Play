@@ -13,9 +13,9 @@ export function EditPlayerInline({
   store: ReturnType<typeof useStore>;
   onCancel: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, hasAdminClaim } = useAuth();
   const currentAppUser = store.appUsers.find(u => u.id === user?.uid);
-  const isSuperAdmin = currentAppUser?.role === "admin" || user?.email === "dixitashutosh007@gmail.com";
+  const isSuperAdmin = currentAppUser?.role === "admin" || hasAdminClaim;
 
   const appUserMatch = store.appUsers.find(
     (u) => u.id === player.id || (u.mobile && u.mobile === player.mobile),

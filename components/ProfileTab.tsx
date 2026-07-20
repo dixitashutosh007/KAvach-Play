@@ -25,14 +25,13 @@ export function ProfileTab({
   store: ReturnType<typeof useStore>;
   forceEdit?: boolean;
 }) {
-  const { user, logOut } = useAuth();
+  const { user, hasAdminClaim, logOut } = useAuth();
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
   const userPhone = user?.phoneNumber || appUser?.mobile;
   const linkedPlayer =
     store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
     store.players.find((p) => p.mobile && userPhone && p.mobile === userPhone);
-  const isAdmin =
-    appUser?.role === "admin" || user?.email === "dixitashutosh007@gmail.com";
+  const isAdmin = appUser?.role === "admin" || hasAdminClaim;
 
   const hasMissingMandatory =
     !isAdmin &&
