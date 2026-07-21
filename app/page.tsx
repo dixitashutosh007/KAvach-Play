@@ -63,6 +63,11 @@ import {
 import { db, auth } from "@/lib/firebase";
 
 import { useTheme } from "@/hooks/useTheme";
+import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
+import { RegistrationForm } from "@/components/onboarding/RegistrationForm";
+import { PendingApprovalScreen } from "@/components/onboarding/PendingApprovalScreen";
+import { RejectedScreen } from "@/components/onboarding/RejectedScreen";
+import { AccountDisabledScreen } from "@/components/onboarding/AccountDisabledScreen";
 
 export default function Home() {
   const router = useRouter();
@@ -291,19 +296,8 @@ export default function Home() {
   const [authMethod, setAuthMethod] = useState<"phone" | "google_email">(
     "phone",
   );
-  const [registrationForm, setRegistrationForm] = useState({
-    name: "",
-    email: "",
-    dob: "",
-    locality: "",
-    bloodGroup: "",
-    emergencyContact: "",
-    battingStyle: "",
-    bowlingStyle: "",
-    isWicketKeeper: false,
-    chestSize: "",
-    jerseyNumber: "",
-  });
+  // Registration form state now lives inside <RegistrationForm>. Only the
+  // sync flow uses isRegistering at this level.
   const [isRegistering, setIsRegistering] = useState(false);
 
   const hasPhoneAuth =
@@ -734,386 +728,32 @@ export default function Home() {
     }
   };
 
-  const handleRegistrationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsRegistering(true);
-    try {
-      if (!user) return;
-      const userDoc = doc(db, "appUsers", user.uid);
-      const playerDoc = doc(db, "players", user.uid);
-
-      await setDoc(userDoc, {
-        email: registrationForm.email || user.email || "",
-        name: registrationForm.name || user.displayName || "",
-        photoURL: user.photoURL || "",
-        role: "player",
-        mobile: user.phoneNumber || "",
-        isStudioMember: false,
-        dob: registrationForm.dob,
-        locality: registrationForm.locality,
-        bloodGroup: registrationForm.bloodGroup,
-        emergencyContact: registrationForm.emergencyContact,
-        battingStyle: registrationForm.battingStyle,
-        bowlingStyle: registrationForm.bowlingStyle,
-        isWicketKeeper: registrationForm.isWicketKeeper,
-        chestSize: registrationForm.chestSize,
-        jerseyNumber: registrationForm.jerseyNumber,
-      });
-
-      await setDoc(playerDoc, {
-        name: registrationForm.name || user.displayName || "",
-        mobile: user.phoneNumber || "",
-        inviteStatus: "Pending",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        dob: registrationForm.dob,
-        locality: registrationForm.locality,
-        bloodGroup: registrationForm.bloodGroup,
-        emergencyContact: registrationForm.emergencyContact,
-        battingStyle: registrationForm.battingStyle,
-        bowlingStyle: registrationForm.bowlingStyle,
-        isWicketKeeper: registrationForm.isWicketKeeper,
-        chestSize: registrationForm.chestSize,
-        jerseyNumber: registrationForm.jerseyNumber,
-      });
-      // Will auto-re-render since store listeners will pick this up
-    } catch (err) {
-      console.error("Registration error:", err);
-      alert("Registration failed. Please try again.");
-    } finally {
-      setIsRegistering(false);
-    }
-  };
+  // Registration submission moved into <RegistrationForm>.
 
   if (!currentPlayerObj && !currentUserObj && !user?.isAnonymous && user) {
     if (existingPlayerWithSamePhone) {
       return (
-        <div
-          className="min-h-screen flex flex-col items-center justify-center p-4 text-center overflow-y-auto"
-          style={themeStyles}
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass max-w-sm w-full p-8 rounded-2xl border border-white/10 shadow-xl text-left my-8"
-          >
-            <div className="mb-6 mt-2 text-center text-accent flex justify-center">
-              <Shield className="w-10 h-10" />
-            </div>
-            <h2 className="text-xl font-bold text-white mb-2 text-center">
-              Welcome back, {existingPlayerWithSamePhone.name}!
-            </h2>
-            <p className="text-sm text-white/70 mb-6 text-center leading-relaxed">
-              We found your existing player profile for{" "}
-              <b className="font-mono text-emerald-400">{user.phoneNumber}</b>.
-              Sync your profile to log in automatically without admin approval.
-            </p>
-            <button
-              onClick={handleSyncAccount}
-              disabled={isRegistering}
-              className="w-full py-3 px-4 rounded-xl font-bold shadow flex items-center justify-center transition-opacity cursor-pointer disabled:opacity-50"
-              style={{
-                backgroundColor: currentThemeObj.accent,
-                color: currentThemeObj.textAccent,
-              }}
-            >
-              {isRegistering ? "Syncing..." : "Sync Profile"}
-            </button>
-            <button
-              onClick={logOut}
-              className="w-full py-3 px-4 rounded-xl font-bold mt-3 border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-all text-sm flex items-center justify-center cursor-pointer"
-            >
-              Sign Out
-            </button>
-          </motion.div>
-        </div>
+        <PhoneSyncPrompt
+          existingPlayer={existingPlayerWithSamePhone}
+          user={user}
+          isSubmitting={isRegistering}
+          onSync={handleSyncAccount}
+          onLogOut={logOut}
+          themeStyles={themeStyles}
+          accentColor={currentThemeObj.accent}
+          textAccentColor={currentThemeObj.textAccent}
+        />
       );
     }
 
     return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center p-4 text-center overflow-y-auto"
-        style={themeStyles}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass max-w-md w-full p-8 rounded-2xl border border-white/10 shadow-xl text-left my-8"
-        >
-          <div className="mb-6 mt-2 text-center text-accent flex justify-center">
-            <Shield className="w-10 h-10" />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2 text-center">
-            First Time Here!
-          </h2>
-          <p className="text-xs text-white/70 mb-6 text-center leading-relaxed">
-            Welcome to Kavach Play. Please complete this mandatory registration
-            to submit your join request.
-          </p>
-          <form onSubmit={handleRegistrationSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={registrationForm.name}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      name: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                  placeholder="John Doe"
-                />
-              </div>
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={registrationForm.email}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      email: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                  placeholder="john@example.com"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Date of Birth *
-                </label>
-                <input
-                  required
-                  type="date"
-                  value={registrationForm.dob}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      dob: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                />
-              </div>
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Locality/Area *
-                </label>
-                <input
-                  required
-                  type="text"
-                  value={registrationForm.locality}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      locality: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Blood Group *
-                </label>
-                <select
-                  required
-                  value={registrationForm.bloodGroup}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      bloodGroup: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
-                >
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  <option value="A+">A+</option>
-                  <option value="A-">A-</option>
-                  <option value="B+">B+</option>
-                  <option value="B-">B-</option>
-                  <option value="O+">O+</option>
-                  <option value="O-">O-</option>
-                  <option value="AB+">AB+</option>
-                  <option value="AB-">AB-</option>
-                </select>
-              </div>
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Emergency Contact *
-                </label>
-                <input
-                  required
-                  type="tel"
-                  value={registrationForm.emergencyContact}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      emergencyContact: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Batting Style *
-                </label>
-                <select
-                  required
-                  value={registrationForm.battingStyle}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      battingStyle: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
-                >
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  <option value="Right-hand bat">Right-hand bat</option>
-                  <option value="Left-hand bat">Left-hand bat</option>
-                </select>
-              </div>
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Bowling Style *
-                </label>
-                <select
-                  required
-                  value={registrationForm.bowlingStyle}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      bowlingStyle: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
-                >
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  <option value="Right-arm fast">Right-arm fast</option>
-                  <option value="Right-arm medium">Right-arm medium</option>
-                  <option value="Right-arm offbreak">Right-arm offbreak</option>
-                  <option value="Right-arm legbreak">Right-arm legbreak</option>
-                  <option value="Left-arm fast">Left-arm fast</option>
-                  <option value="Left-arm medium">Left-arm medium</option>
-                  <option value="Slow left-arm orthodox">
-                    Slow left-arm orthodox
-                  </option>
-                  <option value="Slow left-arm chinaman">
-                    Slow left-arm chinaman
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Wicket Keeper
-                </label>
-                <select
-                  value={registrationForm.isWicketKeeper ? "Yes" : "No"}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      isWicketKeeper: e.target.value === "Yes",
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-neutral-950 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
-                >
-                  <option value="No">No</option>
-                  <option value="Yes">Yes</option>
-                </select>
-              </div>
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Chest Size *
-                </label>
-                <select
-                  required
-                  value={registrationForm.chestSize}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      chestSize: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-neutral-950 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
-                >
-                  <option value="">Select Size</option>
-                  {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
-                    <option key={sz} value={sz}>{sz}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Requested Jersey No. (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={registrationForm.jerseyNumber}
-                  onChange={(e) =>
-                    setRegistrationForm({
-                      ...registrationForm,
-                      jerseyNumber: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent font-mono"
-                  placeholder="e.g. 7"
-                />
-                <p className="text-[9px] text-white/40 mt-0.5 leading-tight">
-                  * Note: Jersey numbers are locked and assigned by administrators only.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isRegistering || !registrationForm.name}
-              className="w-full py-3 px-4 rounded-xl font-bold mt-4 shadow flex items-center justify-center transition-opacity cursor-pointer disabled:opacity-50"
-              style={{
-                backgroundColor: currentThemeObj.accent,
-                color: currentThemeObj.textAccent,
-              }}
-            >
-              {isRegistering ? "Registering..." : "Submit Request"}
-            </button>
-            <button
-              type="button"
-              onClick={logOut}
-              className="w-full py-3 px-4 rounded-xl font-bold mt-2 border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs"
-            >
-              Cancel / Sign Out
-            </button>
-          </form>
-        </motion.div>
-      </div>
+      <RegistrationForm
+        user={user}
+        onLogOut={logOut}
+        themeStyles={themeStyles}
+        accentColor={currentThemeObj.accent}
+        textAccentColor={currentThemeObj.textAccent}
+      />
     );
   }
 
@@ -1123,33 +763,11 @@ export default function Home() {
   ) {
     if (currentUserObj?.role !== "admin") {
       return (
-        <div
-          className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative"
-          style={themeStyles}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="glass max-w-sm w-full p-8 rounded-2xl border border-white/10 shadow-xl z-10"
-          >
-            <div className="w-12 h-12 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-6 h-6 text-blue-400" />
-            </div>
-            <h2 className="text-xl font-bold text-white mb-2">
-              Registration Pending
-            </h2>
-            <p className="text-xs text-white/70 leading-relaxed mb-6">
-              Your request has been registered. As soon as the club admin
-              approves it, you will be able to log in. Come back in some time!
-            </p>
-            <button
-              onClick={logOut}
-              className="w-full py-3.5 px-6 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20 transition-all text-xs"
-            >
-              Log Out
-            </button>
-          </motion.div>
-        </div>
+        <PendingApprovalScreen
+          variant="pending"
+          onLogOut={logOut}
+          themeStyles={themeStyles}
+        />
       );
     }
   }
@@ -1217,17 +835,7 @@ export default function Home() {
     store.players.find((p) => p.mobile === appUser?.mobile && p.mobile);
 
   if (player?.disabled) {
-    return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center p-4 bg-black"
-      >
-        <div className="glass p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30">
-          <h2 className="font-extrabold text-xl text-white tracking-wide uppercase">Account Disabled</h2>
-          <p className="text-white/60">Your profile has been disabled by the administrator. Contact support for more information.</p>
-          <button onClick={() => { auth.signOut(); window.location.reload(); }} className="px-4 py-2 bg-red-500/20 text-red-400 font-bold uppercase tracking-widest text-xs rounded-lg">Sign Out</button>
-        </div>
-      </div>
-    );
+    return <AccountDisabledScreen />;
   }
 
   const isSuperAdmin =
@@ -1251,164 +859,19 @@ export default function Home() {
 
   if (!isAdmin && !isVerified) {
     if (player?.inviteStatus === "Rejected") {
-      const rejectDate = player.rejectedAt ? new Date(player.rejectedAt) : null;
-      const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-      const timeRemaining =
-        rejectDate && now ? rejectDate.getTime() + threeDaysMs - now : 0;
-      const hoursRemaining = Math.max(
-        0,
-        Math.ceil(timeRemaining / (1000 * 60 * 60)),
-      );
-      const daysRemaining = Math.max(
-        0,
-        Math.ceil(timeRemaining / (1000 * 60 * 60 * 24)),
-      );
-      const canRetry = timeRemaining <= 0;
-
       return (
-        <div
-          className="min-h-screen flex flex-col items-center justify-center p-4"
-          style={themeStyles}
-        >
-          <div className="glass p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30 shadow-[0_15px_40px_rgba(239,68,68,0.15)]">
-            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-2 border border-red-500/30 animate-pulse">
-              <X className="w-8 h-8 text-red-500" />
-            </div>
-
-            <div>
-              <h2 className="font-extrabold text-xl text-white tracking-wide uppercase">
-                Request Declined
-              </h2>
-              <p className="text-xs text-white/70 mt-2">
-                Your registration has been rejected by the administrator. Below
-                is the official email notification sent to your registered
-                address:
-              </p>
-            </div>
-
-            {/* Email Notification Simulation Box */}
-            <div className="bg-black/45 border border-red-500/20 rounded-xl p-4 text-left font-mono space-y-2 text-[11px] select-all">
-              <div className="border-b border-white/10 pb-2 mb-2 flex items-center justify-between text-white/50 text-[9px]">
-                <span>✉️ Official Email Notice</span>
-                <span className="text-red-400 font-bold uppercase tracking-wider">
-                  Delivered
-                </span>
-              </div>
-              <div className="text-white/80">
-                <span className="text-white/40">From:</span> desk@
-                {clubName.toLowerCase().replace(/[^a-z]/g, "") || "kavach"}.com
-              </div>
-              <div className="text-white/80">
-                <span className="text-white/40">To:</span> {user?.email}
-              </div>
-              <div className="text-white/80">
-                <span className="text-white/40">Subject:</span> Request to Join{" "}
-                {clubName} Rejected
-              </div>
-              <div className="pt-2 border-t border-dashed border-white/10 text-white/70 leading-relaxed font-sans text-xs">
-                Dear{" "}
-                <strong className="text-white font-semibold">
-                  {player?.name || "Player"}
-                </strong>
-                ,<br />
-                <br />
-                We thank you for your interest in joining{" "}
-                <strong className="text-accent font-bold">{clubName}</strong>.
-                However, upon reviewing your credentials, the administrative
-                team has decided to decline your request at this time.
-                <br />
-                <br />
-                You are eligible to re-submit your registration with
-                correct/updated details after a 3-day quiet period from the
-                decision date.
-                <br />
-                <br />
-                Best Regards,
-                <br />
-                <span className="text-white/40 text-[9px] uppercase font-bold tracking-widest block mt-2">
-                  Kavach Admin Desk
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              {canRetry ? (
-                <div>
-                  <p className="text-xs text-emerald-400 font-extrabold mb-3">
-                    ✓ The 3-day quiet period has elapsed. You can now re-submit
-                    your profile.
-                  </p>
-                  <button
-                    onClick={async () => {
-                      if (player) {
-                        try {
-                          const pingRef = doc(db, "appUsers", user.uid);
-                          await setDoc(
-                            pingRef,
-                            { _ping: serverTimestamp() },
-                            { merge: true },
-                          );
-                          const snap = await getDocFromServer(pingRef);
-                          const serverTime = snap.data()?._ping?.toMillis();
-                          if (serverTime) {
-                            const rejectDate = player.rejectedAt
-                              ? new Date(player.rejectedAt).getTime()
-                              : 0;
-                            const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-                            if (serverTime < rejectDate + threeDaysMs) {
-                              alert(
-                                "Quiet period lockout is still active. Local system time modification detected.",
-                              );
-                              return;
-                            }
-                          }
-                        } catch (e) {
-                          console.error("Lockout validation failed: ", e);
-                          alert(
-                            "Failed to validate server time securely. Try again.",
-                          );
-                          return;
-                        }
-
-                        await store.updatePlayer(player.id, {
-                          inviteStatus: "Unverified",
-                          rejectedAt: undefined,
-                        });
-                      }
-                    }}
-                    className="w-full bg-accent text-black font-extrabold py-3 rounded-xl hover:opacity-90 transition cursor-pointer uppercase text-[11px] tracking-wider"
-                  >
-                    Resubmit Profile & Retry
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/10 p-3 rounded-xl">
-                  <p className="text-[11px] text-orange-400 font-extrabold uppercase tracking-widest mb-1">
-                    ⏰ Quiet Period Lockout Active
-                  </p>
-                  <p className="text-xs text-white/60 leading-normal">
-                    You can retry and resubmit profile in{" "}
-                    <strong className="text-white font-bold">
-                      {hoursRemaining > 24
-                        ? `${daysRemaining} day(s)`
-                        : `${hoursRemaining} hour(s)`}
-                    </strong>
-                    .
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={logOut}
-              className="w-full bg-white/5 text-white/60 font-bold py-2.5 rounded-xl hover:bg-white/10 hover:text-white transition uppercase text-[10px] tracking-widest border border-white/5"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
+        <RejectedScreen
+          player={player}
+          user={user}
+          clubName={clubName}
+          now={now}
+          store={store}
+          onLogOut={logOut}
+          themeStyles={themeStyles}
+        />
       );
     }
+
 
     if (
       hasMissingMandatory ||
@@ -1441,34 +904,11 @@ export default function Home() {
       );
     } else {
       return (
-        <div
-          className="min-h-screen flex flex-col items-center justify-center p-4"
-          style={themeStyles}
-        >
-          <div className="glass p-8 rounded-2xl max-w-sm w-full text-center space-y-6 shadow-2xl relative overflow-hidden border border-white/10">
-            {/* Subtle top decoration glow bar */}
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
-            <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-accent/20 animate-pulse">
-              <Users className="w-8 h-8 text-accent" />
-            </div>
-            <div className="space-y-3">
-              <h2 className="font-black text-lg text-white tracking-wide uppercase">
-                Awaiting Admin to Approve Your Request
-              </h2>
-              <p className="text-xs text-white/60 leading-relaxed">
-                Your profile registration has been successfully recorded in the
-                squad database. Contact the club desk or stay tuned while your
-                membership is being verified.
-              </p>
-            </div>
-            <button
-              onClick={logOut}
-              className="w-full bg-white/15 text-white font-extrabold py-3 rounded-xl hover:bg-white/20 transition text-xs uppercase tracking-wider"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
+        <PendingApprovalScreen
+          variant="awaiting"
+          onLogOut={logOut}
+          themeStyles={themeStyles}
+        />
       );
     }
   }
