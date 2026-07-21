@@ -71,6 +71,7 @@ import { AccountDisabledScreen } from "@/components/onboarding/AccountDisabledSc
 import { QuotaExceededScreen } from "@/components/onboarding/QuotaExceededScreen";
 import { GoogleLinkPrompt } from "@/components/onboarding/GoogleLinkPrompt";
 import { LoginScreen } from "@/components/auth/LoginScreen";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
 export default function Home() {
   const router = useRouter();
@@ -1172,106 +1173,13 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Mobile-first bottom navigation (Only displays on Mobile devices when profile is complete) */}
-      {!hasMissingMandatory && persona === "player" && (
-        <nav className="fixed bottom-0 left-0 right-0 w-full glass !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-2xl justify-around bg-black/85 backdrop-blur-2xl px-1">
-          {isFeatureEnabled("feed") && (
-            <button
-              onClick={() => setActiveTab("home")}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
-                activeTab === "home"
-                  ? "text-accent font-extrabold scale-105"
-                  : "text-white/40 hover:text-white/80"
-              }`}
-            >
-              <HomeIcon className="w-5 h-5" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">
-                Feed
-              </span>
-            </button>
-          )}
-
-          {isFeatureEnabled("matches") && (
-            <button
-              onClick={() => setActiveTab("matches")}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
-                activeTab === "matches"
-                  ? "text-accent font-extrabold scale-105"
-                  : "text-white/40 hover:text-white/80"
-              }`}
-            >
-              <CalendarDays className="w-5 h-5" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">
-                Matches
-              </span>
-            </button>
-          )}
-
-          {isFeatureEnabled("leaderboard") && (
-            <button
-              onClick={() => setActiveTab("leaderboard")}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
-                activeTab === "leaderboard"
-                  ? "text-accent font-extrabold scale-105"
-                  : "text-white/40 hover:text-white/80"
-              }`}
-            >
-              <Trophy className="w-5 h-5" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">
-                Stats
-              </span>
-            </button>
-          )}
-
-          {isFeatureEnabled("studio") && (
-            <button
-              onClick={() => setActiveTab("studio")}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
-                activeTab === "studio"
-                  ? "text-accent font-extrabold scale-105"
-                  : "text-white/40 hover:text-white/80"
-              }`}
-            >
-              <Video className="w-5 h-5" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">
-                Studio
-              </span>
-            </button>
-          )}
-
-          {isFeatureEnabled("shop") && (
-            <button
-              onClick={() => setActiveTab("shop")}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
-                activeTab === "shop"
-                  ? "text-accent font-extrabold scale-105"
-                  : "text-white/40 hover:text-white/80"
-              }`}
-            >
-              <ShoppingBag className="w-5 h-5" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">
-                Shop
-              </span>
-            </button>
-          )}
-
-          {persona === "player" && (
-            <button
-              onClick={() => setActiveTab("profile")}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
-                activeTab === "profile"
-                  ? "text-accent font-extrabold scale-105"
-                  : "text-white/40 hover:text-white/80"
-              }`}
-            >
-              <Users className="w-5 h-5" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">
-                Profile
-              </span>
-            </button>
-          )}
-        </nav>
-      )}
+      <MobileBottomNav
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        isFeatureEnabled={isFeatureEnabled}
+        persona={persona}
+        hasMissingMandatory={hasMissingMandatory}
+      />
     </div>
   );
 }
