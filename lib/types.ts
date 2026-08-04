@@ -92,6 +92,10 @@ export type AppUser = {
   lastPaidDate?: string;
   lastPaidAmount?: number;
   studioExpiryDate?: string;
+  // Firebase Auth providers linked to this user, captured on login.
+  // Values: "google.com" | "phone" | "password" | "anonymous" | "apple.com" | ...
+  authProviders?: string[];
+  lastLoginAt?: string; // ISO timestamp of the last time authProviders was written
 };
 
 export type Ground = {

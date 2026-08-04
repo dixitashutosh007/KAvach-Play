@@ -3,6 +3,7 @@ import { useStore } from "@/hooks/useStore";
 import { Player } from "@/lib/types";
 import { dbToInputDate, inputToDbDate } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
+import { AuthProviderBadges } from "@/components/AuthProviderBadges";
 
 export function EditPlayerInline({
   player,
@@ -76,6 +77,17 @@ export function EditPlayerInline({
         >
           Close
         </button>
+      </div>
+
+      <div className="bg-white/5 border border-glass-border rounded-lg px-3 py-2 flex flex-wrap items-center gap-3">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+          Sign-in method:
+        </span>
+        <AuthProviderBadges
+          providers={appUserMatch?.authProviders}
+          size="xs"
+          emptyLabel="Never signed in"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

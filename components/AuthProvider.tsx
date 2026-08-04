@@ -7,7 +7,8 @@ import {
   GoogleAuthProvider,
   signOut,
 } from "firebase/auth";
-import { auth, testConnection } from "@/lib/firebase";
+import { auth, testConnection, db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import { LoadingScreen } from "./LoadingScreen";
 
 interface AuthContextType {
@@ -61,6 +62,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setHasAdminClaim(tokenResult.claims?.admin === true);
           } catch {
             setHasAdminClaim(false);
+          }
+          // Record which auth providers this user has linked, so it can be
+          // displayed on their profile (and admin-visible on the players
+          // list). One write per session — Firestore rules only allow the
+          // user to update their own appUsers doc, so this never races
+          // with admin edits. Guarded so it never fails the login flow.
+          try {
+            if (!u.isAnonymous) {
+              const providers = (u.providerData || [])
+                .map((p) => p.providerId)
+                .filter(Boolean);
+              await setDoc(
+                doc(db, "appUsers", u.uid),
+                {
+                  authProviders: providers,
+                  lastLoginAt: new Date().toISOString(),
+                },
+                { merge: true },
+              );
+            }
+          } catch (e) {
+            // Silent — this is metadata, not blocking. A non-admin trying
+            // to write before their appUsers doc exists (i.e. before
+            // registration) will get permission-denied; that's fine.
           }
         }
       } else {

@@ -16,6 +16,7 @@ import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
 import { PollInteraction, PollResults } from "./OpinionTab";
+import { AuthProviderBadges } from "./AuthProviderBadges";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 export function ProfileTab({
@@ -487,6 +488,21 @@ export function ProfileTab({
                   {appUser?.role || "player"}
                 </p>
               </div>
+            </div>
+
+            <div className="pt-1">
+              <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1.5">
+                Sign-in method
+              </p>
+              <AuthProviderBadges
+                providers={
+                  // Prefer the live providerData (always current for the
+                  // signed-in user). Fall back to the stored appUsers field
+                  // if for some reason providerData isn't populated yet.
+                  user?.providerData?.map((p) => p.providerId).filter(Boolean) ||
+                  appUser?.authProviders
+                }
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
