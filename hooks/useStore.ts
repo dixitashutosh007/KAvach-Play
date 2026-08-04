@@ -49,6 +49,7 @@ import {
   Timestamp,
   QueryDocumentSnapshot,
   DocumentData,
+  writeBatch,
 } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
@@ -834,30 +835,39 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
-      // Notify all players individually so they can manage their own read/delete state
-      for (const p of players) {
-        if (!p.disabled && p.inviteStatus === "Verified") {
-          createNotification(
-            p.id,
-            "New Match Scheduled",
-            `A new ${match.format} match against ${match.opponent} on ${match.date} has been added.`,
-            "in_app",
-          );
-        }
+      // Notify all verified/active players in-app. Fire-and-forget so a
+      // notification-write failure doesn't fail the whole match creation.
+      const notifyRecipients = players.filter(
+        (p) => !p.disabled && p.inviteStatus === "Verified",
+      );
+      for (const p of notifyRecipients) {
+        createNotification(
+          p.id,
+          "New Match Scheduled",
+          `A new ${match.format} match against ${match.opponent} on ${match.date} has been added.`,
+          "in_app",
+        );
       }
 
-      // Generate payments
-      for (const p of players) {
-        const payId = crypto.randomUUID();
-        await setDoc(doc(db, "matches", id, "payments", payId), {
-          id: payId,
-          matchId: id,
-          playerId: p.id,
-          status: "Not Playing",
-          availability: "Pending",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      // Batched payment doc creation. Previously we did 99 sequential
+      // setDocs — one HTTP round-trip per player. writeBatch commits up to
+      // 500 ops in a single round-trip.
+      const BATCH_LIMIT = 400;
+      for (let i = 0; i < players.length; i += BATCH_LIMIT) {
+        const batch = writeBatch(db);
+        for (const p of players.slice(i, i + BATCH_LIMIT)) {
+          const payId = crypto.randomUUID();
+          batch.set(doc(db, "matches", id, "payments", payId), {
+            id: payId,
+            matchId: id,
+            playerId: p.id,
+            status: "Not Playing",
+            availability: "Pending",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
       }
       return id;
     } catch (err) {
