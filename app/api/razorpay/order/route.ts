@@ -10,7 +10,12 @@ function getDb() {
     if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
        app = initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)) });
     } else {
-       app = initializeApp();
+       // On AWS / Amplify, firebase-admin has no way to auto-detect a
+       // Google Cloud project. FIREBASE_SERVICE_ACCOUNT_KEY (the full JSON
+       // of a service account key, single-line) is required.
+       throw new Error(
+         "FIREBASE_SERVICE_ACCOUNT_KEY env var is not set. Add it in Amplify Console → Hosting → Environment variables (the entire serviceAccountKey.json content as a single-line string), then redeploy.",
+       );
     }
   } else {
     app = apps[0];
