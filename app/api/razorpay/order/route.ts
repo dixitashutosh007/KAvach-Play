@@ -37,8 +37,17 @@ export async function POST(req: Request) {
     const finalKeySecret = process.env.RAZORPAY_KEY_SECRET;
 
     if (!finalKeyId || !finalKeySecret) {
+      const missing = [
+        !finalKeyId && "RAZORPAY_KEY_ID (or NEXT_PUBLIC_RAZORPAY_KEY_ID)",
+        !finalKeySecret && "RAZORPAY_KEY_SECRET",
+      ].filter(Boolean);
+      // Log to server console for Amplify CloudWatch — makes it clear which
+      // env var didn't propagate to the Lambda runtime.
+      console.error("[razorpay/order] Missing env vars:", missing.join(", "));
       return NextResponse.json(
-        { error: "Razorpay keys are not configured in environment variables." },
+        {
+          error: `Razorpay keys missing at runtime: ${missing.join(", ")}. Set them in Amplify Console → Hosting → Environment variables and redeploy.`,
+        },
         { status: 500 },
       );
     }
