@@ -6,6 +6,18 @@ frontend:
         - npm ci --legacy-peer-deps
     build:
       commands:
+        # Amplify Hosting exposes env vars from the Console during BUILD,
+        # but does not reliably forward them to the SSR Lambda runtime for
+        # Next.js App Router apps. Writing them into .env.production before
+        # `next build` ensures Next.js loads them at both compile time
+        # (for NEXT_PUBLIC_* inlining) and runtime (for server /api routes).
+        - |
+          set +e
+          {
+            env | grep -E '^(RAZORPAY_|NEXT_PUBLIC_|RESEND_|SMTP_|WHATSAPP_|FIREBASE_|API_SECRET=|REPORT_API_SECRET=|APP_URL=)'
+          } > .env.production
+          set -e
+          echo "Wrote $(wc -l < .env.production) env vars to .env.production"
         - npm run build
   artifacts:
     baseDirectory: .next
