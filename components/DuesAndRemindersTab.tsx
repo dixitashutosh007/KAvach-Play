@@ -306,7 +306,8 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                        
                        let sentCount = 0;
                        let failCount = 0;
-                       
+                       const failReasons: string[] = [];
+
                        for (const data of playersWithMobile) {
                           const link = `${window.location.origin}/pay/${data.player.id}`;
                           try {
@@ -320,17 +321,31 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                                 link: link,
                               })
                             });
-                            
+
                             if (res.ok) {
                               sentCount++;
                             } else {
                               failCount++;
+                              // Capture server error body so the alert is diagnostic
+                              let reason = `HTTP ${res.status}`;
+                              try {
+                                const body = await res.json();
+                                if (body?.error) reason = body.error;
+                                if (body?.details?.message) reason += ` — ${body.details.message}`;
+                              } catch {
+                                try { reason = (await res.text()).slice(0, 200); } catch {}
+                              }
+                              failReasons.push(`${data.player.name}: ${reason}`);
                             }
-                          } catch (e) {
+                          } catch (e: any) {
                             failCount++;
+                            failReasons.push(`${data.player.name}: ${e?.message || "network/client error"}`);
                           }
                        }
-                       alert(`Finished sending WhatsApp reminders. Sent: ${sentCount}, Failed: ${failCount}`);
+                       const detail = failReasons.length
+                         ? "\n\nFirst failures:\n" + failReasons.slice(0, 3).join("\n")
+                         : "";
+                       alert(`Finished sending WhatsApp reminders. Sent: ${sentCount}, Failed: ${failCount}${detail}`);
                      }}
                      className={`${hasSelection ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
                    >
