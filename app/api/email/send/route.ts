@@ -36,6 +36,12 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
+    // Only signed-in admins can trigger email sends. This closes the
+    // external-callable surface that link-preview crawlers were hitting.
+    const { requireAdmin } = await import("@/lib/server-auth");
+    const guard = await requireAdmin(req);
+    if (!guard.ok) return guard.response;
+
     if (provider === "resend") {
       // Secret is server-side only (env var). Never trust a key that came
       // through the DB-backed appConfig, which is publicly readable.

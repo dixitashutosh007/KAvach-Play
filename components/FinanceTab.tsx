@@ -7,6 +7,7 @@
  * to view their outstanding dues and mark them as paid. Also integrates a secondary
  * `WixFinanceView` for potential external e-commerce hooks.
  */
+import { authedFetch } from "@/lib/authed-fetch";
 import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Match, MatchPayment, Player, SubscriptionPlan } from "@/lib/types";
@@ -289,7 +290,7 @@ export function PlayerFinanceView({
                     .replace(/{{duesText}}/g, duesText)
                     .replace(/{{link}}/g, `${window.location.origin}/pay/${mePlayer?.id || "profile"}`);
                 };
-                await fetch("/api/email/send", {
+                await authedFetch("/api/email/send", {
                   method: "POST",
                   body: JSON.stringify({
                     to: [playerEmail],
@@ -301,7 +302,7 @@ export function PlayerFinanceView({
               }
 
               if (adminEmails.length > 0) {
-                await fetch("/api/email/send", {
+                await authedFetch("/api/email/send", {
                   method: "POST",
                   body: JSON.stringify({
                     to: adminEmails,
@@ -878,7 +879,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                                 .replace(/{{link}}/g, link);
                             };
                             try {
-                              const res = await fetch("/api/email/send", {
+                              const res = await authedFetch("/api/email/send", {
                                 method: "POST",
                                 body: JSON.stringify({
                                   to: [p.email],

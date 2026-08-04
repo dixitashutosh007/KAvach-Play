@@ -5,6 +5,11 @@ import firebaseConfig from "@/firebase-applet-config.json";
 
 export async function POST(req: Request) {
   try {
+    // Admin-only: block external / crawler / AI-tool invocations.
+    const { requireAdmin } = await import("@/lib/server-auth");
+    const guard = await requireAdmin(req);
+    if (!guard.ok) return guard.response;
+
     const { to, daysLeft, playerName } = await req.json();
 
     const apps = getApps();

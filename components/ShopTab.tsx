@@ -1,4 +1,5 @@
 "use client";
+import { authedFetch } from "@/lib/authed-fetch";
 
 import React, { useState, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
@@ -490,7 +491,7 @@ export function ShopTab({
         emailsToSend.push(...adminEmails);
 
         if (emailsToSend.length > 0) {
-          await fetch("/api/email/send", {
+          await authedFetch("/api/email/send", {
             method: "POST",
             body: JSON.stringify({
               to: [...new Set(emailsToSend)], // Deduplicate
@@ -593,7 +594,7 @@ export function ShopTab({
         const emailsToSend = [...adminEmails];
 
         if (emailsToSend.length > 0) {
-          await fetch("/api/email/send", {
+          await authedFetch("/api/email/send", {
             method: "POST",
             body: JSON.stringify({
               to: [...new Set(emailsToSend)],

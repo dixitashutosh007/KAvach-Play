@@ -311,7 +311,7 @@ export function HomeTab({
           {activeMatchAlerts.map(({ match, isStarted, diffStr }) => {
             const ground = store.grounds.find((g) => g.id === match.groundId);
             const groundName = ground?.name || 'Unknown Ground';
-            const mapUrl = `/api/map-redirect?url=${encodeURIComponent(ground?.mapUrl || "")}&name=${encodeURIComponent(groundName)}`;
+            const mapUrl = ground?.mapUrl || "";
             return (
               <div 
                 key={`alert-${match.id}`} 

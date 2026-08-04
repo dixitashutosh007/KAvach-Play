@@ -1,4 +1,5 @@
 import { useStore } from "@/hooks/useStore";
+import { authedFetch } from "@/lib/authed-fetch";
 import { useState } from "react";
 import {
   Video,
@@ -272,7 +273,7 @@ function MembersView({
     if (confirm(confirmMsg)) {
       setRemindingPlayerId(p.id);
       try {
-        const res = await fetch("/api/whatsapp/remind-studio", {
+        const res = await authedFetch("/api/whatsapp/remind-studio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

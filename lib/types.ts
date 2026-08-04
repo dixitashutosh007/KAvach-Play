@@ -59,14 +59,9 @@ export type AppConfig = {
     directionsHoursAfter?: number;
     enablePlayerAvailability?: boolean;
   };
-  automaticReminders?: ReminderSchedule[];
-};
-
-export type ReminderSchedule = {
-  id: string;
-  days: string[]; // e.g. ["Monday", "Tuesday"]
-  time: string;   // e.g. "10:00"
-  feeTypes: string[]; // e.g. ["matches", "others"]
+  // automaticReminders and emailAutomationEnabled were removed with the
+  // cron cleanup. Reminders are only sent when an admin explicitly clicks
+  // a "Send" button; there is no scheduled automation.
 };
 
 export type AppUser = {

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { authedFetch } from "@/lib/authed-fetch";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { ReminderSchedule } from "@/lib/types";
 
 export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isFinanceAdmin: boolean }) {
-  const [subTab, setSubTab] = useState<"dues_report" | "automatic_reminders">("dues_report");
+  const [subTab, setSubTab] = useState<"dues_report" | "email_template">("dues_report");
 
   // Dues Report State
   const [dueType, setDueType] = useState<"all" | "matches" | "others">("all");
@@ -13,7 +13,9 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
   const [selectedDues, setSelectedDues] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-  // Automatic Reminders State
+  // Email template used by manual "Send Reminder" buttons. Automatic cron
+  // scheduling was removed to control Cloud Run / Lambda costs — reminders
+  // are now only sent when an admin explicitly clicks the button.
   const defaultTemplate = {
     subject: "Pending Fee Reminder - {{clubName}}",
     body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
@@ -21,10 +23,9 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
   const [emailTemplate, setEmailTemplate] = useState(
     store.appConfig?.emailTemplates?.due_reminder || defaultTemplate
   );
-  
-  const [automaticReminders, setAutomaticReminders] = useState<ReminderSchedule[]>(Array.isArray(store.appConfig?.automaticReminders) ? store.appConfig.automaticReminders : []);
+
   const [isEmailSubOpen, setIsEmailSubOpen] = useState(true);
-  
+
   const handleSaveRemindersConfig = async () => {
      try {
        await store.updateAppConfig({
@@ -33,9 +34,8 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
              ...(store.appConfig?.emailTemplates || {}),
              due_reminder: emailTemplate
           },
-          automaticReminders
        });
-       alert("Reminders Configuration Saved!");
+       alert("Email template saved.");
      } catch (e) {
        alert("Failed to save configuration.");
      }
@@ -46,7 +46,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
       <div className="flex items-center gap-3 bg-black/20 p-1 rounded-xl border border-glass-border overflow-x-auto hide-scrollbar">
         {[
           { key: "dues_report", label: "Report" },
-          { key: "automatic_reminders", label: "Automation" },
+          { key: "email_template", label: "Email Template" },
         ].map((tab) => {
           const active = subTab === tab.key;
           return (
@@ -63,184 +63,65 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
         })}
       </div>
 
-      {subTab === "automatic_reminders" && (
+
+      {subTab === "email_template" && (
         <div className="glass p-6 rounded-2xl border border-glass-border space-y-6">
-           {/* Reminder Schedules Section */}
-           <div className="border border-glass-border rounded-xl bg-white/5 overflow-hidden">
-             <div className="p-4 space-y-4">
-               <div className="flex items-center justify-between">
-                 <div className="space-y-1">
-                   <h4 className="text-[11px] font-bold uppercase tracking-widest text-white/80">Reminder Schedules</h4>
-                   <p className="text-[9px] text-white/50 max-w-sm">Note: A cron service (like Vercel Cron or Google Cloud Scheduler) is required to ping <span className="font-mono text-emerald-400">/api/cron/reminders</span> hourly for these to run automatically.</p>
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <button type="button" onClick={async () => {
-                     if (window.confirm("This will trigger the cron endpoint which runs schedules that match the current hour. Since you are testing, you might want to ensure you have a schedule for the current hour. Continue?")) {
-                        try {
-                          const res = await fetch("/api/cron/reminders");
-                          const data = await res.json();
-                          alert(data.message || "Executed successfully");
-                        } catch (e) {
-                          alert("Failed to trigger");
-                        }
-                     }
-                   }} className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[10px] font-bold hover:bg-emerald-500/30 transition flex items-center gap-1 uppercase tracking-widest">
-                     Test Cron
-                   </button>
-                   <button type="button" onClick={() => {
-                     setAutomaticReminders([...automaticReminders, { id: crypto.randomUUID(), days: [], time: "09:00", feeTypes: [] }]);
-                   }} className="px-3 py-1 bg-accent/20 text-accent rounded-lg text-xs font-bold hover:bg-accent/30 transition flex items-center gap-1">
-                     <Plus className="w-3 h-3" /> Add Schedule
-                   </button>
-                 </div>
-               </div>
-               
-               <div className="space-y-4">
-                 {automaticReminders.map((schedule, idx) => (
-                   <div key={schedule.id} className="bg-black/20 border border-glass-border rounded-lg p-4 space-y-3 relative">
-                     <button type="button" onClick={() => setAutomaticReminders(automaticReminders.filter(s => s.id !== schedule.id))} className="absolute top-2 right-2 text-white/40 hover:text-red-400">
-                       <Trash2 className="w-4 h-4" />
-                     </button>
-                     
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       <div>
-                         <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-white/60">Days</label>
-                         <div className="flex flex-wrap gap-2">
-                           {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
-                             <button
-                               key={day}
-                               type="button"
-                               onClick={() => {
-                                 const newDays = schedule.days.includes(day) 
-                                   ? schedule.days.filter(d => d !== day)
-                                   : [...schedule.days, day];
-                                 setAutomaticReminders(automaticReminders.map(s => s.id === schedule.id ? { ...s, days: newDays } : s));
-                               }}
-                               className={`px-2 py-1 text-[10px] rounded border transition ${schedule.days.includes(day) ? 'bg-accent/20 border-accent text-accent' : 'border-glass-border text-white/50 hover:bg-white/5'}`}
-                             >
-                               {day.slice(0, 3)}
-                             </button>
-                           ))}
-                         </div>
-                       </div>
-                       
-                       <div>
-                         <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-white/60">Time</label>
-                         <input 
-                           type="time"
-                           value={schedule.time}
-                           onChange={e => setAutomaticReminders(automaticReminders.map(s => s.id === schedule.id ? { ...s, time: e.target.value } : s))}
-                           className="bg-black/40 border border-glass-border rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-accent"
-                         />
-                       </div>
-                       
-                       <div className="md:col-span-2">
-                         <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-white/60">Fee Types to Remind</label>
-                         <div className="flex flex-wrap gap-2">
-                           {["matches", "studio", "others"].map(ft => (
-                             <button
-                               key={ft}
-                               type="button"
-                               onClick={() => {
-                                 const newFeeTypes = schedule.feeTypes?.includes(ft) 
-                                   ? schedule.feeTypes.filter(f => f !== ft)
-                                   : [...(schedule.feeTypes || []), ft];
-                                 setAutomaticReminders(automaticReminders.map(s => s.id === schedule.id ? { ...s, feeTypes: newFeeTypes } : s));
-                               }}
-                               className={`px-3 py-1 text-[11px] font-bold rounded-lg border capitalize transition ${schedule.feeTypes?.includes(ft) ? 'bg-accent/20 border-accent text-accent' : 'border-glass-border text-white/50 bg-white/5 hover:bg-white/10'}`}
-                             >
-                               {ft}
-                             </button>
-                           ))}
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                 ))}
-                 {automaticReminders.length === 0 && (
-                   <div className="text-center py-6 border border-dashed border-glass-border rounded-lg text-white/40 text-sm">
-                     No schedules configured. Add one above.
-                   </div>
-                 )}
-               </div>
-             </div>
-           </div>
+          <div className="bg-amber-500/5 border border-amber-500/20 text-amber-200/80 text-[11px] px-3 py-2 rounded-lg leading-snug">
+            Automated cron-based reminders were removed to control server costs. Reminders are now sent only when an admin clicks the per-player <b className="text-amber-100">Send Email</b> or <b className="text-amber-100">Send WhatsApp</b> button in the Report tab. Use this section to edit the template body those buttons will send.
+          </div>
 
-           <div className="mt-2 mb-4 flex justify-end">
-              <button
-                type="button"
-                onClick={handleSaveRemindersConfig}
-                className="px-6 py-2.5 bg-accent text-black text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-accent/90 transition shadow-lg w-full"
-              >
-                Save Schedules & Automation Settings
-              </button>
-            </div>
+          <div className="border border-glass-border rounded-xl bg-white/5 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setIsEmailSubOpen(!isEmailSubOpen)}
+              className="w-full flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 transition focus:outline-none border-b border-glass-border"
+            >
+              <h4 className="text-[11px] font-bold uppercase tracking-widest text-white/80">Email Template</h4>
+              {isEmailSubOpen ? <ChevronDown className="w-4 h-4 text-white/60" /> : <ChevronRight className="w-4 h-4 text-white/60" />}
+            </button>
+            {isEmailSubOpen && (
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={emailTemplate.subject}
+                    onChange={(e) => setEmailTemplate({ ...emailTemplate, subject: e.target.value })}
+                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50 mb-1">Body</label>
+                  <textarea
+                    value={emailTemplate.body}
+                    onChange={(e) => setEmailTemplate({ ...emailTemplate, body: e.target.value })}
+                    rows={10}
+                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-white custom-scrollbar leading-relaxed"
+                  />
+                  <div className="mt-3 text-xs text-white/40 space-y-1">
+                    <div className="font-bold uppercase tracking-widest mb-2 text-white/60">Available Variables:</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <span className="bg-white/5 px-2 py-1 rounded">{'{{clubName}}'}</span>
+                      <span className="bg-white/5 px-2 py-1 rounded">{'{{playerName}}'}</span>
+                      <span className="bg-white/5 px-2 py-1 rounded">{'{{amount}}'}</span>
+                      <span className="bg-white/5 px-2 py-1 rounded">{'{{duesText}}'}</span>
+                      <span className="bg-white/5 px-2 py-1 rounded">{'{{link}}'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
-            {/* Email Section */}
-           <div className="border border-glass-border rounded-xl bg-white/5 overflow-hidden">
-             <button
-               type="button"
-               onClick={() => setIsEmailSubOpen(!isEmailSubOpen)}
-               className="w-full flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 transition focus:outline-none border-b border-glass-border"
-             >
-               <h4 className="text-[11px] font-bold uppercase tracking-widest text-white/80">Email Configuration</h4>
-               {isEmailSubOpen ? <ChevronDown className="w-4 h-4 text-white/60" /> : <ChevronRight className="w-4 h-4 text-white/60" />}
-             </button>
-             {isEmailSubOpen && (
-               <div className="p-4 space-y-4">
-                 <div>
-                   <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/80 cursor-pointer mb-2">
-                     <input 
-                       type="checkbox"
-                       checked={store.appConfig?.emailAutomationEnabled !== false} // Default to true for backward compatibility
-                       onChange={(e) => store.updateAppConfig({ ...store.appConfig, emailAutomationEnabled: e.target.checked })}
-                       className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent"
-                     />
-                     Enable Email Automated Reminders
-                   </label>
-                 </div>
-                 <div>
-                   <label className="block text-xs font-bold uppercase tracking-widest text-white/50 mb-1">Subject</label>
-                   <input 
-                     type="text"
-                     value={emailTemplate.subject}
-                     onChange={(e) => setEmailTemplate({ ...emailTemplate, subject: e.target.value })}
-                     className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-white"
-                   />
-                 </div>
-                 <div>
-                   <label className="block text-xs font-bold uppercase tracking-widest text-white/50 mb-1">Body</label>
-                   <textarea
-                     value={emailTemplate.body}
-                     onChange={(e) => setEmailTemplate({ ...emailTemplate, body: e.target.value })}
-                     rows={10}
-                     className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-white custom-scrollbar leading-relaxed"
-                   />
-                   <div className="mt-3 text-xs text-white/40 space-y-1">
-                     <div className="font-bold uppercase tracking-widest mb-2 text-white/60">Available Variables:</div>
-                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                       <span className="bg-white/5 px-2 py-1 rounded">{'{{clubName}}'}</span>
-                       <span className="bg-white/5 px-2 py-1 rounded">{'{{playerName}}'}</span>
-                       <span className="bg-white/5 px-2 py-1 rounded">{'{{amount}}'}</span>
-                       <span className="bg-white/5 px-2 py-1 rounded">{'{{duesText}}'}</span>
-                       <span className="bg-white/5 px-2 py-1 rounded">{'{{link}}'}</span>
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             )}
-           </div>
-
-
-
-           <button
-             onClick={handleSaveRemindersConfig}
-             className="bg-accent text-black font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-xl hover:bg-accent/90 transition shadow-lg shadow-accent/20 w-full"
-           >
-             Save Automation Settings
-           </button>
+          <button
+            onClick={handleSaveRemindersConfig}
+            className="bg-accent text-black font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-xl hover:bg-accent/90 transition shadow-lg shadow-accent/20 w-full"
+          >
+            Save Email Template
+          </button>
         </div>
       )}
+
 
       {subTab === "dues_report" && (() => {
          const allDues: any[] = [];
@@ -374,7 +255,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                                 .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
                                 .replace(/{{link}}/g, link);
                             };
-                            const res = await fetch("/api/email/send", {
+                            const res = await authedFetch("/api/email/send", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
@@ -429,7 +310,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                        for (const data of playersWithMobile) {
                           const link = `${window.location.origin}/pay/${data.player.id}`;
                           try {
-                            const res = await fetch("/api/whatsapp/send", {
+                            const res = await authedFetch("/api/whatsapp/send", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
@@ -606,7 +487,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                                       }
                                       const link = `${window.location.origin}/pay/${item.player.id}`;
                                       try {
-                                        const res = await fetch("/api/whatsapp/send", {
+                                        const res = await authedFetch("/api/whatsapp/send", {
                                           method: "POST",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({
@@ -649,7 +530,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                                                .replace(/{{duesText}}/g, item.desc)
                                                .replace(/{{link}}/g, link);
                                            };
-                                           const res = await fetch("/api/email/send", {
+                                           const res = await authedFetch("/api/email/send", {
                                              method: "POST",
                                              body: JSON.stringify({
                                                to: [item.player.email],

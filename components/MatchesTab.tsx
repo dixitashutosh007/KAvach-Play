@@ -1893,9 +1893,9 @@ export function MatchPayments({
             return (
               <div className="mt-4 pt-4 border-t border-glass-border">
                 <a
-                  href={`/api/map-redirect?url=${encodeURIComponent(ground.mapUrl)}&name=${encodeURIComponent(ground.name)}`}
+                  href={ground.mapUrl}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="flex items-center gap-2 text-sm text-white/80 hover:text-accent transition group"
                 >
                   <MapPin className="w-4 h-4 text-accent shrink-0" />

@@ -6,6 +6,7 @@
  * Payments, Leaderboard), controlling the theme colors, overriding admin roles,
  * filling the club logo, and populating mock system data (seed data) for fast onboarding.
  */
+import { authedFetch } from "@/lib/authed-fetch";
 import { useStore } from "@/hooks/useStore";
 import {
   Settings,
@@ -284,7 +285,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     };
 
     try {
-      const res = await fetch("/api/email/send", {
+      const res = await authedFetch("/api/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
