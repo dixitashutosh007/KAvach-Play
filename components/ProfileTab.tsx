@@ -496,12 +496,12 @@ export function ProfileTab({
               </p>
               <AuthProviderBadges
                 providers={
-                  // Prefer the live providerData (always current for the
-                  // signed-in user). Fall back to the stored appUsers field
-                  // if for some reason providerData isn't populated yet.
                   user?.providerData?.map((p) => p.providerId).filter(Boolean) ||
                   appUser?.authProviders
                 }
+                firstLinkedAt={appUser?.firstProviderLinkedAt}
+                lastLoginAt={appUser?.lastLoginAt}
+                showTimestamps
               />
             </div>
 

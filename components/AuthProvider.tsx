@@ -8,7 +8,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { auth, testConnection, db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { LoadingScreen } from "./LoadingScreen";
 
 interface AuthContextType {
@@ -63,21 +63,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {
             setHasAdminClaim(false);
           }
-          // Record which auth providers this user has linked, so it can be
-          // displayed on their profile (and admin-visible on the players
-          // list). One write per session — Firestore rules only allow the
-          // user to update their own appUsers doc, so this never races
-          // with admin edits. Guarded so it never fails the login flow.
+          // Record auth provider metadata so profile/admin views can show
+          // sign-in method + "first linked" audit info. One write per
+          // session. Guarded so it never fails the login flow.
           try {
             if (!u.isAnonymous) {
               const providers = (u.providerData || [])
                 .map((p) => p.providerId)
                 .filter(Boolean);
+
+              // Compute firstProviderLinkedAt: preserve existing timestamps,
+              // stamp any providers we haven't seen before with now.
+              const nowIso = new Date().toISOString();
+              const userDocRef = doc(db, "appUsers", u.uid);
+              let existingFirstLinked: Record<string, string> = {};
+              try {
+                const snap = await getDoc(userDocRef);
+                if (snap.exists()) {
+                  const data = snap.data() as any;
+                  if (data?.firstProviderLinkedAt && typeof data.firstProviderLinkedAt === "object") {
+                    existingFirstLinked = data.firstProviderLinkedAt;
+                  }
+                }
+              } catch {}
+              const mergedFirstLinked = { ...existingFirstLinked };
+              for (const pid of providers) {
+                if (!mergedFirstLinked[pid]) mergedFirstLinked[pid] = nowIso;
+              }
+
               await setDoc(
-                doc(db, "appUsers", u.uid),
+                userDocRef,
                 {
                   authProviders: providers,
-                  lastLoginAt: new Date().toISOString(),
+                  lastLoginAt: nowIso,
+                  firstProviderLinkedAt: mergedFirstLinked,
                 },
                 { merge: true },
               );

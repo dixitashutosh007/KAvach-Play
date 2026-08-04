@@ -96,6 +96,10 @@ export type AppUser = {
   // Values: "google.com" | "phone" | "password" | "anonymous" | "apple.com" | ...
   authProviders?: string[];
   lastLoginAt?: string; // ISO timestamp of the last time authProviders was written
+  // Map of providerId → ISO timestamp of the first time this provider was
+  // observed on the user. Never overwritten once set for a given provider,
+  // so it acts as a rough "when did they first link this method" audit.
+  firstProviderLinkedAt?: Record<string, string>;
 };
 
 export type Ground = {

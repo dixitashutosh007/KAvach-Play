@@ -79,14 +79,17 @@ export function EditPlayerInline({
         </button>
       </div>
 
-      <div className="bg-white/5 border border-glass-border rounded-lg px-3 py-2 flex flex-wrap items-center gap-3">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-          Sign-in method:
+      <div className="bg-white/5 border border-glass-border rounded-lg px-3 py-2 space-y-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50 block">
+          Sign-in method
         </span>
         <AuthProviderBadges
           providers={appUserMatch?.authProviders}
+          firstLinkedAt={appUserMatch?.firstProviderLinkedAt}
+          lastLoginAt={appUserMatch?.lastLoginAt}
           size="xs"
           emptyLabel="Never signed in"
+          showTimestamps
         />
       </div>
 
