@@ -83,6 +83,7 @@ export function ShopTab({
 
   // Local state for Admin Manual Order
   const [showManualOrder, setShowManualOrder] = useState(false);
+  const [isSavingManualOrder, setIsSavingManualOrder] = useState(false);
   const [manualPlayerId, setManualPlayerId] = useState("");
   const [manualMerchId, setManualMerchId] = useState("");
   const [manualSize, setManualSize] = useState("");
@@ -517,6 +518,11 @@ export function ShopTab({
   const handleAddManualOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Guard against double-tap / slow-network submissions that would
+    // otherwise write two Firestore docs with different random UUIDs and
+    // show up as duplicate rows in Club Orders.
+    if (isSavingManualOrder) return;
+
     const selectedProduct = store.merchandises.find((m) => m.id === manualMerchId);
     if (!selectedProduct) return;
 
@@ -554,6 +560,7 @@ export function ShopTab({
       return;
     }
 
+    setIsSavingManualOrder(true);
     try {
       const currentPaidCount = getPaidOrdersCount(selectedProduct.id);
       const newPaidCount = currentPaidCount + (manualPaidStatus === "Paid" ? 1 : 0);
@@ -620,6 +627,8 @@ export function ShopTab({
       setManualPrice(0);
     } catch (err) {
       alert("Failed to create manual order.");
+    } finally {
+      setIsSavingManualOrder(false);
     }
   };
 
@@ -669,8 +678,8 @@ export function ShopTab({
   return (
     <div className="space-y-6" id="shop-tab-container">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold uppercase tracking-widest text-white flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-accent" /> Shop
           </h2>
@@ -679,11 +688,12 @@ export function ShopTab({
           </p>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex bg-black/20 p-1 rounded-xl border border-glass-border overflow-x-auto no-scrollbar">
+        {/* View Toggle — wraps on narrow screens so all pills stay visible
+            instead of the last one (Administration) sliding off the right. */}
+        <div className="flex flex-wrap gap-1 bg-black/20 p-1 rounded-xl border border-glass-border w-full lg:w-auto">
           <button
             onClick={() => setView("catalog")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition whitespace-nowrap shrink-0 ${
+            className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition whitespace-nowrap ${
               view === "catalog" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
             }`}
           >
@@ -691,7 +701,7 @@ export function ShopTab({
           </button>
           <button
             onClick={() => setView("history")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+            className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
               view === "history" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
             }`}
           >
@@ -699,7 +709,7 @@ export function ShopTab({
           </button>
           <button
             onClick={() => setView("global-list")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+            className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
               view === "global-list" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
             }`}
           >
@@ -708,11 +718,11 @@ export function ShopTab({
           {isAdmin && (
             <button
               onClick={() => setView("admin")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
                 view === "admin" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
               }`}
             >
-              <Sliders className="w-4 h-4" /> Administration
+              <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Administration
             </button>
           )}
         </div>
@@ -1331,9 +1341,10 @@ export function ShopTab({
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-blue-500 transition shadow-lg"
+                  disabled={isSavingManualOrder}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-blue-500 transition shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Save Manual Cash Order
+                  {isSavingManualOrder ? "Saving..." : "Save Manual Cash Order"}
                 </button>
               </div>
             </form>

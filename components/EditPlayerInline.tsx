@@ -93,7 +93,7 @@ export function EditPlayerInline({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
             Name
@@ -284,8 +284,8 @@ export function EditPlayerInline({
         </div>
 
         {formData.isStudioMember && (
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-accent/10">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-accent/10">
+            <div className="sm:col-span-2">
               <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-accent/80">
                 Membership Plan
               </label>
@@ -334,7 +334,7 @@ export function EditPlayerInline({
                 className="w-full rounded-lg border border-accent/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-accent/80">
                 Studio Expiry Date{" "}
                 <span className="text-red-400 font-bold">*</span>

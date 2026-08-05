@@ -872,15 +872,15 @@ export default function Home() {
               ) : (
                 <div className="space-y-1">
                   {[
+                    "home",
                     "finance",
                     "dues_and_reminders",
                     "studio",
                     "matches",
-                    "home",
-                    "settings",
                     "leaderboard",
                     "shop",
                     "opinion",
+                    "settings",
                   ]
                     .filter((tab) => {
                       if (tab === "finance" || tab === "dues_and_reminders")
