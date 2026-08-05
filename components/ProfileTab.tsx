@@ -224,9 +224,13 @@ export function ProfileTab({
         )}
       </div>
 
-      <div className="glass rounded-xl p-5 relative overflow-hidden">
-        {/* Decorative background element */}
-        <div className="absolute right-0 top-0 w-32 h-32 bg-white opacity-5 blur-3xl rounded-full translate-x-10 -translate-y-10 pointer-events-none"></div>
+      <div className="glass rounded-xl p-5 relative">
+        {/* Decorative background element — wrapped in its own overflow-hidden
+            layer so position: sticky on the submit button (inside the form
+            below) still works reliably across browsers. */}
+        <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+          <div className="absolute right-0 top-0 w-32 h-32 bg-white opacity-5 blur-3xl rounded-full translate-x-10 -translate-y-10"></div>
+        </div>
 
         {isEditing ? (
           <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
@@ -460,21 +464,25 @@ export function ProfileTab({
               </div>
             </div>
 
-            <div className="pt-3 flex gap-2">
+            {/* Sticky action bar so users on mobile always see the submit
+                button even with the virtual keyboard open, and don't have
+                to scroll all the way to the bottom of a tall form. */}
+            <div className="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex gap-2 bg-neutral-950/95 backdrop-blur-md border-t border-glass-border mt-6">
               {!hasMissingMandatory && (
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="flex-1 rounded-lg bg-white/5 py-2.5 text-sm font-bold text-white hover:bg-white/10 transition"
+                  className="flex-1 rounded-lg bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/20 transition"
                 >
                   Cancel
                 </button>
               )}
               <button
                 type="submit"
-                className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-bold text-black border border-accent flex items-center justify-center gap-2 hover:bg-accent/90 transition shadow-lg"
+                className="flex-[2] rounded-lg bg-accent py-3.5 text-sm font-black uppercase tracking-wider text-black border-2 border-accent flex items-center justify-center gap-2 hover:bg-accent/90 transition shadow-[0_4px_20px_rgba(16,185,129,0.35)]"
               >
-                <Save className="w-4 h-4" /> Save
+                <Save className="w-4 h-4" />
+                {hasMissingMandatory ? "Complete Registration" : "Save Changes"}
               </button>
             </div>
           </form>
