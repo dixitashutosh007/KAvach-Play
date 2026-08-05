@@ -43,8 +43,13 @@ export function ProfileTab({
       !appUser?.emergencyContact ||
       !appUser?.mobile);
   const [isEditing, setIsEditing] = useState(forceEdit || hasMissingMandatory);
+  // Email is provider-controlled ONLY if Firebase Auth gave us one (Google or
+  // email/password sign-in). For phone-OTP-only users, user.email is null and
+  // the field must be editable so they can supply an email during registration.
+  const emailIsProviderLocked = !!user?.email;
   const [formData, setFormData] = useState({
     name: appUser?.name || linkedPlayer?.name || user?.displayName || "",
+    email: appUser?.email || user?.email || linkedPlayer?.email || "",
     dob: dbToInputDate(appUser?.dob || linkedPlayer?.dob),
     locality: appUser?.locality || linkedPlayer?.locality || "",
     bloodGroup: appUser?.bloodGroup || linkedPlayer?.bloodGroup || "",
@@ -68,11 +73,13 @@ export function ProfileTab({
       dob: inputToDbDate(formData.dob),
     };
     
-    // Auto-create appUser if it was somehow missing but they are editing profile
+    // Auto-create appUser if it was somehow missing but they are editing profile.
+    // Prefer the user-typed email (formData.email) over provider fallbacks so
+    // phone-OTP users who just filled in their email actually get it saved.
     if (!appUser && user) {
       await store.updateAppUserProfile(user.uid, {
         ...processedForm,
-        email: user.email || linkedPlayer?.email || "",
+        email: processedForm.email || user.email || linkedPlayer?.email || "",
         role: "player",
         isStudioMember: linkedPlayer?.isStudioMember || false,
       });
@@ -246,10 +253,21 @@ export function ProfileTab({
                 <input
                   required
                   type="email"
-                  value={appUser?.email || user?.email || linkedPlayer?.email || ""}
-                  disabled
-                  className="w-full rounded-lg border border-glass-border bg-black/20 px-3 py-2 text-sm text-white/50 cursor-not-allowed"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  disabled={emailIsProviderLocked}
+                  placeholder="you@example.com"
+                  className={
+                    emailIsProviderLocked
+                      ? "w-full rounded-lg border border-glass-border bg-black/20 px-3 py-2 text-sm text-white/50 cursor-not-allowed"
+                      : "w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  }
                 />
+                {emailIsProviderLocked && (
+                  <p className="mt-1 text-[9px] text-white/40 leading-tight">
+                    Email is managed by your sign-in provider (Google) and can't be changed here.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
