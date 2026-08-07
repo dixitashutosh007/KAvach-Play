@@ -1075,10 +1075,33 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (opCount >= BATCH_LIMIT) await flush();
     };
 
-    // 1. Reparent match payments (matches/{matchId}/payments/{payId})
-    for (const pay of payments) {
-      if (pay.playerId !== loserId) continue;
-      if (!pay.matchId || !pay.id) continue;
+    // 1. Reparent match payments (matches/{matchId}/payments/{payId}).
+    // Prefer the in-memory `payments` array (populated by ensurePayments,
+    // which the caller is expected to have triggered). If it's empty —
+    // e.g. the admin opened the scanner and clicked Merge before the
+    // subscription hydrated — fall back to a one-shot collectionGroup
+    // fetch so we never silently skip payments.
+    let paymentsForMerge = payments.filter(
+      (p) => p.playerId === loserId && p.matchId && p.id,
+    );
+    if (paymentsForMerge.length === 0 && payments.length === 0) {
+      try {
+        const snap = await getDocs(collectionGroup(db, "payments"));
+        paymentsForMerge = snap.docs
+          .map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              matchId: data.matchId,
+              playerId: data.playerId,
+            } as any;
+          })
+          .filter((p: any) => p.playerId === loserId && p.matchId && p.id);
+      } catch (err) {
+        console.warn("Fallback payments fetch failed during merge", err);
+      }
+    }
+    for (const pay of paymentsForMerge) {
       await add((b) =>
         b.update(doc(db, "matches", pay.matchId, "payments", pay.id), {
           playerId: keeperId,

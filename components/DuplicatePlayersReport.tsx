@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Copy, IndianRupee } from "lucide-react";
 import { Player } from "@/lib/types";
 import { useStore } from "@/hooks/useStore";
@@ -33,6 +33,14 @@ export function DuplicatePlayersReport({
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
   const [mergingGroup, setMergingGroup] = useState<string | null>(null);
+
+  // Payments + otherFees are lazy subscriptions in the store — the merge
+  // reparents docs from those collections and needs them primed.
+  // ensure* helpers are idempotent, so calling on every mount is safe.
+  useEffect(() => {
+    store.ensurePayments?.();
+    store.ensureOtherFees?.();
+  }, [store]);
 
   const groups = useMemo(() => {
     const byMobile = new Map<string, Player[]>();
@@ -124,9 +132,15 @@ export function DuplicatePlayersReport({
         await store.mergePlayer(loser.id, keeperId);
       }
       alert("Merge complete.");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Merge failed", err);
-      alert("Merge failed. Check the console for details.");
+      // Surface the real reason (permission denied, missing index, etc.)
+      // — a generic "check console" is useless on mobile / prod.
+      const msg =
+        err?.code
+          ? `Merge failed [${err.code}]: ${err.message || "unknown error"}`
+          : `Merge failed: ${err?.message || String(err)}`;
+      alert(msg);
     } finally {
       setMergingGroup(null);
     }
