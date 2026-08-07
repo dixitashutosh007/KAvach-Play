@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
+import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { Player } from "@/lib/types";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
 
@@ -259,6 +260,8 @@ export function PlayersTab({
         </div>
       </div>
 
+      {isAdmin && <DuplicatePlayersReport store={store} />}
+
       <>
         {isAdmin && pendingPlayers.length > 0 && (
           <div className="space-y-2 mb-4">
@@ -401,15 +404,21 @@ export function PlayersTab({
                         onClick={() => {
                           if (player.disabled) {
                             if (window.confirm(`Are you sure you want to restore ${player.name}?`)) {
-                              store.updatePlayer(player.id, { disabled: false });
+                              store.updatePlayer(player.id, {
+                                disabled: false,
+                                disabledAt: undefined,
+                              });
                             }
                           } else {
                             if (
                               window.confirm(
-                                `Are you sure you want to move ${player.name} to trash? They will not be able to login until restored.`,
+                                `Are you sure you want to move ${player.name} to trash? They can request a fresh signup after a 3-day cool-down.`,
                               )
                             ) {
-                              store.updatePlayer(player.id, { disabled: true });
+                              store.updatePlayer(player.id, {
+                                disabled: true,
+                                disabledAt: new Date().toISOString(),
+                              });
                             }
                           }
                         }}

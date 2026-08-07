@@ -158,6 +158,7 @@ export type Player = {
   email?: string;
   mobile: string;
   disabled?: boolean;
+  disabledAt?: string;
   inviteStatus:
     | "Unverified"
     | "Verified"

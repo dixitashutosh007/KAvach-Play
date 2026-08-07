@@ -470,7 +470,14 @@ export default function Home() {
     store.players.find((p) => p.mobile === appUser?.mobile && p.mobile);
 
   if (player?.disabled) {
-    return <AccountDisabledScreen />;
+    return (
+      <AccountDisabledScreen
+        player={player}
+        user={user}
+        store={store}
+        now={now}
+      />
+    );
   }
 
   const isSuperAdmin =

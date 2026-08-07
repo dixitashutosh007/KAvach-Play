@@ -852,10 +852,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       // Batched payment doc creation. Previously we did 99 sequential
       // setDocs — one HTTP round-trip per player. writeBatch commits up to
       // 500 ops in a single round-trip.
+      // Skip trashed / rejected / still-pending signups so admins don't
+      // see rows for people who can never pay.
+      const chargeablePlayers = players.filter(
+        (p) =>
+          !p.disabled &&
+          p.inviteStatus !== "Rejected" &&
+          p.inviteStatus !== "Pending",
+      );
       const BATCH_LIMIT = 400;
-      for (let i = 0; i < players.length; i += BATCH_LIMIT) {
+      for (let i = 0; i < chargeablePlayers.length; i += BATCH_LIMIT) {
         const batch = writeBatch(db);
-        for (const p of players.slice(i, i + BATCH_LIMIT)) {
+        for (const p of chargeablePlayers.slice(i, i + BATCH_LIMIT)) {
           const payId = crypto.randomUUID();
           batch.set(doc(db, "matches", id, "payments", payId), {
             id: payId,

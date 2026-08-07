@@ -863,6 +863,12 @@ export function MatchesTab({
               const now = new Date();
               const fourteenDaysFromNow = new Date(now);
               fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14);
+              // Admins still need to edit recent results (result, POTM, stats,
+              // fee assignments) for a while after the match. Keep the last
+              // 10 days out of "Past Matches" so those cards stay right at
+              // the top of the list.
+              const pastCutoff = new Date(now);
+              pastCutoff.setDate(pastCutoff.getDate() - 10);
 
               const getMatchDate = (match: Match) => {
                 const parts = dbToInputDate(match.date).split("/"); // returns DD/MM/YYYY
@@ -1190,8 +1196,8 @@ export function MatchesTab({
                  );
               }
                
-              const pastMatches = allMatches.filter(m => getMatchDate(m) < now).sort((a,b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());
-              const upcomingMatches = allMatches.filter(m => getMatchDate(m) >= now).sort((a,b) => getMatchDate(a).getTime() - getMatchDate(b).getTime());
+              const pastMatches = allMatches.filter(m => getMatchDate(m) < pastCutoff).sort((a,b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());
+              const upcomingMatches = allMatches.filter(m => getMatchDate(m) >= pastCutoff).sort((a,b) => getMatchDate(a).getTime() - getMatchDate(b).getTime());
 
               const upcomingNear = upcomingMatches.filter(m => {
                  const date = getMatchDate(m);
@@ -2768,12 +2774,19 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const upcomingStart = new Date(today);
+    // Admins still need to edit recent match cards for a while after the
+    // game (result, POTM, stats, fee assignments). Anchor the past /
+    // upcoming split 10 days back so recent matches keep showing up in
+    // the main calendar area instead of collapsing into Past Matches.
+    const pastCutoff = new Date(today);
+    pastCutoff.setDate(pastCutoff.getDate() - 10);
+
+    const upcomingStart = new Date(pastCutoff);
     const currentDay = upcomingStart.getDay();
     const dist = currentDay === 0 ? 6 : currentDay - 1; // get to monday
     upcomingStart.setDate(upcomingStart.getDate() - dist);
 
-    const upcomingEnd = new Date(upcomingStart);
+    const upcomingEnd = new Date(today);
     upcomingEnd.setMonth(upcomingEnd.getMonth() + 8);
 
     const nonArchivedMatches = matches.filter(m => !m.isArchived).filter(m => {
@@ -2783,8 +2796,8 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
 
     const isMatchOpen = (m: Match) => m.format === "Other" || m.opponent === "TBD" || m.opponent.toLowerCase().includes("open") || m.format.toLowerCase().includes("open");
 
-    // Compute earliest past match
-    const pastMatches = nonArchivedMatches.filter(m => getMatchDateObj(m) < today);
+    // Compute earliest past match (older than the 10-day editable window)
+    const pastMatches = nonArchivedMatches.filter(m => getMatchDateObj(m) < pastCutoff);
     let earliestPastDate = new Date(today);
     if (pastMatches.length > 0) {
       earliestPastDate = new Date(Math.min(...pastMatches.map(m => getMatchDateObj(m).getTime())));

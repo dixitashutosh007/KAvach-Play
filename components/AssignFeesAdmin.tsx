@@ -17,7 +17,16 @@ export function AssignFeesAdmin({
   const [confirmDuplicates, setConfirmDuplicates] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
-  const filteredPlayers = store.players.filter(
+  // Only active, verified players can be charged. Trashed (disabled),
+  // Rejected, and still-Pending signups are hidden so admins don't
+  // accidentally assign a match fee to someone who can never pay it.
+  const chargeableStatus = (p: (typeof store.players)[number]) => {
+    if (p.disabled) return false;
+    if (p.inviteStatus === "Rejected" || p.inviteStatus === "Pending") return false;
+    return true;
+  };
+
+  const filteredPlayers = store.players.filter(chargeableStatus).filter(
     (p) =>
       !searchPlayer ||
       p.name.toLowerCase().includes(searchPlayer.toLowerCase()) ||
