@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { Shield } from "lucide-react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { normalizeIndianMobile } from "@/lib/utils";
+import { normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 
 interface FormState {
   name: string;
@@ -62,6 +62,11 @@ export function RegistrationForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const jerseyError = validateJerseyNumber(form.jerseyNumber);
+    if (jerseyError) {
+      alert(jerseyError);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const userDoc = doc(db, "appUsers", user.uid);
@@ -149,8 +154,9 @@ export function RegistrationForm({
               />
             </div>
             <div className="space-y-1 text-left">
-              <label className={labelCls}>Email Address</label>
+              <label className={labelCls}>Email Address *</label>
               <input
+                required
                 type="email"
                 value={form.email}
                 onChange={(e) => set("email", e.target.value)}
@@ -272,16 +278,25 @@ export function RegistrationForm({
               </select>
             </div>
             <div className="space-y-1 text-left">
-              <label className={labelCls}>Requested Jersey No. (Optional)</label>
+              <label className={labelCls}>Jersey Number *</label>
               <input
+                required
                 type="text"
+                inputMode="numeric"
+                pattern="\d{1,3}"
+                maxLength={3}
                 value={form.jerseyNumber}
-                onChange={(e) => set("jerseyNumber", e.target.value)}
+                onChange={(e) =>
+                  set(
+                    "jerseyNumber",
+                    e.target.value.replace(/\D/g, "").slice(0, 3),
+                  )
+                }
                 className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent font-mono"
                 placeholder="e.g. 7"
               />
               <p className="text-[9px] text-white/40 mt-0.5 leading-tight">
-                * Note: Jersey numbers are locked and assigned by administrators only.
+                Up to 3 digits. Number 10 is reserved and cannot be used.
               </p>
             </div>
           </div>

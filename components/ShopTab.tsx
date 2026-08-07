@@ -81,6 +81,12 @@ export function ShopTab({
   const [customJerseyNumber, setCustomJerseyNumber] = useState("");
   const [isOrdering, setIsOrdering] = useState(false);
 
+  // Local state for Admin Edit Order modal
+  const [editingOrder, setEditingOrder] = useState<MerchOrder | null>(null);
+  const [editOrderDraft, setEditOrderDraft] = useState<Partial<MerchOrder>>({});
+  const [editOrderCustomDraft, setEditOrderCustomDraft] = useState<Record<string, string>>({});
+  const [isSavingEditOrder, setIsSavingEditOrder] = useState(false);
+
   // Local state for Admin Manual Order
   const [showManualOrder, setShowManualOrder] = useState(false);
   const [isSavingManualOrder, setIsSavingManualOrder] = useState(false);
@@ -638,6 +644,66 @@ export function ShopTab({
       alert(`Order status updated to "${status}"`);
     } catch (err) {
       alert("Failed to update status.");
+    }
+  };
+
+  const handleDeleteOrder = async (order: MerchOrder) => {
+    if (
+      !window.confirm(
+        `Delete this order for ${order.playerName} (${order.merchName})?\n\n` +
+          `This removes the row from Club Orders permanently. If it was already paid, the payment record on Razorpay is not affected.`,
+      )
+    )
+      return;
+    try {
+      await store.deleteMerchOrder(order.id);
+    } catch (err) {
+      alert("Failed to delete order.");
+    }
+  };
+
+  const openEditOrder = (order: MerchOrder) => {
+    setEditingOrder(order);
+    setEditOrderDraft({
+      size: order.size || "",
+      spec: order.spec || "",
+      jerseyName: order.jerseyName || "",
+      jerseyNumber: order.jerseyNumber || "",
+      price: order.price,
+      paymentStatus: order.paymentStatus,
+    });
+    setEditOrderCustomDraft({ ...(order.customSelections || {}) });
+  };
+
+  const closeEditOrder = () => {
+    setEditingOrder(null);
+    setEditOrderDraft({});
+    setEditOrderCustomDraft({});
+    setIsSavingEditOrder(false);
+  };
+
+  const handleSaveEditOrder = async () => {
+    if (!editingOrder || isSavingEditOrder) return;
+    setIsSavingEditOrder(true);
+    try {
+      const patch: Partial<MerchOrder> = {
+        size: editOrderDraft.size ?? "",
+        spec: editOrderDraft.spec || undefined,
+        jerseyName: editOrderDraft.jerseyName || undefined,
+        jerseyNumber: editOrderDraft.jerseyNumber || undefined,
+        price:
+          typeof editOrderDraft.price === "number"
+            ? editOrderDraft.price
+            : Number(editOrderDraft.price) || editingOrder.price,
+        paymentStatus: editOrderDraft.paymentStatus || editingOrder.paymentStatus,
+        customSelections:
+          Object.keys(editOrderCustomDraft).length > 0 ? editOrderCustomDraft : undefined,
+      };
+      await store.updateMerchOrder(editingOrder.id, patch);
+      closeEditOrder();
+    } catch (err) {
+      alert("Failed to update order.");
+      setIsSavingEditOrder(false);
     }
   };
 
@@ -1448,9 +1514,16 @@ export function ShopTab({
                               <option value="Fulfilled">Fulfilled</option>
                             </select>
                           </td>
-                          <td className="py-3.5 px-2 text-right">
+                          <td className="py-3.5 px-2 text-right whitespace-nowrap">
                             <button
-                              onClick={() => store.deleteMerchOrder(ord.id)}
+                              onClick={() => openEditOrder(ord)}
+                              className="text-accent hover:text-accent/80 transition p-1 mr-1"
+                              title="Edit Order"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteOrder(ord)}
                               className="text-red-400 hover:text-red-300 transition p-1"
                               title="Delete Order"
                             >
@@ -1868,6 +1941,7 @@ export function ShopTab({
                                 <th className="py-2 px-1">Specification</th>
                                 {merch.category === "Jersey" && (
                                   <>
+                                    <th className="py-2 px-1">Sleeve</th>
                                     <th className="py-2 px-1">Backprint Name</th>
                                     <th className="py-2 px-1">Jersey Number</th>
                                   </>
@@ -1883,6 +1957,13 @@ export function ShopTab({
                                   const kl = k.toLowerCase();
                                   return kl.includes("chest") || kl === "size";
                                 })?.[1] || "";
+                                // Sleeves for Jerseys come in either through
+                                // the top-level `spec` field or (more often)
+                                // as a customSelections entry whose key
+                                // contains "sleeve".
+                                const displaySleeve = Object.entries(ord.customSelections || {}).find(([k]) =>
+                                  k.toLowerCase().includes("sleeve"),
+                                )?.[1] || (ord.spec && ord.spec.toLowerCase().includes("sleeve") ? ord.spec : "") || "";
                                 return (
                                 <tr key={ord.id} className="hover:bg-white/5 transition">
                                   <td className="py-2.5 px-1 font-bold whitespace-nowrap">{ord.playerName}</td>
@@ -1898,6 +1979,15 @@ export function ShopTab({
                                   <td className="py-2.5 px-1 font-semibold text-white/60 whitespace-nowrap">{ord.spec || "Standard"}</td>
                                   {merch.category === "Jersey" && (
                                     <>
+                                      <td className="py-2.5 px-1 whitespace-nowrap">
+                                        {displaySleeve ? (
+                                          <span className="bg-sky-500/15 text-sky-300 px-2 py-0.5 rounded font-mono font-bold text-[10px]">
+                                            {displaySleeve}
+                                          </span>
+                                        ) : (
+                                          <span className="text-white/30">—</span>
+                                        )}
+                                      </td>
                                       <td className="py-2.5 px-1 font-mono font-extrabold text-emerald-400 uppercase whitespace-nowrap">{ord.jerseyName || "—"}</td>
                                       <td className="py-2.5 px-1 font-mono font-extrabold text-accent whitespace-nowrap">
                                         {ord.jerseyNumber ? `#${ord.jerseyNumber}` : "—"}
@@ -1928,6 +2018,172 @@ export function ShopTab({
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin Edit Order Modal */}
+      {editingOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-lg p-5 relative shadow-2xl max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={closeEditOrder}
+              className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+              disabled={isSavingEditOrder}
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-sm font-bold uppercase tracking-widest text-accent mb-1 flex items-center gap-2">
+              <Edit className="w-4 h-4" /> Edit Order
+            </h3>
+            <p className="text-[11px] text-white/60 mb-4">
+              {editingOrder.playerName} · {editingOrder.merchName}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Size
+                </label>
+                <input
+                  type="text"
+                  value={editOrderDraft.size ?? ""}
+                  onChange={(e) =>
+                    setEditOrderDraft((prev) => ({ ...prev, size: e.target.value }))
+                  }
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Specification
+                </label>
+                <input
+                  type="text"
+                  value={editOrderDraft.spec ?? ""}
+                  onChange={(e) =>
+                    setEditOrderDraft((prev) => ({ ...prev, spec: e.target.value }))
+                  }
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Jersey Name
+                </label>
+                <input
+                  type="text"
+                  value={editOrderDraft.jerseyName ?? ""}
+                  onChange={(e) =>
+                    setEditOrderDraft((prev) => ({
+                      ...prev,
+                      jerseyName: e.target.value,
+                    }))
+                  }
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white uppercase font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Jersey Number
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={3}
+                  value={editOrderDraft.jerseyNumber ?? ""}
+                  onChange={(e) =>
+                    setEditOrderDraft((prev) => ({
+                      ...prev,
+                      jerseyNumber: e.target.value.replace(/\D/g, "").slice(0, 3),
+                    }))
+                  }
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Price (₹)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editOrderDraft.price ?? 0}
+                  onChange={(e) =>
+                    setEditOrderDraft((prev) => ({
+                      ...prev,
+                      price: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Payment Status
+                </label>
+                <select
+                  value={editOrderDraft.paymentStatus ?? "Unpaid"}
+                  onChange={(e) =>
+                    setEditOrderDraft((prev) => ({
+                      ...prev,
+                      paymentStatus: e.target.value as "Paid" | "Unpaid",
+                    }))
+                  }
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-neutral-900"
+                >
+                  <option value="Paid">Paid</option>
+                  <option value="Unpaid">Unpaid</option>
+                </select>
+              </div>
+            </div>
+
+            {Object.keys(editOrderCustomDraft).length > 0 && (
+              <>
+                <div className="mt-2 mb-1 text-[10px] font-bold uppercase tracking-widest text-white/50">
+                  Custom Attributes (Sleeves, etc.)
+                </div>
+                <div className="space-y-2 mb-3">
+                  {Object.entries(editOrderCustomDraft).map(([key, val]) => (
+                    <div key={key} className="grid grid-cols-3 gap-2 items-center">
+                      <span className="text-[11px] text-white/70 font-mono truncate col-span-1">
+                        {key}
+                      </span>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) =>
+                          setEditOrderCustomDraft((prev) => ({
+                            ...prev,
+                            [key]: e.target.value,
+                          }))
+                        }
+                        className="col-span-2 w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={closeEditOrder}
+                disabled={isSavingEditOrder}
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white text-xs font-bold uppercase tracking-wider hover:bg-white/5 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditOrder}
+                disabled={isSavingEditOrder}
+                className="flex-[2] py-2.5 rounded-lg bg-accent text-black text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50"
+              >
+                {isSavingEditOrder ? "Saving..." : "Save Order Changes"}
+              </button>
+            </div>
           </div>
         </div>
       )}

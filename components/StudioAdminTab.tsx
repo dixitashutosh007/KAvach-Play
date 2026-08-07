@@ -201,7 +201,10 @@ function MembersView({
         !p.disabled &&
         (p.inviteStatus === "Accepted" || p.inviteStatus === "Verified"),
     )
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .slice()
+    .sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "", "en", { sensitivity: "base" }),
+    );
 
   let filteredMembers = studioPlayers.filter(
     (p) =>

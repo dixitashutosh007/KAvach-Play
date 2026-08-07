@@ -106,6 +106,21 @@ export function normalizeIndianMobile(input: string | undefined | null): string 
   return `+91${digits}`;
 }
 
+/**
+ * Validate a jersey-number string against club rules:
+ *   - up to 3 digits, numeric only
+ *   - never "10" (reserved / blocked)
+ * Returns "" (empty string means "no error"). If invalid, returns
+ * the human-readable error message the caller should show.
+ */
+export function validateJerseyNumber(input: string | undefined | null): string {
+  const value = String(input || "").trim();
+  if (!value) return "Jersey number is required.";
+  if (!/^\d{1,3}$/.test(value)) return "Jersey number must be up to 3 digits (numbers only).";
+  if (value === "10" || value === "010" || value === "0010") return "Jersey number 10 is reserved and cannot be used.";
+  return "";
+}
+
 export function inputToDbDate(inputDate: string | undefined | null): string {
   if (!inputDate) return "";
   const parts = inputDate.split("/");

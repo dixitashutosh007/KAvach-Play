@@ -488,6 +488,10 @@ export default function Home() {
 
   const isAdmin =
     isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin;
+  // Mandatory profile fields every non-admin player must have populated
+  // before they can use the app. If any of these are missing on next
+  // open (even for existing users), we force them through the completion
+  // screen so old profiles get topped up.
   const hasMissingMandatory =
     !isAdmin &&
     (!appUser?.name ||
@@ -495,7 +499,11 @@ export default function Home() {
       !appUser?.locality ||
       !appUser?.bloodGroup ||
       !appUser?.emergencyContact ||
-      !appUser?.mobile);
+      !appUser?.mobile ||
+      !appUser?.email ||
+      !appUser?.chestSize ||
+      !appUser?.jerseyNumber ||
+      appUser?.jerseyNumber === "10");
   const isVerified =
     player?.inviteStatus === "Verified" || player?.inviteStatus === "Accepted";
 

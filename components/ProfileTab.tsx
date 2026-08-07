@@ -11,7 +11,7 @@ import { useStore } from "@/hooks/useStore";
 import { useAuth } from "./AuthProvider";
 import { useState } from "react";
 import { Calendar, MapPin, User, Save, CreditCard, Plus, Trash2, Edit2, PieChart, ChevronDown, ChevronRight } from "lucide-react";
-import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
@@ -68,9 +68,16 @@ export function ProfileTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const jerseyError = validateJerseyNumber(formData.jerseyNumber);
+    if (jerseyError) {
+      alert(jerseyError);
+      return;
+    }
     const processedForm = {
       ...formData,
       dob: inputToDbDate(formData.dob),
+      mobile: normalizeIndianMobile(formData.mobile),
+      emergencyContact: normalizeIndianMobile(formData.emergencyContact),
     };
     
     // Auto-create appUser if it was somehow missing but they are editing profile.
@@ -425,41 +432,39 @@ export function ProfileTab({
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                  Jersey Size & No.
+                  Jersey Size & No. *
                 </label>
                 <div className="flex gap-2">
                   <select
+                    required
                     value={formData.chestSize}
                     onChange={(e) =>
                       setFormData({ ...formData, chestSize: e.target.value })
                     }
                     className="w-1/2 rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
                   >
-                    <option value="">Select Size</option>
+                    <option value="">Select Size *</option>
                     {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
                       <option key={sz} value={sz}>{sz}</option>
                     ))}
                   </select>
-                  {isAdmin ? (
-                    <input
-                      type="text"
-                      placeholder="Number"
-                      value={formData.jerseyNumber}
-                      onChange={(e) =>
-                        setFormData({ ...formData, jerseyNumber: e.target.value })
-                      }
-                      className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      disabled
-                      placeholder="No."
-                      value={formData.jerseyNumber || "—"}
-                      className="w-1/2 rounded-lg border border-glass-border/40 bg-white/5 opacity-50 cursor-not-allowed px-3 py-2 text-sm text-white focus:outline-none font-mono"
-                      title="Jersey number can only be assigned or edited by administrators."
-                    />
-                  )}
+                  <input
+                    required
+                    type="text"
+                    inputMode="numeric"
+                    pattern="\d{1,3}"
+                    maxLength={3}
+                    placeholder="Number *"
+                    value={formData.jerseyNumber}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        jerseyNumber: e.target.value.replace(/\D/g, "").slice(0, 3),
+                      })
+                    }
+                    className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                    title="Up to 3 digits. Number 10 is reserved."
+                  />
                 </div>
               </div>
             </div>

@@ -291,16 +291,19 @@ export function AdminDashboard({
              <ArrowRight className="w-4 h-4 text-white/30" />
           </button>
       </div>
-      
+
       <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+          <button
+            onClick={() => setIsNoShowModalOpen(true)}
+            className="glass flex items-center justify-between p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 hover:bg-orange-500/10 transition"
+          >
              <div className="flex items-center gap-3">
-                 <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
-                     <Landmark className="w-5 h-5" />
+                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
+                     <UserX className="w-5 h-5" />
                  </div>
                  <div className="text-left">
-                     <p className="text-sm font-bold text-white">View Calendar</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
+                     <p className="text-sm font-bold text-white">Add No Show</p>
+                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Fine Absentees</p>
                  </div>
              </div>
              <ArrowRight className="w-4 h-4 text-white/30" />
@@ -319,24 +322,19 @@ export function AdminDashboard({
              <ArrowRight className="w-4 h-4 text-white/30" />
           </button>
       </div>
-
-      <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setIsNoShowModalOpen(true)}
-            className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition"
-          >
-             <div className="flex items-center gap-3">
-                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
-                     <UserX className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Add No Show</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Fine Absentees</p>
-                 </div>
+      
+      <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition w-full">
+         <div className="flex items-center gap-3">
+             <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
+                 <Landmark className="w-5 h-5" />
              </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-      </div>
+             <div className="text-left">
+                 <p className="text-sm font-bold text-white">View Calendar</p>
+                 <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
+             </div>
+         </div>
+         <ArrowRight className="w-4 h-4 text-white/30" />
+      </button>
       
       {/* Payout to Organiser Panel */}
       {payoutMatches.length > 0 && (

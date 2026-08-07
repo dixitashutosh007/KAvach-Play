@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Player } from "@/lib/types";
-import { dbToInputDate, inputToDbDate, normalizeIndianMobile } from "@/lib/utils";
+import { dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthProviderBadges } from "@/components/AuthProviderBadges";
 
@@ -47,6 +47,16 @@ export function EditPlayerInline({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Admin can leave jersey blank if the player hasn't picked one yet, but
+    // if a value is entered it has to obey the club rules (max 3 digits,
+    // never "10").
+    if (formData.jerseyNumber) {
+      const jerseyError = validateJerseyNumber(formData.jerseyNumber);
+      if (jerseyError) {
+        alert(jerseyError);
+        return;
+      }
+    }
     const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, ...rest } =
       formData;
     const updatedData: Partial<Player> = {
