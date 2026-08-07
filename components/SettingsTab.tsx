@@ -158,6 +158,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   });
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [transparentUploadProgress, setTransparentUploadProgress] = useState<
+    number | null
+  >(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [seedStatus, setSeedStatus] = useState("");
 
@@ -224,6 +227,71 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     };
     reader.readAsDataURL(file);
     e.target.value = ""; // Reset input so same file can be selected again
+  };
+
+  // Upload for the transparent logo. Same size cap as the primary,
+  // but the canvas export uses PNG so alpha is preserved (Design cards
+  // rely on this — the logo sits directly on coloured backgrounds).
+  const handleTransparentLogoUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image is too large. Please select an image under 5MB.");
+      return;
+    }
+    setTransparentUploadProgress(0);
+    const reader = new FileReader();
+    reader.onerror = () => {
+      alert("Failed to read file.");
+      setTransparentUploadProgress(null);
+    };
+    reader.onload = (event) => {
+      const base64String = event.target?.result as string;
+      const img = new window.Image();
+      img.onerror = () => {
+        alert("Invalid image file selected.");
+        setTransparentUploadProgress(null);
+      };
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_SIZE = 400;
+        let { width, height } = img;
+        if (width > height && width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          // Do NOT paint a background — we want the transparent pixels
+          // from the source to carry through into the PNG output.
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          try {
+            const png = canvas.toDataURL("image/png");
+            setLogoTransparentUrl(png);
+            setTransparentUploadProgress(100);
+            setTimeout(() => setTransparentUploadProgress(null), 1000);
+          } catch (err) {
+            console.error("Canvas export error:", err);
+            setLogoTransparentUrl(base64String);
+            setTransparentUploadProgress(null);
+          }
+        } else {
+          setLogoTransparentUrl(base64String);
+          setTransparentUploadProgress(null);
+        }
+      };
+      img.src = base64String;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const renderTemplatePreview = (subjOrBody: string) => {
@@ -466,22 +534,70 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                  Transparent Logo URL (for Design cards)
+                  Transparent Logo (for Design cards)
                 </label>
-                <div className="flex gap-2">
-                  <span className="inline-flex items-center px-3 rounded-lg border border-glass-border bg-white/5 text-white/50">
-                    <ImageIcon className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="url"
-                    value={logoTransparentUrl}
-                    onChange={(e) => setLogoTransparentUrl(e.target.value)}
-                    className="flex-1 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none min-w-0"
-                    placeholder="https://example.com/logo-transparent.png"
-                  />
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex flex-1 gap-2">
+                    <span className="inline-flex items-center px-3 rounded-lg border border-glass-border bg-white/5 text-white/50">
+                      <ImageIcon className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="url"
+                      value={logoTransparentUrl}
+                      onChange={(e) => setLogoTransparentUrl(e.target.value)}
+                      className="flex-1 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none min-w-0"
+                      placeholder="URL, or use Upload →"
+                    />
+                  </div>
+                  <label className="shrink-0 flex items-center justify-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 transition rounded-lg px-4 py-2 text-sm font-bold border border-glass-border">
+                    <Upload className="w-4 h-4" />
+                    {transparentUploadProgress !== null
+                      ? `${Math.round(transparentUploadProgress)}%`
+                      : "Upload PNG"}
+                    <input
+                      type="file"
+                      accept="image/png,image/webp,image/svg+xml"
+                      onChange={handleTransparentLogoUpload}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
+                {logoTransparentUrl && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                      Preview:
+                    </span>
+                    {/* Swatch shows the logo on both a light and a dark
+                        surface so you can confirm the background really
+                        is transparent. */}
+                    <div className="flex items-center justify-center h-14 w-14 rounded-lg bg-white border border-glass-border">
+                      <img
+                        src={logoTransparentUrl}
+                        alt="logo on light"
+                        className="max-h-12 max-w-12 object-contain"
+                      />
+                    </div>
+                    <div className="flex items-center justify-center h-14 w-14 rounded-lg bg-red-800 border border-glass-border">
+                      <img
+                        src={logoTransparentUrl}
+                        alt="logo on dark"
+                        className="max-h-12 max-w-12 object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLogoTransparentUrl("")}
+                      className="ml-auto text-[10px] font-bold uppercase text-red-400 hover:text-red-300"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
                 <p className="mt-1 text-[10px] text-white/40">
-                  Used on Design cards where the logo sits directly on a colour or photo — no white square around it. Optional; falls back to the main logo.
+                  Upload a PNG with a transparent background (or paste a URL).
+                  Used on Design cards where the logo sits directly on a colour or
+                  photo — no white square around it. Optional; falls back to the
+                  main logo.
                 </p>
               </div>
               <div>

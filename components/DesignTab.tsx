@@ -1613,7 +1613,14 @@ function WeeklySummaryTemplate({
 // =====================================================================
 
 export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
-  const clubName = store.appConfig?.clubName || "KAvach";
+  // Some workspaces have stored a stub like "Play" (app-name leftover)
+  // in appConfig.clubName — that's not the team name anyone wants to
+  // see printed across a post. Fall back to "KAvach" whenever the
+  // stored value is empty or the literal "Play". The team-name field
+  // in the scorecard form remains fully editable per card either way.
+  const rawClubName = (store.appConfig?.clubName || "").trim();
+  const clubName =
+    !rawClubName || rawClubName.toLowerCase() === "play" ? "KAvach" : rawClubName;
   const logoPrimary = store.appConfig?.logoUrl || "";
   const logoTransparent =
     store.appConfig?.logoTransparentUrl || store.appConfig?.logoUrl || "";
@@ -1709,6 +1716,11 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [scMatchId, setScMatchId] = useState<string>("");
   const scMatch = store.matches.find((m) => m.id === scMatchId);
   const [scOpponent, setScOpponent] = useState<string>("");
+  // Editable team name per card. Empty string → fall back to the
+  // (sanitized) clubName. Storing an override lets one workspace
+  // ship a card as "KAvach A" while the club name stays "KAvach".
+  const [scTeamNameOverride, setScTeamNameOverride] = useState<string>("");
+  const scTeamName = scTeamNameOverride.trim() || clubName;
   const [scTeamScore, setScTeamScore] = useState<string>("");
   const [scTeamOvers, setScTeamOvers] = useState<string>("");
   const [scOppScore, setScOppScore] = useState<string>("");
@@ -2065,7 +2077,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         : [battingCol, bowlingCol];
 
   const scData: ScorecardData = {
-    teamName: clubName,
+    teamName: scTeamName,
     opponent: scOpponent,
     teamScore: scTeamScore,
     teamOvers: scTeamOvers,
@@ -2337,16 +2349,16 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
 
           <div className="grid grid-cols-2 gap-2">
             <input
+              value={scTeamNameOverride}
+              onChange={(e) => setScTeamNameOverride(e.target.value)}
+              placeholder={`Our team (default ${clubName})`}
+              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            />
+            <input
               value={scOpponent}
               onChange={(e) => setScOpponent(e.target.value)}
               placeholder="Opponent"
               className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
-            />
-            <input
-              value={""}
-              disabled
-              placeholder={`${clubName} (auto)`}
-              className="bg-black/20 border border-glass-border rounded-lg px-3 py-2 text-sm text-white/40 cursor-not-allowed"
             />
             <input
               value={scTeamScore}
