@@ -38,7 +38,7 @@ import {
 import { format, parseISO } from "date-fns";
 
 // -------- Sizes --------
-type SizeKey = "square" | "portrait";
+type SizeKey = "square" | "portrait45" | "portrait";
 const SIZES: Record<SizeKey, { w: number; h: number; label: string; ratio: string; platforms: string }> = {
   square: {
     w: 1080,
@@ -47,6 +47,13 @@ const SIZES: Record<SizeKey, { w: number; h: number; label: string; ratio: strin
     ratio: "1:1",
     platforms: "Instagram feed · WhatsApp msg · Facebook post",
   },
+  portrait45: {
+    w: 1080,
+    h: 1350,
+    label: "Portrait 4:5",
+    ratio: "4:5",
+    platforms: "Instagram feed (portrait) · Facebook portrait post",
+  },
   portrait: {
     w: 1080,
     h: 1920,
@@ -54,6 +61,52 @@ const SIZES: Record<SizeKey, { w: number; h: number; label: string; ratio: strin
     ratio: "9:16",
     platforms: "Instagram Story · WhatsApp Status · Reels cover",
   },
+};
+
+// -------- Photo filter presets (SVG feColorMatrix / feComponentTransfer) --------
+// Applied to the hero photo via filter="url(#photoFx_<id>)" so the effect
+// survives SVG → canvas rasterization. Values chosen to loosely mirror
+// the KAvach-Design CSS presets (Fierce / Stylish / Calm / etc.).
+type PhotoFxId = "none" | "fierce" | "stylish" | "calm" | "aggressive" | "vibrant" | "grayscale";
+const PHOTO_FILTERS: { id: PhotoFxId; label: string }[] = [
+  { id: "none", label: "Original" },
+  { id: "fierce", label: "Fierce" },
+  { id: "stylish", label: "Stylish" },
+  { id: "calm", label: "Calm" },
+  { id: "aggressive", label: "Aggressive" },
+  { id: "vibrant", label: "Vibrant" },
+  { id: "grayscale", label: "B&W" },
+];
+
+// -------- Card type (POTM / Best Batsman / Best Bowler) --------
+type CardTypeVariant = "potm" | "best_batsman" | "best_bowler";
+const CARD_TYPE_TITLE: Record<CardTypeVariant, string[]> = {
+  potm: ["PLAYER", "OF THE", "MATCH"],
+  best_batsman: ["BEST", "", "BATSMAN"],
+  best_bowler: ["BEST", "", "BOWLER"],
+};
+
+// -------- Auto-computed batting/bowling stats --------
+const calcStrikeRate = (runs: string, balls: string): string => {
+  const r = parseFloat(runs);
+  const b = parseFloat(balls);
+  if (!isFinite(r) || !isFinite(b) || b <= 0) return "";
+  return ((r / b) * 100).toFixed(1);
+};
+// Overs like "4.3" mean 4 overs and 3 balls, per cricket convention.
+const oversToBalls = (overs: string): number => {
+  const o = parseFloat(overs);
+  if (!isFinite(o) || o <= 0) return 0;
+  const whole = Math.floor(o);
+  const partBalls = Math.round((o - whole) * 10);
+  return whole * 6 + Math.min(5, partBalls);
+};
+const calcEconomy = (runs: string, overs: string): string => {
+  const balls = oversToBalls(overs);
+  const r = parseFloat(runs);
+  if (!isFinite(r) || balls <= 0) return "";
+  const totalOvers = balls / 6;
+  return (r / totalOvers).toFixed(2);
 };
 
 type CardKind = "scorecard" | "milestone" | "achievement";
@@ -223,6 +276,66 @@ const SvgDefs = ({
       <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" />
       <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.15 0" />
       <feComposite in2="SourceGraphic" operator="in" />
+    </filter>
+    {/* Photo look presets. Each is a stack of primitives applied in
+        pipeline order. feColorMatrix values are 4x5 matrices
+        (RGBA in → RGBA out). Numbers tuned to mirror the CSS
+        filters used by the KAvach-Design Studio prototype. */}
+    <filter id="photoFx_fierce" colorInterpolationFilters="sRGB">
+      <feColorMatrix type="saturate" values="1.4" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.25" intercept="-0.12" />
+        <feFuncG type="linear" slope="1.25" intercept="-0.12" />
+        <feFuncB type="linear" slope="1.25" intercept="-0.12" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="photoFx_stylish" colorInterpolationFilters="sRGB">
+      <feColorMatrix type="saturate" values="0.85" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.15" intercept="0.03" />
+        <feFuncG type="linear" slope="1.15" intercept="0.03" />
+        <feFuncB type="linear" slope="1.15" intercept="0.03" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="photoFx_calm" colorInterpolationFilters="sRGB">
+      <feColorMatrix
+        type="matrix"
+        values="0.393 0.769 0.189 0 0
+                0.349 0.686 0.168 0 0
+                0.272 0.534 0.131 0 0
+                0     0     0     1 0"
+      />
+      <feColorMatrix type="saturate" values="0.7" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.1" intercept="0.02" />
+        <feFuncG type="linear" slope="1.1" intercept="0.02" />
+        <feFuncB type="linear" slope="1.1" intercept="0.02" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="photoFx_aggressive" colorInterpolationFilters="sRGB">
+      <feColorMatrix type="saturate" values="1.6" />
+      <feColorMatrix type="hueRotate" values="-15" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.35" intercept="-0.18" />
+        <feFuncG type="linear" slope="1.35" intercept="-0.18" />
+        <feFuncB type="linear" slope="1.35" intercept="-0.18" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="photoFx_vibrant" colorInterpolationFilters="sRGB">
+      <feColorMatrix type="saturate" values="1.3" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.15" intercept="0.02" />
+        <feFuncG type="linear" slope="1.15" intercept="0.02" />
+        <feFuncB type="linear" slope="1.15" intercept="0.02" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="photoFx_grayscale" colorInterpolationFilters="sRGB">
+      <feColorMatrix type="saturate" values="0" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.1" />
+        <feFuncG type="linear" slope="1.1" />
+        <feFuncB type="linear" slope="1.1" />
+      </feComponentTransfer>
     </filter>
     <clipPath id="fullBleed">
       <rect x="0" y="0" width={size.w} height={size.h} />
@@ -623,7 +736,11 @@ function ScorecardTemplate({
   logoUrl,
   clubName,
   data,
-  isPotm,
+  cardType,
+  photoNaturalSize,
+  photoPan,
+  photoZoom,
+  photoFilter,
 }: {
   size: SizeKey;
   scheme: Scheme;
@@ -631,7 +748,11 @@ function ScorecardTemplate({
   logoUrl: string;
   clubName: string;
   data: ScorecardData;
-  isPotm: boolean;
+  cardType: CardTypeVariant;
+  photoNaturalSize: { w: number; h: number } | null;
+  photoPan: { x: number; y: number };
+  photoZoom: number;
+  photoFilter: PhotoFxId;
 }) {
   const s = SIZES[size];
   const isPortrait = size === "portrait";
@@ -672,8 +793,43 @@ function ScorecardTemplate({
     >
       <SvgDefs scheme={scheme} photoDataUrl={photoDataUrl} size={s} />
 
-      {/* Background: full-bleed photo, or gradient placeholder */}
-      {photoDataUrl ? (
+      {/* Background: full-bleed photo, or gradient placeholder.
+          When we know the photo's natural dimensions, size the SVG image
+          manually so we can pan (photoPan.x/y) and zoom (photoZoom)
+          without relying on preserveAspectRatio (which centers only).
+          Falls back to a plain "slice" if we don't have dimensions yet. */}
+      {photoDataUrl && photoNaturalSize ? (
+        (() => {
+          // Cover-fit the natural photo into the canvas, then optionally
+          // zoom in further. Pan values are 0..100 (%) mapping to the
+          // available overflow after cover-fit + zoom.
+          const coverScale = Math.max(s.w / photoNaturalSize.w, s.h / photoNaturalSize.h);
+          const scale = coverScale * photoZoom;
+          const drawW = photoNaturalSize.w * scale;
+          const drawH = photoNaturalSize.h * scale;
+          const overflowX = Math.max(0, drawW - s.w);
+          const overflowY = Math.max(0, drawH - s.h);
+          const x = -overflowX * (photoPan.x / 100);
+          const y = -overflowY * (photoPan.y / 100);
+          const filterAttr =
+            photoFilter && photoFilter !== "none"
+              ? `url(#photoFx_${photoFilter})`
+              : undefined;
+          return (
+            <g clipPath="url(#fullBleed)">
+              <image
+                href={photoDataUrl}
+                x={x}
+                y={y}
+                width={drawW}
+                height={drawH}
+                preserveAspectRatio="none"
+                filter={filterAttr}
+              />
+            </g>
+          );
+        })()
+      ) : photoDataUrl ? (
         <image
           href={photoDataUrl}
           x="0"
@@ -714,16 +870,15 @@ function ScorecardTemplate({
       />
 
       {/* Corner cards */}
-      {isPotm && (
-        <CornerTitleCard
-          x={pad}
-          y={pad}
-          width={titleW}
-          height={titleH}
-          lines={["PLAYER", "OF THE", "MATCH"]}
-          scheme={scheme}
-        />
-      )}
+      <CornerTitleCard
+        x={pad}
+        y={pad}
+        width={titleW}
+        height={titleH}
+        lines={CARD_TYPE_TITLE[cardType]}
+        scheme={scheme}
+      />
+
       <CornerLogoCard
         x={s.w - pad - cornerCardSize}
         y={pad}
@@ -1188,6 +1343,10 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
 
   // -------- Photo (shared) --------
   const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
+  const [photoNaturalSize, setPhotoNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  const [photoPan, setPhotoPan] = useState<{ x: number; y: number }>({ x: 50, y: 30 });
+  const [photoZoom, setPhotoZoom] = useState<number>(1);
+  const [photoFilter, setPhotoFilter] = useState<PhotoFxId>("none");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1208,10 +1367,42 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         if (!ctx) return;
         ctx.drawImage(img, 0, 0, w, h);
         setPhotoDataUrl(c.toDataURL("image/jpeg", 0.92));
+        setPhotoNaturalSize({ w, h });
+        // Reset pan/zoom so the fresh photo starts centered.
+        setPhotoPan({ x: 50, y: 30 });
+        setPhotoZoom(1);
       };
       img.src = src;
     };
     reader.readAsDataURL(file);
+  };
+
+  // Pointer drag on the preview → adjust pan. Only meaningful when the
+  // photo is zoomed in (or naturally larger than the canvas), otherwise
+  // there's no overflow to shift into.
+  const dragState = useRef<{ down: boolean; sx: number; sy: number; px: number; py: number } | null>(null);
+  const onPreviewPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!photoDataUrl) return;
+    dragState.current = { down: true, sx: e.clientX, sy: e.clientY, px: photoPan.x, py: photoPan.y };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+  const onPreviewPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = dragState.current;
+    if (!st?.down) return;
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    // Convert pixel delta → percentage delta, sensitive to preview size.
+    const dxPct = ((e.clientX - st.sx) / rect.width) * 100;
+    const dyPct = ((e.clientY - st.sy) / rect.height) * 100;
+    setPhotoPan({
+      x: Math.max(0, Math.min(100, st.px - dxPct)),
+      y: Math.max(0, Math.min(100, st.py - dyPct)),
+    });
+  };
+  const onPreviewPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragState.current) dragState.current.down = false;
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    } catch {}
   };
 
   // -------- Match dropdown (priority-window sort) --------
@@ -1230,21 +1421,31 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [scOppOvers, setScOppOvers] = useState<string>("");
   const [scPotmId, setScPotmId] = useState<string>("");
   const [scPotmNameOverride, setScPotmNameOverride] = useState<string>("");
-  // Two stats (POTM cards typically show Batting + Bowling OR Runs + SR)
-  const STAT_PRESETS = [
-    { id: "bat-bowl", left: "BATTING", right: "BOWLING", leftSub: "SR", rightSub: "ECO" },
-    { id: "runs-sr", left: "RUNS", right: "STRIKE RATE", leftSub: "BALLS", rightSub: "IMPACT" },
-    { id: "wkts-eco", left: "WICKETS", right: "ECONOMY", leftSub: "OVERS", rightSub: "MAIDENS" },
-    { id: "custom", left: "", right: "", leftSub: "", rightSub: "" },
-  ];
-  const [statPreset, setStatPreset] = useState<string>("bat-bowl");
-  const preset = STAT_PRESETS.find((p) => p.id === statPreset) || STAT_PRESETS[0];
-  const [statL, setStatL] = useState<string>("39*");
-  const [statLSub, setStatLSub] = useState<string>("SR: 177.3 · (22B)");
-  const [statR, setStatR] = useState<string>("3/44");
-  const [statRSub, setStatRSub] = useState<string>("ECO: 7.33 · (6O)");
-  const [customStatLLabel, setCustomStatLLabel] = useState<string>("STAT");
-  const [customStatRLabel, setCustomStatRLabel] = useState<string>("STAT");
+  // Card variant — swaps the corner title + which stats are shown
+  const [cardType, setCardType] = useState<CardTypeVariant>("potm");
+
+  // Structured batting / bowling inputs. Strike rate and economy are
+  // computed from these on the fly (no double-entry).
+  const [batRuns, setBatRuns] = useState<string>("39");
+  const [batBalls, setBatBalls] = useState<string>("22");
+  const [batIsNotOut, setBatIsNotOut] = useState<boolean>(true);
+  const [bowlWickets, setBowlWickets] = useState<string>("3");
+  const [bowlRuns, setBowlRuns] = useState<string>("44");
+  const [bowlOvers, setBowlOvers] = useState<string>("6");
+
+  // Derived display values
+  const battingDisplayValue = batRuns
+    ? `${batRuns}${batIsNotOut ? "*" : ""}`
+    : "—";
+  const bowlingDisplayValue = bowlWickets && bowlRuns
+    ? `${bowlWickets}/${bowlRuns}`
+    : "—";
+  const battingSubText = batBalls
+    ? `SR: ${calcStrikeRate(batRuns, batBalls) || "—"} · ${batBalls}B`
+    : "";
+  const bowlingSubText = bowlOvers
+    ? `ECO: ${calcEconomy(bowlRuns, bowlOvers) || "—"} · ${bowlOvers}O`
+    : "";
 
   // Result dropdown
   const resultTemplates = useMemo(() => buildResultTemplates(clubName), [clubName]);
@@ -1454,7 +1655,52 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
     }
   };
 
-  // Data assembly for each template
+  // Data assembly for each template. Card-type variant picks which
+  // stats show:
+  //   POTM         → Batting (left, accent) + Bowling (right)
+  //   Best Batsman → Runs (accent) + Strike Rate
+  //   Best Bowler  → Wickets (accent) + Economy
+  const battingCol: StatCol = {
+    label: "Batting",
+    value: battingDisplayValue,
+    sub: battingSubText,
+    accent: true,
+  };
+  const bowlingCol: StatCol = {
+    label: "Bowling",
+    value: bowlingDisplayValue,
+    sub: bowlingSubText,
+    accent: false,
+  };
+  const bestBatsmanLeft: StatCol = {
+    label: "Runs",
+    value: battingDisplayValue,
+    sub: batBalls ? `${batBalls} Balls` : "",
+    accent: true,
+  };
+  const bestBatsmanRight: StatCol = {
+    label: "Strike Rate",
+    value: calcStrikeRate(batRuns, batBalls) || "—",
+    sub: "Impact",
+  };
+  const bestBowlerLeft: StatCol = {
+    label: "Wickets",
+    value: bowlWickets || "—",
+    sub: bowlOvers ? `${bowlOvers} Overs` : "",
+    accent: true,
+  };
+  const bestBowlerRight: StatCol = {
+    label: "Economy",
+    value: calcEconomy(bowlRuns, bowlOvers) || "—",
+    sub: bowlRuns ? `${bowlRuns} Runs` : "",
+  };
+  const [statLeftCol, statRightCol] =
+    cardType === "best_batsman"
+      ? [bestBatsmanLeft, bestBatsmanRight]
+      : cardType === "best_bowler"
+        ? [bestBowlerLeft, bestBowlerRight]
+        : [battingCol, bowlingCol];
+
   const scData: ScorecardData = {
     teamName: clubName,
     opponent: scOpponent,
@@ -1464,18 +1710,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
     oppOvers: scOppOvers,
     potm: potmName || "",
     potmSubtitle: "",
-    statLeft: {
-      label: statPreset === "custom" ? customStatLLabel : preset.left,
-      value: statL,
-      sub: statLSub,
-      accent: true,
-    },
-    statRight: {
-      label: statPreset === "custom" ? customStatRLabel : preset.right,
-      value: statR,
-      sub: statRSub,
-      accent: false,
-    },
+    statLeft: statLeftCol,
+    statRight: statRightCol,
     resultText,
     websiteText: scWebsite,
     ctaText: scCta,
@@ -1529,26 +1765,26 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2">
           Canvas Size
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {(Object.keys(SIZES) as SizeKey[]).map((k) => (
             <button
               key={k}
               onClick={() => setSizeKey(k)}
-              className={`rounded-lg p-3 text-left border transition ${
+              className={`rounded-lg p-2.5 text-left border transition ${
                 sizeKey === k
                   ? "border-accent bg-accent/10"
                   : "border-glass-border bg-black/20 hover:border-white/30"
               }`}
             >
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
+              <div className="flex items-center gap-1.5 text-white font-bold text-[11px]">
                 {k === "square" ? (
-                  <Square className="w-4 h-4" />
+                  <Square className="w-3.5 h-3.5" />
                 ) : (
-                  <RectangleVertical className="w-4 h-4" />
+                  <RectangleVertical className="w-3.5 h-3.5" />
                 )}
                 {SIZES[k].label}
               </div>
-              <div className="text-[10px] text-white/50 mt-1 leading-tight">
+              <div className="text-[9px] text-white/50 mt-1 leading-tight">
                 {SIZES[k].platforms}
               </div>
             </button>
@@ -1608,8 +1844,80 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         />
         <p className="text-[10px] text-white/40 mt-1.5 leading-tight">
           Upload a portrait photo of the player (POTM card) or a group shot (milestone).
-          Face should be in the upper-third of the frame — cards crop from the center.
+          Drag the preview below to reframe; use zoom to punch in on the face.
         </p>
+
+        {photoDataUrl && photoNaturalSize && (
+          <>
+            {/* Filter presets */}
+            <div className="mt-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">
+                Photo Look
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {PHOTO_FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setPhotoFilter(f.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
+                      photoFilter === f.id
+                        ? "bg-accent text-black"
+                        : "bg-black/40 text-white/60 hover:text-white"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Zoom + pan sliders */}
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <label className="text-[10px] text-white/60">
+                <div className="mb-1 font-bold uppercase tracking-widest text-white/50">Zoom</div>
+                <input
+                  type="range"
+                  min="1"
+                  max="2.5"
+                  step="0.05"
+                  value={photoZoom}
+                  onChange={(e) => setPhotoZoom(parseFloat(e.target.value))}
+                  className="w-full accent-accent"
+                />
+                <div className="text-[10px] font-mono text-white/40">{photoZoom.toFixed(2)}×</div>
+              </label>
+              <label className="text-[10px] text-white/60">
+                <div className="mb-1 font-bold uppercase tracking-widest text-white/50">Pan X</div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={photoPan.x}
+                  onChange={(e) =>
+                    setPhotoPan((p) => ({ ...p, x: parseInt(e.target.value, 10) }))
+                  }
+                  className="w-full accent-accent"
+                />
+                <div className="text-[10px] font-mono text-white/40">{photoPan.x}%</div>
+              </label>
+              <label className="text-[10px] text-white/60">
+                <div className="mb-1 font-bold uppercase tracking-widest text-white/50">Pan Y</div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={photoPan.y}
+                  onChange={(e) =>
+                    setPhotoPan((p) => ({ ...p, y: parseInt(e.target.value, 10) }))
+                  }
+                  className="w-full accent-accent"
+                />
+                <div className="text-[10px] font-mono text-white/40">{photoPan.y}%</div>
+              </label>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Kind-specific form */}
@@ -1702,69 +2010,109 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             />
           </div>
 
-          {/* Stats preset */}
+          {/* Card variant */}
           <div>
             <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
-              POTM Stats Layout
+              Card Type
             </label>
-            <div className="flex gap-1 mb-2">
-              {STAT_PRESETS.map((p) => (
+            <div className="flex gap-1">
+              {([
+                { id: "potm", label: "POTM" },
+                { id: "best_batsman", label: "Best Batsman" },
+                { id: "best_bowler", label: "Best Bowler" },
+              ] as { id: CardTypeVariant; label: string }[]).map((v) => (
                 <button
-                  key={p.id}
-                  onClick={() => setStatPreset(p.id)}
+                  key={v.id}
+                  onClick={() => setCardType(v.id)}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
-                    statPreset === p.id
+                    cardType === v.id
                       ? "bg-accent text-black"
                       : "bg-black/40 text-white/60 hover:text-white"
                   }`}
                 >
-                  {p.id === "custom" ? "Custom" : `${p.left}/${p.right}`}
+                  {v.label}
                 </button>
               ))}
             </div>
-            {statPreset === "custom" && (
-              <div className="grid grid-cols-2 gap-2 mb-2">
+          </div>
+
+          {/* Batting stats (POTM + Best Batsman) */}
+          {(cardType === "potm" || cardType === "best_batsman") && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                  Batting
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={batIsNotOut}
+                    onChange={(e) => setBatIsNotOut(e.target.checked)}
+                    className="accent-accent"
+                  />
+                  <span className="text-[10px] font-bold uppercase text-white/70">Not Out</span>
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <input
-                  value={customStatLLabel}
-                  onChange={(e) => setCustomStatLLabel(e.target.value)}
-                  placeholder="Left stat label"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  value={batRuns}
+                  onChange={(e) => setBatRuns(e.target.value)}
+                  placeholder="Runs e.g. 39"
+                  inputMode="numeric"
+                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
                 />
                 <input
-                  value={customStatRLabel}
-                  onChange={(e) => setCustomStatRLabel(e.target.value)}
-                  placeholder="Right stat label"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  value={batBalls}
+                  onChange={(e) => setBatBalls(e.target.value)}
+                  placeholder="Balls e.g. 22"
+                  inputMode="numeric"
+                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
                 />
               </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={statL}
-                onChange={(e) => setStatL(e.target.value)}
-                placeholder="Left value e.g. 39*"
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
-              />
-              <input
-                value={statR}
-                onChange={(e) => setStatR(e.target.value)}
-                placeholder="Right value e.g. 3/44"
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
-              />
-              <input
-                value={statLSub}
-                onChange={(e) => setStatLSub(e.target.value)}
-                placeholder="Left sub-text"
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-accent"
-              />
-              <input
-                value={statRSub}
-                onChange={(e) => setStatRSub(e.target.value)}
-                placeholder="Right sub-text"
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-accent"
-              />
+              {batRuns && batBalls && (
+                <div className="mt-1 text-[10px] text-white/40 font-mono uppercase tracking-widest">
+                  SR: {calcStrikeRate(batRuns, batBalls) || "—"}
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Bowling stats (POTM + Best Bowler) */}
+          {(cardType === "potm" || cardType === "best_bowler") && (
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+                Bowling
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  value={bowlWickets}
+                  onChange={(e) => setBowlWickets(e.target.value)}
+                  placeholder="Wkts"
+                  inputMode="numeric"
+                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                />
+                <input
+                  value={bowlRuns}
+                  onChange={(e) => setBowlRuns(e.target.value)}
+                  placeholder="Runs"
+                  inputMode="numeric"
+                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                />
+                <input
+                  value={bowlOvers}
+                  onChange={(e) => setBowlOvers(e.target.value)}
+                  placeholder="Overs e.g. 4.3"
+                  inputMode="decimal"
+                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                />
+              </div>
+              {bowlRuns && bowlOvers && (
+                <div className="mt-1 text-[10px] text-white/40 font-mono uppercase tracking-widest">
+                  ECO: {calcEconomy(bowlRuns, bowlOvers) || "—"}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Result dropdown */}
           <div>
@@ -1940,8 +2288,19 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
         <div
           id="kavach-design-preview"
-          className="rounded-xl overflow-hidden bg-black shadow-lg mx-auto"
-          style={{ maxWidth: sizeKey === "portrait" ? "min(100%, 360px)" : "100%" }}
+          onPointerDown={onPreviewPointerDown}
+          onPointerMove={onPreviewPointerMove}
+          onPointerUp={onPreviewPointerUp}
+          onPointerCancel={onPreviewPointerUp}
+          className={`rounded-xl overflow-hidden bg-black shadow-lg mx-auto select-none ${photoDataUrl ? "cursor-move touch-none" : ""}`}
+          style={{
+            maxWidth:
+              sizeKey === "portrait"
+                ? "min(100%, 360px)"
+                : sizeKey === "portrait45"
+                  ? "min(100%, 420px)"
+                  : "100%",
+          }}
         >
           {kind === "scorecard" && (
             <ScorecardTemplate
@@ -1951,7 +2310,11 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
               logoUrl={logoPrimary}
               clubName={clubName}
               data={scData}
-              isPotm={true}
+              cardType={cardType}
+              photoNaturalSize={photoNaturalSize}
+              photoPan={photoPan}
+              photoZoom={photoZoom}
+              photoFilter={photoFilter}
             />
           )}
           {kind === "milestone" && (
