@@ -54,6 +54,7 @@ import {
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
 import { createNotification } from "@/lib/notifications";
+import { normalizeIndianMobile } from "@/lib/utils";
 
 function cleanPayload<T extends object>(obj: T): Partial<T> {
   const result: any = {};
@@ -1040,6 +1041,149 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  /**
+   * Merge a duplicate "loser" player profile into a "keeper" profile.
+   * - Reparents every matches/{id}/payments doc owned by loser → keeper
+   *   (kept as separate rows; duplicates are not deduped, per admin call)
+   * - Moves loser's players/{loserId}/otherFees subcollection under keeper
+   * - Reparents merchOrders where playerId === loserId → keeper
+   * - Fills in only the empty fields on keeper from loser (does not
+   *   overwrite anything the keeper already has)
+   * - Trashes loser with disabled=true, disabledAt=now, mergedInto=keeperId
+   * Requires ensurePayments()/ensureOtherFees() to have been triggered so
+   * the in-memory store lists are populated; the caller (admin viewing
+   * Squad > Directory) already gets both via PAYMENT_TABS / OTHER_FEE_TABS.
+   */
+  const mergePlayer = async (loserId: string, keeperId: string) => {
+    if (loserId === keeperId) return;
+    const loser = players.find((p) => p.id === loserId);
+    const keeper = players.find((p) => p.id === keeperId);
+    if (!loser || !keeper) throw new Error("Player not found for merge");
+
+    const BATCH_LIMIT = 400;
+    let batch = writeBatch(db);
+    let opCount = 0;
+    const flush = async () => {
+      if (opCount === 0) return;
+      await batch.commit();
+      batch = writeBatch(db);
+      opCount = 0;
+    };
+    const add = async (fn: (b: typeof batch) => void) => {
+      fn(batch);
+      opCount++;
+      if (opCount >= BATCH_LIMIT) await flush();
+    };
+
+    // 1. Reparent match payments (matches/{matchId}/payments/{payId})
+    for (const pay of payments) {
+      if (pay.playerId !== loserId) continue;
+      if (!pay.matchId || !pay.id) continue;
+      await add((b) =>
+        b.update(doc(db, "matches", pay.matchId, "payments", pay.id), {
+          playerId: keeperId,
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    }
+
+    // 2. Move otherFees (players/{playerId}/otherFees) — read via getDocs
+    // because the store only surfaces the current user's own fees for a
+    // non-admin, but admins running this action already have the full
+    // list in-memory via ensureOtherFees. Reading from the server here
+    // guarantees we don't miss any doc that hasn't propagated to the
+    // local snapshot yet.
+    try {
+      const loserFeesSnap = await getDocs(
+        collection(db, "players", loserId, "otherFees"),
+      );
+      for (const feeDoc of loserFeesSnap.docs) {
+        await add((b) =>
+          b.set(
+            doc(db, "players", keeperId, "otherFees", feeDoc.id),
+            feeDoc.data(),
+          ),
+        );
+        await add((b) =>
+          b.delete(doc(db, "players", loserId, "otherFees", feeDoc.id)),
+        );
+      }
+    } catch (err) {
+      console.warn("Failed to move otherFees during merge", err);
+    }
+
+    // 3. Reparent merchOrders
+    for (const order of merchOrders) {
+      if (order.playerId !== loserId) continue;
+      await add((b) =>
+        b.update(doc(db, "merchOrders", order.id), {
+          playerId: keeperId,
+          playerName: keeper.name || order.playerName,
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    }
+
+    // 4. Fill-in-empties on keeper (never overwrite)
+    const fillIfEmpty: (keyof Player)[] = [
+      "email",
+      "dob",
+      "locality",
+      "bloodGroup",
+      "emergencyContact",
+      "battingStyle",
+      "bowlingStyle",
+      "chestSize",
+      "waistSize",
+      "jerseyNumber",
+      "jerseyName",
+      "studioExpiryDate",
+      "studioEndDate",
+      "studioPlan",
+      "lastPaidDate",
+      "lastPaidAmount",
+      "photoURL",
+    ];
+    const keeperPatch: Partial<Player> = {};
+    for (const field of fillIfEmpty) {
+      const kVal = (keeper as any)[field];
+      const lVal = (loser as any)[field];
+      if ((kVal === undefined || kVal === null || kVal === "") && lVal !== undefined && lVal !== null && lVal !== "") {
+        (keeperPatch as any)[field] = lVal;
+      }
+    }
+    if (!keeper.isStudioMember && loser.isStudioMember) {
+      keeperPatch.isStudioMember = true;
+    }
+    if (!keeper.isWicketKeeper && loser.isWicketKeeper) {
+      keeperPatch.isWicketKeeper = true;
+    }
+    // Always normalize the keeper's mobile to Indian +91 form.
+    const canonicalMobile = keeper.mobile || loser.mobile || "";
+    const normalized = normalizeIndianMobile(canonicalMobile);
+    if (normalized) keeperPatch.mobile = normalized;
+    if (Object.keys(keeperPatch).length > 0) {
+      await add((b) =>
+        b.update(doc(db, "players", keeperId), {
+          ...cleanPayload(keeperPatch as any),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    }
+
+    // 5. Trash the loser (so old references still resolve for history)
+    await add((b) =>
+      b.update(doc(db, "players", loserId), {
+        disabled: true,
+        disabledAt: new Date().toISOString(),
+        mergedInto: keeperId,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    await flush();
+  };
+
   const notifyPlayerPayment = (playerId: string, matchId: string) => {
     const p = players.find((p) => p.id === playerId);
     const m = matches.find((m) => m.id === matchId);
@@ -1656,6 +1800,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     addPlayer,
     updatePlayer,
     deletePlayer,
+    mergePlayer,
     posts,
     addPost,
     updatePost,

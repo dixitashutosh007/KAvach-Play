@@ -88,6 +88,24 @@ export function dbToInputDate(dbDate: any): string {
   return dbDate || "";
 }
 
+/**
+ * Normalize an Indian mobile number to +91XXXXXXXXXX form.
+ * Strips non-digits, drops leading +91 / 91 / 0 / 091, keeps the last 10
+ * digits. Returns the original string unchanged if it can't be normalized
+ * (e.g. a partial number the user is still typing).
+ */
+export function normalizeIndianMobile(input: string | undefined | null): string {
+  if (!input) return "";
+  const raw = String(input).trim();
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length === 13 && digits.startsWith("091")) digits = digits.slice(3);
+  else if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+  if (digits.length > 10) digits = digits.slice(-10);
+  if (digits.length !== 10) return raw;
+  return `+91${digits}`;
+}
+
 export function inputToDbDate(inputDate: string | undefined | null): string {
   if (!inputDate) return "";
   const parts = inputDate.split("/");

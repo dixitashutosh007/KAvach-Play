@@ -6,11 +6,12 @@ import { Player } from "@/lib/types";
 import { useStore } from "@/hooks/useStore";
 
 /**
- * Read-only admin tool. Groups players that share a normalized mobile
- * number or a normalized email and shows each group's payment counts /
- * total dues so an admin can decide which record to keep before any
- * destructive merge. This component intentionally does NOT merge or
- * delete anything — the actual merge flow is a follow-up.
+ * Admin tool for reviewing and merging duplicate player profiles.
+ * Groups players that share a normalized mobile number or a normalized
+ * email, shows each candidate's payment counts / dues, lets the admin
+ * pick which profile stays ("keeper") and merges every other row into
+ * it. The merge itself is done by store.mergePlayer, which reparents
+ * match payments, otherFees and merchOrders and then trashes the loser.
  */
 
 const normalizeMobile = (m: string | undefined | null) => {
@@ -30,12 +31,16 @@ export function DuplicatePlayersReport({
   store: ReturnType<typeof useStore>;
 }) {
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
+  const [mergingGroup, setMergingGroup] = useState<string | null>(null);
 
   const groups = useMemo(() => {
     const byMobile = new Map<string, Player[]>();
     const byEmail = new Map<string, Player[]>();
 
     for (const p of store.players) {
+      // Skip already-merged losers so they don't keep appearing after cleanup.
+      if (p.mergedInto) continue;
       const m = normalizeMobile(p.mobile);
       if (m && m.length === 10) {
         const arr = byMobile.get(m) || [];
@@ -92,6 +97,41 @@ export function DuplicatePlayersReport({
     return { paidCount, unpaidCount, unpaidAmount };
   };
 
+  const handleMerge = async (
+    groupKey: string,
+    keeperId: string,
+    losers: Player[],
+    keeperName: string,
+  ) => {
+    if (!keeperId || losers.length === 0) return;
+    const loserNames = losers.map((l) => l.name).join(", ");
+    if (
+      !window.confirm(
+        `Merge ${loserNames} into ${keeperName}?\n\n` +
+          `• Every match payment and Other Fee owned by the merged profile(s) will be reassigned to ${keeperName}.\n` +
+          `• Shop orders will move too.\n` +
+          `• Merged profile(s) will be moved to Trash (they can be restored from the Squad list if needed).\n` +
+          `• Empty fields on ${keeperName} will be filled in from the merged profiles; existing values are kept.\n` +
+          `• ${keeperName}'s mobile will be normalized to +91XXXXXXXXXX.\n\n` +
+          `This cannot be automatically undone. Continue?`,
+      )
+    )
+      return;
+
+    setMergingGroup(groupKey);
+    try {
+      for (const loser of losers) {
+        await store.mergePlayer(loser.id, keeperId);
+      }
+      alert("Merge complete.");
+    } catch (err) {
+      console.error("Merge failed", err);
+      alert("Merge failed. Check the console for details.");
+    } finally {
+      setMergingGroup(null);
+    }
+  };
+
   if (groups.length === 0) return null;
 
   return (
@@ -114,80 +154,128 @@ export function DuplicatePlayersReport({
       {!isCollapsed && (
         <div className="mt-4 space-y-4">
           <p className="text-[11px] text-white/50 leading-relaxed">
-            These profiles share the same mobile number or email. Review each
-            group and decide which record to keep. Merging is a manual step
-            for now — the safe action is to pick the profile that logs in
-            with Mobile OTP, edit the other to match it, then move the
-            duplicate to Trash.
+            These profiles share the same mobile number or email. Pick the
+            profile you want to keep, then click Merge — every match
+            payment, Other Fee, and shop order tied to the other row(s)
+            will move to the keeper and the losers go to Trash.
           </p>
 
-          {groups.map((g) => (
-            <div
-              key={`${g.matchOn}-${g.key}`}
-              className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3"
-            >
-              <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-amber-400/80">
-                Shared {g.matchOn}:
-                <span className="text-amber-300 font-mono normal-case">{g.key}</span>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(g.key);
-                  }}
-                  className="ml-1 p-0.5 hover:bg-white/10 rounded"
-                  title="Copy value"
-                >
-                  <Copy className="w-3 h-3" />
-                </button>
-              </div>
+          {groups.map((g) => {
+            const groupKey = `${g.matchOn}-${g.key}`;
+            const selectedKeeperId = keeperByGroup[groupKey];
+            const keeper = g.players.find((p) => p.id === selectedKeeperId);
+            const losers = g.players.filter((p) => p.id !== selectedKeeperId);
+            const isMerging = mergingGroup === groupKey;
+            return (
+              <div
+                key={groupKey}
+                className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3"
+              >
+                <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-amber-400/80">
+                  Shared {g.matchOn}:
+                  <span className="text-amber-300 font-mono normal-case">{g.key}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(g.key);
+                    }}
+                    className="ml-1 p-0.5 hover:bg-white/10 rounded"
+                    title="Copy value"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
 
-              <div className="space-y-2">
-                {g.players.map((p) => {
-                  const t = getTotals(p.id);
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-white truncate">
-                          {p.name}
-                          {p.disabled && (
-                            <span className="ml-2 text-[9px] font-bold uppercase tracking-widest text-red-400">
-                              Trashed
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-[11px] text-white/50 truncate">
-                          <span className="font-mono">{p.mobile || "—"}</span>
-                          {p.email && (
-                            <>
-                              <span className="mx-1.5 text-white/30">·</span>
-                              <span>{p.email}</span>
-                            </>
-                          )}
-                        </p>
-                        <p className="text-[10px] text-white/40 font-mono truncate mt-0.5">
-                          {p.id}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 text-[10px]">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold uppercase tracking-wider">
-                          Paid: {t.paidCount}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 font-bold uppercase tracking-wider">
-                          Unpaid: {t.unpaidCount}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white/70 font-bold uppercase tracking-wider flex items-center gap-1">
-                          <IndianRupee className="w-2.5 h-2.5" />
-                          {t.unpaidAmount}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                <div className="space-y-2">
+                  {g.players.map((p) => {
+                    const t = getTotals(p.id);
+                    const isKeeper = selectedKeeperId === p.id;
+                    return (
+                      <label
+                        key={p.id}
+                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border px-3 py-2 cursor-pointer transition ${
+                          isKeeper
+                            ? "border-emerald-500/40 bg-emerald-500/10"
+                            : "border-white/10 bg-black/30 hover:bg-white/5"
+                        }`}
+                      >
+                        <div className="flex items-start gap-2 min-w-0">
+                          <input
+                            type="radio"
+                            name={`keeper-${groupKey}`}
+                            className="mt-1 accent-emerald-500 cursor-pointer"
+                            checked={isKeeper}
+                            onChange={() =>
+                              setKeeperByGroup((prev) => ({
+                                ...prev,
+                                [groupKey]: p.id,
+                              }))
+                            }
+                            disabled={isMerging}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white truncate">
+                              {p.name}
+                              {p.disabled && (
+                                <span className="ml-2 text-[9px] font-bold uppercase tracking-widest text-red-400">
+                                  Trashed
+                                </span>
+                              )}
+                              {isKeeper && (
+                                <span className="ml-2 text-[9px] font-bold uppercase tracking-widest text-emerald-400">
+                                  Keeper
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-white/50 truncate">
+                              <span className="font-mono">{p.mobile || "—"}</span>
+                              {p.email && (
+                                <>
+                                  <span className="mx-1.5 text-white/30">·</span>
+                                  <span>{p.email}</span>
+                                </>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-white/40 font-mono truncate mt-0.5">
+                              {p.id}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 text-[10px]">
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold uppercase tracking-wider">
+                            Paid: {t.paidCount}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 font-bold uppercase tracking-wider">
+                            Unpaid: {t.unpaidCount}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white/70 font-bold uppercase tracking-wider flex items-center gap-1">
+                            <IndianRupee className="w-2.5 h-2.5" />
+                            {t.unpaidAmount}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="flex justify-end mt-3">
+                  <button
+                    disabled={!keeper || losers.length === 0 || isMerging}
+                    onClick={() =>
+                      keeper &&
+                      handleMerge(groupKey, keeper.id, losers, keeper.name)
+                    }
+                    className="rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-widest px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    {isMerging
+                      ? "Merging..."
+                      : keeper
+                        ? `Merge ${losers.length} into ${keeper.name}`
+                        : "Pick keeper to merge"}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

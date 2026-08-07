@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Player } from "@/lib/types";
-import { dbToInputDate, inputToDbDate } from "@/lib/utils";
+import { dbToInputDate, inputToDbDate, normalizeIndianMobile } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthProviderBadges } from "@/components/AuthProviderBadges";
 
@@ -51,6 +51,8 @@ export function EditPlayerInline({
       formData;
     const updatedData: Partial<Player> = {
       ...rest,
+      mobile: normalizeIndianMobile(rest.mobile),
+      emergencyContact: normalizeIndianMobile(rest.emergencyContact),
       dob: inputToDbDate(dob),
       lastPaidDate: inputToDbDate(lastPaidDate),
       studioExpiryDate: inputToDbDate(studioExpiryDate),

@@ -22,7 +22,7 @@ import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { Player } from "@/lib/types";
-import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile } from "@/lib/utils";
 
 export function PlayersTab({
   store,
@@ -49,7 +49,10 @@ export function PlayersTab({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    store.addPlayer(formData);
+    store.addPlayer({
+      ...formData,
+      mobile: normalizeIndianMobile(formData.mobile),
+    });
     setIsAdding(false);
     setFormData({ name: "", mobile: "", email: "" });
   };

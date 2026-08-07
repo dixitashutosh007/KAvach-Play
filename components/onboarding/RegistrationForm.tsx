@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { Shield } from "lucide-react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeIndianMobile } from "@/lib/utils";
 
 interface FormState {
   name: string;
@@ -65,17 +66,19 @@ export function RegistrationForm({
     try {
       const userDoc = doc(db, "appUsers", user.uid);
       const playerDoc = doc(db, "players", user.uid);
+      const normalizedMobile = normalizeIndianMobile(user.phoneNumber || "");
+      const normalizedEmergency = normalizeIndianMobile(form.emergencyContact);
       await setDoc(userDoc, {
         email: form.email || user.email || "",
         name: form.name || user.displayName || "",
         photoURL: user.photoURL || "",
         role: "player",
-        mobile: user.phoneNumber || "",
+        mobile: normalizedMobile,
         isStudioMember: false,
         dob: form.dob,
         locality: form.locality,
         bloodGroup: form.bloodGroup,
-        emergencyContact: form.emergencyContact,
+        emergencyContact: normalizedEmergency,
         battingStyle: form.battingStyle,
         bowlingStyle: form.bowlingStyle,
         isWicketKeeper: form.isWicketKeeper,
@@ -84,14 +87,14 @@ export function RegistrationForm({
       });
       await setDoc(playerDoc, {
         name: form.name || user.displayName || "",
-        mobile: user.phoneNumber || "",
+        mobile: normalizedMobile,
         inviteStatus: "Pending",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         dob: form.dob,
         locality: form.locality,
         bloodGroup: form.bloodGroup,
-        emergencyContact: form.emergencyContact,
+        emergencyContact: normalizedEmergency,
         battingStyle: form.battingStyle,
         bowlingStyle: form.bowlingStyle,
         isWicketKeeper: form.isWicketKeeper,
