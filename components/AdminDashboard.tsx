@@ -1,9 +1,9 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, WalletCards, Copy, CheckCircle2, UserX } from "lucide-react";
+import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, WalletCards, Copy, CheckCircle2, UserX, Send } from "lucide-react";
 import { format, isPast, isFuture, parseISO } from "date-fns";
-import { formatDate } from "@/lib/utils";
+import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 
@@ -181,6 +181,58 @@ export function AdminDashboard({
     const encoded = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encoded}`, '_blank');
     setIsGroupRemindModalOpen(false);
+  };
+
+  /**
+   * Compose a per-match WhatsApp broadcast in the exact format the club
+   * uses. Every player who is not explicitly "Not Playing" is tagged
+   * using their mobile number, normalized to +91XXXXXXXXXX so WhatsApp
+   * can actually resolve the mention (this was flaky before because
+   * some numbers were stored as "9876543210", others as "919876543210",
+   * others with a leading 0).
+   */
+  const handleNotifyMatch = (m: Match) => {
+    const ground = store.grounds.find((g) => g.id === m.groundId);
+    const startTimeLabel = m.time
+      ? format(parseISO(`${m.date}T${m.time}`), "h:mm a, EEE d MMM")
+      : formatDate(m.date);
+
+    let text = `*Upcoming Match Alert*\n`;
+    text += `KAvach vs ${m.opponent}\n`;
+    text += `Ground Name: ${ground?.name || "TBD"}\n`;
+    text += `Start Time: ${startTimeLabel}\n`;
+    text += `Jersey Colour: ${m.jerseyColor || "TBD"}\n`;
+    text += `Location: ${ground?.mapUrl || "TBD"}\n`;
+
+    const matchPayments = store.payments.filter(
+      (p) => p.matchId === m.id && store.players.some((pl) => pl.id === p.playerId),
+    );
+    const playing = matchPayments.filter((p) => p.status !== "Not Playing");
+
+    const tags: string[] = [];
+    const untagged: string[] = [];
+    for (const pay of playing) {
+      const player = store.players.find((pl) => pl.id === pay.playerId);
+      if (!player) continue;
+      const normalized = normalizeIndianMobile(player.mobile);
+      // normalizeIndianMobile returns +91XXXXXXXXXX for anything that
+      // parses to 10 valid Indian digits, and returns the original
+      // (unparsable) string otherwise — so this exact-length check
+      // guarantees we never emit a broken mention tag.
+      if (/^\+91\d{10}$/.test(normalized)) {
+        tags.push(`@${normalized}`);
+      } else {
+        untagged.push(player.name);
+      }
+    }
+
+    text += `Players: ${tags.join(" ")}`;
+    if (untagged.length > 0) {
+      text += `\n\n_Could not tag (no valid mobile on file): ${untagged.join(", ")}_`;
+    }
+
+    const encoded = encodeURIComponent(text);
+    window.open(`https://wa.me/?text=${encoded}`, "_blank");
   };
 
   const totalDueAmount = totalDueMatch + totalDueFee;
@@ -406,12 +458,21 @@ export function AdminDashboard({
                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">{format(parseISO(m.date), "MMM d, yyyy")}</p>
                        <p className="text-lg font-bold text-white mb-2">vs {m.opponent}</p>
                        <p className="text-xs font-medium text-white/70 mb-4">{m.format} • {m.time ? format(parseISO(`${m.date}T${m.time}`), "h:mm a") : "Time TBD"}</p>
-                       <div className="flex gap-2">
-                           <button onClick={() => {
-                             setSelectedRemindMatch(m);
-                             setIsGroupRemindModalOpen(true);
-                           }} className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Remind</button>
-                           <button onClick={() => setActiveTab("matches", `match_${m.id}`)} className="flex-1 bg-white/10 hover:bg-white/15 text-white/80 py-2 rounded-lg text-xs font-bold transition">Manage</button>
+                       <div className="space-y-2">
+                           <button
+                             onClick={() => handleNotifyMatch(m)}
+                             className="w-full bg-accent hover:opacity-90 text-black py-2 rounded-lg text-xs font-black uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow"
+                             title="Share match alert on WhatsApp with players tagged"
+                           >
+                             <Send className="w-3.5 h-3.5" /> Notify
+                           </button>
+                           <div className="flex gap-2">
+                               <button onClick={() => {
+                                 setSelectedRemindMatch(m);
+                                 setIsGroupRemindModalOpen(true);
+                               }} className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Remind</button>
+                               <button onClick={() => setActiveTab("matches", `match_${m.id}`)} className="flex-1 bg-white/10 hover:bg-white/15 text-white/80 py-2 rounded-lg text-xs font-bold transition">Manage</button>
+                           </div>
                        </div>
                    </div>
                ))
