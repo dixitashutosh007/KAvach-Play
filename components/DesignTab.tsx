@@ -23,6 +23,10 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import type { Match } from "@/lib/types";
 import {
+  BEBAS_NEUE_FONT_FACE_CSS,
+  CONDENSED_STACK,
+} from "@/lib/embedded-fonts";
+import {
   Download,
   Share2,
   ImagePlus,
@@ -192,6 +196,13 @@ const SvgDefs = ({
   size: { w: number; h: number };
 }) => (
   <defs>
+    {/* Embedded Bebas Neue so PNG export renders with the real font
+        (external CSS doesn't apply inside a Blob-URL SVG loaded as
+        an <image> for canvas rasterization). */}
+    <style
+      type="text/css"
+      dangerouslySetInnerHTML={{ __html: BEBAS_NEUE_FONT_FACE_CSS }}
+    />
     <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stopColor={scheme.bgFrom} />
       <stop offset="100%" stopColor={scheme.bgTo} />
@@ -269,7 +280,7 @@ const CornerTitleCard = ({
       x={x + 24}
       y={y + 60}
       fill={scheme.deep}
-      fontFamily="Arial Black, Arial, sans-serif"
+      fontFamily={CONDENSED_STACK}
       fontSize="46"
       fontWeight="900"
       letterSpacing="1"
@@ -281,7 +292,7 @@ const CornerTitleCard = ({
         x={x + 24}
         y={y + 110}
         fill={scheme.deep}
-        fontFamily="Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="24"
         fontWeight="700"
         letterSpacing="4"
@@ -294,7 +305,7 @@ const CornerTitleCard = ({
         x={x + 24}
         y={y + 160}
         fill={scheme.deep}
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="46"
         fontWeight="900"
         letterSpacing="1"
@@ -337,7 +348,7 @@ const AngledNameBanner = ({
         x={x + 32}
         y={y + height / 2 + 18}
         fill={scheme.onPrimary}
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="52"
         fontWeight="900"
         letterSpacing="1"
@@ -375,7 +386,7 @@ const StatSplitCard = ({
         x={cx + 44}
         y={y + 48}
         fill="#64748B"
-        fontFamily="Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="20"
         fontWeight="800"
         letterSpacing="4"
@@ -386,7 +397,7 @@ const StatSplitCard = ({
         x={cx + 44}
         y={y + 130}
         fill={s.accent ? scheme.primary : scheme.deep}
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="82"
         fontWeight="900"
       >
@@ -397,7 +408,7 @@ const StatSplitCard = ({
           x={cx + 44}
           y={y + 168}
           fill="#94A3B8"
-          fontFamily="Arial, sans-serif"
+          fontFamily={CONDENSED_STACK}
           fontSize="18"
           fontWeight="700"
           letterSpacing="2"
@@ -448,7 +459,7 @@ const TeamScoreStrip = ({
         y={y + cellPadY + 17}
         textAnchor="middle"
         fill={scheme.deep}
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="26"
         fontWeight="900"
       >
@@ -458,7 +469,7 @@ const TeamScoreStrip = ({
         x={x + 88}
         y={y + cellPadY + 12}
         fill="#FFFFFF"
-        fontFamily="Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="24"
         fontWeight="800"
         letterSpacing="3"
@@ -469,7 +480,7 @@ const TeamScoreStrip = ({
         x={x + 88}
         y={y + cellPadY + 80}
         fill="#FFFFFF"
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="60"
         fontWeight="900"
       >
@@ -480,7 +491,7 @@ const TeamScoreStrip = ({
           x={x + 88}
           y={y + cellPadY + 115}
           fill="#94A3B8"
-          fontFamily="Arial, sans-serif"
+          fontFamily={CONDENSED_STACK}
           fontSize="18"
           fontWeight="800"
           letterSpacing="3"
@@ -505,7 +516,7 @@ const TeamScoreStrip = ({
         y={y + cellPadY + 17}
         textAnchor="middle"
         fill={scheme.deep}
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="26"
         fontWeight="900"
       >
@@ -516,7 +527,7 @@ const TeamScoreStrip = ({
         y={y + cellPadY + 12}
         textAnchor="end"
         fill="#FFFFFF"
-        fontFamily="Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="24"
         fontWeight="800"
         letterSpacing="3"
@@ -528,7 +539,7 @@ const TeamScoreStrip = ({
         y={y + cellPadY + 80}
         textAnchor="end"
         fill="#FFFFFF"
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="60"
         fontWeight="900"
       >
@@ -540,7 +551,7 @@ const TeamScoreStrip = ({
           y={y + cellPadY + 115}
           textAnchor="end"
           fill="#94A3B8"
-          fontFamily="Arial, sans-serif"
+          fontFamily={CONDENSED_STACK}
           fontSize="18"
           fontWeight="800"
           letterSpacing="3"
@@ -575,7 +586,7 @@ const ResultPill = ({
       y={y + height / 2 + 12}
       textAnchor="middle"
       fill={scheme.onPrimary}
-      fontFamily="Arial Black, Arial, sans-serif"
+      fontFamily={CONDENSED_STACK}
       fontSize="34"
       fontWeight="900"
       letterSpacing="2"
@@ -681,7 +692,7 @@ function ScorecardTemplate({
             textAnchor="middle"
             fill="#FFFFFF"
             fillOpacity="0.4"
-            fontFamily="Arial, sans-serif"
+            fontFamily={CONDENSED_STACK}
             fontSize="22"
             letterSpacing="4"
           >
@@ -776,7 +787,7 @@ function ScorecardTemplate({
         y={s.h - 32}
         fill="#FFFFFF"
         fillOpacity="0.55"
-        fontFamily="Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="18"
         fontWeight="700"
         letterSpacing="3"
@@ -789,7 +800,7 @@ function ScorecardTemplate({
         textAnchor="end"
         fill="#FFFFFF"
         fillOpacity="0.75"
-        fontFamily="Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="18"
         fontWeight="800"
         letterSpacing="3"
@@ -880,7 +891,7 @@ function MilestoneTemplate({
         y={headTop + headSize * 0.78}
         textAnchor="middle"
         fill="#FFFFFF"
-        fontFamily="Impact, 'Arial Black', Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize={headSize}
         fontWeight="900"
         letterSpacing="4"
@@ -898,7 +909,7 @@ function MilestoneTemplate({
         y={subTop + 40}
         textAnchor="middle"
         fill="#FFFFFF"
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="48"
         fontWeight="900"
         letterSpacing="6"
@@ -934,7 +945,7 @@ function MilestoneTemplate({
             textAnchor="middle"
             fill="#FFFFFF"
             fillOpacity="0.6"
-            fontFamily="Arial, sans-serif"
+            fontFamily={CONDENSED_STACK}
             fontSize="24"
             letterSpacing="4"
           >
@@ -953,7 +964,7 @@ function MilestoneTemplate({
         y={capY + capH / 2 + 16}
         textAnchor="middle"
         fill="#FFFFFF"
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="46"
         fontWeight="900"
         letterSpacing="4"
@@ -1049,7 +1060,7 @@ function AchievementTemplate({
         x={pad + 22}
         y={pad + 42}
         fill="#FFFFFF"
-        fontFamily="Arial Black, Arial, sans-serif"
+        fontFamily={CONDENSED_STACK}
         fontSize="26"
         fontWeight="900"
         letterSpacing="3"
@@ -1069,7 +1080,7 @@ function AchievementTemplate({
               x={pad}
               y={isPortrait ? 340 : 260}
               fill="#FFFFFF"
-              fontFamily="Arial, sans-serif"
+              fontFamily={CONDENSED_STACK}
               fontSize={nameSize * 0.55}
               fontWeight="700"
               letterSpacing="1"
@@ -1080,7 +1091,7 @@ function AchievementTemplate({
               x={pad}
               y={isPortrait ? 340 + nameSize * 0.85 : 260 + nameSize * 0.85}
               fill="#FFFFFF"
-              fontFamily="Arial Black, Arial, sans-serif"
+              fontFamily={CONDENSED_STACK}
               fontSize={nameSize}
               fontWeight="900"
               letterSpacing="1"
@@ -1105,7 +1116,7 @@ function AchievementTemplate({
           x={pad + 22}
           y={isPortrait ? 522 : 422}
           fill="#FFFFFF"
-          fontFamily="Arial Black, Arial, sans-serif"
+          fontFamily={CONDENSED_STACK}
           fontSize="30"
           fontWeight="900"
           letterSpacing="3"
@@ -1125,7 +1136,7 @@ function AchievementTemplate({
             x={pad + 22}
             y={rowsStartY + i * rowH + rowH / 2 + 6}
             fill={scheme.deep}
-            fontFamily="Arial, sans-serif"
+            fontFamily={CONDENSED_STACK}
             fontSize="28"
             fontWeight="700"
           >
@@ -1136,7 +1147,7 @@ function AchievementTemplate({
             y={rowsStartY + i * rowH + rowH / 2 + 6}
             textAnchor="end"
             fill={scheme.deep}
-            fontFamily="Arial Black, Arial, sans-serif"
+            fontFamily={CONDENSED_STACK}
             fontSize="32"
             fontWeight="900"
           >
@@ -1162,6 +1173,18 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [sizeKey, setSizeKey] = useState<SizeKey>("portrait");
   const [schemeId, setSchemeId] = useState<string>(SCHEMES[0].id);
   const scheme = SCHEMES.find((s) => s.id === schemeId) || SCHEMES[0];
+
+  // Load the embedded Bebas Neue @font-face into the document so
+  // the live preview renders with the same typography as the export.
+  // Idempotent — a repeat mount just no-ops on the existing <style>.
+  useEffect(() => {
+    const id = "kavach-design-embedded-fonts";
+    if (typeof document === "undefined" || document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.appendChild(document.createTextNode(BEBAS_NEUE_FONT_FACE_CSS));
+    document.head.appendChild(style);
+  }, []);
 
   // -------- Photo (shared) --------
   const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
@@ -1305,6 +1328,17 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [exportError, setExportError] = useState<string>("");
 
   const cloneSvgAsBlob = async (): Promise<Blob | null> => {
+    // Make sure the embedded Bebas Neue face is fully parsed before we
+    // rasterize — otherwise the very first export can fall through to
+    // the system fallback stack while the font is still decoding.
+    if (typeof document !== "undefined" && (document as any).fonts?.ready) {
+      try {
+        await (document as any).fonts.load("48px 'Bebas Neue'");
+        await (document as any).fonts.ready;
+      } catch {
+        // non-fatal — proceed with whatever's loaded
+      }
+    }
     const container = document.getElementById("kavach-design-preview");
     const svgEl = container?.querySelector("svg");
     if (!svgEl) return null;
