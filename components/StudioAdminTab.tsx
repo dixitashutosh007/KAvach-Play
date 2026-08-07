@@ -194,11 +194,14 @@ function MembersView({
   });
 
   const studioPlayers = store.players.filter((p) => p.isStudioMember);
-  const nonStudioPlayers = store.players.filter(
-    (p) =>
-      !p.isStudioMember &&
-      (p.inviteStatus === "Accepted" || p.inviteStatus === "Verified"),
-  );
+  const nonStudioPlayers = store.players
+    .filter(
+      (p) =>
+        !p.isStudioMember &&
+        !p.disabled &&
+        (p.inviteStatus === "Accepted" || p.inviteStatus === "Verified"),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   let filteredMembers = studioPlayers.filter(
     (p) =>
@@ -243,6 +246,16 @@ function MembersView({
     setPaidDate(inputToDbDate(p.lastPaidDate || ""));
     setPaidAmount(p.lastPaidAmount || 0);
     setAutoCalculated({ start: false, expiry: false, paid: false });
+  };
+
+  // Add N days to a YYYY-MM-DD input date and return YYYY-MM-DD. Returns
+  // "" if the input isn't a valid date.
+  const addDays = (isoDate: string, days: number): string => {
+    if (!isoDate || days <= 0) return "";
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return "";
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
   };
 
   const [remindingPlayerId, setRemindingPlayerId] = useState<string | null>(null);
@@ -375,31 +388,32 @@ function MembersView({
               required
               value={planId}
               onChange={(e) => {
-                setPlanId(e.target.value);
+                const newPlanId = e.target.value;
+                setPlanId(newPlanId);
                 const foundPlan = store.subscriptionPlans.find(
-                  (sp) => sp.id === e.target.value,
+                  (sp) => sp.id === newPlanId,
                 );
                 if (foundPlan) {
                   setPaidAmount(foundPlan.fee);
-
-                  // Auto-fill dates
-                  const today = new Date();
-                  const todayStr = today.toISOString().split("T")[0];
-
-                  setStartDate(todayStr);
-                  setPaidDate(todayStr);
-
-                  if (foundPlan.durationDays > 0) {
-                    const expiry = new Date(today);
-                    expiry.setDate(expiry.getDate() + foundPlan.durationDays);
-                    setExpiryDate(expiry.toISOString().split("T")[0]);
+                  const todayStr = new Date().toISOString().split("T")[0];
+                  // Only default start/paid dates when they're still blank;
+                  // don't clobber a date the admin already picked.
+                  const effectiveStart = startDate || todayStr;
+                  if (!startDate) {
+                    setStartDate(todayStr);
+                    setAutoCalculated((prev) => ({ ...prev, start: true }));
                   }
-
-                  setAutoCalculated({
-                    start: true,
-                    expiry: foundPlan.durationDays > 0,
-                    paid: true,
-                  });
+                  if (!paidDate) {
+                    setPaidDate(todayStr);
+                    setAutoCalculated((prev) => ({ ...prev, paid: true }));
+                  }
+                  if (foundPlan.durationDays > 0) {
+                    const newExpiry = addDays(effectiveStart, foundPlan.durationDays);
+                    if (newExpiry) {
+                      setExpiryDate(newExpiry);
+                      setAutoCalculated((prev) => ({ ...prev, expiry: true }));
+                    }
+                  }
                 } else {
                   setAutoCalculated({
                     start: false,
@@ -436,8 +450,22 @@ function MembersView({
                 required
                 value={startDate}
                 onChange={(e) => {
-                  setStartDate(e.target.value);
+                  const newStart = e.target.value;
+                  setStartDate(newStart);
                   setAutoCalculated((prev) => ({ ...prev, start: false }));
+                  // Recompute expiry from the new start date when a plan
+                  // with a duration is selected. Admin can still manually
+                  // override the expiry field afterwards.
+                  const foundPlan = store.subscriptionPlans.find(
+                    (sp) => sp.id === planId,
+                  );
+                  if (foundPlan && foundPlan.durationDays > 0) {
+                    const newExpiry = addDays(newStart, foundPlan.durationDays);
+                    if (newExpiry) {
+                      setExpiryDate(newExpiry);
+                      setAutoCalculated((prev) => ({ ...prev, expiry: true }));
+                    }
+                  }
                 }}
                 className={`w-full rounded-xl border bg-black/40 px-3.5 py-2.5 text-sm text-white focus:outline-none transition ${autoCalculated.start ? "border-accent/50 text-accent/90" : "border-glass-border focus:border-accent"}`}
               />
