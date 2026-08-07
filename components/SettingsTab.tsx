@@ -35,6 +35,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     store.appConfig?.clubName || "KAVACH CRICKET CLUB",
   );
   const [logoUrl, setLogoUrl] = useState(store.appConfig?.logoUrl || "");
+  const [logoTransparentUrl, setLogoTransparentUrl] = useState(
+    store.appConfig?.logoTransparentUrl || "",
+  );
   const [themeColor, setThemeColor] = useState(
     store.appConfig?.themeColor || "#dc143c",
   );
@@ -238,6 +241,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     await store.updateAppConfig({
       clubName,
       logoUrl,
+      logoTransparentUrl,
       themeColor,
       globalTheme,
       loadingAnimationTheme,
@@ -459,6 +463,26 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     />
                   </label>
                 </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Transparent Logo URL (for Design cards)
+                </label>
+                <div className="flex gap-2">
+                  <span className="inline-flex items-center px-3 rounded-lg border border-glass-border bg-white/5 text-white/50">
+                    <ImageIcon className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="url"
+                    value={logoTransparentUrl}
+                    onChange={(e) => setLogoTransparentUrl(e.target.value)}
+                    className="flex-1 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none min-w-0"
+                    placeholder="https://example.com/logo-transparent.png"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-white/40">
+                  Used on Design cards where the logo sits directly on a colour or photo — no white square around it. Optional; falls back to the main logo.
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">

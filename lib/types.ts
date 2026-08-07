@@ -10,6 +10,10 @@ export type AppConfig = {
   id: string;
   clubName: string;
   logoUrl: string;
+  // Optional PNG with a transparent background — used by DesignTab
+  // when the logo needs to sit directly on a coloured/photo background
+  // without a visible white square around it.
+  logoTransparentUrl?: string;
   themeColor: string;
   globalTheme?: string;
   loadingAnimationTheme?: "radar" | "kinetic" | "minimal" | "staggered" | "breathe";
