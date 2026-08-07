@@ -109,7 +109,7 @@ const calcEconomy = (runs: string, overs: string): string => {
   return (r / totalOvers).toFixed(2);
 };
 
-type CardKind = "scorecard" | "milestone" | "achievement";
+type CardKind = "scorecard" | "milestone" | "achievement" | "weekly";
 
 type Scheme = {
   id: string;
@@ -1314,6 +1314,300 @@ function AchievementTemplate({
   );
 }
 
+// -------- Weekly Summary card --------
+// A multi-match poster. Header with the week label, a vertical list of
+// match rows (each with W/L/T pill + score line + opponent), and a
+// footer with the aggregate record. Adaptive across all three sizes:
+// square shows 4 rows, 4:5 shows 5, portrait 9:16 shows 6.
+
+type WeekOutcome = "W" | "L" | "T" | "NR";
+type WeeklyMatchRow = {
+  opponent: string;
+  ourScore: string;
+  theirScore: string;
+  outcome: WeekOutcome;
+  note?: string; // e.g. "POTM: Zuhayr Khan"
+};
+type WeeklyData = {
+  weekLabel: string;      // "WEEK 12" or "5 – 11 AUG"
+  headline: string;       // "WEEK IN REVIEW"
+  matches: WeeklyMatchRow[];
+  wins: number;
+  losses: number;
+  ties: number;
+  noResults: number;
+};
+
+const OUTCOME_COLOR: Record<WeekOutcome, string> = {
+  W: "#22C55E",
+  L: "#EF4444",
+  T: "#EAB308",
+  NR: "#64748B",
+};
+
+function WeeklySummaryTemplate({
+  size,
+  scheme,
+  logoUrl,
+  clubName,
+  data,
+}: {
+  size: SizeKey;
+  scheme: Scheme;
+  logoUrl: string;
+  clubName: string;
+  data: WeeklyData;
+}) {
+  const s = SIZES[size];
+  const pad = 40;
+  const headerH = size === "portrait" ? 240 : size === "portrait45" ? 220 : 200;
+  const footerH = size === "portrait" ? 260 : size === "portrait45" ? 240 : 220;
+  const listTop = headerH + 20;
+  const listBottom = s.h - footerH - 20;
+  const listAvail = listBottom - listTop;
+  const maxRows = size === "portrait" ? 6 : size === "portrait45" ? 5 : 4;
+  const rows = data.matches.slice(0, maxRows);
+  const rowH = rows.length > 0 ? Math.floor(listAvail / rows.length) - 12 : 0;
+  const rowGap = 12;
+  const extraCount = Math.max(0, data.matches.length - maxRows);
+
+  return (
+    <svg
+      viewBox={`0 0 ${s.w} ${s.h}`}
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ width: "100%", height: "auto", display: "block" }}
+    >
+      <SvgDefs scheme={scheme} photoDataUrl="" size={s} />
+
+      {/* Background */}
+      <rect width={s.w} height={s.h} fill="url(#bgGrad)" />
+      <polygon
+        points={`0,0 ${Math.round(s.w * 0.35)},0 0,${Math.round(s.w * 0.3)}`}
+        fill="url(#diagStripes)"
+      />
+      <polygon
+        points={`${s.w},${s.h} ${s.w - Math.round(s.w * 0.35)},${s.h} ${s.w},${s.h - Math.round(s.w * 0.3)}`}
+        fill="url(#diagStripes)"
+      />
+
+      {/* Header block */}
+      <rect x="0" y="0" width={s.w} height={headerH} fill="#000000" opacity="0.45" />
+      {/* Logo card top-right */}
+      <CornerLogoCard
+        x={s.w - pad - 140}
+        y={pad}
+        size={140}
+        logoUrl={logoUrl}
+      />
+      {/* Title stack top-left */}
+      <text
+        x={pad}
+        y={pad + 60}
+        fill={scheme.primary}
+        fontFamily={CONDENSED_STACK}
+        fontSize="28"
+        fontWeight="900"
+        letterSpacing="6"
+      >
+        {(data.headline || "WEEK IN REVIEW").toUpperCase()}
+      </text>
+      <text
+        x={pad}
+        y={pad + 130}
+        fill="#FFFFFF"
+        fontFamily={CONDENSED_STACK}
+        fontSize="86"
+        fontWeight="900"
+        letterSpacing="2"
+      >
+        {(data.weekLabel || "WEEK —").toUpperCase()}
+      </text>
+      <text
+        x={pad}
+        y={pad + 170}
+        fill="#FFFFFF"
+        fillOpacity="0.55"
+        fontFamily={CONDENSED_STACK}
+        fontSize="22"
+        fontWeight="700"
+        letterSpacing="4"
+      >
+        {clubName.toUpperCase()}
+      </text>
+
+      {/* Match rows */}
+      {rows.map((r, i) => {
+        const y = listTop + i * (rowH + rowGap);
+        const outcomeColor = OUTCOME_COLOR[r.outcome];
+        return (
+          <g key={i}>
+            {/* Row background */}
+            <rect
+              x={pad}
+              y={y}
+              width={s.w - pad * 2}
+              height={rowH}
+              rx="14"
+              fill="#FFFFFF"
+              fillOpacity="0.08"
+            />
+            {/* Left outcome accent bar */}
+            <rect
+              x={pad}
+              y={y}
+              width="12"
+              height={rowH}
+              rx="6"
+              fill={outcomeColor}
+            />
+            {/* Opponent */}
+            <text
+              x={pad + 40}
+              y={y + rowH * 0.42}
+              fill="#FFFFFF"
+              fontFamily={CONDENSED_STACK}
+              fontSize={rowH > 130 ? 44 : 36}
+              fontWeight="900"
+              letterSpacing="1"
+            >
+              vs {r.opponent.toUpperCase()}
+            </text>
+            {/* Score line */}
+            <text
+              x={pad + 40}
+              y={y + rowH * 0.78}
+              fill="#FFFFFF"
+              fillOpacity="0.7"
+              fontFamily={CONDENSED_STACK}
+              fontSize={rowH > 130 ? 30 : 24}
+              fontWeight="700"
+              letterSpacing="3"
+            >
+              {(r.ourScore || "—")} · vs · {(r.theirScore || "—")}
+              {r.note ? `  ·  ${r.note.toUpperCase()}` : ""}
+            </text>
+            {/* Outcome pill right */}
+            <g>
+              <rect
+                x={s.w - pad - 120}
+                y={y + rowH / 2 - 34}
+                width="100"
+                height="68"
+                rx="16"
+                fill={outcomeColor}
+              />
+              <text
+                x={s.w - pad - 70}
+                y={y + rowH / 2 + 18}
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontFamily={CONDENSED_STACK}
+                fontSize="46"
+                fontWeight="900"
+              >
+                {r.outcome}
+              </text>
+            </g>
+          </g>
+        );
+      })}
+
+      {/* "+N more" strip if the list overflowed */}
+      {extraCount > 0 && (
+        <text
+          x={s.w / 2}
+          y={listBottom + 4}
+          textAnchor="middle"
+          fill="#FFFFFF"
+          fillOpacity="0.55"
+          fontFamily={CONDENSED_STACK}
+          fontSize="22"
+          fontWeight="700"
+          letterSpacing="4"
+        >
+          +{extraCount} MORE
+        </text>
+      )}
+
+      {/* Footer aggregate */}
+      <rect x="0" y={s.h - footerH} width={s.w} height={footerH} fill={scheme.deep} />
+      {(() => {
+        // 4 stat blocks: Wins · Losses · Ties · NR (if any)
+        const showNR = data.noResults > 0;
+        const blocks = [
+          { label: "WINS", value: String(data.wins), color: OUTCOME_COLOR.W },
+          { label: "LOSSES", value: String(data.losses), color: OUTCOME_COLOR.L },
+          { label: "TIED", value: String(data.ties), color: OUTCOME_COLOR.T },
+          ...(showNR
+            ? [{ label: "NR", value: String(data.noResults), color: OUTCOME_COLOR.NR }]
+            : []),
+        ];
+        const total = data.wins + data.losses + data.ties + data.noResults;
+        const winPct = total > 0 ? Math.round((data.wins / total) * 100) : 0;
+        const blockW = (s.w - pad * 2) / blocks.length;
+        const blocksY = s.h - footerH + 60;
+        return (
+          <>
+            <text
+              x={s.w / 2}
+              y={s.h - footerH + 44}
+              textAnchor="middle"
+              fill="#FFFFFF"
+              fillOpacity="0.5"
+              fontFamily={CONDENSED_STACK}
+              fontSize="20"
+              fontWeight="700"
+              letterSpacing="6"
+            >
+              WEEKLY RECORD
+            </text>
+            {blocks.map((b, i) => (
+              <g key={b.label} transform={`translate(${pad + i * blockW},${blocksY})`}>
+                <text
+                  x={blockW / 2}
+                  y="72"
+                  textAnchor="middle"
+                  fill={b.color}
+                  fontFamily={CONDENSED_STACK}
+                  fontSize="90"
+                  fontWeight="900"
+                >
+                  {b.value}
+                </text>
+                <text
+                  x={blockW / 2}
+                  y="112"
+                  textAnchor="middle"
+                  fill="#FFFFFF"
+                  fillOpacity="0.6"
+                  fontFamily={CONDENSED_STACK}
+                  fontSize="22"
+                  fontWeight="800"
+                  letterSpacing="4"
+                >
+                  {b.label}
+                </text>
+              </g>
+            ))}
+            <text
+              x={s.w / 2}
+              y={s.h - 34}
+              textAnchor="middle"
+              fill={scheme.primary}
+              fontFamily={CONDENSED_STACK}
+              fontSize="30"
+              fontWeight="900"
+              letterSpacing="4"
+            >
+              {total > 0 ? `WIN RATE ${winPct}%` : "NO MATCHES"}
+            </text>
+          </>
+        );
+      })()}
+    </svg>
+  );
+}
+
 // =====================================================================
 // Main tab
 // =====================================================================
@@ -1503,6 +1797,73 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
     ? store.players.find((p) => p.id === scPotmId)?.name || scPotmNameOverride
     : scPotmNameOverride;
 
+  // -------- Weekly Summary state --------
+  const [wkLabel, setWkLabel] = useState<string>(() => {
+    // Default label like "5 – 11 AUG"
+    const now = new Date();
+    const start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return `${fmt(start)} – ${fmt(now)}`.toUpperCase();
+  });
+  const [wkHeadline, setWkHeadline] = useState<string>("WEEK IN REVIEW");
+  const [wkRows, setWkRows] = useState<WeeklyMatchRow[]>([
+    { opponent: "Silent Wolves", ourScore: "191/6", theirScore: "126", outcome: "W" },
+    { opponent: "Titans XI", ourScore: "148/9", theirScore: "150/4", outcome: "L" },
+  ]);
+
+  // Prefill: pull matches from the last 7 days from the store,
+  // auto-detect W/L/T from the stored result string when we can.
+  const prefillWeeklyFromStore = () => {
+    const now = Date.now();
+    const week = 7 * 24 * 60 * 60 * 1000;
+    const rows: WeeklyMatchRow[] = store.matches
+      .filter((m) => !m.isArchived && m.date)
+      .map((m) => ({
+        m,
+        ts: new Date(m.date!).getTime(),
+      }))
+      .filter(({ ts }) => ts >= now - week && ts <= now + 12 * 60 * 60 * 1000)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 8)
+      .map(({ m }) => {
+        const r = (m.result || "").toLowerCase();
+        let outcome: WeekOutcome = "NR";
+        if (r.includes("tie")) outcome = "T";
+        else if (r.includes("won")) outcome = "W";
+        else if (r.includes("lost")) outcome = "L";
+        const potm = m.potmId
+          ? store.players.find((p) => p.id === m.potmId)?.name
+          : m.playerOfTheMatch;
+        return {
+          opponent: m.opponent || "—",
+          ourScore: "",
+          theirScore: "",
+          outcome,
+          note: potm ? `POTM: ${potm}` : undefined,
+        };
+      });
+    if (rows.length === 0) {
+      alert("No matches found in the last 7 days.");
+      return;
+    }
+    setWkRows(rows);
+  };
+
+  const wkWins = wkRows.filter((r) => r.outcome === "W").length;
+  const wkLosses = wkRows.filter((r) => r.outcome === "L").length;
+  const wkTies = wkRows.filter((r) => r.outcome === "T").length;
+  const wkNRs = wkRows.filter((r) => r.outcome === "NR").length;
+
+  const weeklyData: WeeklyData = {
+    weekLabel: wkLabel,
+    headline: wkHeadline,
+    matches: wkRows,
+    wins: wkWins,
+    losses: wkLosses,
+    ties: wkTies,
+    noResults: wkNRs,
+  };
+
   // -------- Milestone state --------
   const [mHeadline, setMHeadline] = useState<string>("500 NOT OUT");
   const [mSubhead, setMSubhead] = useState<string>(clubName);
@@ -1598,7 +1959,9 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         ? `scorecard-${(scOpponent || "match").replace(/\s+/g, "-")}`
         : kind === "milestone"
           ? `milestone-${(mHeadline || "club").replace(/\s+/g, "-")}`
-          : `profile-${(aPlayerName || "player").replace(/\s+/g, "-")}`;
+          : kind === "weekly"
+            ? `weekly-${(wkLabel || "week").replace(/[\s–]+/g, "-").replace(/[^a-zA-Z0-9-]/g, "")}`
+            : `profile-${(aPlayerName || "player").replace(/\s+/g, "-")}`;
     return `kavach-${suffix}-${sizeKey}-${stamp}.png`;
   };
 
@@ -1742,6 +2105,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         {(
           [
             { id: "scorecard", label: "Match / POTM" },
+            { id: "weekly", label: "Weekly" },
             { id: "milestone", label: "Milestone" },
             { id: "achievement", label: "Profile" },
           ] as { id: CardKind; label: string }[]
@@ -1749,7 +2113,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           <button
             key={opt.id}
             onClick={() => setKind(opt.id)}
-            className={`flex-1 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition ${
+            className={`flex-1 px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
               kind === opt.id
                 ? "bg-accent text-black shadow"
                 : "text-white/60 hover:text-white"
@@ -2278,6 +2642,124 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
       )}
 
+      {kind === "weekly" && (
+        <div className="glass rounded-xl border border-glass-border p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={wkHeadline}
+              onChange={(e) => setWkHeadline(e.target.value)}
+              placeholder="Headline e.g. WEEK IN REVIEW"
+              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            />
+            <input
+              value={wkLabel}
+              onChange={(e) => setWkLabel(e.target.value)}
+              placeholder="Week label e.g. WEEK 12"
+              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-bold uppercase"
+            />
+          </div>
+
+          <button
+            onClick={prefillWeeklyFromStore}
+            className="w-full rounded-lg border border-dashed border-accent/50 text-accent py-2 text-[11px] font-bold uppercase tracking-wider hover:bg-accent/5 transition"
+          >
+            ⚡ Prefill from Last 7 Days of Matches
+          </button>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+              Matches ({wkRows.length}) · W {wkWins} · L {wkLosses} · T {wkTies}
+              {wkNRs > 0 ? ` · NR ${wkNRs}` : ""}
+            </label>
+            {wkRows.map((r, i) => (
+              <div
+                key={i}
+                className="mb-2 p-2 bg-black/30 border border-glass-border rounded-lg space-y-2"
+              >
+                <div className="grid grid-cols-[1fr,auto] gap-2">
+                  <input
+                    value={r.opponent}
+                    onChange={(e) => {
+                      const c = [...wkRows];
+                      c[i] = { ...c[i], opponent: e.target.value };
+                      setWkRows(c);
+                    }}
+                    placeholder="Opponent"
+                    className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  />
+                  <button
+                    onClick={() => setWkRows(wkRows.filter((_, ix) => ix !== i))}
+                    className="px-2 rounded-lg bg-red-500/20 text-red-300 text-xs font-bold hover:bg-red-500/30"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    value={r.ourScore}
+                    onChange={(e) => {
+                      const c = [...wkRows];
+                      c[i] = { ...c[i], ourScore: e.target.value };
+                      setWkRows(c);
+                    }}
+                    placeholder="Our score"
+                    className="bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent font-mono"
+                  />
+                  <input
+                    value={r.theirScore}
+                    onChange={(e) => {
+                      const c = [...wkRows];
+                      c[i] = { ...c[i], theirScore: e.target.value };
+                      setWkRows(c);
+                    }}
+                    placeholder="Their score"
+                    className="bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent font-mono"
+                  />
+                  <select
+                    value={r.outcome}
+                    onChange={(e) => {
+                      const c = [...wkRows];
+                      c[i] = { ...c[i], outcome: e.target.value as WeekOutcome };
+                      setWkRows(c);
+                    }}
+                    className="bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                  >
+                    <option value="W">Win</option>
+                    <option value="L">Loss</option>
+                    <option value="T">Tie</option>
+                    <option value="NR">No Result</option>
+                  </select>
+                </div>
+                <input
+                  value={r.note || ""}
+                  onChange={(e) => {
+                    const c = [...wkRows];
+                    c[i] = { ...c[i], note: e.target.value };
+                    setWkRows(c);
+                  }}
+                  placeholder="Optional note e.g. POTM: Zuhayr Khan"
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent"
+                />
+              </div>
+            ))}
+            <button
+              onClick={() =>
+                setWkRows([
+                  ...wkRows,
+                  { opponent: "", ourScore: "", theirScore: "", outcome: "W" },
+                ])
+              }
+              className="w-full text-[11px] font-bold uppercase tracking-wider text-accent py-2 border border-dashed border-accent/40 rounded-lg hover:bg-accent/5"
+            >
+              + Add Match Row
+            </button>
+            <p className="text-[10px] text-white/40 mt-2 leading-tight">
+              Card shows the top {sizeKey === "portrait" ? 6 : sizeKey === "portrait45" ? 5 : 4} rows for the {SIZES[sizeKey].label} format; extras get a "+N more" note. The photo section is ignored for this template.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Preview */}
       <div className="glass rounded-xl border border-glass-border p-3">
         <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/50 flex items-center justify-between">
@@ -2334,6 +2816,15 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
               logoUrl={logoTransparent}
               clubName={clubName}
               data={achievementData}
+            />
+          )}
+          {kind === "weekly" && (
+            <WeeklySummaryTemplate
+              size={sizeKey}
+              scheme={scheme}
+              logoUrl={logoTransparent}
+              clubName={clubName}
+              data={weeklyData}
             />
           )}
         </div>
