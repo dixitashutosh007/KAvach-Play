@@ -373,13 +373,15 @@ service cloud.firestore {
           && incoming().createdAt == request.time
           && incoming().updatedAt == request.time;
 
-        // Admins can reparent a payment (change playerId) during a
-        // duplicate-profile merge; non-admins must keep the invariant.
+        // Reverted: the playerId invariant is enforced again for
+        // client-side writes. Duplicate-profile merges no longer touch
+        // this collection from the client — /api/admin/merge-players
+        // uses the admin SDK, which bypasses these rules entirely.
         allow update: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(existing().playerId)) || (isSignedIn() && incoming().status == 'Paid'))
           && isValidId(paymentId)
           && isValidMatchPayment(incoming())
           && incoming().matchId == existing().matchId
-          && (isAnyAdmin() || incoming().playerId == existing().playerId)
+          && incoming().playerId == existing().playerId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time;
 
