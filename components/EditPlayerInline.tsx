@@ -43,6 +43,7 @@ export function EditPlayerInline({
       player.studioExpiryDate || player.studioEndDate,
     ),
     studioPlan: player.studioPlan || "Trial",
+    isDesigner: appUserMatch?.isDesigner || false,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,7 +58,7 @@ export function EditPlayerInline({
         return;
       }
     }
-    const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, ...rest } =
+    const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, isDesigner, ...rest } =
       formData;
     const updatedData: Partial<Player> = {
       ...rest,
@@ -72,6 +73,18 @@ export function EditPlayerInline({
           : undefined,
     };
     await store.updatePlayer(player.id, updatedData);
+
+    // isDesigner lives on appUsers, not players — sync it independently
+    // (super-admin only can see this toggle, so a change means intent).
+    if (isSuperAdmin && appUserMatch) {
+      const currentFlag = !!appUserMatch.isDesigner;
+      if (currentFlag !== formData.isDesigner) {
+        await store.updateAppUserProfile(appUserMatch.id, {
+          isDesigner: formData.isDesigner,
+        });
+      }
+    }
+
     onCancel();
   };
 
@@ -261,6 +274,37 @@ export function EditPlayerInline({
           </select>
         </div>
       </div>
+
+      {isSuperAdmin && (
+        <div className="border border-sky-500/25 bg-sky-500/5 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-xs font-bold text-sky-400 uppercase tracking-widest">
+              KAvach Design Access
+            </h4>
+            <p className="text-[10px] text-white/50 leading-relaxed max-w-xs">
+              Give this player access to the Design tab so they can create match cards,
+              milestones, and achievement posts.
+            </p>
+          </div>
+          <div className="flex items-center h-[28px] px-2.5 bg-black/40 border border-sky-500/20 rounded-lg shrink-0">
+            <input
+              type="checkbox"
+              id={`isDesigner-${player.id}`}
+              checked={formData.isDesigner}
+              onChange={(e) =>
+                setFormData({ ...formData, isDesigner: e.target.checked })
+              }
+              className="w-4 h-4 rounded border-glass-border bg-black/40 text-sky-400 focus:ring-sky-400 accent-sky-400 cursor-pointer"
+            />
+            <label
+              htmlFor={`isDesigner-${player.id}`}
+              className="ml-2 text-[11px] font-bold text-white cursor-pointer select-none"
+            >
+              Designer
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Studio Membership Admin control */}
       <div className="border border-accent/25 bg-accent/5 rounded-xl p-4 space-y-4 relative overflow-hidden">

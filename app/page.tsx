@@ -32,6 +32,7 @@ import {
   ChevronRight,
   ShoppingBag,
   X,
+  ImageIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
@@ -47,6 +48,7 @@ import { FinanceTab } from "@/components/FinanceTab";
 import { DuesAndRemindersTab } from "@/components/DuesAndRemindersTab";
 import { ShopTab } from "@/components/ShopTab";
 import { OpinionTab } from "@/components/OpinionTab";
+import { DesignTab } from "@/components/DesignTab";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { motion, AnimatePresence } from "motion/react";
 import { Bell, PieChart } from "lucide-react";
@@ -144,6 +146,7 @@ export default function Home() {
     | "dues_and_reminders"
     | "shop"
     | "opinion"
+    | "design"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
 
@@ -488,6 +491,9 @@ export default function Home() {
 
   const isAdmin =
     isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin;
+  // Design tab: any admin, plus players whose appUser doc has the
+  // isDesigner flag explicitly toggled on.
+  const canDesign = isAdmin || !!appUser?.isDesigner;
   // Mandatory profile fields every non-admin player must have populated
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
@@ -870,6 +876,22 @@ export default function Home() {
                     </button>
                   )}
 
+                  {canDesign && (
+                    <button
+                      onClick={() => setActiveTab("design")}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                        activeTab === "design"
+                          ? "bg-accent text-black"
+                          : "text-white/70 hover:bg-white/5"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <ImageIcon className="w-4.5 h-4.5 shrink-0" /> Design
+                      </span>
+                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setActiveTab("profile")}
                     className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
@@ -895,6 +917,7 @@ export default function Home() {
                     "leaderboard",
                     "shop",
                     "opinion",
+                    "design",
                     "settings",
                   ]
                     .filter((tab) => {
@@ -907,6 +930,7 @@ export default function Home() {
                       if (tab === "settings") return isSuperAdmin;
                       if (tab === "shop") return isFeatureEnabled("shop");
                       if (tab === "opinion") return isFeatureEnabled("opinion");
+                      if (tab === "design") return canDesign;
                       return true;
                     })
                     .map((tab) => {
@@ -920,6 +944,7 @@ export default function Home() {
                         dues_and_reminders: Bell,
                         shop: ShoppingBag,
                         opinion: PieChart,
+                        design: ImageIcon,
                       };
                       const IconComp = iconMap[tab] || Trophy;
                       const uppercaseLabels: Record<string, string> = {
@@ -932,6 +957,7 @@ export default function Home() {
                         dues_and_reminders: "Dues",
                         shop: "Shop",
                         opinion: "Pulse",
+                        design: "Design",
                       };
                       return (
                         <button
@@ -1087,6 +1113,9 @@ export default function Home() {
                   {activeTab === "opinion" && (
                     <OpinionTab store={store} persona={persona} />
                   )}
+                  {activeTab === "design" && canDesign && (
+                    <DesignTab store={store} />
+                  )}
                   {activeTab === "profile" && <ProfileTab store={store} />}
                 </motion.div>
               </AnimatePresence>
@@ -1118,6 +1147,7 @@ export default function Home() {
                     <option value="leaderboard">Leaderboard</option>
                     {isFeatureEnabled("shop") && <option value="shop">Shop</option>}
                     {isFeatureEnabled("opinion") && <option value="opinion">Pulse</option>}
+                    {canDesign && <option value="design">Design</option>}
                     {isSuperAdmin && <option value="settings">Settings</option>}
                   </select>
                   <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/50">
@@ -1179,6 +1209,9 @@ export default function Home() {
                     )}
                     {activeTab === "opinion" && (
                       <OpinionTab store={store} persona={persona} />
+                    )}
+                    {activeTab === "design" && canDesign && (
+                      <DesignTab store={store} />
                     )}
                   </motion.div>
                 </AnimatePresence>
