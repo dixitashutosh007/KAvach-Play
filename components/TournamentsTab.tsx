@@ -295,18 +295,32 @@ function TournamentFormModal({
     }));
   };
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string>("");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.groundId) {
-      alert("Name and Ground are required.");
+      setSaveError("Name and Ground are required.");
       return;
     }
-    if (isEdit && tournament) {
-      await store.updateTournament(tournament.id, form);
-    } else {
-      await store.addTournament(form);
+    setIsSaving(true);
+    setSaveError("");
+    try {
+      if (isEdit && tournament) {
+        await store.updateTournament(tournament.id, form);
+      } else {
+        await store.addTournament(form);
+      }
+      onClose();
+    } catch (err: any) {
+      const code = err?.code ? ` [${err.code}]` : "";
+      setSaveError(
+        `Save failed${code}: ${err?.message || String(err)}. If this is "Missing or insufficient permissions", the Firestore rules haven't been deployed yet — see the deploy steps in the runbook.`,
+      );
+    } finally {
+      setIsSaving(false);
     }
-    onClose();
   };
 
   return (
@@ -545,13 +559,19 @@ function TournamentFormModal({
             />
           </div>
 
+          {saveError && (
+            <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-2 leading-tight">
+              {saveError}
+            </div>
+          )}
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition flex items-center justify-center gap-2"
+              disabled={isSaving}
+              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
-              {isEdit ? "Save Changes" : "Create Tournament"}
+              {isSaving ? "Saving..." : isEdit ? "Save Changes" : "Create Tournament"}
             </button>
           </div>
         </form>

@@ -867,6 +867,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `tournaments/${id}`);
+      throw err; // re-throw so the caller can surface a real error to the admin
     }
   };
 
@@ -887,6 +888,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         OperationType.UPDATE,
         `tournaments/${tournamentId}`,
       );
+      throw err;
     }
   };
 
@@ -903,6 +905,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         OperationType.DELETE,
         `tournaments/${tournamentId}`,
       );
+      throw err;
     }
   };
 
