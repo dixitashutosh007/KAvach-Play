@@ -320,6 +320,38 @@ service cloud.firestore {
       allow delete: if isMatchAdmin() && isValidId(groundId);
     }
 
+    function isValidTournament(data) {
+      return data.keys().hasAll(['name', 'groundId', 'organiserName', 'organiserPhone', 'gpayNumber', 'jerseyColor', 'amountPerMatch', 'perPlayerFee', 'status', 'updatedAt'])
+        && data.name is string && data.name.size() <= 100
+        && data.groundId is string && data.groundId.size() <= 128
+        && data.organiserName is string && data.organiserName.size() <= 100
+        && data.organiserPhone is string && data.organiserPhone.size() <= 20
+        && data.gpayNumber is string && data.gpayNumber.size() <= 20
+        && data.jerseyColor in ['Scarlet Red', 'Whites']
+        && (data.amountPerMatch is int || data.amountPerMatch is float)
+        && (data.perPlayerFee is int || data.perPlayerFee is float)
+        && data.status in ['Upcoming', 'Ongoing', 'Ended', 'Disabled']
+        && data.get('startDate', '') is string
+        && data.get('endDate', '') is string
+        && data.get('notes', '') is string
+        && (!('createdAt' in data) || data.createdAt is timestamp)
+        && data.updatedAt is timestamp;
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if isSignedIn();
+      allow create: if isMatchAdmin()
+        && isValidId(tournamentId)
+        && isValidTournament(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isMatchAdmin()
+        && isValidId(tournamentId)
+        && isValidTournament(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if isMatchAdmin() && isValidId(tournamentId);
+    }
+
     match /players/{playerId} {
       allow read: if isSignedIn();
       allow create: if isAnyAdmin() || isSelf(playerId);

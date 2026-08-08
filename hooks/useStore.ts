@@ -29,6 +29,7 @@ import {
   MerchOrder,
   Poll,
   PollResponse,
+  Tournament,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -68,6 +69,7 @@ function cleanPayload<T extends object>(obj: T): Partial<T> {
 
 export function useStore(user: User | null, readOnly: boolean = false) {
   const [grounds, setGrounds] = useState<Ground[]>([]);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [payments, setPayments] = useState<MatchPayment[]>([]);
@@ -343,6 +345,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       }
     })();
     const unsubGrounds = () => {};
+
+    // tournaments — small collection; one-shot, refreshed by mutations
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "tournaments"));
+        setTournaments(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament),
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "tournaments");
+      }
+    })();
 
     const unsubPlayers = onSnapshot(
       collection(db, "players"),
@@ -657,6 +671,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   }, []);
 
+  const refreshTournaments = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "tournaments"));
+      setTournaments(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "tournaments");
+    }
+  }, []);
+
   const refreshSubscriptionPlans = useCallback(async () => {
     try {
       const snap = await getDocs(collection(db, "subscriptionPlans"));
@@ -821,6 +846,63 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await refreshGrounds();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `grounds/${groundId}`);
+    }
+  };
+
+  const addTournament = async (
+    tournament: Omit<Tournament, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "tournaments", id);
+    try {
+      await setDoc(
+        docRef,
+        cleanPayload({
+          ...tournament,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+      await refreshTournaments();
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `tournaments/${id}`);
+    }
+  };
+
+  const updateTournament = async (
+    tournamentId: string,
+    tournament: Partial<Tournament>,
+  ) => {
+    const docRef = doc(db, "tournaments", tournamentId);
+    try {
+      await updateDoc(
+        docRef,
+        cleanPayload({ ...tournament, updatedAt: serverTimestamp() }),
+      );
+      await refreshTournaments();
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `tournaments/${tournamentId}`,
+      );
+    }
+  };
+
+  // Guards against orphaning upcoming matches. Callers should first
+  // check `matches.some(m => m.tournamentId === id && !isPastMatch(m))`
+  // and prompt the admin; this is a raw delete, not a policy layer.
+  const deleteTournament = async (tournamentId: string) => {
+    try {
+      await deleteDoc(doc(db, "tournaments", tournamentId));
+      await refreshTournaments();
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.DELETE,
+        `tournaments/${tournamentId}`,
+      );
     }
   };
 
@@ -1692,6 +1774,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     addGround,
     updateGround,
     deleteGround,
+    tournaments,
+    addTournament,
+    updateTournament,
+    deleteTournament,
     matches,
     addMatch,
     updateMatch,

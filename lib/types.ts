@@ -122,6 +122,34 @@ export type Ground = {
   updatedAt?: any;
 };
 
+// A tournament is a persistent bundle of match-scheduling defaults
+// (ground, organiser, per-player fee, colours). Individual matches
+// can be linked to a tournament via `Match.tournamentId`, in which
+// case the match form's tournament dropdown autofills those defaults.
+// Autofilled fields remain editable per match.
+//
+// Single-axis status: Upcoming → Ongoing → Ended, plus a "Disabled"
+// state that hides the tournament from the new-match dropdown
+// without touching lifecycle. New-match dropdown shows only
+// Upcoming + Ongoing; Ended and Disabled are omitted.
+export type Tournament = {
+  id: string;
+  name: string;
+  groundId: string;
+  organiserName: string;
+  organiserPhone: string;
+  gpayNumber: string;
+  jerseyColor: "Scarlet Red" | "Whites";
+  amountPerMatch: number;         // ground fee per match, ₹
+  perPlayerFee: number;           // default round(amountPerMatch/12 * 1.05); editable override
+  status: "Upcoming" | "Ongoing" | "Ended" | "Disabled";
+  startDate?: string;             // YYYY-MM-DD, optional
+  endDate?: string;               // YYYY-MM-DD, optional
+  notes?: string;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
 export type Match = {
   id: string;
   groundId: string;
@@ -154,6 +182,10 @@ export type Match = {
   isArchived?: boolean;
   isGroundFeePaid?: boolean;
   groundFeePaidAmount?: number;
+  // When set, this match belongs to a tournament (see Tournament).
+  // Autofilled fields on the match were seeded from that tournament
+  // at creation time but are free to be edited afterwards.
+  tournamentId?: string;
   createdAt?: any;
   updatedAt?: any;
 };
