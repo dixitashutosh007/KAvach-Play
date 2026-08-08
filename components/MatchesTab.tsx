@@ -56,7 +56,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState, useEffect, useMemo, FC } from "react";
+import { useState, useEffect, useMemo, useRef, FC } from "react";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import {
@@ -104,6 +104,32 @@ export function MatchesTab({
   const [viewMode, setViewMode] = useState<"list" | "calendar">(
     defaultAction === "calendar" ? "calendar" : (persona === "admin" ? "calendar" : "list")
   );
+
+  // Remember where the user scrolled to before opening a match, so
+  // Back lands them at the same row instead of the top of the list.
+  const scrollBeforeMatchRef = useRef<number>(0);
+  const openMatch = (m: Match) => {
+    scrollBeforeMatchRef.current =
+      typeof window !== "undefined"
+        ? window.scrollY || document.documentElement.scrollTop || 0
+        : 0;
+    setSelectedMatch(m);
+  };
+  useEffect(() => {
+    // Restore only on the match → list transition, and only if we
+    // actually captured something (i.e. the user came from the list).
+    if (selectedMatch === null && scrollBeforeMatchRef.current > 0) {
+      const y = scrollBeforeMatchRef.current;
+      // rAF twice gives the list DOM time to mount + layout before we
+      // scroll; scrollTo before layout is a no-op.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: y, behavior: "auto" });
+        });
+      });
+      scrollBeforeMatchRef.current = 0;
+    }
+  }, [selectedMatch]);
 
   useEffect(() => {
     if (defaultAction && defaultAction.startsWith("match_")) {
@@ -958,7 +984,7 @@ export function MatchesTab({
                 return (
                   <div
                     key={match.id}
-                    onClick={() => setSelectedMatch(match)}
+                    onClick={() => openMatch(match)}
                     className="cursor-pointer glass p-0 rounded-xl hover:-translate-y-0.5 hover:shadow-lg transition overflow-hidden"
                   >
                     <div className="p-4">
@@ -1310,7 +1336,7 @@ export function MatchesTab({
               grounds={store.grounds}
               isAdmin={isAdmin}
               onMatchClick={(m: Match) => {
-                setSelectedMatch(m);
+                openMatch(m);
               }}
               onEditMatch={(m: Match) => {
                 startEdit(m);
