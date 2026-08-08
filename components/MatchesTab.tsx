@@ -9,6 +9,37 @@
  */
 import { useStore } from "@/hooks/useStore";
 import { Match, MatchComment, Player } from "@/lib/types";
+
+/**
+ * sessionStorage-backed useState. Lets accordions and filters
+ * survive an in-tab navigation (e.g. open a match → hit Back →
+ * the past-matches list is still expanded, filters preserved).
+ * SSR-safe: first render always matches `initial`; hydration
+ * happens in the mount effect. Value is dropped when the tab
+ * closes so we don't pollute the user's browser forever.
+ */
+function useSessionState<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(initial);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (raw !== null) setValue(JSON.parse(raw) as T);
+    } catch {
+      // Broken/blocked sessionStorage — silently fall through.
+    }
+    setHydrated(true);
+  }, [key]);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Same silent fallback: state simply doesn't persist.
+    }
+  }, [key, value, hydrated]);
+  return [value, setValue] as const;
+}
 import {
   Plus,
   Edit2,
@@ -59,8 +90,14 @@ export function MatchesTab({
     defaultAction === "assign" ? "assign" : "matches"
   );
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
-  const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useState(true);
-  const [isPastListCollapsed, setIsPastListCollapsed] = useState(true);
+  const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useSessionState(
+    "matches:isLaterScheduledCollapsed",
+    true,
+  );
+  const [isPastListCollapsed, setIsPastListCollapsed] = useSessionState(
+    "matches:isPastListCollapsed",
+    true,
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -232,19 +269,551 @@ export function MatchesTab({
     }
   }, [isAdmin, subTab]);
 
+  // Edit-match modal is hoisted so both the matches list AND the
+  // per-match screen (below early-return) can render it. Previously,
+  // clicking Edit inside a match forced the screen to close + open
+  // the modal over the parent list, so Back landed the user on the
+  // list instead of the match they were reviewing.
+  const editMatchModal = isAdmin && isAdding ? (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-md my-8">
+        <div className="sticky top-0 bg-[#0f172a] p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-glass-border">
+          <h2 className="text-xl font-bold text-white">{editingId ? "Edit Match" : "Add Match"}</h2>
+          <button type="button" onClick={() => { setIsAdding(false); setEditingId(null); resetForm(); }} className="text-white/50 hover:text-white"><X className="w-6 h-6"/></button>
+        </div>
+        <form
+          onSubmit={handleSubmit}
+          className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 flex items-center gap-2 bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
+              <input
+                type="checkbox"
+                id="tentative-block"
+                checked={formData.isTentative || false}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  isTentative: e.target.checked,
+                  tentativelyBlockedBy: e.target.checked ? currentUserName : ""
+                })}
+                className="accent-orange-500 w-4 h-4 cursor-pointer"
+              />
+              <label htmlFor="tentative-block" className="text-orange-400 font-bold text-sm cursor-pointer select-none">
+                Tentatively Block Slot
+              </label>
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Select Ground <span className="text-red-400">*</span>
+              </label>
+              <select
+                required
+                value={formData.groundId}
+                onChange={(e) => {
+                  const newGroundId = e.target.value;
+                  const ground = store.grounds.find(g => g.id === newGroundId);
+                  let newFee = formData.fee;
+                  if (ground) {
+                    const groundFee = formData.matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+                    if (groundFee > 0) {
+                      newFee = Math.round((groundFee / 12) * 1.04);
+                    }
+                  }
+                  setFormData({ ...formData, groundId: newGroundId, fee: newFee });
+                }}
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+              >
+                <option value="" disabled>
+                  Select a ground
+                </option>
+                {store.grounds.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Opponent Team <span className="text-red-400">*</span>
+              </label>
+              <input
+                required
+                type="text"
+                value={formData.opponent}
+                onChange={(e) =>
+                  setFormData({ ...formData, opponent: e.target.value })
+                }
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                placeholder="e.g. Royal Challengers"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Date <span className="text-red-400">*</span>
+              </label>
+              <input
+                required
+                type="date"
+                value={inputToDbDate(formData.date)}
+                onChange={(e) =>
+                  setFormData({ ...formData, date: e.target.value })
+                }
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Time <span className="text-red-400">*</span>
+              </label>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, time: "07:00" })}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
+                      formData.time === "07:00"
+                        ? "bg-accent/20 border-accent/50 text-accent"
+                        : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
+                    }`}
+                  >
+                    07:00 AM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, time: "12:00" })}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
+                      formData.time === "12:00"
+                        ? "bg-accent/20 border-accent/50 text-accent"
+                        : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
+                    }`}
+                  >
+                    12:00 PM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, time: formData.time === "07:00" || formData.time === "12:00" ? "" : formData.time })}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
+                      formData.time !== "07:00" && formData.time !== "12:00"
+                        ? "bg-accent/20 border-accent/50 text-accent"
+                        : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
+                    }`}
+                  >
+                    Other
+                  </button>
+                </div>
+                {formData.time !== "07:00" && formData.time !== "12:00" && (
+                <input
+                  required={formData.time !== "07:00" && formData.time !== "12:00"}
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) =>
+                    setFormData({ ...formData, time: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
+                />
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Max Squad Size <span className="text-red-400">*</span>
+              </label>
+              <input
+                required
+                type="number"
+                min="1"
+                value={formData.maxSquadSize}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    maxSquadSize: parseInt(e.target.value) || 12,
+                  })
+                }
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <span>Match Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.fee}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    fee: e.target.value === "" ? "" : parseInt(e.target.value) || 0,
+                  })
+                }
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Format <span className="text-red-400">*</span>
+              </label>
+              <div className="flex gap-2">
+                {["T20", "T30", "Other"].map((fmt) => (
+                  <label
+                    key={fmt}
+                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.format === fmt ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                  >
+                    <input
+                      type="radio"
+                      className="hidden"
+                      name="format"
+                      value={fmt}
+                      checked={formData.format === fmt}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          format: e.target.value as Match["format"],
+                        })
+                      }
+                    />
+                    {fmt}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Type <span className="text-red-400">*</span>
+              </label>
+              <div className="flex gap-2">
+                {["Practice", "Tournament"].map((type) => (
+                  <label
+                    key={type}
+                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.matchType === type ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                  >
+                    <input
+                      type="radio"
+                      className="hidden"
+                      name="matchType"
+                      value={type}
+                      checked={formData.matchType === type}
+                      onChange={(e) => {
+                        const newMatchType = e.target.value as Match["matchType"];
+                        const ground = store.grounds.find(g => g.id === formData.groundId);
+                        let newFee = formData.fee;
+                        if (ground) {
+                          const groundFee = newMatchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+                          if (groundFee > 0) {
+                            newFee = Math.round((groundFee / 12) * 1.04);
+                          }
+                        }
+                        setFormData({
+                          ...formData,
+                          matchType: newMatchType,
+                          fee: newFee
+                        });
+                      }}
+                    />
+                    {type}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Jersey Color <span className="text-red-400">*</span>
+              </label>
+              <div className="flex gap-2">
+                {["Scarlet Red", "Whites"].map((color) => (
+                  <label
+                    key={color}
+                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition flex items-center justify-center gap-2 ${formData.jerseyColor === color ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                  >
+                    <input
+                      type="radio"
+                      className="hidden"
+                      name="jerseyColor"
+                      value={color}
+                      checked={formData.jerseyColor === color}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          jerseyColor: e.target
+                            .value as Match["jerseyColor"],
+                        })
+                      }
+                    />
+                    <div
+                      className={`w-3 h-3 rounded-full ${color === "Scarlet Red" ? "bg-red-500" : "bg-[#e5e5e5] border border-slate-300"}`}
+                    />
+                    {color}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="col-span-2 border-t border-glass-border pt-4 mt-2">
+              <h3 className="text-sm font-bold text-accent mb-3">
+                Optional Match Info
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    Match URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.matchUrl}
+                    onChange={(e) =>
+                      setFormData({ ...formData, matchUrl: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                    placeholder="https://cricheroes.in/..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    Streaming URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.streamingUrl}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        streamingUrl: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                    placeholder="https://youtube.com/..."
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    Result
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "Pending",
+                      "KAvach Won",
+                      "KAvach Lost",
+                      "Draw",
+                      "Tie",
+                      "Abandoned",
+                    ].map((res) => (
+                      <label
+                        key={res}
+                        className={`px-3 py-1.5 border rounded-lg text-xs cursor-pointer select-none transition ${formData.result === res ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                      >
+                        <input
+                          type="radio"
+                          className="hidden"
+                          name="result"
+                          value={res}
+                          checked={formData.result === res}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              result: e.target.value as any,
+                            })
+                          }
+                        />
+                        {res}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {(formData.result === "KAvach Won" ||
+                  formData.result === "KAvach Lost") && (
+                  <div className="col-span-2 flex gap-4 mt-2 p-3 bg-black/20 rounded-lg border border-glass-border">
+                    <div className="flex-1">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                        Margin Type
+                      </label>
+                      <div className="flex gap-2">
+                        {["runs", "wickets"].map((type) => (
+                          <label
+                            key={type}
+                            className={`flex-1 text-center py-2 border rounded-lg text-xs cursor-pointer select-none transition ${formData.resultMarginType === type ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                          >
+                            <input
+                              type="radio"
+                              className="hidden"
+                              name="marginType"
+                              value={type}
+                              checked={formData.resultMarginType === type}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  resultMarginType: e.target.value as
+                                    | "runs"
+                                    | "wickets",
+                                })
+                              }
+                            />
+                            By {type}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="w-1/3">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.resultMarginAmount || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            resultMarginAmount:
+                              parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                        placeholder="e.g. 5"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {formData.result === "KAvach Won" && (
+                  <>
+                    <div className="col-span-2">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                        Player of the Match
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={formData.potmId || ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, potmId: e.target.value })
+                          }
+                          className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                        >
+                          <option value="">Select (Optional)</option>
+                          {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={formData.playerOfTheMatch}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              playerOfTheMatch: e.target.value,
+                            })
+                          }
+                          className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                          placeholder="Or manual name"
+                        />
+                      </div>
+                    </div>
+                    <div className="col-span-2 border border-glass-border p-3 rounded-lg bg-white/5">
+                      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                        Top Performers (Max 3)
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-32 pr-2 custom-scrollbar">
+                        {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map((p) => {
+                            const isSelected = formData.topPerformerIds?.includes(p.id);
+                            return (
+                              <label key={p.id} className={`flex items-center gap-2 text-xs p-1.5 rounded cursor-pointer transition ${isSelected ? "bg-accent/20 text-accent font-bold" : "hover:bg-white/10 text-white/80"}`}>
+                                <input
+                                  type="checkbox"
+                                  className="accent-accent"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    const current = formData.topPerformerIds || [];
+                                    if (e.target.checked) {
+                                      if (current.length < 3) {
+                                        setFormData({ ...formData, topPerformerIds: [...current, p.id] });
+                                      } else {
+                                        alert("Maximum 3 top performers allowed.");
+                                      }
+                                    } else {
+                                      setFormData({ ...formData, topPerformerIds: current.filter(id => id !== p.id) });
+                                    }
+                                  }}
+                                />
+                                <span className="truncate">{p.name}</span>
+                              </label>
+                            );
+                        })}
+                      </div>
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                        Best Batsman
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.bestBatsman}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            bestBatsman: e.target.value,
+                          })
+                        }
+                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                        placeholder="Player Name"
+                      />
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                        Best Bowler
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.bestBowler}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            bestBowler: e.target.value,
+                          })
+                        }
+                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                        placeholder="Player Name"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition"
+            >
+              {editingId ? "Save Changes" : "Create Match"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  ) : null;
+
   if (selectedMatch) {
     return (
-      <MatchPayments
-        match={selectedMatch}
-        store={store}
-        persona={persona}
-        isMatchAdmin={isMatchAdmin}
-        onBack={() => setSelectedMatch(null)}
-        onEdit={() => {
-          setSelectedMatch(null);
-          startEdit(selectedMatch);
-        }}
-      />
+      <>
+        <MatchPayments
+          match={selectedMatch}
+          store={store}
+          persona={persona}
+          isMatchAdmin={isMatchAdmin}
+          onBack={() => setSelectedMatch(null)}
+          onEdit={() => startEdit(selectedMatch)}
+        />
+        {editMatchModal}
+      </>
     );
   }
 
@@ -330,532 +899,7 @@ export function MatchesTab({
             )}
           </div>
 
-          {isAdmin && isAdding && (
-             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-               <div className="relative w-full max-w-md my-8">
-                  <div className="sticky top-0 bg-[#0f172a] p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-glass-border">
-                    <h2 className="text-xl font-bold text-white">{editingId ? "Edit Match" : "Add Match"}</h2>
-                    <button type="button" onClick={() => { setIsAdding(false); setEditingId(null); resetForm(); }} className="text-white/50 hover:text-white"><X className="w-6 h-6"/></button>
-                  </div>
-            <form
-              onSubmit={handleSubmit}
-              className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 flex items-center gap-2 bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
-                  <input
-                    type="checkbox"
-                    id="tentative-block"
-                    checked={formData.isTentative || false}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      isTentative: e.target.checked,
-                      tentativelyBlockedBy: e.target.checked ? currentUserName : ""
-                    })}
-                    className="accent-orange-500 w-4 h-4 cursor-pointer"
-                  />
-                  <label htmlFor="tentative-block" className="text-orange-400 font-bold text-sm cursor-pointer select-none">
-                    Tentatively Block Slot
-                  </label>
-                </div>
-                <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Select Ground <span className="text-red-400">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.groundId}
-                    onChange={(e) => {
-                      const newGroundId = e.target.value;
-                      const ground = store.grounds.find(g => g.id === newGroundId);
-                      let newFee = formData.fee;
-                      if (ground) {
-                         const groundFee = formData.matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
-                         if (groundFee > 0) {
-                             newFee = Math.round((groundFee / 12) * 1.04);
-                         }
-                      }
-                      setFormData({ ...formData, groundId: newGroundId, fee: newFee });
-                    }}
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
-                  >
-                    <option value="" disabled>
-                      Select a ground
-                    </option>
-                    {store.grounds.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Opponent Team <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    value={formData.opponent}
-                    onChange={(e) =>
-                      setFormData({ ...formData, opponent: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                    placeholder="e.g. Royal Challengers"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Date <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    required
-                    type="date"
-                    value={inputToDbDate(formData.date)}
-                    onChange={(e) =>
-                      setFormData({ ...formData, date: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Time <span className="text-red-400">*</span>
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, time: "07:00" })}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
-                          formData.time === "07:00"
-                            ? "bg-accent/20 border-accent/50 text-accent"
-                            : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
-                        }`}
-                      >
-                        07:00 AM
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, time: "12:00" })}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
-                          formData.time === "12:00"
-                            ? "bg-accent/20 border-accent/50 text-accent"
-                            : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
-                        }`}
-                      >
-                        12:00 PM
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, time: formData.time === "07:00" || formData.time === "12:00" ? "" : formData.time })}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
-                          formData.time !== "07:00" && formData.time !== "12:00"
-                            ? "bg-accent/20 border-accent/50 text-accent"
-                            : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
-                        }`}
-                      >
-                        Other
-                      </button>
-                    </div>
-                    {formData.time !== "07:00" && formData.time !== "12:00" && (
-                    <input
-                      required={formData.time !== "07:00" && formData.time !== "12:00"}
-                      type="time"
-                      value={formData.time}
-                      onChange={(e) =>
-                        setFormData({ ...formData, time: e.target.value })
-                      }
-                      className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
-                    />
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Max Squad Size <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    value={formData.maxSquadSize}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        maxSquadSize: parseInt(e.target.value) || 12,
-                      })
-                    }
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    <span>Match Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.fee}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        fee: e.target.value === "" ? "" : parseInt(e.target.value) || 0,
-                      })
-                    }
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Format <span className="text-red-400">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {["T20", "T30", "Other"].map((fmt) => (
-                      <label
-                        key={fmt}
-                        className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.format === fmt ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
-                      >
-                        <input
-                          type="radio"
-                          className="hidden"
-                          name="format"
-                          value={fmt}
-                          checked={formData.format === fmt}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              format: e.target.value as Match["format"],
-                            })
-                          }
-                        />
-                        {fmt}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Type <span className="text-red-400">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {["Practice", "Tournament"].map((type) => (
-                      <label
-                        key={type}
-                        className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.matchType === type ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
-                      >
-                        <input
-                          type="radio"
-                          className="hidden"
-                          name="matchType"
-                          value={type}
-                          checked={formData.matchType === type}
-                          onChange={(e) => {
-                            const newMatchType = e.target.value as Match["matchType"];
-                            const ground = store.grounds.find(g => g.id === formData.groundId);
-                            let newFee = formData.fee;
-                            if (ground) {
-                               const groundFee = newMatchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
-                               if (groundFee > 0) {
-                                   newFee = Math.round((groundFee / 12) * 1.04);
-                               }
-                            }
-                            setFormData({
-                              ...formData,
-                              matchType: newMatchType,
-                              fee: newFee
-                            });
-                          }}
-                        />
-                        {type}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                    Jersey Color <span className="text-red-400">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {["Scarlet Red", "Whites"].map((color) => (
-                      <label
-                        key={color}
-                        className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition flex items-center justify-center gap-2 ${formData.jerseyColor === color ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
-                      >
-                        <input
-                          type="radio"
-                          className="hidden"
-                          name="jerseyColor"
-                          value={color}
-                          checked={formData.jerseyColor === color}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              jerseyColor: e.target
-                                .value as Match["jerseyColor"],
-                            })
-                          }
-                        />
-                        <div
-                          className={`w-3 h-3 rounded-full ${color === "Scarlet Red" ? "bg-red-500" : "bg-[#e5e5e5] border border-slate-300"}`}
-                        />
-                        {color}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="col-span-2 border-t border-glass-border pt-4 mt-2">
-                  <h3 className="text-sm font-bold text-accent mb-3">
-                    Optional Match Info
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                        Match URL
-                      </label>
-                      <input
-                        type="url"
-                        value={formData.matchUrl}
-                        onChange={(e) =>
-                          setFormData({ ...formData, matchUrl: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                        placeholder="https://cricheroes.in/..."
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                        Streaming URL
-                      </label>
-                      <input
-                        type="url"
-                        value={formData.streamingUrl}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            streamingUrl: e.target.value,
-                          })
-                        }
-                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                        placeholder="https://youtube.com/..."
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                        Result
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          "Pending",
-                          "KAvach Won",
-                          "KAvach Lost",
-                          "Draw",
-                          "Tie",
-                          "Abandoned",
-                        ].map((res) => (
-                          <label
-                            key={res}
-                            className={`px-3 py-1.5 border rounded-lg text-xs cursor-pointer select-none transition ${formData.result === res ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
-                          >
-                            <input
-                              type="radio"
-                              className="hidden"
-                              name="result"
-                              value={res}
-                              checked={formData.result === res}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  result: e.target.value as any,
-                                })
-                              }
-                            />
-                            {res}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {(formData.result === "KAvach Won" ||
-                      formData.result === "KAvach Lost") && (
-                      <div className="col-span-2 flex gap-4 mt-2 p-3 bg-black/20 rounded-lg border border-glass-border">
-                        <div className="flex-1">
-                          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                            Margin Type
-                          </label>
-                          <div className="flex gap-2">
-                            {["runs", "wickets"].map((type) => (
-                              <label
-                                key={type}
-                                className={`flex-1 text-center py-2 border rounded-lg text-xs cursor-pointer select-none transition ${formData.resultMarginType === type ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
-                              >
-                                <input
-                                  type="radio"
-                                  className="hidden"
-                                  name="marginType"
-                                  value={type}
-                                  checked={formData.resultMarginType === type}
-                                  onChange={(e) =>
-                                    setFormData({
-                                      ...formData,
-                                      resultMarginType: e.target.value as
-                                        | "runs"
-                                        | "wickets",
-                                    })
-                                  }
-                                />
-                                By {type}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="w-1/3">
-                          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                            Amount
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={formData.resultMarginAmount || ""}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                resultMarginAmount:
-                                  parseInt(e.target.value) || 0,
-                              })
-                            }
-                            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                            placeholder="e.g. 5"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {formData.result === "KAvach Won" && (
-                      <>
-                        <div className="col-span-2">
-                          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                            Player of the Match
-                          </label>
-                          <div className="flex gap-2">
-                            <select
-                              value={formData.potmId || ""}
-                              onChange={(e) =>
-                                setFormData({ ...formData, potmId: e.target.value })
-                              }
-                              className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
-                            >
-                              <option value="">Select (Optional)</option>
-                              {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              value={formData.playerOfTheMatch}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  playerOfTheMatch: e.target.value,
-                                })
-                              }
-                              className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                              placeholder="Or manual name"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-2 border border-glass-border p-3 rounded-lg bg-white/5">
-                          <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                            Top Performers (Max 3)
-                          </label>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-32 pr-2 custom-scrollbar">
-                            {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map((p) => {
-                                const isSelected = formData.topPerformerIds?.includes(p.id);
-                                return (
-                                  <label key={p.id} className={`flex items-center gap-2 text-xs p-1.5 rounded cursor-pointer transition ${isSelected ? "bg-accent/20 text-accent font-bold" : "hover:bg-white/10 text-white/80"}`}>
-                                    <input 
-                                      type="checkbox" 
-                                      className="accent-accent"
-                                      checked={isSelected}
-                                      onChange={(e) => {
-                                        const current = formData.topPerformerIds || [];
-                                        if (e.target.checked) {
-                                          if (current.length < 3) {
-                                            setFormData({ ...formData, topPerformerIds: [...current, p.id] });
-                                          } else {
-                                            alert("Maximum 3 top performers allowed.");
-                                          }
-                                        } else {
-                                          setFormData({ ...formData, topPerformerIds: current.filter(id => id !== p.id) });
-                                        }
-                                      }}
-                                    />
-                                    <span className="truncate">{p.name}</span>
-                                  </label>
-                                );
-                            })}
-                          </div>
-                        </div>
-                        <div className="col-span-2 md:col-span-1">
-                          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                            Best Batsman
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.bestBatsman}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                bestBatsman: e.target.value,
-                              })
-                            }
-                            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                            placeholder="Player Name"
-                          />
-                        </div>
-                        <div className="col-span-2 md:col-span-1">
-                          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                            Best Bowler
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.bestBowler}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                bestBowler: e.target.value,
-                              })
-                            }
-                            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                            placeholder="Player Name"
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition"
-                >
-                  {editingId ? "Save Changes" : "Create Match"}
-                </button>
-              </div>
-            </form>
-            </div>
-            </div>
-          )}
+          {editMatchModal}
 
           {viewMode === "list" ? (
             <div className="space-y-4">
@@ -2749,9 +2793,18 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
     setIsMounted(true);
   }, []);
 
-  const [isPastCollapsed, setIsPastCollapsed] = useState(true);
-  const [filterGround, setFilterGround] = useState<string>("all");
-  const [filterOpenSlots, setFilterOpenSlots] = useState<boolean>(false);
+  const [isPastCollapsed, setIsPastCollapsed] = useSessionState(
+    "matches:calendar:isPastCollapsed",
+    true,
+  );
+  const [filterGround, setFilterGround] = useSessionState<string>(
+    "matches:calendar:filterGround",
+    "all",
+  );
+  const [filterOpenSlots, setFilterOpenSlots] = useSessionState<boolean>(
+    "matches:calendar:filterOpenSlots",
+    false,
+  );
 
   const getMatchDateObj = (match: Match) => {
     const parts = dbToInputDate(match.date).split("/");
