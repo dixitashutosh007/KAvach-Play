@@ -146,7 +146,7 @@ export function MatchesTab({
   const getInitialFee = () => {
      const ground = store.grounds[0];
      if (ground && ground.practiceFee) {
-        return Math.round((ground.practiceFee / 12) * 1.04);
+        return Math.round((ground.practiceFee / 12) * 1.05);
      }
      return "";
   };
@@ -342,7 +342,7 @@ export function MatchesTab({
                   if (ground) {
                     const groundFee = formData.matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
                     if (groundFee > 0) {
-                      newFee = Math.round((groundFee / 12) * 1.04);
+                      newFee = Math.round((groundFee / 12) * 1.05);
                     }
                   }
                   setFormData({ ...formData, groundId: newGroundId, fee: newFee });
@@ -532,7 +532,7 @@ export function MatchesTab({
                         if (ground) {
                           const groundFee = newMatchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
                           if (groundFee > 0) {
-                            newFee = Math.round((groundFee / 12) * 1.04);
+                            newFee = Math.round((groundFee / 12) * 1.05);
                           }
                         }
                         setFormData({
@@ -3228,7 +3228,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                 )}
 
                                 {isAdmin && (
-                                  <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                  <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
                                     <div className="flex items-center gap-1">
                                       <button
                                         onClick={(e) => {
