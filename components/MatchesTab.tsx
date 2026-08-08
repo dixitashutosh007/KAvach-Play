@@ -72,6 +72,7 @@ import {
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { GroundsTab } from "./GroundsTab";
 import { AssignFeesAdmin } from "./AssignFeesAdmin";
+import { TournamentsTab } from "./TournamentsTab";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { useAuth } from "./AuthProvider";
 
@@ -86,7 +87,7 @@ export function MatchesTab({
   isMatchAdmin?: boolean;
   defaultAction?: string | null;
 }) {
-  const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign">(
+  const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign" | "tournaments">(
     defaultAction === "assign" ? "assign" : "matches"
   );
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
@@ -847,10 +848,11 @@ export function MatchesTab({
     <div className="space-y-4">
       {isAdmin && (
         <div className="flex gap-2 mb-4 bg-white/5 p-1.5 rounded-2xl border border-glass-border">
-          {["matches", "grounds", "assign"].map((tab) => {
+          {["matches", "tournaments", "grounds", "assign"].map((tab) => {
             const active = subTab === tab;
             const labels: Record<string, string> = {
               matches: "Matches",
+              tournaments: "Tournaments",
               grounds: "Grounds",
               assign: "Assign",
             };
@@ -875,6 +877,7 @@ export function MatchesTab({
         <GroundsTab store={store} persona={persona || "player"} />
       )}
       {subTab === "assign" && isAdmin && <AssignFeesAdmin store={store} />}
+      {subTab === "tournaments" && isAdmin && <TournamentsTab store={store} />}
 
       {subTab === "matches" && (
         <>
