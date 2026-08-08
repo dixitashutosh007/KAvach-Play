@@ -140,6 +140,7 @@ export type Tournament = {
   organiserPhone: string;
   gpayNumber: string;
   jerseyColor: "Scarlet Red" | "Whites";
+  format?: "T20" | "T30";         // default T30 (99% of tournaments)
   amountPerMatch: number;         // ground fee per match, ₹
   perPlayerFee: number;           // default round(amountPerMatch/12 * 1.05); editable override
   status: "Upcoming" | "Ongoing" | "Ended" | "Disabled";

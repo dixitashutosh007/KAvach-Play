@@ -328,6 +328,7 @@ service cloud.firestore {
         && data.organiserPhone is string && data.organiserPhone.size() <= 20
         && data.gpayNumber is string && data.gpayNumber.size() <= 20
         && data.jerseyColor in ['Scarlet Red', 'Whites']
+        && data.get('format', 'T30') in ['T20', 'T30']
         && (data.amountPerMatch is int || data.amountPerMatch is float)
         && (data.perPlayerFee is int || data.perPlayerFee is float)
         && data.status in ['Upcoming', 'Ongoing', 'Ended', 'Disabled']

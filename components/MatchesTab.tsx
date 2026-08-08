@@ -361,6 +361,7 @@ export function MatchesTab({
                       tournamentId: tId,
                       groundId: t.groundId,
                       jerseyColor: t.jerseyColor,
+                      format: t.format || "T30",
                       fee: t.perPlayerFee,
                     });
                   }}

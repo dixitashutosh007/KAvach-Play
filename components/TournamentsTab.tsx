@@ -259,6 +259,7 @@ function TournamentFormModal({
         organiserPhone: tournament.organiserPhone,
         gpayNumber: tournament.gpayNumber,
         jerseyColor: tournament.jerseyColor,
+        format: tournament.format || "T30",
         amountPerMatch: tournament.amountPerMatch,
         perPlayerFee: tournament.perPlayerFee,
         status: tournament.status,
@@ -274,6 +275,7 @@ function TournamentFormModal({
       organiserPhone: "",
       gpayNumber: "",
       jerseyColor: "Scarlet Red",
+      format: "T30",       // 99% of tournaments — flip to T20 per-tournament as needed
       amountPerMatch: 0,
       perPlayerFee: 0,
       status: "Upcoming",
@@ -422,6 +424,33 @@ function TournamentFormModal({
                     className={`w-3 h-3 rounded-full ${c === "Scarlet Red" ? "bg-red-500" : "bg-[#e5e5e5] border border-slate-300"}`}
                   />
                   {c}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              Format
+            </label>
+            <div className="flex gap-2">
+              {(["T30", "T20"] as const).map((f) => (
+                <label
+                  key={f}
+                  className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${
+                    (form.format || "T30") === f
+                      ? "bg-accent text-black font-bold border-accent"
+                      : "bg-transparent text-white border-glass-border hover:bg-white/5"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    className="hidden"
+                    name="tfmt"
+                    checked={(form.format || "T30") === f}
+                    onChange={() => setForm({ ...form, format: f })}
+                  />
+                  {f}
                 </label>
               ))}
             </div>
@@ -684,6 +713,7 @@ function BulkAddSection({
   store: ReturnType<typeof useStore>;
 }) {
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [defaultOpponent, setDefaultOpponent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const addSlot = () =>
@@ -695,18 +725,19 @@ function BulkAddSection({
   const removeSlot = (id: string) =>
     setSlots((s) => s.filter((r) => r.id !== id));
 
-  // Check each slot for a conflict against existing matches on the same
-  // ground at the same date+time. Returns per-slot conflict info.
+  // Conflict = any existing match on the same ground on the same
+  // date, regardless of time. That's stricter than time-based
+  // matching but matches how the club actually books grounds
+  // (one match per day per ground is the norm).
   const conflictsPerSlot = useMemo(() => {
     return slots.map((s) => {
-      if (!s.date || !s.time) return null;
+      if (!s.date) return null;
       const dbDate = inputToDbDate(s.date);
       const conflict = store.matches.find(
         (m) =>
           !m.isArchived &&
           m.groundId === tournament.groundId &&
-          m.date === dbDate &&
-          m.time === s.time,
+          m.date === dbDate,
       );
       return conflict || null;
     });
@@ -731,15 +762,17 @@ function BulkAddSection({
     setIsSubmitting(true);
     try {
       let created = 0;
+      const tournamentFormat = tournament.format || "T30";
+      const fallbackOpponent = defaultOpponent.trim() || "TBD";
       for (let i = 0; i < slots.length; i++) {
         const s = slots[i];
         if (!s.date || !s.time) continue;
         if (conflictsPerSlot[i]) continue; // skip conflict
         await store.addMatch({
           groundId: tournament.groundId,
-          format: "T20",
+          format: tournamentFormat,
           jerseyColor: tournament.jerseyColor,
-          opponent: s.opponent || "TBD",
+          opponent: s.opponent.trim() || fallbackOpponent,
           matchType: "Tournament",
           fee: tournament.perPlayerFee,
           date: s.date,
@@ -772,10 +805,27 @@ function BulkAddSection({
         </button>
       </div>
       <p className="text-[11px] text-white/50 mb-2 leading-tight">
-        Each slot creates one match with the tournament's ground, jersey and
-        per-player fee (₹{tournament.perPlayerFee}). If a slot's date+time
-        already has a match on this ground you'll be prompted to skip it.
+        Each slot creates one match with the tournament's ground, jersey,
+        format ({tournament.format || "T30"}) and per-player fee
+        (₹{tournament.perPlayerFee}). Conflict check is per ground per
+        date — you'll be prompted to skip any slot whose date already
+        has a match on this ground.
       </p>
+      <div className="mb-3">
+        <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/50">
+          Default opponent{" "}
+          <span className="text-white/40 normal-case tracking-normal font-normal text-[9px]">
+            (used when a slot's opponent is blank — else "TBD")
+          </span>
+        </label>
+        <input
+          type="text"
+          value={defaultOpponent}
+          onChange={(e) => setDefaultOpponent(e.target.value)}
+          placeholder='e.g. "TBD" or a common opponent name'
+          className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+        />
+      </div>
       {slots.length === 0 && (
         <div className="text-[11px] text-white/40 text-center py-4">
           No slots yet.
@@ -822,8 +872,8 @@ function BulkAddSection({
             {conflict && (
               <div className="col-span-4 -mt-1 text-[10px] text-amber-400 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
-                Conflict: existing match vs {conflict.opponent} at{" "}
-                {conflict.date} {conflict.time}
+                Ground already booked this date — existing match vs{" "}
+                {conflict.opponent} at {conflict.time}.
               </div>
             )}
           </div>
