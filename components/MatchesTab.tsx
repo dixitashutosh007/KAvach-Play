@@ -176,6 +176,7 @@ export function MatchesTab({
     bestBowler: "",
     isTentative: false,
     tentativelyBlockedBy: "",
+    tournamentId: "",
   });
 
   const { user } = useAuth();
@@ -229,6 +230,7 @@ export function MatchesTab({
       bestBowler: "",
       isTentative: false,
       tentativelyBlockedBy: "",
+      tournamentId: "",
     });
   };
 
@@ -255,6 +257,7 @@ export function MatchesTab({
       bestBowler: match.bestBowler || "",
       isTentative: match.isTentative || false,
       tentativelyBlockedBy: match.tentativelyBlockedBy || "",
+      tournamentId: match.tournamentId || "",
     });
     setEditingId(match.id);
     setIsAdding(true);
@@ -283,6 +286,7 @@ export function MatchesTab({
       bestBowler: "",
       isTentative: false,
       tentativelyBlockedBy: "",
+      tournamentId: match.tournamentId || "",
     });
     setEditingId(null);
     setIsAdding(true);
@@ -329,6 +333,60 @@ export function MatchesTab({
                 Tentatively Block Slot
               </label>
             </div>
+            {formData.matchType === "Tournament" && (
+              <div className="col-span-2">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Tournament{" "}
+                  <span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">
+                    (optional — autofills ground / jersey / fee)
+                  </span>
+                </label>
+                <select
+                  value={formData.tournamentId || ""}
+                  onChange={(e) => {
+                    const tId = e.target.value;
+                    if (!tId) {
+                      // Cleared — leave everything else alone; admin
+                      // may want to keep the autofilled values.
+                      setFormData({ ...formData, tournamentId: "" });
+                      return;
+                    }
+                    const t = store.tournaments.find((x) => x.id === tId);
+                    if (!t) {
+                      setFormData({ ...formData, tournamentId: tId });
+                      return;
+                    }
+                    setFormData({
+                      ...formData,
+                      tournamentId: tId,
+                      groundId: t.groundId,
+                      jerseyColor: t.jerseyColor,
+                      fee: t.perPlayerFee,
+                    });
+                  }}
+                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                >
+                  <option value="">— None (fill manually) —</option>
+                  {[...store.tournaments]
+                    .filter(
+                      (t) => t.status === "Ongoing" || t.status === "Upcoming",
+                    )
+                    .sort((a, b) => {
+                      // Ongoing first, then Upcoming, then by name
+                      const r =
+                        (a.status === "Ongoing" ? 0 : 1) -
+                        (b.status === "Ongoing" ? 0 : 1);
+                      if (r !== 0) return r;
+                      return (a.name || "").localeCompare(b.name || "");
+                    })
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} · {t.status} · ₹{t.perPlayerFee}/player
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
             <div className="col-span-2">
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
                 Select Ground <span className="text-red-400">*</span>
@@ -539,7 +597,14 @@ export function MatchesTab({
                         setFormData({
                           ...formData,
                           matchType: newMatchType,
-                          fee: newFee
+                          fee: newFee,
+                          // Switching away from Tournament wipes any
+                          // linked tournamentId — otherwise a Practice
+                          // match would carry a stale tournament link.
+                          tournamentId:
+                            newMatchType === "Tournament"
+                              ? formData.tournamentId
+                              : "",
                         });
                       }}
                     />
@@ -993,13 +1058,27 @@ export function MatchesTab({
                     <div className="p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <div className="flex gap-2 items-center mb-1">
+                          <div className="flex gap-2 items-center mb-1 flex-wrap">
                             <span className="bg-white/10 text-white/80 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                               {match.matchType}
                             </span>
                             <span className="bg-accent/20 text-accent px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                               {match.format}
                             </span>
+                            {match.tournamentId && (() => {
+                              const t = store.tournaments.find(
+                                (tt) => tt.id === match.tournamentId,
+                              );
+                              if (!t) return null;
+                              return (
+                                <span
+                                  className="bg-purple-500/20 text-purple-300 border border-purple-500/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[160px]"
+                                  title={t.name}
+                                >
+                                  🏆 {t.name}
+                                </span>
+                              );
+                            })()}
                             {match.isTentative && (
                               <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
                                 Tentatively
@@ -3179,6 +3258,20 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                 </span>
                               )}
                             </div>
+                            {m.tournamentId && (() => {
+                              const t = store.tournaments.find(
+                                (tt) => tt.id === m.tournamentId,
+                              );
+                              if (!t) return null;
+                              return (
+                                <div
+                                  className="text-[9px] font-bold text-purple-300 uppercase tracking-wider truncate flex items-center gap-1"
+                                  title={t.name}
+                                >
+                                  🏆 {t.name}
+                                </div>
+                              );
+                            })()}
                             
                             {matchToDelete === m.id ? (
                               <div className="mt-1 flex items-center justify-between gap-1 bg-black/60 rounded-lg px-2 py-1 border border-red-500/50">
