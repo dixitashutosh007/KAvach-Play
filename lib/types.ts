@@ -115,6 +115,7 @@ export type Ground = {
   name: string;
   mapUrl: string;
   organiserName: string;
+  organiserPhone?: string;   // optional — read by tournament / match forms as autofill
   gpayNumber: string;
   practiceFee?: number;
   tournamentFee?: number;

@@ -16,6 +16,7 @@ export function GroundsTab({
     name: "",
     mapUrl: "",
     organiserName: "",
+    organiserPhone: "",
     gpayNumber: "",
     practiceFee: 0,
     tournamentFee: 0,
@@ -30,7 +31,7 @@ export function GroundsTab({
       store.addGround(formData);
     }
     setIsAdding(false);
-    setFormData({ name: "", mapUrl: "", organiserName: "", gpayNumber: "", practiceFee: 0, tournamentFee: 0 });
+    setFormData({ name: "", mapUrl: "", organiserName: "", organiserPhone: "", gpayNumber: "", practiceFee: 0, tournamentFee: 0 });
   };
 
   const handleEdit = (ground: any) => {
@@ -38,6 +39,7 @@ export function GroundsTab({
       name: ground.name || "",
       mapUrl: ground.mapUrl || "",
       organiserName: ground.organiserName || "",
+      organiserPhone: ground.organiserPhone || "",
       gpayNumber: ground.gpayNumber || "",
       practiceFee: ground.practiceFee || 0,
       tournamentFee: ground.tournamentFee || 0,
@@ -52,6 +54,7 @@ export function GroundsTab({
       name: `${ground.name} (Copy)`,
       mapUrl: ground.mapUrl || "",
       organiserName: ground.organiserName || "",
+      organiserPhone: ground.organiserPhone || "",
       gpayNumber: ground.gpayNumber || "",
       practiceFee: ground.practiceFee || 0,
       tournamentFee: ground.tournamentFee || 0,
@@ -81,6 +84,7 @@ export function GroundsTab({
                   name: "",
                   mapUrl: "",
                   organiserName: "",
+                  organiserPhone: "",
                   gpayNumber: "",
                   practiceFee: 0,
                   tournamentFee: 0,
@@ -154,19 +158,33 @@ export function GroundsTab({
             </div>
             <div>
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                GPay Number
+                Organiser Phone
               </label>
               <input
-                required
                 type="tel"
-                value={formData.gpayNumber}
+                value={formData.organiserPhone}
                 onChange={(e) =>
-                  setFormData({ ...formData, gpayNumber: e.target.value })
+                  setFormData({ ...formData, organiserPhone: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-                placeholder="e.g. 9876543210"
+                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                placeholder="+91 XXXXXXXXXX"
               />
             </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              GPay Number
+            </label>
+            <input
+              required
+              type="tel"
+              value={formData.gpayNumber}
+              onChange={(e) =>
+                setFormData({ ...formData, gpayNumber: e.target.value })
+              }
+              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+              placeholder="e.g. 9876543210"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -214,6 +232,7 @@ export function GroundsTab({
                   name: "",
                   mapUrl: "",
                   organiserName: "",
+                  organiserPhone: "",
                   gpayNumber: "",
                   practiceFee: 0,
                   tournamentFee: 0,

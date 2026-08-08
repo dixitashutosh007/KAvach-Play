@@ -98,6 +98,7 @@ service cloud.firestore {
         && data.mapUrl is string && data.mapUrl.size() <= 500
         && data.organiserName is string && data.organiserName.size() <= 100
         && data.gpayNumber is string && data.gpayNumber.size() <= 20
+        && (!('organiserPhone' in data) || (data.organiserPhone is string && data.organiserPhone.size() <= 20))
         && (!('practiceFee' in data) || data.practiceFee is number)
         && (!('tournamentFee' in data) || data.tournamentFee is number)
         && (!('createdAt' in data) || data.createdAt is timestamp)
@@ -315,7 +316,7 @@ service cloud.firestore {
         && isValidId(groundId)
         && isValidGround(incoming())
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'mapUrl', 'organiserName', 'gpayNumber', 'practiceFee', 'tournamentFee', 'updatedAt']);
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'mapUrl', 'organiserName', 'organiserPhone', 'gpayNumber', 'practiceFee', 'tournamentFee', 'updatedAt']);
 
       allow delete: if isMatchAdmin() && isValidId(groundId);
     }

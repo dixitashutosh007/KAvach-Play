@@ -348,7 +348,23 @@ function TournamentFormModal({
             <select
               required
               value={form.groundId}
-              onChange={(e) => setForm({ ...form, groundId: e.target.value })}
+              onChange={(e) => {
+                const gid = e.target.value;
+                const g = store.grounds.find((x) => x.id === gid);
+                if (!g) {
+                  setForm({ ...form, groundId: gid });
+                  return;
+                }
+                // Autofill organiser fields ONLY if they're still
+                // empty — never overwrite an admin's manual entry.
+                setForm({
+                  ...form,
+                  groundId: gid,
+                  organiserName: form.organiserName || g.organiserName || "",
+                  organiserPhone: form.organiserPhone || g.organiserPhone || "",
+                  gpayNumber: form.gpayNumber || g.gpayNumber || "",
+                });
+              }}
               className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
             >
               <option value="" disabled>Select a ground</option>
@@ -356,6 +372,10 @@ function TournamentFormModal({
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </select>
+            <div className="text-[10px] text-white/40 mt-0.5">
+              Organiser Name, Phone and GPay auto-fill from the ground —
+              edit if this tournament uses a different contact.
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -510,31 +530,6 @@ function TournamentFormModal({
             </select>
             <div className="text-[10px] text-white/40 mt-0.5">
               Ended and Disabled tournaments don't appear in the match form dropdown.
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                Start (opt.)
-              </label>
-              <input
-                type="date"
-                value={form.startDate || ""}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                End (opt.)
-              </label>
-              <input
-                type="date"
-                value={form.endDate || ""}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-              />
             </div>
           </div>
 
