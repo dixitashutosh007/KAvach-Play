@@ -317,30 +317,53 @@ export function MatchesTab({
           className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
         >
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 flex items-center gap-2 bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
-              <input
-                type="checkbox"
-                id="tentative-block"
-                checked={formData.isTentative || false}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  isTentative: e.target.checked,
-                  tentativelyBlockedBy: e.target.checked ? currentUserName : ""
-                })}
-                className="accent-orange-500 w-4 h-4 cursor-pointer"
-              />
-              <label htmlFor="tentative-block" className="text-orange-400 font-bold text-sm cursor-pointer select-none">
-                Tentatively Block Slot
+            {/* Tentative block only makes sense for FUTURE matches — no
+                point marking a past match tentative. Today's match is
+                also treated as past for this check (you've either
+                played it or you're about to; tentative is off the table). */}
+            {(() => {
+              const dbDate = inputToDbDate(formData.date);
+              // dbDate is DD/MM/YYYY. Compare as Date at 23:59 of that day
+              // so slots later today still count as "future" only if the
+              // date is strictly after today.
+              const parts = dbDate.split("/");
+              let matchDay: Date | null = null;
+              if (parts.length === 3) {
+                matchDay = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+              }
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const isFuture = !!matchDay && matchDay.getTime() > today.getTime();
+              if (!isFuture) return null;
+              return (
+                <div className="col-span-2 flex items-center gap-2 bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
+                  <input
+                    type="checkbox"
+                    id="tentative-block"
+                    checked={formData.isTentative || false}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      isTentative: e.target.checked,
+                      tentativelyBlockedBy: e.target.checked ? currentUserName : ""
+                    })}
+                    className="accent-orange-500 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="tentative-block" className="text-orange-400 font-bold text-sm cursor-pointer select-none">
+                    Tentatively Block Slot
+                  </label>
+                </div>
+              );
+            })()}
+            {/* Tournament dropdown is always shown — admins may want to
+                link a Practice or friendly match to a tournament for
+                reporting even if it isn't formally counted as one. */}
+            <div className="col-span-2">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                Tournament{" "}
+                <span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">
+                  (optional — autofills ground / jersey / fee)
+                </span>
               </label>
-            </div>
-            {formData.matchType === "Tournament" && (
-              <div className="col-span-2">
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
-                  Tournament{" "}
-                  <span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">
-                    (optional — autofills ground / jersey / fee)
-                  </span>
-                </label>
                 <select
                   value={formData.tournamentId || ""}
                   onChange={(e) => {
@@ -386,8 +409,7 @@ export function MatchesTab({
                       </option>
                     ))}
                 </select>
-              </div>
-            )}
+            </div>
             <div className="col-span-2">
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
                 Select Ground <span className="text-red-400">*</span>
