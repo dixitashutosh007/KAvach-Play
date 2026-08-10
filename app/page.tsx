@@ -498,18 +498,25 @@ export default function Home() {
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
   // screen so old profiles get topped up.
-  const hasMissingMandatory =
-    !isAdmin &&
-    (!appUser?.name ||
-      !appUser?.dob ||
-      !appUser?.locality ||
-      !appUser?.bloodGroup ||
-      !appUser?.emergencyContact ||
-      !appUser?.mobile ||
-      !appUser?.email ||
-      !appUser?.chestSize ||
-      !appUser?.jerseyNumber ||
-      appUser?.jerseyNumber === "10");
+  // Mandatory-fields spec: which fields the player must have populated
+  // before they can use the app. Kept as a list rather than a boolean
+  // so we can (a) render a specific "you're missing X, Y" message and
+  // (b) keep the check + the message in sync as fields evolve.
+  const missingMandatoryLabels = !isAdmin
+    ? [
+        !appUser?.name && "Name",
+        !appUser?.dob && "Date of Birth",
+        !appUser?.locality && "Locality",
+        !appUser?.bloodGroup && "Blood Group",
+        !appUser?.emergencyContact && "Emergency Contact",
+        !appUser?.mobile && "Mobile Number",
+        !appUser?.email && "Email",
+        !appUser?.chestSize && "Chest Size",
+        (!appUser?.jerseyNumber || appUser?.jerseyNumber === "10") &&
+          "Jersey Number (any except 10)",
+      ].filter((v): v is string => Boolean(v))
+    : [];
+  const hasMissingMandatory = missingMandatoryLabels.length > 0;
   const isVerified =
     player?.inviteStatus === "Verified" || player?.inviteStatus === "Accepted";
 
@@ -1077,9 +1084,22 @@ export default function Home() {
             {/* Active Tab Screen Area */}
             {hasMissingMandatory ? (
               <div className="glass rounded-2xl p-5 border border-red-500/30">
-                <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-4 rounded-xl mb-6 text-xs font-semibold uppercase tracking-wider text-center">
-                  ⚠️ Core setup required. Complete registration values to access
-                  features.
+                <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-4 rounded-xl mb-6 text-xs font-semibold text-left">
+                  <div className="uppercase tracking-wider font-bold mb-2">
+                    ⚠️ Complete your profile to continue
+                  </div>
+                  <div className="text-red-200/90 leading-relaxed normal-case">
+                    The club needs the following before you can use the app.
+                    Fill them in below and hit <span className="font-bold">Complete Registration</span>:
+                  </div>
+                  <ul className="mt-2 space-y-1 normal-case text-red-100">
+                    {missingMandatoryLabels.map((label) => (
+                      <li key={label} className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
                 <ProfileTab store={store} forceEdit={true} />
               </div>
