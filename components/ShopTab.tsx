@@ -84,6 +84,50 @@ export function ShopTab({
   // Local state for Admin Edit Order modal
   const [editingOrder, setEditingOrder] = useState<MerchOrder | null>(null);
   const [editOrderDraft, setEditOrderDraft] = useState<Partial<MerchOrder>>({});
+
+  // Pending edits from the bulk-update UI. Each entry maps orderId →
+  // the patch waiting to be committed by the Save Updates button. The
+  // dropdowns in the orders table read from here (falling back to the
+  // stored value), so the UI reflects the desired state without any
+  // Firestore round-trip until the admin hits Save.
+  const [pendingOrderEdits, setPendingOrderEdits] = useState<
+    Record<string, { orderStatus?: string; paymentStatus?: string }>
+  >({});
+  const [isSavingBulk, setIsSavingBulk] = useState(false);
+  const stagePendingEdit = (
+    orderId: string,
+    patch: { orderStatus?: string; paymentStatus?: string },
+  ) => {
+    setPendingOrderEdits((prev) => ({
+      ...prev,
+      [orderId]: { ...(prev[orderId] || {}), ...patch },
+    }));
+  };
+  const discardPendingEdits = () => setPendingOrderEdits({});
+  const saveAllPendingEdits = async () => {
+    const entries = Object.entries(pendingOrderEdits);
+    if (entries.length === 0) return;
+    setIsSavingBulk(true);
+    let ok = 0;
+    const failures: string[] = [];
+    for (const [orderId, patch] of entries) {
+      try {
+        await store.updateMerchOrder(orderId, patch as Partial<MerchOrder>);
+        ok++;
+      } catch (err: any) {
+        failures.push(`${orderId}: ${err?.message || String(err)}`);
+      }
+    }
+    setPendingOrderEdits({});
+    setIsSavingBulk(false);
+    if (failures.length === 0) {
+      // No modal — keep bulk flow quiet on success.
+    } else {
+      alert(
+        `${ok} saved, ${failures.length} failed:\n\n${failures.slice(0, 6).join("\n")}${failures.length > 6 ? "\n…" : ""}`,
+      );
+    }
+  };
   const [editOrderCustomDraft, setEditOrderCustomDraft] = useState<Record<string, string>>({});
   const [isSavingEditOrder, setIsSavingEditOrder] = useState(false);
 
@@ -638,10 +682,12 @@ export function ShopTab({
     }
   };
 
+  // Legacy immediate-commit paths — kept for potential external callers.
+  // The orders table now uses stagePendingEdit + saveAllPendingEdits so
+  // admins can queue several changes then Save Updates in one go.
   const handleUpdateOrderStatus = async (orderId: string, status: any) => {
     try {
       await store.updateMerchOrder(orderId, { orderStatus: status });
-      alert(`Order status updated to "${status}"`);
     } catch (err) {
       alert("Failed to update status.");
     }
@@ -710,7 +756,6 @@ export function ShopTab({
   const handleUpdateOrderPaymentStatus = async (orderId: string, status: "Paid" | "Unpaid") => {
     try {
       await store.updateMerchOrder(orderId, { paymentStatus: status });
-      alert(`Payment status updated to "${status}"`);
     } catch (err) {
       alert("Failed to update payment status.");
     }
@@ -1490,29 +1535,49 @@ export function ShopTab({
                             ₹{ord.price}
                           </td>
                           <td className="py-3.5 px-2 text-center">
-                            <select
-                              value={ord.paymentStatus}
-                              onChange={(e) => handleUpdateOrderPaymentStatus(ord.id, e.target.value as any)}
-                              className={`bg-black/60 border border-glass-border rounded px-2 py-1 text-[10px] font-bold focus:outline-none ${
-                                ord.paymentStatus === "Paid" ? "text-emerald-400" : "text-amber-400"
-                              }`}
-                            >
-                              <option value="Paid">Paid</option>
-                              <option value="Unpaid">Unpaid</option>
-                            </select>
+                            {(() => {
+                              const pending = pendingOrderEdits[ord.id]?.paymentStatus;
+                              const effective = pending ?? ord.paymentStatus;
+                              const isDirty = pending !== undefined && pending !== ord.paymentStatus;
+                              return (
+                                <select
+                                  value={effective}
+                                  onChange={(e) =>
+                                    stagePendingEdit(ord.id, { paymentStatus: e.target.value })
+                                  }
+                                  className={`bg-black/60 border rounded px-2 py-1 text-[10px] font-bold focus:outline-none ${
+                                    isDirty ? "border-accent ring-1 ring-accent/40" : "border-glass-border"
+                                  } ${effective === "Paid" ? "text-emerald-400" : "text-amber-400"}`}
+                                >
+                                  <option value="Paid">Paid</option>
+                                  <option value="Unpaid">Unpaid</option>
+                                </select>
+                              );
+                            })()}
                           </td>
                           <td className="py-3.5 px-2 text-center">
-                            <select
-                              value={ord.orderStatus}
-                              onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as any)}
-                              className="bg-black/60 border border-glass-border rounded px-2 py-1 text-[10px] font-bold text-white focus:outline-none whitespace-nowrap"
-                            >
-                              <option value="Order Placed">Order Placed</option>
-                              <option value="Awaiting Min Order Qnty">Awaiting Min Order Qnty</option>
-                              <option value="Ready to Place Order">Ready to Place Order</option>
-                              <option value="Order Received">Order Received</option>
-                              <option value="Fulfilled">Fulfilled</option>
-                            </select>
+                            {(() => {
+                              const pending = pendingOrderEdits[ord.id]?.orderStatus;
+                              const effective = pending ?? ord.orderStatus;
+                              const isDirty = pending !== undefined && pending !== ord.orderStatus;
+                              return (
+                                <select
+                                  value={effective}
+                                  onChange={(e) =>
+                                    stagePendingEdit(ord.id, { orderStatus: e.target.value })
+                                  }
+                                  className={`bg-black/60 border rounded px-2 py-1 text-[10px] font-bold text-white focus:outline-none whitespace-nowrap ${
+                                    isDirty ? "border-accent ring-1 ring-accent/40" : "border-glass-border"
+                                  }`}
+                                >
+                                  <option value="Order Placed">Order Placed</option>
+                                  <option value="Awaiting Min Order Qnty">Awaiting Min Order Qnty</option>
+                                  <option value="Ready to Place Order">Ready to Place Order</option>
+                                  <option value="Order Received">Order Received</option>
+                                  <option value="Fulfilled">Fulfilled</option>
+                                </select>
+                              );
+                            })()}
                           </td>
                           <td className="py-3.5 px-2 text-right whitespace-nowrap">
                             <button
@@ -1534,6 +1599,33 @@ export function ShopTab({
                       );})}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {Object.keys(pendingOrderEdits).length > 0 && (
+                <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 bg-black/90 backdrop-blur border border-accent/60 rounded-xl px-4 py-3 shadow-lg mt-3">
+                  <div className="text-xs text-white/80 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                    <span className="font-bold">
+                      {Object.keys(pendingOrderEdits).length} unsaved change
+                      {Object.keys(pendingOrderEdits).length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={discardPendingEdits}
+                      disabled={isSavingBulk}
+                      className="rounded-lg bg-white/10 hover:bg-white/20 px-3 py-2 text-xs font-bold uppercase tracking-widest text-white transition disabled:opacity-50"
+                    >
+                      Discard
+                    </button>
+                    <button
+                      onClick={saveAllPendingEdits}
+                      disabled={isSavingBulk}
+                      className="rounded-lg bg-accent hover:bg-accent/90 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition disabled:opacity-60"
+                    >
+                      {isSavingBulk ? "Saving..." : "Save Updates"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
