@@ -1356,16 +1356,30 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                                       </label>
 
                                       <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                                          <input 
-                                          type="checkbox" 
+                                          <input
+                                          type="checkbox"
                                           className="accent-accent w-4 h-4 cursor-inherit"
                                           checked={appUserMatch.role === "admin" || appUserMatch.isFinanceAdmin || false}
                                           disabled={appUserMatch.role === "admin"}
-                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: e.target.checked })} 
+                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: e.target.checked })}
                                           />
                                           <div>
                                           <div className="text-[11px] font-bold text-white uppercase tracking-wider">Finance Admin</div>
                                           <div className="text-[10px] text-white/50">Can manage club finances and view reports</div>
+                                          </div>
+                                      </label>
+
+                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                                          <input
+                                          type="checkbox"
+                                          className="accent-accent w-4 h-4 cursor-inherit"
+                                          checked={appUserMatch.role === "admin" || appUserMatch.isDesigner || false}
+                                          disabled={appUserMatch.role === "admin"}
+                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isDesigner: e.target.checked })}
+                                          />
+                                          <div>
+                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Designer</div>
+                                          <div className="text-[10px] text-white/50">Can access the KAvach Design tab (post templates)</div>
                                           </div>
                                       </label>
                                   </div>
