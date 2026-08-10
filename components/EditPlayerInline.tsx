@@ -265,6 +265,121 @@ export function EditPlayerInline({
         </div>
       </div>
 
+      {/* Privileges — super-admins only, only meaningful when the
+          player has a linked appUser doc (i.e. they've signed in at
+          least once and been provisioned). Toggles write straight to
+          appUsers/{uid}; the "last super admin" guard prevents you
+          from accidentally demoting the only remaining super-admin. */}
+      {isSuperAdmin && appUserMatch && (
+        <div className="border border-purple-500/25 bg-purple-500/5 rounded-xl p-4 space-y-3">
+          <h4 className="text-xs font-bold text-purple-300 uppercase tracking-widest">
+            Privileges
+          </h4>
+          <p className="text-[10px] text-white/50 leading-relaxed">
+            Elevated access to admin surfaces. See Settings for a
+            consolidated view of every role and who holds it.
+          </p>
+          {(() => {
+            const superAdminCount = store.appUsers.filter((u) => u.role === "admin").length;
+            const isLastSuper =
+              appUserMatch.role === "admin" &&
+              superAdminCount <= 1 &&
+              !hasAdminClaim;
+            const isSuperAdminNow = appUserMatch.role === "admin";
+            const rows: {
+              label: string;
+              desc: string;
+              checked: boolean;
+              disabled: boolean;
+              onChange: (checked: boolean) => Promise<void>;
+              accent?: boolean;
+            }[] = [
+              {
+                label: "Super Admin",
+                desc: "Full access to every admin surface.",
+                checked: isSuperAdminNow,
+                disabled: isLastSuper,
+                accent: true,
+                onChange: async (checked) => {
+                  const updates: any = { role: checked ? "admin" : "player" };
+                  if (checked) {
+                    updates.isStudioAdmin = true;
+                    updates.isMatchAdmin = true;
+                    updates.isFinanceAdmin = true;
+                  } else {
+                    updates.isStudioAdmin = false;
+                    updates.isMatchAdmin = false;
+                    updates.isFinanceAdmin = false;
+                  }
+                  await store.updateAppUserProfile(appUserMatch.id, updates);
+                },
+              },
+              {
+                label: "Studio Admin",
+                desc: "Can manage Squad & Studio subscriptions.",
+                checked: isSuperAdminNow || !!appUserMatch.isStudioAdmin,
+                disabled: isSuperAdminNow,
+                onChange: async (checked) =>
+                  store.updateAppUserProfile(appUserMatch.id, { isStudioAdmin: checked }),
+              },
+              {
+                label: "Match Admin",
+                desc: "Can manage matches, grounds, tournaments & availability.",
+                checked: isSuperAdminNow || !!appUserMatch.isMatchAdmin,
+                disabled: isSuperAdminNow,
+                onChange: async (checked) =>
+                  store.updateAppUserProfile(appUserMatch.id, { isMatchAdmin: checked }),
+              },
+              {
+                label: "Finance Admin",
+                desc: "Can manage club finances and view reports.",
+                checked: isSuperAdminNow || !!appUserMatch.isFinanceAdmin,
+                disabled: isSuperAdminNow,
+                onChange: async (checked) =>
+                  store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: checked }),
+              },
+              {
+                label: "Designer",
+                desc: "Can access the KAvach Design tab (post templates).",
+                checked: isSuperAdminNow || !!appUserMatch.isDesigner,
+                disabled: isSuperAdminNow,
+                onChange: async (checked) =>
+                  store.updateAppUserProfile(appUserMatch.id, { isDesigner: checked }),
+              },
+            ];
+            return rows.map((r) => (
+              <label
+                key={r.label}
+                className={`flex items-start gap-3 p-2 rounded border ${
+                  r.disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-white/5"
+                } ${r.checked ? "bg-black/30 border-purple-500/20" : "bg-black/20 border-white/5"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={r.checked}
+                  disabled={r.disabled}
+                  onChange={(e) => r.onChange(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded accent-purple-400"
+                />
+                <div className="min-w-0">
+                  <div
+                    className={`text-[11px] font-bold uppercase tracking-wider ${r.accent ? "text-accent" : "text-white"}`}
+                  >
+                    {r.label}
+                  </div>
+                  <div className="text-[10px] text-white/50">{r.desc}</div>
+                  {r.disabled && r.label === "Super Admin" && (
+                    <div className="text-[10px] text-amber-400 mt-0.5">
+                      Cannot demote the last super admin.
+                    </div>
+                  )}
+                </div>
+              </label>
+            ));
+          })()}
+        </div>
+      )}
+
       {/* Studio Membership Admin control */}
       <div className="border border-accent/25 bg-accent/5 rounded-xl p-4 space-y-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-3 opacity-10">

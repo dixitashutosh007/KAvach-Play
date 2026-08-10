@@ -13,7 +13,6 @@ import {
   Image as ImageIcon,
   Users,
   Upload,
-  Search,
   ChevronDown,
   ChevronRight,
   Plus,
@@ -161,7 +160,6 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   const [transparentUploadProgress, setTransparentUploadProgress] = useState<
     number | null
   >(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [seedStatus, setSeedStatus] = useState("");
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1259,137 +1257,118 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         </form>
       </div>
 
-      {/* User Permissions Management */}
+      {/* Privileges Overview — read-only matrix. Toggling happens in
+          Squad → tap the player → Edit → Privileges block. This screen
+          exists so you can answer "who has Match Admin?" in one glance
+          without hunting through the roster. */}
       <div className="glass rounded-xl overflow-hidden mt-6">
         <div className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between">
-          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2"><Users className="w-4 h-4"/> Elevate Player's Role</span>
+          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2">
+            <Users className="w-4 h-4" /> Privileges Overview
+          </span>
+          <span className="text-[10px] text-white/40 normal-case tracking-normal">
+            edit in Squad → tap player
+          </span>
         </div>
-        <div className="p-4 space-y-4">
-          <div className="flex flex-col gap-2">
-             <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">Select Player to Manage</label>
-             <div className="relative">
-               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-               <input
-                type="text"
-                placeholder="Search by name or mobile..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-glass-border bg-black/40 pl-9 pr-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
-               />
-             </div>
-             
-             {searchQuery.trim().length > 0 && (
-                <div className="bg-white/5 border border-glass-border rounded-lg max-h-48 overflow-y-auto mb-4">
-                   {store.players
-                      .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.mobile?.includes(searchQuery))
-                      .slice(0, 5)
-                      .map(p => {
-                         const appUserMatch = store.appUsers.find(u => u.id === p.id || (u.mobile && u.mobile === p.mobile));
-                         return (
-                            <div key={p.id} className="p-2 border-b border-glass-border last:border-0 hover:bg-white/10 transition">
-                               <div className="flex justify-between items-center">
-                                  <div>
-                                     <div className="text-sm font-bold text-white">{p.name}</div>
-                                     <div className="text-xs text-white/50">{p.mobile}</div>
-                                  </div>
-                                  {appUserMatch ? (
-                                    <div className="text-[10px] text-emerald-400 border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 rounded">App User</div>
-                                  ) : (
-                                    <div className="text-[10px] text-white/30 border border-white/10 bg-white/5 px-2 py-0.5 rounded">Not logged in</div>
-                                  )}
-                               </div>
-                               {appUserMatch && (
-                                   <div className="mt-3 flex flex-col gap-2 p-2 bg-black/40 rounded border border-white/5">
-                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && !hasAdminClaim ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                                          <input 
-                                          type="checkbox" 
-                                          className="accent-accent w-4 h-4 cursor-inherit"
-                                          checked={appUserMatch.role === "admin"}
-                                          disabled={appUserMatch.role === "admin" && store.appUsers.filter((u) => u.role === "admin").length <= 1 && !hasAdminClaim}
-                                          onChange={async (e) => {
-                                              const isChecked = e.target.checked;
-                                              const updates: any = { role: isChecked ? "admin" : "player" };
-                                              if (isChecked) {
-                                                updates.isStudioAdmin = true;
-                                                updates.isMatchAdmin = true;
-                                                updates.isFinanceAdmin = true;
-                                              } else {
-                                                updates.isStudioAdmin = false;
-                                                updates.isMatchAdmin = false;
-                                                updates.isFinanceAdmin = false;
-                                              }
-                                              await store.updateAppUserProfile(appUserMatch.id, updates);
-                                          }} 
-                                          />
-                                          <div>
-                                          <div className="text-[11px] font-bold text-accent uppercase tracking-wider">Super Admin</div>
-                                          <div className="text-[10px] text-white/50">Full access to all club features</div>
-                                          </div>
-                                      </label>
-
-                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                                          <input 
-                                          type="checkbox" 
-                                          className="accent-accent w-4 h-4 cursor-inherit"
-                                          checked={appUserMatch.role === "admin" || appUserMatch.isStudioAdmin || false}
-                                          disabled={appUserMatch.role === "admin"}
-                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isStudioAdmin: e.target.checked })} 
-                                          />
-                                          <div>
-                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Studio Admin</div>
-                                          <div className="text-[10px] text-white/50">Can manage Squad & Studio subscriptions</div>
-                                          </div>
-                                      </label>
-                                      
-                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                                          <input 
-                                          type="checkbox" 
-                                          className="accent-accent w-4 h-4 cursor-inherit"
-                                          checked={appUserMatch.role === "admin" || appUserMatch.isMatchAdmin || false}
-                                          disabled={appUserMatch.role === "admin"}
-                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isMatchAdmin: e.target.checked })} 
-                                          />
-                                          <div>
-                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Match Admin</div>
-                                          <div className="text-[10px] text-white/50">Can manage matches, grounds & availability</div>
-                                          </div>
-                                      </label>
-
-                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                                          <input
-                                          type="checkbox"
-                                          className="accent-accent w-4 h-4 cursor-inherit"
-                                          checked={appUserMatch.role === "admin" || appUserMatch.isFinanceAdmin || false}
-                                          disabled={appUserMatch.role === "admin"}
-                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: e.target.checked })}
-                                          />
-                                          <div>
-                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Finance Admin</div>
-                                          <div className="text-[10px] text-white/50">Can manage club finances and view reports</div>
-                                          </div>
-                                      </label>
-
-                                      <label className={"flex items-center gap-3 " + (appUserMatch.role === "admin" ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                                          <input
-                                          type="checkbox"
-                                          className="accent-accent w-4 h-4 cursor-inherit"
-                                          checked={appUserMatch.role === "admin" || appUserMatch.isDesigner || false}
-                                          disabled={appUserMatch.role === "admin"}
-                                          onChange={(e) => store.updateAppUserProfile(appUserMatch.id, { isDesigner: e.target.checked })}
-                                          />
-                                          <div>
-                                          <div className="text-[11px] font-bold text-white uppercase tracking-wider">Designer</div>
-                                          <div className="text-[10px] text-white/50">Can access the KAvach Design tab (post templates)</div>
-                                          </div>
-                                      </label>
-                                  </div>
-                               )}
-                            </div>
-                         );
-                      })}
+        <div className="p-4 space-y-3">
+          {(() => {
+            // Compute the members list per role. A super admin is
+            // considered to hold every downstream role too, since
+            // Squad's toggle enforces exactly that when someone is
+            // promoted / demoted.
+            const roles: {
+              label: string;
+              desc: string;
+              accent: string;
+              filter: (u: any) => boolean;
+            }[] = [
+              {
+                label: "Super Admin",
+                desc: "Full access to every admin surface",
+                accent: "border-accent/50 bg-accent/10 text-accent",
+                filter: (u) => u.role === "admin",
+              },
+              {
+                label: "Match Admin",
+                desc: "Matches, grounds, tournaments, availability",
+                accent: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+                filter: (u) => u.role === "admin" || u.isMatchAdmin,
+              },
+              {
+                label: "Studio Admin",
+                desc: "Squad + Studio subscriptions",
+                accent: "border-violet-500/40 bg-violet-500/10 text-violet-300",
+                filter: (u) => u.role === "admin" || u.isStudioAdmin,
+              },
+              {
+                label: "Finance Admin",
+                desc: "Club finances + reports",
+                accent: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+                filter: (u) => u.role === "admin" || u.isFinanceAdmin,
+              },
+              {
+                label: "Designer",
+                desc: "KAvach Design tab (post templates)",
+                accent: "border-purple-500/40 bg-purple-500/10 text-purple-300",
+                filter: (u) => u.role === "admin" || u.isDesigner,
+              },
+            ];
+            const nameFor = (u: any) => {
+              // appUsers.name is the canonical display name; fall back
+              // to the linked player's name if appUser has none yet
+              // (fresh sign-ins), then email prefix, then a UID hash.
+              if (u.name) return u.name;
+              const p = store.players.find(
+                (pp) => pp.id === u.id || (pp.mobile && u.mobile && pp.mobile === u.mobile),
+              );
+              if (p?.name) return p.name;
+              if (u.email) return u.email.split("@")[0];
+              return `#${(u.id || "").slice(0, 6)}`;
+            };
+            return roles.map((r) => {
+              const members = store.appUsers.filter(r.filter);
+              const sorted = [...members].sort((a, b) =>
+                nameFor(a).localeCompare(nameFor(b), "en", { sensitivity: "base" }),
+              );
+              return (
+                <div
+                  key={r.label}
+                  className={`rounded-lg border p-3 ${r.accent.split(" ").slice(0, 2).join(" ")}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <div className={`text-[11px] font-bold uppercase tracking-widest ${r.accent.split(" ")[2]}`}>
+                        {r.label}
+                      </div>
+                      <div className="text-[10px] text-white/50">{r.desc}</div>
+                    </div>
+                    <div
+                      className={`text-lg font-black font-mono ${r.accent.split(" ")[2]}`}
+                    >
+                      {sorted.length}
+                    </div>
+                  </div>
+                  {sorted.length === 0 ? (
+                    <div className="text-[10px] text-white/40 italic">
+                      No members
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {sorted.map((u) => (
+                        <span
+                          key={u.id}
+                          className="bg-black/30 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white/80"
+                          title={u.mobile || u.email || u.id}
+                        >
+                          {nameFor(u)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-             )}
-          </div>
+              );
+            });
+          })()}
         </div>
       </div>
     </div>
