@@ -1649,7 +1649,12 @@ export function ShopTab({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {store.merchandises
                     .map((merch) => {
-                      const paidCount = getPaidOrdersCount(merch.id);
+                      // Total paid orders across all time.
+                      const paidTotal = getPaidOrdersCount(merch.id);
+                      // Baseline is the snapshot taken at the last "Reset"
+                      // — display counts the batch from that point forward.
+                      const baseline = merch.targetBaseline || 0;
+                      const paidCount = Math.max(0, paidTotal - baseline);
                       const moq = merch.minOrderQuantity || 1;
                       const pct = Math.min(100, Math.round((paidCount / moq) * 100));
                       const isAccepting = merch.status === "Accepting Orders";
@@ -1715,11 +1720,54 @@ export function ShopTab({
 
                           {/* MOQ Progress bar */}
                           <div className="space-y-1.5 border-t border-glass-border pt-3">
-                            <div className="flex justify-between text-[10px] font-bold tracking-wider">
-                              <span className="text-white/50 uppercase">Vendor Goal Target</span>
-                              <span className={`${pct >= 100 ? "text-emerald-400" : "text-amber-400"}`}>
-                                {paidCount} / {moq} Ordered ({pct}%)
+                            <div className="flex justify-between items-center text-[10px] font-bold tracking-wider">
+                              <span className="text-white/50 uppercase flex items-center gap-2">
+                                Vendor Goal Target
+                                {baseline > 0 && (
+                                  <span
+                                    className="normal-case tracking-normal text-[9px] font-normal text-white/40"
+                                    title={
+                                      merch.targetBaselineAt
+                                        ? `Last reset ${merch.targetBaselineAt}`
+                                        : ""
+                                    }
+                                  >
+                                    (batch — {paidTotal} lifetime)
+                                  </span>
+                                )}
                               </span>
+                              <div className="flex items-center gap-2">
+                                <span className={`${pct >= 100 ? "text-emerald-400" : "text-amber-400"}`}>
+                                  {paidCount} / {moq} Ordered ({pct}%)
+                                </span>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (
+                                      !window.confirm(
+                                        `Reset "${merch.name}" vendor target progress to 0/${moq}?\n\n` +
+                                          `This is what you'd do right after placing an order with the vendor. ` +
+                                          `Existing orders stay intact — future orders start a fresh batch.`,
+                                      )
+                                    )
+                                      return;
+                                    try {
+                                      await store.updateMerchandise(merch.id, {
+                                        targetBaseline: paidTotal,
+                                        targetBaselineAt: new Date()
+                                          .toISOString()
+                                          .split("T")[0],
+                                      });
+                                    } catch (err: any) {
+                                      alert(`Reset failed: ${err?.message || String(err)}`);
+                                    }
+                                  }}
+                                  className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white/60 hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/40 transition"
+                                  title="Reset the batch counter — use after placing an order with the vendor"
+                                >
+                                  Reset
+                                </button>
+                              </div>
                             </div>
                             <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
                               <div
@@ -1766,7 +1814,9 @@ export function ShopTab({
               {store.merchandises
                 .filter((m) => isAdmin || !m.isHidden)
                 .map((merch) => {
-                  const paidCount = getPaidOrdersCount(merch.id);
+                  const paidTotal = getPaidOrdersCount(merch.id);
+                  const baseline = merch.targetBaseline || 0;
+                  const paidCount = Math.max(0, paidTotal - baseline);
                   const moq = merch.minOrderQuantity || 1;
                   const pct = Math.min(100, Math.round((paidCount / moq) * 100));
                   const isAccepting = merch.status === "Accepting Orders";

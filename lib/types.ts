@@ -377,6 +377,13 @@ export type Merchandise = {
   status: "Accepting Orders" | "Not Accepting Orders";
   imageUrl?: string;
   isHidden?: boolean;
+  // When the admin resets the "Vendor Goal Target" progress bar
+  // (after placing a batch with the vendor), we snapshot the current
+  // paid-orders count here. Subsequent progress is displayed as
+  // (paidCount − targetBaseline) / minOrderQuantity so a new batch
+  // starts from 0/MOQ without wiping historical orders.
+  targetBaseline?: number;
+  targetBaselineAt?: string; // ISO date of last reset (for display)
   createdAt?: any;
   updatedAt?: any;
 };
