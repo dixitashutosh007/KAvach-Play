@@ -787,6 +787,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await refreshAppConfig();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "appConfig/default");
+      // Re-throw so callers (the Settings save handler) can surface a real
+      // error to the admin. Without this a permission-denied write dies
+      // silently and the "Settings saved successfully" alert fires anyway.
+      throw err;
     }
   };
 

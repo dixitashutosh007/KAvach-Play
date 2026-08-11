@@ -359,33 +359,41 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
-    await store.updateAppConfig({
-      clubName,
-      logoUrl,
-      logoTransparentUrl,
-      themeColor,
-      globalTheme,
-      loadingAnimationTheme,
-      razorpayKeyId,
-      emailProvider: "smtp",
-      smtpHost,
-      smtpPort,
-      smtpSecure,
-      smtpUser,
-      // smtpPassword intentionally omitted — server reads SMTP_PASSWORD env var
-      smtpFrom,
-      emailTemplates,
-      whatsappProvider,
-      whatsappPhoneNumberId,
-      // whatsappAccessToken intentionally omitted — server reads WHATSAPP_ACCESS_TOKEN env var
-      whatsappTemplates,
-      whatsappTemplateVariables,
-      isStudioEnabled,
-      features,
-      matchConfiguration,
-    });
-    if (setPreviewTheme) setPreviewTheme(null);
-    alert("Settings saved successfully.");
+    try {
+      await store.updateAppConfig({
+        clubName,
+        logoUrl,
+        logoTransparentUrl,
+        themeColor,
+        globalTheme,
+        loadingAnimationTheme,
+        razorpayKeyId,
+        emailProvider: "smtp",
+        smtpHost,
+        smtpPort,
+        smtpSecure,
+        smtpUser,
+        // smtpPassword intentionally omitted — server reads SMTP_PASSWORD env var
+        smtpFrom,
+        emailTemplates,
+        whatsappProvider,
+        whatsappPhoneNumberId,
+        // whatsappAccessToken intentionally omitted — server reads WHATSAPP_ACCESS_TOKEN env var
+        whatsappTemplates,
+        whatsappTemplateVariables,
+        isStudioEnabled,
+        features,
+        matchConfiguration,
+      });
+      if (setPreviewTheme) setPreviewTheme(null);
+      alert("Settings saved successfully.");
+    } catch (err: any) {
+      const code = err?.code ? ` [${err.code}]` : "";
+      alert(
+        `Settings save failed${code}: ${err?.message || String(err)}\n\n` +
+          `If this is "Missing or insufficient permissions", the Firestore rules need to be re-deployed.`,
+      );
+    }
   };
 
   const handleTestEmail = async () => {
