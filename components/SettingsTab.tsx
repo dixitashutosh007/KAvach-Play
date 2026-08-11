@@ -18,7 +18,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { formatDate } from "@/lib/utils";
 import { LoadingScreen } from "./LoadingScreen";
@@ -161,6 +161,61 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     number | null
   >(null);
   const [seedStatus, setSeedStatus] = useState("");
+
+  // Re-seed every appConfig-derived local state whenever store.appConfig
+  // updates. Without this, useState(store.appConfig?.foo || "default")
+  // runs once at mount — if appConfig hasn't hydrated yet, all fields
+  // stay at their fallback ("none", "", etc.). Then when the admin
+  // clicks Save later, every fallback gets written back into
+  // Firestore, clobbering values the admin never touched. This effect
+  // ensures the form always mirrors the DB the moment appConfig arrives.
+  // Trade-off: if another admin saves in a parallel tab while you're
+  // editing here, your unsaved edits are overwritten — but that's the
+  // correct last-write-wins semantics for a shared config doc, and it's
+  // vastly less painful than the silent data loss the initial-state
+  // pattern was causing.
+  useEffect(() => {
+    const cfg = store.appConfig;
+    if (!cfg) return;
+    setClubName(cfg.clubName || "KAVACH CRICKET CLUB");
+    setLogoUrl(cfg.logoUrl || "");
+    setLogoTransparentUrl(cfg.logoTransparentUrl || "");
+    setThemeColor(cfg.themeColor || "#dc143c");
+    setGlobalTheme(cfg.globalTheme || "");
+    setLoadingAnimationTheme(cfg.loadingAnimationTheme || "radar");
+    setRazorpayKeyId(cfg.razorpayKeyId || "");
+    setSmtpHost(cfg.smtpHost || "");
+    setSmtpPort(cfg.smtpPort || "587");
+    setSmtpSecure(!!cfg.smtpSecure);
+    setSmtpUser(cfg.smtpUser || "");
+    setSmtpPassword(cfg.smtpPassword || "");
+    setSmtpFrom(cfg.smtpFrom || "");
+    setWhatsappProvider(cfg.whatsappProvider || "none");
+    setWhatsappPhoneNumberId(cfg.whatsappPhoneNumberId || "");
+    setWhatsappAccessToken(cfg.whatsappAccessToken || "");
+    setWhatsappTemplates(cfg.whatsappTemplates || defaultWhatsappTemplates);
+    setWhatsappTemplateVariables(
+      cfg.whatsappTemplateVariables || defaultWhatsappTemplateVariables,
+    );
+    setEmailTemplates(cfg.emailTemplates || defaultTemplates);
+    setIsStudioEnabled(cfg.isStudioEnabled || false);
+    setFeatures({
+      payments: cfg.features?.payments !== false,
+      studio: cfg.features?.studio !== false,
+      leaderboard: cfg.features?.leaderboard !== false,
+      feed: cfg.features?.feed !== false,
+      matches: cfg.features?.matches !== false,
+      isWixEnabled: cfg.features?.isWixEnabled === true,
+      shop: cfg.features?.shop !== false,
+    });
+    setMatchConfiguration({
+      directionsHoursBefore: cfg.matchConfiguration?.directionsHoursBefore ?? 18,
+      directionsHoursAfter: cfg.matchConfiguration?.directionsHoursAfter ?? 2,
+      enablePlayerAvailability:
+        cfg.matchConfiguration?.enablePlayerAvailability ?? false,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.appConfig]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
