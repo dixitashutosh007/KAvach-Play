@@ -75,11 +75,21 @@ service cloud.firestore {
     match /appConfig/{docId} {
       // appConfig is read publicly (needed on the login page for club name,
       // logo, theme). Secret fields must NEVER be written here — they live
-      // in server-side env vars. Any write that includes one of these keys
-      // is rejected.
+      // in server-side env vars. A write is rejected if it *changes* one
+      // of the forbidden keys. Using diff().affectedKeys() rather than
+      // incoming().keys() so that a stale secret already sitting in the
+      // doc (from a pre-migration write) doesn't perma-block every future
+      // update. Non-super-admins remain locked out by isSuperAdmin().
       allow read: if true;
-      allow write: if isSuperAdmin()
+      allow create: if isSuperAdmin()
         && !incoming().keys().hasAny([
+          'razorpayKeySecret',
+          'smtpPassword',
+          'resendApiKey',
+          'whatsappAccessToken'
+        ]);
+      allow update: if isSuperAdmin()
+        && !incoming().diff(existing()).affectedKeys().hasAny([
           'razorpayKeySecret',
           'smtpPassword',
           'resendApiKey',
