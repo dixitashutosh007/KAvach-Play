@@ -32,6 +32,10 @@ import { format, isToday, isWithinInterval, addDays, parseISO } from "date-fns";
 import { motion } from "motion/react";
 import { PlayerFinanceView } from "./FinanceTab";
 import { PollInteraction, PollResults } from "./OpinionTab";
+import {
+  IndependenceDayBanner,
+  isIndependenceDayWindow,
+} from "./festive/IndependenceDay";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
@@ -305,6 +309,11 @@ export function HomeTab({
   return (
     <div className="p-4 max-w-6xl mx-auto w-full pb-24 flex flex-col gap-6 items-center">
       <div className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6 auto-rows-max items-start">
+        {/* Independence Day greeting — date-gated (13–16 Aug), dismissible */}
+        {isIndependenceDayWindow() && (
+          <IndependenceDayBanner clubName={store.appConfig?.clubName} />
+        )}
+
         {/* Match Day Alert (Feed Popup) - High Priority Full Width */}
         {hasAlerts && (
           <div className="md:col-span-12 flex flex-col gap-4">

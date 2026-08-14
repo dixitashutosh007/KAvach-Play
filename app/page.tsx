@@ -355,7 +355,12 @@ export default function Home() {
     if (quotaExceeded) {
       return <QuotaExceededScreen themeStyles={themeStyles} />;
     }
-    return <LoadingScreen theme={store.appConfig?.loadingAnimationTheme || "radar"} />;
+    return (
+      <LoadingScreen
+        theme={store.appConfig?.loadingAnimationTheme || "radar"}
+        clubName={store.appConfig?.clubName}
+      />
+    );
   }
 
 

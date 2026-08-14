@@ -3,8 +3,18 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Shield } from "lucide-react";
+import {
+  IndependenceDayLoader,
+  isIndependenceDayWindow,
+} from "@/components/festive/IndependenceDay";
 
-export function LoadingScreen({ theme: propTheme }: { theme?: "radar" | "kinetic" | "minimal" | "staggered" | "breathe" }) {
+export function LoadingScreen({
+  theme: propTheme,
+  clubName,
+}: {
+  theme?: "radar" | "kinetic" | "minimal" | "staggered" | "breathe";
+  clubName?: string;
+}) {
   const [theme, setTheme] = useState<"radar" | "kinetic" | "minimal" | "staggered" | "breathe">("radar");
   const [mounted, setMounted] = useState(false);
 
@@ -24,6 +34,15 @@ export function LoadingScreen({ theme: propTheme }: { theme?: "radar" | "kinetic
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#022c22] z-[50]" />
     );
+  }
+
+  // Festive override: during the Independence-Day window the boot screen
+  // shows the waving-flag greeting regardless of the configured animation
+  // theme. Gated by date so it auto-retires — no admin action needed.
+  // Checked after `mounted` so server and first client render agree
+  // (avoids a hydration mismatch from Date differing SSR vs client).
+  if (isIndependenceDayWindow()) {
+    return <IndependenceDayLoader clubName={clubName} />;
   }
 
   if (theme === "staggered") {
