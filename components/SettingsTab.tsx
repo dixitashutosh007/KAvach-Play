@@ -681,6 +681,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   <option value="royal">Midnight Royal</option>
                   <option value="carbon">Elite Carbon</option>
                   <option value="brown">Classic Brown</option>
+                  <option value="tiranga">Tiranga Tricolour 🇮🇳</option>
                 </select>
               </div>
               

@@ -1,7 +1,7 @@
 /**
  * Theme presets and utilities.
  *
- * The app supports 7 named color themes. The active one comes from
+ * The app supports 8 named color themes. The active one comes from
  * store.appConfig.globalTheme, optionally overridden per-session by an
  * admin's Settings preview. Consumers should use the useTheme hook
  * rather than importing THEME_PRESETS directly.
@@ -88,6 +88,26 @@ export const THEME_PRESETS: ThemePreset[] = [
     glassBorder: "rgba(217, 119, 6, 0.15)",
     textAccent: "#291508",
     description: "Warm, rich leather and earthy tones.",
+  },
+  {
+    // Independence-day tribute. The Indian flag's saffron/white/green
+    // can't be the literal page background — the whole app renders
+    // white text, which would vanish on white/orange bands. So this is
+    // a *dark* tricolour: a deep saffron→neutral→green vertical sweep
+    // kept dark enough that white text stays >15:1 contrast everywhere.
+    // Accent is the official India Saffron (#FF9933); the app already
+    // pairs solid bg-accent with black text, so a light accent is safe.
+    // Glass panels use a neutral white tint (nodding to the white band),
+    // and on-accent text uses Ashoka-Chakra navy — so all four flag
+    // colours (saffron, white, green, chakra navy) are represented.
+    id: "tiranga",
+    name: "Tiranga Tricolour",
+    accent: "#FF9933",
+    bg: "linear-gradient(180deg, #3d1e00 0%, #20232f 50%, #06220e 100%)",
+    glassBg: "rgba(255, 255, 255, 0.055)",
+    glassBorder: "rgba(255, 153, 51, 0.22)",
+    textAccent: "#04122e",
+    description: "Saffron, white & green with Ashoka-navy — Tiranga pride.",
   },
 ];
 
