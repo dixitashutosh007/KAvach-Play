@@ -128,15 +128,23 @@ export function IndependenceDayLoader({ clubName }: { clubName?: string }) {
       <div className="relative" style={{ animation: "idFlagWave 2.6s ease-in-out infinite" }}>
         <div
           className="relative overflow-hidden rounded-[6px] shadow-2xl"
-          style={{ width: "min(70vw, 300px)", aspectRatio: "3 / 2" }}
+          style={{
+            // Explicit width AND height (2:3 ratio) — don't rely on
+            // aspect-ratio, which was collapsing the flex bands on desktop
+            // so only the white middle showed. The three bands are a
+            // hard-stop gradient so they're always exact equal thirds.
+            width: "min(72vw, 300px)",
+            height: "min(48vw, 200px)",
+            background:
+              `linear-gradient(180deg, ${SAFFRON} 0 33.333%, #ffffff 33.333% 66.666%, ${GREEN} 66.666% 100%)`,
+          }}
         >
-          {/* three bands */}
-          <div className="flex h-full w-full flex-col">
-            <div className="flex-1" style={{ background: SAFFRON }} />
-            <div className="flex-1 relative bg-white flex items-center justify-center">
-              <Chakra className="h-[78%] w-auto aspect-square" spin spinSeconds={10} />
-            </div>
-            <div className="flex-1" style={{ background: GREEN }} />
+          {/* chakra centred on the white middle third */}
+          <div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            style={{ height: "28%", aspectRatio: "1 / 1" }}
+          >
+            <Chakra className="h-full w-full" spin spinSeconds={10} />
           </div>
           {/* moving cloth shine */}
           <div
@@ -197,16 +205,18 @@ export function IndependenceDayBanner({ clubName }: { clubName?: string }) {
         transition={{ duration: 0.4 }}
         className="relative overflow-hidden rounded-2xl shadow-lg"
       >
-        {/* Three tricolour bands. All text lives on the WHITE middle band
-            in navy, which is maximally readable — the saffron and green
-            bands carry colour only. */}
-        <div className="flex flex-col">
-          <div className="h-3 sm:h-4" style={{ background: SAFFRON }} />
-          <div className="relative bg-white px-4 sm:px-6 py-4 flex items-center gap-4">
-            <Chakra className="h-11 w-11 sm:h-14 sm:w-14 shrink-0" spin spinSeconds={14} />
+        {/* Three EQUAL tricolour bands (real flag proportions). Fixed
+            banner height + flex-1 on each band guarantees exact thirds
+            regardless of content. All text lives on the WHITE middle
+            band in navy for maximum readability; saffron and green
+            carry colour only. */}
+        <div className="flex flex-col h-[152px] sm:h-[176px]">
+          <div className="flex-1" style={{ background: SAFFRON }} />
+          <div className="flex-1 relative bg-white px-4 sm:px-6 flex items-center gap-3 sm:gap-4">
+            <Chakra className="h-10 w-10 sm:h-12 sm:w-12 shrink-0" spin spinSeconds={14} />
             <div className="min-w-0 flex-1">
               <h3
-                className="text-lg sm:text-2xl font-black tracking-tight leading-tight"
+                className="text-base sm:text-xl font-black tracking-tight leading-tight"
                 style={{ color: NAVY }}
               >
                 Happy Independence Day
@@ -233,7 +243,7 @@ export function IndependenceDayBanner({ clubName }: { clubName?: string }) {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="h-3 sm:h-4" style={{ background: GREEN }} />
+          <div className="flex-1" style={{ background: GREEN }} />
         </div>
       </motion.div>
     </div>
