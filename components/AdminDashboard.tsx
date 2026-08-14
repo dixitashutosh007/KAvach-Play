@@ -6,6 +6,10 @@ import { format, isPast, isFuture, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
+import {
+  IndependenceDayBanner,
+  isIndependenceDayWindow,
+} from "./festive/IndependenceDay";
 
 export function AdminDashboard({
   store,
@@ -269,6 +273,11 @@ export function AdminDashboard({
 
   return (
     <div className="flex flex-col gap-6 p-4 max-w-4xl mx-auto w-full pb-24">
+      {/* Independence Day greeting — date-gated (13–16 Aug), dismissible */}
+      {isIndependenceDayWindow() && (
+        <IndependenceDayBanner clubName={store.appConfig?.clubName} />
+      )}
+
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
            Admin Dashboard
