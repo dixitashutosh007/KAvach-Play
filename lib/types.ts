@@ -188,6 +188,10 @@ export type Match = {
   // Autofilled fields on the match were seeded from that tournament
   // at creation time but are free to be edited afterwards.
   tournamentId?: string;
+  // Google Calendar event id for the public match calendar. Set by the
+  // /api/calendar/sync route after the event is created so later edits
+  // and deletes map back to the right event.
+  googleEventId?: string;
   createdAt?: any;
   updatedAt?: any;
 };

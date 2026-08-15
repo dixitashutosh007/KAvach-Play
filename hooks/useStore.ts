@@ -913,6 +913,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  // Fire-and-forget push to the public Google Calendar. Never blocks or
+  // fails a match mutation — a calendar hiccup must not stop an admin
+  // scheduling a match. The admin Settings card has a "Resync all"
+  // button to reconcile if a push is missed.
+  const syncMatchToCalendar = (
+    action: "upsert" | "delete",
+    matchId: string,
+    googleEventId?: string,
+  ) => {
+    (async () => {
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        const idToken = await currentUser.getIdToken();
+        await fetch("/api/calendar/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ action, matchId, googleEventId }),
+        });
+      } catch (err) {
+        console.warn("Calendar sync skipped", err);
+      }
+    })();
+  };
+
   const addMatch = async (
     match: Omit<Match, "id" | "createdAt" | "updatedAt">,
   ) => {
@@ -966,6 +994,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         }
         await batch.commit();
       }
+      syncMatchToCalendar("upsert", id);
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `matches/${id}`);
@@ -991,6 +1020,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           );
         }
       }
+      // Push the edit to the public calendar (the route deletes the event
+      // itself if the match was archived).
+      syncMatchToCalendar("upsert", match.id);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `matches/${match.id}`);
     }
@@ -998,8 +1030,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const deleteMatch = async (matchId: string) => {
     const docRef = doc(db, "matches", matchId);
+    // Capture the calendar event id before the doc is gone so we can
+    // remove the event after the Firestore delete succeeds.
+    const existingEventId = matches.find((m) => m.id === matchId)?.googleEventId;
     try {
       await deleteDoc(docRef);
+      if (existingEventId) {
+        syncMatchToCalendar("delete", matchId, existingEventId);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `matches/${matchId}`);
       throw err;

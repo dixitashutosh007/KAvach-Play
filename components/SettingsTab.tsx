@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Plus,
   Trash2,
+  Calendar,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
@@ -161,6 +162,67 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     number | null
   >(null);
   const [seedStatus, setSeedStatus] = useState("");
+
+  // Google Calendar sync (public match calendar)
+  const [calStatus, setCalStatus] = useState<{
+    checked: boolean;
+    ok: boolean;
+    email?: string;
+    calendarId?: string;
+    error?: string;
+  }>({ checked: false, ok: false });
+  const [calBusy, setCalBusy] = useState<"" | "test" | "resync">("");
+  const [calResyncMsg, setCalResyncMsg] = useState("");
+
+  const checkCalendarStatus = async () => {
+    setCalBusy("test");
+    setCalResyncMsg("");
+    try {
+      const res = await authedFetch("/api/calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status" }),
+      });
+      const json = await res.json();
+      setCalStatus({
+        checked: true,
+        ok: !!json.ok,
+        email: json.serviceAccountEmail,
+        calendarId: json.calendarId,
+        error: json.error,
+      });
+    } catch (err: any) {
+      setCalStatus({ checked: true, ok: false, error: err?.message || String(err) });
+    } finally {
+      setCalBusy("");
+    }
+  };
+
+  const resyncCalendar = async () => {
+    setCalBusy("resync");
+    setCalResyncMsg("");
+    try {
+      const res = await authedFetch("/api/calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resync" }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setCalResyncMsg(
+          `Synced ${json.synced} match${json.synced === 1 ? "" : "es"}${json.removed ? `, removed ${json.removed} archived` : ""}.`,
+        );
+      } else {
+        setCalResyncMsg(
+          `Synced ${json.synced || 0}, ${json.errors?.length || 0} failed. ${(json.errors || []).slice(0, 3).join(" · ")}`,
+        );
+      }
+    } catch (err: any) {
+      setCalResyncMsg(`Resync failed: ${err?.message || String(err)}`);
+    } finally {
+      setCalBusy("");
+    }
+  };
 
   // Re-seed every appConfig-derived local state whenever store.appConfig
   // updates. Without this, useState(store.appConfig?.foo || "default")
@@ -1318,6 +1380,76 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             )}
           </div>
         </form>
+      </div>
+
+      {/* Google Calendar — public match schedule sync. Matches auto-push
+          on create/edit/delete; this card is for one-time setup + repair. */}
+      <div className="glass rounded-xl overflow-hidden mt-6">
+        <div className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between">
+          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2">
+            <Calendar className="w-4 h-4" /> Public Match Calendar
+          </span>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-[11px] text-white/50 leading-relaxed">
+            Matches sync to a public Google Calendar automatically when you
+            create, edit or delete them. One-time setup: open the calendar in
+            Google Calendar → Settings → <b>Share with specific people</b> →
+            add the service-account email below with{" "}
+            <b>&quot;Make changes to events&quot;</b>.
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={checkCalendarStatus}
+              disabled={calBusy !== ""}
+              className="rounded-lg bg-white/10 hover:bg-white/20 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white transition disabled:opacity-50"
+            >
+              {calBusy === "test" ? "Testing…" : "Test Connection"}
+            </button>
+            <button
+              type="button"
+              onClick={resyncCalendar}
+              disabled={calBusy !== ""}
+              className="rounded-lg bg-accent hover:bg-accent/90 px-3 py-2 text-xs font-black uppercase tracking-wider text-black transition disabled:opacity-60"
+            >
+              {calBusy === "resync" ? "Resyncing…" : "Resync All Matches"}
+            </button>
+          </div>
+
+          {calStatus.checked && (
+            <div className="space-y-2">
+              {calStatus.email && (
+                <div className="bg-black/40 border border-glass-border rounded-lg p-2">
+                  <div className="text-[9px] uppercase tracking-widest text-white/40 mb-0.5">
+                    Share the calendar with this email
+                  </div>
+                  <div className="text-[11px] font-mono text-white break-all select-all">
+                    {calStatus.email}
+                  </div>
+                </div>
+              )}
+              <div
+                className={`text-[11px] font-bold rounded-lg p-2 ${
+                  calStatus.ok
+                    ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"
+                    : "bg-red-500/10 border border-red-500/30 text-red-300"
+                }`}
+              >
+                {calStatus.ok
+                  ? "✓ Connected — the app can write to the calendar."
+                  : `✗ Not connected. ${calStatus.error || "Share the calendar with the email above (edit rights)."}`}
+              </div>
+            </div>
+          )}
+
+          {calResyncMsg && (
+            <div className="text-[11px] text-white/70 bg-black/30 border border-glass-border rounded-lg p-2">
+              {calResyncMsg}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Privileges Overview — read-only matrix. Toggling happens in
