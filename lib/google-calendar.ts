@@ -24,7 +24,7 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 // The public KAvach match calendar. Not a secret (it lives in the public
 // calendar URL). Overridable via env if the club ever moves calendars.
 const DEFAULT_CALENDAR_ID =
-  "043f3f982861e2c56cbdb1626ad0478e484c60d75fc52ec15053da66ba69047e@group.calendar.google.com";
+  "080339f65b078307a151fa49f3c697d5f46038978a35ac4f9dff8875ebec6bd0@group.calendar.google.com";
 
 export function getCalendarId(): string {
   return process.env.GOOGLE_CALENDAR_ID || DEFAULT_CALENDAR_ID;
@@ -115,9 +115,17 @@ export type EventContext = {
   tournamentName?: string;
 };
 
-/** Parse the app's "DD/MM/YYYY" date + "HH:MM" time into wall-clock parts. */
+/** Parse the match date (stored as YYYY-MM-DD in Firestore) + "HH:MM" time. */
 function parseMatchDateTime(date: string, time: string) {
-  const [dd, mm, yyyy] = (date || "").split("/");
+  const raw = (date || "").trim();
+  let dd: string | undefined, mm: string | undefined, yyyy: string | undefined;
+
+  if (raw.includes("-")) {
+    [yyyy, mm, dd] = raw.split("-");
+  } else if (raw.includes("/")) {
+    [dd, mm, yyyy] = raw.split("/");
+  }
+
   const [hh, min] = (time || "09:00").split(":");
   return {
     y: Number(yyyy),
