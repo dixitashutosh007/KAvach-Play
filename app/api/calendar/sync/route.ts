@@ -25,6 +25,7 @@ import {
   testCalendarAccess,
   getServiceAccountEmail,
   getCalendarId,
+  setCalendarId,
   type EventContext,
 } from "@/lib/google-calendar";
 
@@ -75,6 +76,15 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
     const db = getDb();
+
+    // Read calendar ID from appConfig so the admin can change it in Settings.
+    try {
+      const cfgSnap = await db.collection("appConfig").doc("main").get();
+      if (cfgSnap.exists) {
+        const calId = (cfgSnap.data() as any)?.googleCalendarId;
+        if (calId) setCalendarId(calId);
+      }
+    } catch {}
 
     // ---- status: setup helper for the admin Settings card ----
     if (action === "status") {

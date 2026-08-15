@@ -63,9 +63,7 @@ export type AppConfig = {
     directionsHoursAfter?: number;
     enablePlayerAvailability?: boolean;
   };
-  // automaticReminders and emailAutomationEnabled were removed with the
-  // cron cleanup. Reminders are only sent when an admin explicitly clicks
-  // a "Send" button; there is no scheduled automation.
+  googleCalendarId?: string;
 };
 
 export type AppUser = {

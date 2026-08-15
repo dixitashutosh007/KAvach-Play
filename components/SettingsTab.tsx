@@ -164,6 +164,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   const [seedStatus, setSeedStatus] = useState("");
 
   // Google Calendar sync (public match calendar)
+  const [googleCalendarId, setGoogleCalendarId] = useState(
+    store.appConfig?.googleCalendarId || "",
+  );
   const [calStatus, setCalStatus] = useState<{
     checked: boolean;
     ok: boolean;
@@ -183,13 +186,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "status" }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
       setCalStatus({
         checked: true,
         ok: !!json.ok,
         email: json.serviceAccountEmail,
         calendarId: json.calendarId,
-        error: json.error,
+        error: json.error || (!text ? "Empty response from server" : undefined),
       });
     } catch (err: any) {
       setCalStatus({ checked: true, ok: false, error: err?.message || String(err) });
@@ -207,7 +211,12 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resync" }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      if (!text) {
+        setCalResyncMsg("Resync timed out — try again or resync in smaller batches.");
+        return;
+      }
+      const json = JSON.parse(text);
       if (json.ok) {
         setCalResyncMsg(
           `Synced ${json.synced} match${json.synced === 1 ? "" : "es"}${json.removed ? `, removed ${json.removed} archived` : ""}.`,
@@ -276,6 +285,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       enablePlayerAvailability:
         cfg.matchConfiguration?.enablePlayerAvailability ?? false,
     });
+    setGoogleCalendarId(cfg.googleCalendarId || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.appConfig]);
 
@@ -422,6 +432,16 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     e.preventDefault();
     if (!isAdmin) return;
     try {
+      // Extract calendar ID from a pasted embed URL or raw ID.
+      let calId = googleCalendarId.trim();
+      if (calId) {
+        try {
+          const u = new URL(calId);
+          const src = u.searchParams.get("src");
+          if (src) calId = src;
+        } catch {}
+      }
+
       await store.updateAppConfig({
         clubName,
         logoUrl,
@@ -435,17 +455,16 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         smtpPort,
         smtpSecure,
         smtpUser,
-        // smtpPassword intentionally omitted — server reads SMTP_PASSWORD env var
         smtpFrom,
         emailTemplates,
         whatsappProvider,
         whatsappPhoneNumberId,
-        // whatsappAccessToken intentionally omitted — server reads WHATSAPP_ACCESS_TOKEN env var
         whatsappTemplates,
         whatsappTemplateVariables,
         isStudioEnabled,
         features,
         matchConfiguration,
+        googleCalendarId: calId || undefined,
       });
       if (setPreviewTheme) setPreviewTheme(null);
       alert("Settings saved successfully.");
@@ -1393,11 +1412,26 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-white/50 leading-relaxed">
             Matches sync to a public Google Calendar automatically when you
-            create, edit or delete them. One-time setup: open the calendar in
-            Google Calendar → Settings → <b>Share with specific people</b> →
-            add the service-account email below with{" "}
-            <b>&quot;Make changes to events&quot;</b>.
+            create, edit or delete them. Paste your Google Calendar link below
+            and save settings. Then share the calendar with the service-account
+            email (with <b>&quot;Make changes to events&quot;</b>).
           </p>
+
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-white/40 block mb-1">
+              Google Calendar Link / ID
+            </label>
+            <input
+              type="text"
+              value={googleCalendarId}
+              onChange={(e) => setGoogleCalendarId(e.target.value)}
+              placeholder="Paste Google Calendar embed URL or calendar ID"
+              className="w-full rounded-lg bg-black/40 border border-glass-border px-3 py-2 text-[11px] text-white font-mono placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <p className="text-[9px] text-white/30 mt-1">
+              Save settings after pasting. The calendar ID is extracted automatically from the URL.
+            </p>
+          </div>
 
           <div className="flex gap-2">
             <button

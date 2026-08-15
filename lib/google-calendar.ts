@@ -21,13 +21,29 @@ import type { Match } from "@/lib/types";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-// The public KAvach match calendar. Not a secret (it lives in the public
-// calendar URL). Overridable via env if the club ever moves calendars.
 const DEFAULT_CALENDAR_ID =
-  "080339f65b078307a151fa49f3c697d5f46038978a35ac4f9dff8875ebec6bd0@group.calendar.google.com";
+  "d968d1786b9e3fbc887cefeabe1ab1041c60c8c38d6d7945cc905ffad5a25e56@group.calendar.google.com";
+
+let runtimeCalendarId: string | null = null;
+
+/** Let the API route override the calendar id from appConfig. */
+export function setCalendarId(id: string | undefined | null) {
+  runtimeCalendarId = id && id.trim() ? id.trim() : null;
+}
 
 export function getCalendarId(): string {
-  return process.env.GOOGLE_CALENDAR_ID || DEFAULT_CALENDAR_ID;
+  return runtimeCalendarId || process.env.GOOGLE_CALENDAR_ID || DEFAULT_CALENDAR_ID;
+}
+
+/** Extract a calendar ID from a full Google Calendar embed/public URL. */
+export function parseCalendarIdFromUrl(url: string): string {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    const src = u.searchParams.get("src");
+    if (src) return src;
+  } catch {}
+  return url.trim();
 }
 
 type ServiceAccount = { client_email: string; private_key: string };
