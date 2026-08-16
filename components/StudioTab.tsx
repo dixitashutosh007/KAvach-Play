@@ -56,10 +56,14 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
   }, []);
 
   useEffect(() => {
-    if (!isStudioUser) {
+    if (!isStudioUser) setPlansExpanded(true);
+  }, [isStudioUser]);
+
+  useEffect(() => {
+    if (subscriptionStatus === "Expired" || subscriptionStatus === "Paused") {
       setPlansExpanded(true);
     }
-  }, [isStudioUser]);
+  }, [subscriptionStatus]);
 
   const handlePayment = async (plan: any) => {
     if (store.appConfig?.features?.payments === false) {
@@ -287,67 +291,80 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
       : lastPaidDateRaw
     : "—";
 
-  // Check if membership is technically active based on expiry
-  let isExpired = false;
-  let statusBadgeText = "Active";
-  let statusBadgeClasses =
-    "bg-accent/10 text-accent border border-accent/20 shadow-inner";
+  const hasPastSubscription = !!(
+    player?.studioExpiryDate ||
+    player?.studioEndDate ||
+    appUser?.studioExpiryDate ||
+    appUser?.studioEndDate ||
+    player?.lastPaidDate ||
+    appUser?.lastPaidDate
+  );
 
-  if (!endDateRaw) {
-    statusBadgeText = "Expired";
-    isExpired = true;
-    statusBadgeClasses =
-      "bg-rose-500/10 text-rose-400 border border-rose-500/20";
-  } else {
+  // Compute subscription status: Active | Expired | Inactive | Paused
+  type SubStatus = "Active" | "Expired" | "Inactive" | "Paused";
+  let subscriptionStatus: SubStatus = "Inactive";
+  let daysRemaining: number | null = null;
+
+  const parseExpiryDate = (raw: string): Date | null => {
     try {
-      const parts = endDateRaw.includes("-")
-        ? endDateRaw.split("-")
-        : endDateRaw.split("/");
-      let expDateObj: Date;
-      if (endDateRaw.includes("-")) {
-        // YYYY-MM-DD
-        expDateObj = new Date(
-          Number(parts[0]),
-          Number(parts[1]) - 1,
-          Number(parts[2]),
-          23,
-          59,
-          59,
-          999,
-        );
+      const parts = raw.includes("-") ? raw.split("-") : raw.split("/");
+      if (raw.includes("-")) {
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
+      }
+      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 23, 59, 59, 999);
+    } catch { return null; }
+  };
+
+  if (endDateRaw) {
+    const expDateObj = parseExpiryDate(endDateRaw);
+    if (expDateObj && !isNaN(expDateObj.getTime())) {
+      const diffMs = expDateObj.getTime() - Date.now();
+      daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      if (daysRemaining < 0) {
+        subscriptionStatus = "Expired";
+      } else if (isStudioUser) {
+        subscriptionStatus = "Active";
       } else {
-        // DD/MM/YYYY
-        expDateObj = new Date(
-          Number(parts[2]),
-          Number(parts[1]) - 1,
-          Number(parts[0]),
-          23,
-          59,
-          59,
-          999,
-        );
+        subscriptionStatus = "Paused";
       }
-
-      const nowTime = new Date().getTime();
-      const diffTime = expDateObj.getTime() - nowTime;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays < 0) {
-        isExpired = true;
-        statusBadgeText = "Expired";
-        statusBadgeClasses =
-          "bg-rose-500/10 text-rose-400 border border-rose-500/20";
-      } else if (diffDays <= 3) {
-        statusBadgeText = `Expiring in ${diffDays} Days`;
-        statusBadgeClasses =
-          "bg-rose-500/20 text-rose-400 border border-rose-500/30";
-      } else if (diffDays <= 7) {
-        statusBadgeText = `Expiring in ${diffDays} Days`;
-        statusBadgeClasses =
-          "bg-orange-500/20 text-orange-400 border border-orange-500/30";
-      }
-    } catch {}
+    } else {
+      subscriptionStatus = isStudioUser ? "Active" : "Expired";
+    }
+  } else if (isStudioUser) {
+    subscriptionStatus = "Active";
+  } else if (hasPastSubscription) {
+    subscriptionStatus = "Expired";
   }
+
+  const isExpired = subscriptionStatus === "Expired";
+
+  const statusConfig: Record<SubStatus, { text: string; classes: string }> = {
+    Active: {
+      text: daysRemaining !== null && daysRemaining <= 7
+        ? `Active · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`
+        : "Active",
+      classes: daysRemaining !== null && daysRemaining <= 3
+        ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+        : "bg-accent/10 text-accent border border-accent/20 shadow-inner",
+    },
+    Expired: {
+      text: "Expired",
+      classes: "bg-rose-500/10 text-rose-400 border border-rose-500/20",
+    },
+    Inactive: {
+      text: "Inactive",
+      classes: "bg-white/5 text-white/50 border border-white/10",
+    },
+    Paused: {
+      text: "Paused",
+      classes: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+    },
+  };
+
+  const statusBadgeText = statusConfig[subscriptionStatus].text;
+  const statusBadgeClasses = statusConfig[subscriptionStatus].classes;
+
+  const showPlansAlwaysOpen = subscriptionStatus === "Expired" || subscriptionStatus === "Inactive" || subscriptionStatus === "Paused";
 
   const plansGrid = (
     <div className="space-y-4 pt-4 border-t border-glass-border/40 mt-6 mt-auto">
@@ -356,7 +373,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
         className="w-full flex items-center justify-between group"
       >
         <h3 className="text-sm font-bold text-white uppercase tracking-widest text-left">
-          Available Plans
+          {showPlansAlwaysOpen ? "Renew / Buy Membership" : "Available Plans"}
         </h3>
         <div className="p-1 rounded bg-white/5 group-hover:bg-white/10 text-white/50 transition">
           {plansExpanded ? (
@@ -423,19 +440,13 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
     </div>
   );
 
-  const hasPastSubscription = !!(
-    player?.studioExpiryDate ||
-    player?.studioEndDate ||
-    appUser?.studioExpiryDate ||
-    appUser?.studioEndDate ||
-    player?.lastPaidDate ||
-    appUser?.lastPaidDate
-  );
-
   if (!isStudioUser && !hasPastSubscription) {
     return (
       <div className="glass p-6 text-center text-white/50 rounded-2xl border border-glass-border flex flex-col h-full">
         <div className="flex-1 flex flex-col items-center justify-center space-y-4 pt-10 pb-8">
+          <span className="p-1 px-2.5 rounded-full bg-white/5 text-[10px] uppercase font-bold tracking-widest text-white/50 border border-white/10">
+            Inactive
+          </span>
           <div className="w-16 h-16 bg-accent/10 border border-accent/20 rounded-full flex items-center justify-center mx-auto mb-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
             <Sparkles className="w-8 h-8 text-accent animate-pulse" />
           </div>
@@ -443,7 +454,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
           <p className="text-sm max-w-lg mx-auto text-white/70 leading-relaxed mb-6">
             You are currently not a Kavach Studio Member. Subscribe to a plan that fits your needs and become an exclusive part of our Practice Session Club. Explore the premium benefits below:
           </p>
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full text-left mb-6">
             {[
               "Practice Nets",
@@ -476,13 +487,25 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="p-1 px-2.5 rounded-full bg-accent/15 text-[10px] uppercase font-bold tracking-widest text-accent border border-accent/20">
-              Live Member
-            </span>
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
+            {subscriptionStatus === "Active" ? (
+              <>
+                <span className="p-1 px-2.5 rounded-full bg-accent/15 text-[10px] uppercase font-bold tracking-widest text-accent border border-accent/20">
+                  Active Member
+                </span>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </>
+            ) : subscriptionStatus === "Paused" ? (
+              <span className="p-1 px-2.5 rounded-full bg-amber-500/15 text-[10px] uppercase font-bold tracking-widest text-amber-400 border border-amber-500/20">
+                Membership Paused
+              </span>
+            ) : (
+              <span className="p-1 px-2.5 rounded-full bg-rose-500/15 text-[10px] uppercase font-bold tracking-widest text-rose-400 border border-rose-500/20">
+                Membership Expired
+              </span>
+            )}
           </div>
 
           <div>
