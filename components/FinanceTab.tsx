@@ -980,7 +980,6 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterMatchId, setFilterMatchId] = useState("");
-  const [isPastMatchesOpen, setIsPastMatchesOpen] = useState(false);
 
   const filteredMatches = useMemo(() => {
     let m = store.matches;
@@ -1029,6 +1028,30 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         ).length;
 
         const getFee = (p: any) => p.feeOverride !== undefined ? p.feeOverride : match.fee;
+
+        let feeCollected = 0;
+        let feeCollectedCount = 0;
+        let feeOffset = 0;
+        let feeOffsetCount = 0;
+        for (const p of paymentsForMatch) {
+          if (p.status !== "Paid") continue;
+          const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+          if (p.sponsoredBy) {
+            feeOffset += match.fee;
+            feeOffsetCount++;
+          } else if (p.paymentMethod !== "manual") {
+            feeCollected += effectiveFee;
+            feeCollectedCount++;
+            const discount = match.fee - effectiveFee;
+            if (discount > 0) feeOffset += discount;
+          } else {
+            feeOffset += match.fee;
+            feeOffsetCount++;
+          }
+        }
+        const matchFeePaid = match.fee * playingCount;
+        const percentRecovered = matchFeePaid > 0 ? Math.round((feeCollected * 100) / matchFeePaid) : 0;
+
         return {
           match,
           payments: paymentsForMatch,
@@ -1041,6 +1064,12 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           razorpayCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod !== "manual").reduce((s, p) => s + getFee(p), 0),
           manualCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod === "manual").reduce((s, p) => s + getFee(p), 0),
           totalDue: paymentsForMatch.filter(p => p.status === "Unpaid").reduce((s, p) => s + getFee(p), 0),
+          feeCollected,
+          feeCollectedCount,
+          feeOffset,
+          feeOffsetCount,
+          matchFeePaid,
+          percentRecovered,
           hasResults: playingCount > 0,
         };
       })
@@ -1057,16 +1086,6 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
     return reportData.filter((d) => d.totalCollected > 0);
   }, [reportData]);
 
-  const { recentMatches, pastMatches } = useMemo(() => {
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-    const oneMonthAgoStr = oneMonthAgo.toISOString().split("T")[0];
-
-    const recent = collectedMatches.filter((data) => data.match.date >= oneMonthAgoStr);
-    const past = collectedMatches.filter((data) => data.match.date < oneMonthAgoStr);
-    
-    return { recentMatches: recent, pastMatches: past };
-  }, [collectedMatches]);
 
   return (
     <div className="space-y-6">
@@ -1104,138 +1123,77 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         <div className="space-y-4">
           <div className="glass rounded-xl p-4 border border-glass-border overflow-hidden">
             <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
-              Match Fees Collection
+              Match Fee Accounting
             </h3>
-            <div className="space-y-4">
-              {recentMatches.map((data) => (
-                <div
-                  key={data.match.id}
-                  className="bg-black/40 rounded-lg p-4 border border-glass-border"
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <div className="font-bold text-white text-sm">
-                        {data.match.opponent} {data.match.isGroundFeePaid && <span className="text-emerald-400 font-normal block mt-0.5 text-xs">(Ground Fee Paid: ₹{data.match.groundFeePaidAmount})</span>}
-                      </div>
-                      <div className="text-xs text-white/50">
-                        {data.match.date}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-emerald-400">
-                        Total: ₹{data.totalCollected}
-                      </div>
-                      <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">
-                        Fee: ₹{data.match.fee || 0} / player
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-glass-border">
-                    <div className="bg-white/5 rounded-md p-2 text-center">
-                      <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
-                        Razorpay
-                      </div>
-                      <div className="text-sm font-bold text-emerald-300">
-                        ₹{data.razorpayCollected}
-                      </div>
-                      <div className="text-[9px] text-white/40 mt-0.5">
-                        {data.razorpayPaidCount} player(s)
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white/5 rounded-md p-2 text-center">
-                      <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
-                        Manual / Offset
-                      </div>
-                      <div className="text-sm font-bold text-blue-300">
-                        ₹{data.manualCollected}
-                      </div>
-                      <div className="text-[9px] text-white/40 mt-0.5">
-                        {data.manualPaidCount} player(s)
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-glass-border text-[10px] uppercase tracking-widest text-white/50">
+                    <th className="py-2 pr-3 font-bold whitespace-nowrap">Match Details</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Match Fee</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Collected</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Offset</th>
+                    <th className="py-2 pl-3 font-bold whitespace-nowrap text-right">% Recovered</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {collectedMatches.map((data) => {
+                    const ground = store.grounds.find((g) => g.id === data.match.groundId);
+                    return (
+                      <tr key={data.match.id} className="border-b border-white/5 hover:bg-white/5 transition">
+                        <td className="py-2.5 pr-3">
+                          <div className="text-white font-semibold text-xs">{formatDate(data.match.date)}</div>
+                          <div className="text-[10px] text-white/40">{ground?.name || "—"}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="text-white font-semibold">₹{data.match.fee}</div>
+                          <div className="text-[10px] text-white/40">{data.playingCount} players</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="text-emerald-400 font-semibold">₹{data.feeCollected}</div>
+                          <div className="text-[10px] text-white/40">({data.feeCollectedCount})</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="text-amber-400 font-semibold">₹{data.feeOffset}</div>
+                          <div className="text-[10px] text-white/40">({data.feeOffsetCount})</div>
+                        </td>
+                        <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                          <span className={`font-bold ${data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}`}>
+                            {data.percentRecovered}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {collectedMatches.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t border-glass-border">
+                      <td className="py-2.5 pr-3 font-bold text-white text-xs uppercase tracking-wider">Total</td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="text-white font-bold">₹{collectedMatches.reduce((s, d) => s + d.matchFeePaid, 0)}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="text-emerald-400 font-bold">₹{collectedMatches.reduce((s, d) => s + d.feeCollected, 0)}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="text-amber-400 font-bold">₹{collectedMatches.reduce((s, d) => s + d.feeOffset, 0)}</div>
+                      </td>
+                      <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                        {(() => {
+                          const totalPaid = collectedMatches.reduce((s, d) => s + d.matchFeePaid, 0);
+                          const totalCollected = collectedMatches.reduce((s, d) => s + d.feeCollected, 0);
+                          const pct = totalPaid > 0 ? Math.round((totalCollected * 100) / totalPaid) : 0;
+                          return <span className={`font-bold ${pct >= 80 ? "text-emerald-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>;
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
               {collectedMatches.length === 0 && (
                 <div className="text-center text-white/50 text-sm py-4">
                   No match collections found.
-                </div>
-              )}
-
-              {pastMatches.length > 0 && (
-                <div className="mt-6 pt-4 border-t border-glass-border">
-                  <button
-                    onClick={() => setIsPastMatchesOpen(!isPastMatchesOpen)}
-                    className="flex items-center justify-between w-full p-3 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5"
-                  >
-                    <span className="text-sm font-bold text-white uppercase tracking-wider">
-                      Past Matches ({pastMatches.length})
-                    </span>
-                    {isPastMatchesOpen ? (
-                      <ChevronUp className="w-5 h-5 text-white/70" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-white/70" />
-                    )}
-                  </button>
-                  
-                  {isPastMatchesOpen && (
-                    <div className="space-y-4 mt-4">
-                      {pastMatches.map((data) => (
-                        <div
-                          key={data.match.id}
-                          className="bg-black/40 rounded-lg p-4 border border-glass-border opacity-80"
-                        >
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <div className="font-bold text-white text-sm">
-                                {data.match.opponent}
-                              </div>
-                              <div className="text-xs text-white/50">
-                                {data.match.date}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm font-bold text-emerald-400">
-                                Total: ₹{data.totalCollected}
-                              </div>
-                              <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">
-                                Fee: ₹{data.match.fee || 0} / player
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-glass-border">
-                            <div className="bg-white/5 rounded-md p-2 text-center">
-                              <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
-                                Razorpay
-                              </div>
-                              <div className="text-sm font-bold text-emerald-300">
-                                ₹{data.razorpayCollected}
-                              </div>
-                              <div className="text-[9px] text-white/40 mt-0.5">
-                                {data.razorpayPaidCount} player(s)
-                              </div>
-                            </div>
-                            
-                            <div className="bg-white/5 rounded-md p-2 text-center">
-                              <div className="text-[10px] text-white/50 uppercase tracking-widest mb-1">
-                                Manual / Offset
-                              </div>
-                              <div className="text-sm font-bold text-blue-300">
-                                ₹{data.manualCollected}
-                              </div>
-                              <div className="text-[9px] text-white/40 mt-0.5">
-                                {data.manualPaidCount} player(s)
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
