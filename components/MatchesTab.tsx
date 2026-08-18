@@ -8,7 +8,7 @@
  * It contains sub-components for assigning match outcomes and viewing venues.
  */
 import { useStore } from "@/hooks/useStore";
-import { Match, MatchComment, Player } from "@/lib/types";
+import { Match, MatchComment, Player, FeePlan } from "@/lib/types";
 
 /**
  * sessionStorage-backed useState. Lets accordions and filters
@@ -1072,6 +1072,12 @@ export function MatchesTab({
                 const unpaidCount = paymentsForMatch.filter(
                   (p) => p.status === "Unpaid",
                 ).length;
+                const cardPaidTotal = paymentsForMatch
+                  .filter((p) => p.status === "Paid")
+                  .reduce((s, p) => s + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
+                const cardUnpaidTotal = paymentsForMatch
+                  .filter((p) => p.status === "Unpaid")
+                  .reduce((s, p) => s + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
                 return (
                   <div
                     key={match.id}
@@ -1218,10 +1224,10 @@ export function MatchesTab({
                                </div>
                             )}
                             <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">
-                              ₹{paidCount * match.fee}
+                              ₹{cardPaidTotal}
                             </div>
                             <div className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold">
-                              ₹{unpaidCount * match.fee}
+                              ₹{cardUnpaidTotal}
                             </div>
                           </div>
                         )}
@@ -1507,11 +1513,19 @@ export function MatchPayments({
     : null;
   const IHavePaid = myPayment?.status === "Paid";
 
+  const getPlayerFee = (payment: typeof matchPayments[number]) =>
+    payment.feeOverride !== undefined ? payment.feeOverride : match.fee;
+
   // Stats
   const played = matchPayments.filter((p) => p.status !== "Not Playing").length;
   const paid = matchPayments.filter((p) => p.status === "Paid").length;
   const unpaid = matchPayments.filter((p) => p.status === "Unpaid").length;
-  const totalCollected = paid * match.fee;
+  const totalCollected = matchPayments
+    .filter((p) => p.status === "Paid")
+    .reduce((sum, p) => sum + getPlayerFee(p), 0);
+  const totalExpected = matchPayments
+    .filter((p) => p.status !== "Not Playing")
+    .reduce((sum, p) => sum + getPlayerFee(p), 0);
 
   let matchDateObj = new Date();
   const matchDateParts = dbToInputDate(match.date).split("/");
@@ -1600,6 +1614,12 @@ export function MatchPayments({
       return;
     }
 
+    const payableFee = getPlayerFee(myPayment);
+    if (payableFee <= 0) {
+      alert("Your fee is ₹0 (sponsored). No payment needed.");
+      return;
+    }
+
     setIsProcessingPayment(true);
     try {
       const rzpId =
@@ -1618,7 +1638,7 @@ export function MatchPayments({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          amount: match.fee,
+          amount: payableFee,
           intentData: {
             type: "match",
             matchId: match.id,
@@ -2064,7 +2084,7 @@ export function MatchPayments({
             <span className="font-mono text-accent font-bold text-[15px]">
               ₹{totalCollected}
             </span>{" "}
-            <span className="opacity-50">/ ₹{played * match.fee}</span>
+            <span className="opacity-50">/ ₹{totalExpected}</span>
           </div>
         )}
 
@@ -2096,24 +2116,32 @@ export function MatchPayments({
       </div>
 
       {!isAdmin &&
-        myPayment?.status === "Unpaid" && (
-          <div className="glass rounded-xl p-6 text-center space-y-4">
-            <h3 className="text-lg font-bold">Your Match Fee is Pending</h3>
-            <p className="text-accent text-3xl font-light font-mono">
-              ₹{match.fee}
-            </p>
-            <button
-              disabled={isProcessingPayment}
-              onClick={handlePaySecure}
-              className="w-full bg-accent text-black font-bold py-3 rounded-lg hover:bg-accent/90 disabled:opacity-50 transition shadow-lg flex items-center justify-center gap-2"
-            >
-              {isProcessingPayment ? "Processing..." : `Pay ₹${match.fee} Securely`}
-            </button>
-            <p className="text-[10px] text-white/50 uppercase tracking-widest">
-              Settle your dues before the match
-            </p>
-          </div>
-        )}
+        myPayment?.status === "Unpaid" && (() => {
+          const myFee = getPlayerFee(myPayment);
+          return (
+            <div className="glass rounded-xl p-6 text-center space-y-4">
+              <h3 className="text-lg font-bold">Your Match Fee is Pending</h3>
+              <p className="text-accent text-3xl font-light font-mono">
+                ₹{myFee}
+              </p>
+              {myPayment.planTag && (
+                <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest">
+                  {myPayment.planTag}
+                </p>
+              )}
+              <button
+                disabled={isProcessingPayment}
+                onClick={handlePaySecure}
+                className="w-full bg-accent text-black font-bold py-3 rounded-lg hover:bg-accent/90 disabled:opacity-50 transition shadow-lg flex items-center justify-center gap-2"
+              >
+                {isProcessingPayment ? "Processing..." : `Pay ₹${myFee} Securely`}
+              </button>
+              <p className="text-[10px] text-white/50 uppercase tracking-widest">
+                Settle your dues before the match
+              </p>
+            </div>
+          );
+        })()}
 
       {!isAdmin && mePlayer && store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
         <div className="glass rounded-xl p-4 text-center mt-4">
@@ -2471,78 +2499,193 @@ export function MatchPayments({
               const player = store.players.find(p => p.id === payment.playerId);
               if (!player || payment.status === "Not Playing") return null;
 
+              const playerPlans = (player.feePlanIds || [])
+                .map((id: string) => store.feePlans.find((fp: FeePlan) => fp.id === id))
+                .filter((fp): fp is FeePlan => !!fp && fp.isActive !== false);
+              const fee = getPlayerFee(payment);
+              const hasOverride = payment.feeOverride !== undefined;
+
               return (
                 <div
                   key={payment.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/5 transition"
+                  className="p-4 flex flex-col gap-2 hover:bg-white/5 transition"
                 >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-white truncate">
-                      {payment.guestName || player.name}
-                      {mePlayer && player.id === mePlayer.id && !payment.guestName && (
-                        <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-bold uppercase">
-                          You
-                        </span>
-                      )}
-                    </p>
-                    {isAdmin && (
-                      <p className="text-xs font-mono text-white/50 mt-0.5">
-                        {player.mobile}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-white truncate">
+                        {payment.guestName || player.name}
+                        {mePlayer && player.id === mePlayer.id && !payment.guestName && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-bold uppercase">
+                            You
+                          </span>
+                        )}
+                        {hasOverride && (
+                          <span className="ml-2 font-mono text-[11px] text-amber-400">
+                            ₹{fee}
+                          </span>
+                        )}
                       </p>
-                    )}
-                  </div>
+                      {isAdmin && (
+                        <p className="text-xs font-mono text-white/50 mt-0.5">
+                          {player.mobile}
+                        </p>
+                      )}
+                      {payment.planTag && (
+                        <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider mt-0.5">
+                          {payment.planTag}
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
-                    {isAdmin ? (
-                      <>
-                        <select
-                          value={payment.status}
-                          onChange={(e) =>
-                            store.updatePaymentStatus(
-                              payment.id,
-                              e.target.value as any,
-                              match.id,
-                              undefined,
-                              e.target.value === "Paid" ? "manual" : undefined
-                            )
-                          }
-                          className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      {isAdmin ? (
+                        <>
+                          <select
+                            value={payment.status}
+                            onChange={(e) =>
+                              store.updatePaymentStatus(
+                                payment.id,
+                                e.target.value as any,
+                                match.id,
+                                undefined,
+                                e.target.value === "Paid" ? "manual" : undefined
+                              )
+                            }
+                            className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
+                              payment.status === "Paid"
+                                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                : payment.status === "Unpaid"
+                                  ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                  : "bg-white/5 text-white/70 border-glass-border [&>option]:bg-emerald-950"
+                            }`}
+                          >
+                            <option value="Not Playing">Out</option>
+                            <option value="Unpaid">Unpaid</option>
+                            <option value="Paid">Paid</option>
+                          </select>
+
+                          {payment.status === "Unpaid" && (
+                            <button
+                              onClick={() =>
+                                store.notifyPlayerPayment(player.id, match.id)
+                              }
+                              className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap ml-2 h-[34px]"
+                              title="Send WhatsApp Reminder"
+                            >
+                              Remind
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
                             payment.status === "Paid"
                               ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                              : payment.status === "Unpaid"
-                                ? "bg-red-500/20 text-red-400 border-red-500/30"
-                                : "bg-white/5 text-white/70 border-glass-border [&>option]:bg-emerald-950"
+                              : "bg-red-500/20 text-red-400 border-red-500/30"
                           }`}
                         >
-                          <option value="Not Playing">Out</option>
-                          <option value="Unpaid">Unpaid</option>
-                          <option value="Paid">Paid</option>
-                        </select>
-
-                        {payment.status === "Unpaid" && (
-                          <button
-                            onClick={() =>
-                              store.notifyPlayerPayment(player.id, match.id)
-                            }
-                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap ml-2 h-[34px]"
-                            title="Send WhatsApp Reminder"
-                          >
-                            Remind
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <span
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
-                          payment.status === "Paid"
-                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                            : "bg-red-500/20 text-red-400 border-red-500/30"
-                        }`}
-                      >
-                        {payment.status}
-                      </span>
-                    )}
+                          {payment.status}
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Fee plan quick-apply for admin on unpaid players with plans */}
+                  {isAdmin && payment.status === "Unpaid" && playerPlans.length > 0 && !hasOverride && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {playerPlans.map((plan: FeePlan) => {
+                        if (plan.type === "fixed") {
+                          return (
+                            <button
+                              key={plan.id}
+                              onClick={() =>
+                                store.applyFeePlanToPayment(
+                                  match.id,
+                                  payment.id,
+                                  plan.feeAmount ?? match.fee,
+                                  plan.name,
+                                )
+                              }
+                              className="text-[9px] font-bold uppercase tracking-widest bg-amber-500/15 text-amber-400 border border-amber-500/25 px-2 py-1 rounded hover:bg-amber-500/25 transition"
+                            >
+                              {plan.name} (₹{plan.feeAmount})
+                            </button>
+                          );
+                        }
+                        if (plan.type === "sponsored") {
+                          return (
+                            <button
+                              key={plan.id}
+                              onClick={() =>
+                                store.applyFeePlanToPayment(
+                                  match.id,
+                                  payment.id,
+                                  0,
+                                  plan.name,
+                                )
+                              }
+                              className="text-[9px] font-bold uppercase tracking-widest bg-green-500/15 text-green-400 border border-green-500/25 px-2 py-1 rounded hover:bg-green-500/25 transition"
+                            >
+                              {plan.name} (₹0)
+                            </button>
+                          );
+                        }
+                        if (plan.type === "proxy") {
+                          return (
+                            <button
+                              key={plan.id}
+                              onClick={() => {
+                                const playingPlayers = matchPayments
+                                  .filter((mp) => mp.status !== "Not Playing" && mp.playerId !== payment.playerId)
+                                  .map((mp) => store.players.find((pl) => pl.id === mp.playerId))
+                                  .filter((pl): pl is Player => !!pl);
+                                if (playingPlayers.length === 0) {
+                                  alert("No other players in this match to assign proxy to.");
+                                  return;
+                                }
+                                const names = playingPlayers.map((pl, i) => `${i + 1}. ${pl.name}`).join("\n");
+                                const choice = prompt(`Assign ${player.name}'s fee to:\n${names}\n\nEnter number:`);
+                                if (!choice) return;
+                                const idx = parseInt(choice) - 1;
+                                const target = playingPlayers[idx];
+                                if (!target) { alert("Invalid selection."); return; }
+                                store.assignProxyPayment(
+                                  match.id,
+                                  payment.id,
+                                  player.name,
+                                  target.id,
+                                  target.name,
+                                  match.fee,
+                                );
+                              }}
+                              className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition"
+                            >
+                              {plan.name}
+                            </button>
+                          );
+                        }
+                        if (plan.type === "monthly") {
+                          return (
+                            <button
+                              key={plan.id}
+                              onClick={() =>
+                                store.applyFeePlanToPayment(
+                                  match.id,
+                                  payment.id,
+                                  0,
+                                  `${plan.name} (Subscription)`,
+                                )
+                              }
+                              className="text-[9px] font-bold uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 px-2 py-1 rounded hover:bg-blue-500/25 transition"
+                            >
+                              {plan.name} (Sub ₹{plan.monthlyAmount}/mo)
+                            </button>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

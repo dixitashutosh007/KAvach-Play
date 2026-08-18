@@ -252,6 +252,13 @@ service cloud.firestore {
       allow write: if isFinanceAdmin();
     }
 
+    match /feePlans/{planId} {
+      allow read: if isSignedIn();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
     match /{path=**}/payments/{paymentId} {
       allow read: if isSignedIn();
     }

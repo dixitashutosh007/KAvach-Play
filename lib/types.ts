@@ -230,6 +230,14 @@ export type Player = {
   lastPaidAmount?: number;
   studioExpiryDate?: string;
   rejectedAt?: string;
+  feePlanIds?: string[];
+  monthlyPlan?: {
+    planId: string;
+    amount: number;
+    startDate: string;
+    endDate: string;
+    paidStatus: "Paid" | "Unpaid";
+  };
   createdAt?: any;
   updatedAt?: any;
 };
@@ -291,6 +299,21 @@ export type MatchPayment = {
     | "Pending"
     | "Confirmed"
     | "Waitlist";
+  feeOverride?: number;
+  planTag?: string;
+  sponsoredBy?: string;
+  sponsoring?: string;
+  updatedAt?: any;
+};
+
+export type FeePlan = {
+  id: string;
+  name: string;
+  type: "fixed" | "monthly" | "sponsored" | "proxy";
+  feeAmount?: number;
+  monthlyAmount?: number;
+  isActive?: boolean;
+  createdAt?: any;
   updatedAt?: any;
 };
 

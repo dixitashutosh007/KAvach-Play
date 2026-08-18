@@ -30,6 +30,7 @@ import {
   Poll,
   PollResponse,
   Tournament,
+  FeePlan,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -95,6 +96,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [merchOrders, setMerchOrders] = useState<MerchOrder[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollResponses, setPollResponses] = useState<PollResponse[]>([]);
+  const [feePlans, setFeePlans] = useState<FeePlan[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
@@ -482,6 +484,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     })();
     const unsubFeeTemplates = () => {};
 
+    // feePlans — one-shot; refreshed by fee plan mutation methods.
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "feePlans"));
+        setFeePlans(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeePlan),
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, "feePlans");
+      }
+    })();
+    const unsubFeePlans = () => {};
+
     const unsubOutOfPlays = onSnapshot(
       collection(db, "outOfPlays"),
       (snapshot) => {
@@ -555,6 +570,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       unsubSubscriptionHistory();
       unsubNotifications();
       unsubFeeTemplates();
+      unsubFeePlans();
       unsubOutOfPlays();
       unsubMerchandises();
       unsubMerchOrders();
@@ -701,6 +717,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, "feeTemplates");
+    }
+  }, []);
+
+  const refreshFeePlans = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "feePlans"));
+      setFeePlans(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeePlan),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, "feePlans");
     }
   }, []);
 
@@ -1472,6 +1499,120 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  // ---- Fee Plans CRUD ----
+
+  const addFeePlan = async (plan: Omit<FeePlan, "id" | "createdAt" | "updatedAt">) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "feePlans", id);
+    try {
+      await setDoc(docRef, cleanPayload({
+        ...plan,
+        id,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+      await refreshFeePlans();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `feePlans/${id}`);
+    }
+  };
+
+  const updateFeePlan = async (planId: string, updates: Partial<FeePlan>) => {
+    const docRef = doc(db, "feePlans", planId);
+    try {
+      await updateDoc(docRef, cleanPayload({ ...updates, updatedAt: serverTimestamp() }));
+      await refreshFeePlans();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `feePlans/${planId}`);
+    }
+  };
+
+  const deleteFeePlan = async (planId: string) => {
+    const docRef = doc(db, "feePlans", planId);
+    try {
+      await deleteDoc(docRef);
+      await refreshFeePlans();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `feePlans/${planId}`);
+    }
+  };
+
+  const applyFeePlanToPayment = async (
+    matchId: string,
+    paymentId: string,
+    feeOverride: number,
+    planTag: string,
+    sponsoredBy?: string,
+    sponsoring?: string,
+  ) => {
+    const docRef = doc(db, "matches", matchId, "payments", paymentId);
+    try {
+      const updates: any = {
+        feeOverride,
+        planTag,
+        status: "Paid" as const,
+        updatedAt: serverTimestamp(),
+      };
+      if (sponsoredBy) updates.sponsoredBy = sponsoredBy;
+      if (sponsoring) updates.sponsoring = sponsoring;
+      await updateDoc(docRef, updates);
+      setPayments((prev) =>
+        prev.map((p) =>
+          p.id === paymentId && p.matchId === matchId
+            ? { ...p, ...updates, updatedAt: Timestamp.now() }
+            : p,
+        ),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `payments/${paymentId}`);
+    }
+  };
+
+  const assignProxyPayment = async (
+    matchId: string,
+    sourcePaymentId: string,
+    sourcePlayerName: string,
+    targetPlayerId: string,
+    targetPlayerName: string,
+    matchFee: number,
+  ) => {
+    const sourceRef = doc(db, "matches", matchId, "payments", sourcePaymentId);
+    const targetPayment = payments.find(
+      (p) => p.matchId === matchId && p.playerId === targetPlayerId,
+    );
+    if (!targetPayment) return;
+    const targetRef = doc(db, "matches", matchId, "payments", targetPayment.id);
+    const batch = writeBatch(db);
+    batch.update(sourceRef, {
+      feeOverride: 0,
+      planTag: `Sponsored by ${targetPlayerName}`,
+      sponsoredBy: targetPlayerId,
+      status: "Paid",
+      updatedAt: serverTimestamp(),
+    });
+    batch.update(targetRef, {
+      feeOverride: (targetPayment.feeOverride ?? matchFee) + matchFee,
+      sponsoring: `On behalf of ${sourcePlayerName}`,
+      updatedAt: serverTimestamp(),
+    });
+    try {
+      await batch.commit();
+      setPayments((prev) =>
+        prev.map((p) => {
+          if (p.id === sourcePaymentId && p.matchId === matchId) {
+            return { ...p, feeOverride: 0, planTag: `Sponsored by ${targetPlayerName}`, sponsoredBy: targetPlayerId, status: "Paid" as const };
+          }
+          if (p.id === targetPayment.id && p.matchId === matchId) {
+            return { ...p, feeOverride: (targetPayment.feeOverride ?? matchFee) + matchFee, sponsoring: `On behalf of ${sourcePlayerName}` };
+          }
+          return p;
+        }),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `payments/proxy`);
+    }
+  };
+
   const addPaymentStatus = async (
     matchId: string,
     playerId: string,
@@ -1877,6 +2018,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     feeTemplates,
     addFeeTemplate,
     deleteFeeTemplate,
+    feePlans,
+    addFeePlan,
+    updateFeePlan,
+    deleteFeePlan,
+    applyFeePlanToPayment,
+    assignProxyPayment,
     outOfPlays,
     addOutOfPlay,
     updateOutOfPlay,

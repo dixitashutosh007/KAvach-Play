@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Player } from "@/lib/types";
+import { Player, FeePlan } from "@/lib/types";
 import { dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthProviderBadges } from "@/components/AuthProviderBadges";
@@ -21,6 +21,9 @@ export function EditPlayerInline({
   const appUserMatch = store.appUsers.find(
     (u) => u.id === player.id || (u.mobile && u.mobile === player.mobile),
   );
+
+  const activeFeePlans = store.feePlans.filter((fp: FeePlan) => fp.isActive !== false);
+  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>(player.feePlanIds || []);
 
   const [formData, setFormData] = useState({
     name: player.name || "",
@@ -70,6 +73,7 @@ export function EditPlayerInline({
         formData.isStudioMember && lastPaidAmount !== ""
           ? Number(lastPaidAmount)
           : undefined,
+      ...(isSuperAdmin ? { feePlanIds: selectedPlanIds.length > 0 ? selectedPlanIds : [] } : {}),
     };
     await store.updatePlayer(player.id, updatedData);
     // isDesigner used to live here as a super-admin toggle but has
@@ -377,6 +381,65 @@ export function EditPlayerInline({
               </label>
             ));
           })()}
+        </div>
+      )}
+
+      {/* Fee Plans — Super Admin only */}
+      {isSuperAdmin && activeFeePlans.length > 0 && (
+        <div className="border border-amber-500/25 bg-amber-500/5 rounded-xl p-4 space-y-3">
+          <h4 className="text-xs font-bold text-amber-300 uppercase tracking-widest">
+            Fee Plans
+          </h4>
+          <p className="text-[10px] text-white/50 leading-relaxed">
+            Assign one or more fee plans to override the standard match fee for this player.
+          </p>
+          <div className="space-y-2">
+            {activeFeePlans.map((plan: FeePlan) => {
+              const isSelected = selectedPlanIds.includes(plan.id);
+              const desc =
+                plan.type === "fixed"
+                  ? `₹${plan.feeAmount} / match`
+                  : plan.type === "monthly"
+                    ? `₹${plan.monthlyAmount} / month`
+                    : plan.type === "sponsored"
+                      ? "₹0 (Club Sponsored)"
+                      : "Proxy (another player pays)";
+              return (
+                <label
+                  key={plan.id}
+                  className={`flex items-start gap-3 p-2 rounded border cursor-pointer hover:bg-white/5 ${
+                    isSelected
+                      ? "bg-black/30 border-amber-500/30"
+                      : "bg-black/20 border-white/5"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedPlanIds([...selectedPlanIds, plan.id]);
+                      } else {
+                        setSelectedPlanIds(selectedPlanIds.filter((id) => id !== plan.id));
+                      }
+                    }}
+                    className="mt-0.5 w-4 h-4 rounded accent-amber-400"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-white">
+                      {plan.name}
+                    </div>
+                    <div className="text-[10px] text-white/50">{desc}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {selectedPlanIds.length === 0 && (
+            <p className="text-[10px] text-white/40 italic">
+              No plans assigned — standard match fee applies.
+            </p>
+          )}
         </div>
       )}
 

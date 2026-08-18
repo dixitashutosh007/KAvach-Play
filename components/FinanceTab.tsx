@@ -28,6 +28,7 @@ import { formatDate } from "@/lib/utils";
 import WixFinanceView from "./WixFinanceView";
 import RazorReportView from "./RazorReportView";
 import { CreateFeeAdmin } from "./CreateFeeAdmin";
+import { FeePlansAdmin } from "./FeePlansAdmin";
 import { PlansView } from "./PlansView";
 
 export function FinanceTab({
@@ -937,7 +938,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
 }
 
 function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
-  const [feeTab, setFeeTab] = useState<"custom" | "plans">("custom");
+  const [feeTab, setFeeTab] = useState<"custom" | "plans" | "feePlans">("custom");
   return (
     <div className="space-y-4">
       <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
@@ -951,10 +952,22 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
             onClick={() => setFeeTab("plans")}
             className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "plans" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
           >
-            Subscription Tiers
+            Subscriptions
+          </button>
+          <button
+            onClick={() => setFeeTab("feePlans")}
+            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "feePlans" ? "bg-amber-500/20 text-amber-400" : "text-white/50 hover:text-white"}`}
+          >
+            Fee Plans
           </button>
       </div>
-      {feeTab === "custom" ? <CreateFeeAdmin store={store} /> : <PlansView store={store} />}
+      {feeTab === "custom" ? (
+        <CreateFeeAdmin store={store} />
+      ) : feeTab === "plans" ? (
+        <PlansView store={store} />
+      ) : (
+        <FeePlansAdmin store={store} />
+      )}
     </div>
   );
 }
