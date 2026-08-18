@@ -325,13 +325,11 @@ export function MatchesTab({
                 played it or you're about to; tentative is off the table). */}
             {(() => {
               const dbDate = inputToDbDate(formData.date);
-              // dbDate is DD/MM/YYYY. Compare as Date at 23:59 of that day
-              // so slots later today still count as "future" only if the
-              // date is strictly after today.
-              const parts = dbDate.split("/");
+              // dbDate is YYYY-MM-DD after conversion.
+              const parts = dbDate.split("-");
               let matchDay: Date | null = null;
               if (parts.length === 3) {
-                matchDay = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                matchDay = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
               }
               const today = new Date();
               today.setHours(0, 0, 0, 0);
@@ -1111,8 +1109,8 @@ export function MatchesTab({
                               );
                             })()}
                             {match.isTentative && (
-                              <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                                Tentatively
+                              <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse" title={`Blocked by ${match.tentativelyBlockedBy || "Admin"}`}>
+                                Blocked{match.tentativelyBlockedBy ? ` · ${match.tentativelyBlockedBy}` : ""}
                               </span>
                             )}
                           </div>
@@ -1888,8 +1886,21 @@ export function MatchPayments({
               <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                 Tentatively
               </span>
-              <span>Temporarily Blocked by {match.tentativelyBlockedBy || "Admin"}</span>
+              <span>Blocked by {match.tentativelyBlockedBy || "Admin"}</span>
             </div>
+            <button
+              onClick={async () => {
+                if (!confirm("Remove tentative block and make this a regular match?")) return;
+                try {
+                  await store.updateMatch({ ...match, isTentative: false, tentativelyBlockedBy: "" });
+                } catch (err) {
+                  console.error("Failed to unblock", err);
+                }
+              }}
+              className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded border border-orange-500/30 transition whitespace-nowrap"
+            >
+              Unblock
+            </button>
           </div>
         )}
         <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
@@ -3350,8 +3361,8 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                           {m.matchType} • {m.time}
                                         </div>
                                         {m.isTentative && (
-                                          <span className="bg-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider animate-pulse ml-1 shrink-0">
-                                            Tentatively
+                                          <span className="bg-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider animate-pulse ml-1 shrink-0" title={`Blocked by ${m.tentativelyBlockedBy || "Admin"}`}>
+                                            Blocked{m.tentativelyBlockedBy ? ` · ${m.tentativelyBlockedBy}` : ""}
                                           </span>
                                         )}
                                       </div>
@@ -3437,8 +3448,8 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                 {m.matchType} • {m.time}
                               </div>
                               {m.isTentative && (
-                                <span className="bg-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider animate-pulse ml-1 shrink-0">
-                                  Tentatively
+                                <span className="bg-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider animate-pulse ml-1 shrink-0" title={`Blocked by ${m.tentativelyBlockedBy || "Admin"}`}>
+                                  Blocked{m.tentativelyBlockedBy ? ` · ${m.tentativelyBlockedBy}` : ""}
                                 </span>
                               )}
                             </div>
