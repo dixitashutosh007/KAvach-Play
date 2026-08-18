@@ -2667,7 +2667,7 @@ export function MatchPayments({
                       })}
 
                       {/* Universal: Change Fee Payer (sponsorship) */}
-                      {!payment.sponsoredBy && (
+                      {payment.status === "Unpaid" && !payment.sponsoredBy && (
                         <button
                           onClick={() => setFeePayerPicker({ paymentId: payment.id, playerName: player.name, fee, search: "" })}
                           className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
