@@ -132,7 +132,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                 allDues.push({
                    uid: pay.id,
                    type: 'match',
-                   amount: m.fee,
+                   amount: pay.feeOverride !== undefined ? pay.feeOverride : m.fee,
                    desc: `vs ${m.opponent} (${formatDate(m.date)})`,
                    groupKey: `match_${m.id}`,
                    groupTitle: `Match Fee: vs ${m.opponent} (${formatDate(m.date)})`,

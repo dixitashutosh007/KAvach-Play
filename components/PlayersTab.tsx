@@ -62,7 +62,7 @@ export function PlayersTab({
       .filter((p) => p.playerId === playerId && p.status === "Unpaid")
       .reduce((acc, p) => {
         const match = store.matches.find((m) => m.id === p.matchId);
-        return acc + (match?.fee || 0);
+        return acc + (p.feeOverride !== undefined ? p.feeOverride : (match?.fee || 0));
       }, 0);
     const otherDues = store.otherFees
       .filter((f) => f.playerId === playerId && f.status === "Unpaid")
@@ -492,7 +492,7 @@ function SquadPlayerDetails({
   let totalDue = 0;
   unpaidMatchPayments.forEach((p) => {
     const m = store.matches.find((mx) => mx.id === p.matchId);
-    if (m) totalDue += m.fee;
+    if (m) totalDue += p.feeOverride !== undefined ? p.feeOverride : m.fee;
   });
   unpaidOtherFees.forEach((f) => (totalDue += f.amount));
 
@@ -552,7 +552,7 @@ function SquadPlayerDetails({
                             Match vs {m.opponent} ({formatDate(m.date)})
                           </span>
                         </div>
-                        <span className="font-mono text-red-300">₹{m.fee}</span>
+                        <span className="font-mono text-red-300">₹{p.feeOverride !== undefined ? p.feeOverride : m.fee}</span>
                       </li>
                     ) : null;
                   })}
@@ -603,7 +603,7 @@ function SquadPlayerDetails({
                             Match vs {m.opponent} ({formatDate(m.date)})
                           </span>
                         </div>
-                        <span className="font-mono text-emerald-300 line-through">₹{m.fee}</span>
+                        <span className="font-mono text-emerald-300 line-through">₹{p.feeOverride !== undefined ? p.feeOverride : m.fee}</span>
                       </li>
                     ) : null;
                   })}

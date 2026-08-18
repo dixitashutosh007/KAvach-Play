@@ -117,7 +117,7 @@ export function PlayerFinanceView({
         type: "match",
         title: `vs ${match.opponent} at ${ground ? ground.name : 'Unknown Ground'}`,
         subtitle: `${formatDate(match.date)} • ${match.format}`,
-        amount: match.fee,
+        amount: p.feeOverride !== undefined ? p.feeOverride : match.fee,
         rawId: p.id,
         playerId: p.playerId,
         matchId: match.id,
@@ -1028,6 +1028,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           (p) => p.status === "Paid" && p.paymentMethod === "manual"
         ).length;
 
+        const getFee = (p: any) => p.feeOverride !== undefined ? p.feeOverride : match.fee;
         return {
           match,
           payments: paymentsForMatch,
@@ -1036,10 +1037,10 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           unpaidCount,
           razorpayPaidCount,
           manualPaidCount,
-          totalCollected: paidCount * match.fee,
-          razorpayCollected: razorpayPaidCount * match.fee,
-          manualCollected: manualPaidCount * match.fee,
-          totalDue: unpaidCount * match.fee,
+          totalCollected: paymentsForMatch.filter(p => p.status === "Paid").reduce((s, p) => s + getFee(p), 0),
+          razorpayCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod !== "manual").reduce((s, p) => s + getFee(p), 0),
+          manualCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod === "manual").reduce((s, p) => s + getFee(p), 0),
+          totalDue: paymentsForMatch.filter(p => p.status === "Unpaid").reduce((s, p) => s + getFee(p), 0),
           hasResults: playingCount > 0,
         };
       })

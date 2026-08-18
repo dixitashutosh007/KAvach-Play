@@ -29,7 +29,7 @@ export function AdminDashboard({
         if (p.status === "Unpaid") {
             const match = matches.find(m => m.id === p.matchId);
             if (match && match.result !== "Abandoned" && match.fee) {
-                matchDue += match.fee;
+                matchDue += p.feeOverride !== undefined ? p.feeOverride : match.fee;
                 duePlayers.add(p.playerId);
             }
         }
