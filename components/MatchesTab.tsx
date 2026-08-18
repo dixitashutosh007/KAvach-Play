@@ -2679,6 +2679,7 @@ export function MatchPayments({
                               target.id,
                               target.name,
                               fee,
+                              match.fee,
                             );
                           }}
                           className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"

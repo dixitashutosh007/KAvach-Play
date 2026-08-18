@@ -1568,15 +1568,52 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const clearFeeOverride = async (matchId: string, paymentId: string) => {
+    const payment = payments.find(
+      (p) => p.id === paymentId && p.matchId === matchId,
+    );
+    if (!payment) return;
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
+    const clearFields = {
+      feeOverride: deleteField(),
+      planTag: deleteField(),
+      sponsoredBy: deleteField(),
+      sponsoring: deleteField(),
+      updatedAt: serverTimestamp(),
+    };
+
+    if (payment.sponsoredBy) {
+      const sponsorPayment = payments.find(
+        (p) => p.matchId === matchId && p.playerId === payment.sponsoredBy,
+      );
+      if (sponsorPayment) {
+        const sponsorRef = doc(db, "matches", matchId, "payments", sponsorPayment.id);
+        const batch = writeBatch(db);
+        batch.update(docRef, { ...clearFields, status: "Unpaid" });
+        batch.update(sponsorRef, {
+          feeOverride: deleteField(),
+          sponsoring: deleteField(),
+          updatedAt: serverTimestamp(),
+        });
+        await batch.commit();
+        setPayments((prev) =>
+          prev.map((p) => {
+            if (p.id === paymentId && p.matchId === matchId) {
+              const { feeOverride, planTag, sponsoredBy, sponsoring, ...rest } = p;
+              return { ...rest, status: "Unpaid" as const, updatedAt: Timestamp.now() };
+            }
+            if (p.id === sponsorPayment.id && p.matchId === matchId) {
+              const { feeOverride, sponsoring, ...rest } = p;
+              return { ...rest, updatedAt: Timestamp.now() };
+            }
+            return p;
+          }),
+        );
+        return;
+      }
+    }
+
     try {
-      await updateDoc(docRef, {
-        feeOverride: deleteField(),
-        planTag: deleteField(),
-        sponsoredBy: deleteField(),
-        sponsoring: deleteField(),
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(docRef, clearFields);
       setPayments((prev) =>
         prev.map((p) => {
           if (p.id === paymentId && p.matchId === matchId) {
@@ -1598,6 +1635,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     targetPlayerId: string,
     targetPlayerName: string,
     sourceFee: number,
+    matchFee: number,
   ) => {
     const sourceRef = doc(db, "matches", matchId, "payments", sourcePaymentId);
     const targetPayment = payments.find(
@@ -1605,7 +1643,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     );
     if (!targetPayment) return;
     const targetRef = doc(db, "matches", matchId, "payments", targetPayment.id);
-    const newTargetFee = (targetPayment.feeOverride ?? sourceFee) + sourceFee;
+    const newTargetFee = (targetPayment.feeOverride ?? matchFee) + sourceFee;
     const batch = writeBatch(db);
     batch.update(sourceRef, {
       feeOverride: 0,
