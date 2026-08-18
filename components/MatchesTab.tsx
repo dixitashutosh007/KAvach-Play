@@ -1557,6 +1557,7 @@ export function MatchPayments({
   const [newComment, setNewComment] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [feePayerPicker, setFeePayerPicker] = useState<{ paymentId: string; playerName: string; fee: number; search: string } | null>(null);
   
   const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
   const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
@@ -2666,33 +2667,9 @@ export function MatchPayments({
                       })}
 
                       {/* Universal: Change Fee Payer (sponsorship) */}
-                      {payment.status === "Unpaid" && !payment.sponsoredBy && (
+                      {!payment.sponsoredBy && (
                         <button
-                          onClick={() => {
-                            const playingPlayers = matchPayments
-                              .filter((mp) => mp.status !== "Not Playing" && mp.playerId !== payment.playerId)
-                              .map((mp) => store.players.find((pl) => pl.id === mp.playerId))
-                              .filter((pl): pl is Player => !!pl);
-                            if (playingPlayers.length === 0) {
-                              alert("No other players in this match.");
-                              return;
-                            }
-                            const names = playingPlayers.map((pl, i) => `${i + 1}. ${pl.name}`).join("\n");
-                            const choice = prompt(`Who will pay ${player.name}'s fee (₹${fee})?\n${names}\n\nEnter number:`);
-                            if (!choice) return;
-                            const idx = parseInt(choice) - 1;
-                            const target = playingPlayers[idx];
-                            if (!target) { alert("Invalid selection."); return; }
-                            store.assignProxyPayment(
-                              match.id,
-                              payment.id,
-                              player.name,
-                              target.id,
-                              target.name,
-                              fee,
-                              match.fee,
-                            );
-                          }}
+                          onClick={() => setFeePayerPicker({ paymentId: payment.id, playerName: player.name, fee, search: "" })}
                           className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
                         >
                           <ArrowRightLeft className="w-3 h-3" />
@@ -2718,6 +2695,95 @@ export function MatchPayments({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Fee Payer Picker Modal */}
+      {feePayerPicker && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setFeePayerPicker(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-[#0f172a] rounded-xl border border-purple-500/30 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-glass-border flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-white text-sm">Change Fee Payer</h3>
+                <p className="text-[10px] text-white/50 mt-0.5">
+                  Who will pay <span className="text-purple-400 font-bold">{feePayerPicker.playerName}</span>&apos;s fee of ₹{feePayerPicker.fee}?
+                </p>
+              </div>
+              <button onClick={() => setFeePayerPicker(null)} className="p-1.5 hover:bg-white/10 rounded-full transition">
+                <X className="w-4 h-4 text-white/50" />
+              </button>
+            </div>
+            <div className="p-3">
+              <input
+                type="text"
+                placeholder="Search members..."
+                value={feePayerPicker.search}
+                onChange={(e) => setFeePayerPicker({ ...feePayerPicker, search: e.target.value })}
+                className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 mb-2"
+                autoFocus
+              />
+              <div className="max-h-[280px] overflow-y-auto custom-scrollbar space-y-1">
+                {store.players
+                  .filter((pl) => {
+                    const payment = matchPayments.find((mp) => mp.playerId === pl.id);
+                    const sourcePayment = matchPayments.find((mp) => mp.id === feePayerPicker.paymentId);
+                    if (!sourcePayment || pl.id === sourcePayment.playerId) return false;
+                    if (pl.disabled) return false;
+                    if (feePayerPicker.search) {
+                      return pl.name.toLowerCase().includes(feePayerPicker.search.toLowerCase());
+                    }
+                    return true;
+                  })
+                  .sort((a, b) => {
+                    const aInMatch = matchPayments.some((mp) => mp.playerId === a.id && mp.status !== "Not Playing");
+                    const bInMatch = matchPayments.some((mp) => mp.playerId === b.id && mp.status !== "Not Playing");
+                    if (aInMatch && !bInMatch) return -1;
+                    if (!aInMatch && bInMatch) return 1;
+                    return a.name.localeCompare(b.name);
+                  })
+                  .map((pl) => {
+                    const inMatch = matchPayments.some((mp) => mp.playerId === pl.id && mp.status !== "Not Playing");
+                    return (
+                      <button
+                        key={pl.id}
+                        onClick={() => {
+                          const sourcePayment = matchPayments.find((mp) => mp.id === feePayerPicker.paymentId);
+                          if (!sourcePayment) return;
+                          const sourcePlayer = store.players.find((p) => p.id === sourcePayment.playerId);
+                          store.assignProxyPayment(
+                            match.id,
+                            feePayerPicker.paymentId,
+                            sourcePlayer?.name || feePayerPicker.playerName,
+                            pl.id,
+                            pl.name,
+                            feePayerPicker.fee,
+                            match.fee,
+                          );
+                          setFeePayerPicker(null);
+                        }}
+                        className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-purple-500/15 transition flex items-center justify-between group"
+                      >
+                        <div>
+                          <span className="text-sm font-semibold text-white group-hover:text-purple-300 transition">{pl.name}</span>
+                          {inMatch && (
+                            <span className="ml-2 text-[9px] font-bold uppercase tracking-widest text-emerald-400/70 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                              In Match
+                            </span>
+                          )}
+                        </div>
+                        <ArrowRightLeft className="w-3.5 h-3.5 text-purple-400/0 group-hover:text-purple-400/100 transition" />
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
           </div>
         </div>
       )}
