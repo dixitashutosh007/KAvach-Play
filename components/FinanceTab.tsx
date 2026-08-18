@@ -1049,8 +1049,8 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
             feeOffsetCount++;
           }
         }
-        const matchFeePaid = match.fee * playingCount;
-        const percentRecovered = matchFeePaid > 0 ? Math.round((feeCollected * 100) / matchFeePaid) : 0;
+        const matchFeePaid = match.matchFeeBudget ?? 0;
+        const percentRecovered = matchFeePaid > 0 ? Math.round((feeCollected * 100) / matchFeePaid) : null;
 
         return {
           match,
@@ -1125,7 +1125,10 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
             <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
               Match Fee Accounting
             </h3>
-            <div className="overflow-x-auto">
+            {(() => {
+              const showPct = collectedMatches.some((d) => d.matchFeePaid > 0);
+              return (
+              <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-glass-border text-[10px] uppercase tracking-widest text-white/50">
@@ -1133,7 +1136,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Match Fee</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Collected</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Offset</th>
-                    <th className="py-2 pl-3 font-bold whitespace-nowrap text-right">% Recovered</th>
+                    {showPct && <th className="py-2 pl-3 font-bold whitespace-nowrap text-right">% Recovered</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1146,8 +1149,19 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                           <div className="text-[10px] text-white/40">{ground?.name || "—"}</div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          <div className="text-white font-semibold">₹{data.match.fee}</div>
-                          <div className="text-[10px] text-white/40">{data.playingCount} players</div>
+                          <input
+                            type="number"
+                            placeholder="Enter"
+                            defaultValue={data.match.matchFeeBudget ?? ""}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              const num = val ? parseInt(val, 10) : undefined;
+                              if (num === data.match.matchFeeBudget) return;
+                              store.updateMatch({ ...data.match, matchFeeBudget: num } as Match);
+                            }}
+                            className="w-20 bg-white/5 border border-glass-border rounded px-2 py-1 text-right text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-accent/50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          />
+                          <div className="text-[10px] text-white/40 mt-0.5">₹{data.match.fee}/player · {data.playingCount}p</div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
                           <div className="text-emerald-400 font-semibold">₹{data.feeCollected}</div>
@@ -1157,11 +1171,17 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                           <div className="text-amber-400 font-semibold">₹{data.feeOffset}</div>
                           <div className="text-[10px] text-white/40">({data.feeOffsetCount})</div>
                         </td>
-                        <td className="py-2.5 pl-3 text-right whitespace-nowrap">
-                          <span className={`font-bold ${data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}`}>
-                            {data.percentRecovered}%
-                          </span>
-                        </td>
+                        {showPct && (
+                          <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                            {data.percentRecovered !== null ? (
+                              <span className={`font-bold ${data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}`}>
+                                {data.percentRecovered}%
+                              </span>
+                            ) : (
+                              <span className="text-white/30">—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -1179,14 +1199,16 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <div className="text-amber-400 font-bold">₹{collectedMatches.reduce((s, d) => s + d.feeOffset, 0)}</div>
                       </td>
-                      <td className="py-2.5 pl-3 text-right whitespace-nowrap">
-                        {(() => {
-                          const totalPaid = collectedMatches.reduce((s, d) => s + d.matchFeePaid, 0);
-                          const totalCollected = collectedMatches.reduce((s, d) => s + d.feeCollected, 0);
-                          const pct = totalPaid > 0 ? Math.round((totalCollected * 100) / totalPaid) : 0;
-                          return <span className={`font-bold ${pct >= 80 ? "text-emerald-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>;
-                        })()}
-                      </td>
+                      {showPct && (
+                        <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                          {(() => {
+                            const totalPaid = collectedMatches.reduce((s, d) => s + d.matchFeePaid, 0);
+                            const totalCollected = collectedMatches.reduce((s, d) => s + d.feeCollected, 0);
+                            const pct = totalPaid > 0 ? Math.round((totalCollected * 100) / totalPaid) : 0;
+                            return <span className={`font-bold ${pct >= 80 ? "text-emerald-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>;
+                          })()}
+                        </td>
+                      )}
                     </tr>
                   </tfoot>
                 )}
@@ -1197,6 +1219,8 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
                 </div>
               )}
             </div>
+              );
+            })()}
           </div>
         </div>
       )}

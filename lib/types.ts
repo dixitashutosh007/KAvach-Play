@@ -190,6 +190,7 @@ export type Match = {
   // /api/calendar/sync route after the event is created so later edits
   // and deletes map back to the right event.
   googleEventId?: string;
+  matchFeeBudget?: number;
   createdAt?: any;
   updatedAt?: any;
 };
