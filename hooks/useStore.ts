@@ -1514,6 +1514,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await refreshFeePlans();
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `feePlans/${id}`);
+      throw err;
     }
   };
 
@@ -1524,6 +1525,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await refreshFeePlans();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `feePlans/${planId}`);
+      throw err;
     }
   };
 
@@ -1534,6 +1536,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await refreshFeePlans();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `feePlans/${planId}`);
+      throw err;
     }
   };
 

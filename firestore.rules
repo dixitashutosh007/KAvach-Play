@@ -254,9 +254,9 @@ service cloud.firestore {
 
     match /feePlans/{planId} {
       allow read: if isSignedIn();
-      allow create: if isSuperAdmin();
-      allow update: if isSuperAdmin();
-      allow delete: if isSuperAdmin();
+      allow create: if isSuperAdmin() || isFinanceAdmin();
+      allow update: if isSuperAdmin() || isFinanceAdmin();
+      allow delete: if isSuperAdmin() || isFinanceAdmin();
     }
 
     match /{path=**}/payments/{paymentId} {
