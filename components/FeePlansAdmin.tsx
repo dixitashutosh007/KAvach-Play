@@ -7,7 +7,6 @@ const PLAN_TYPES: { value: FeePlan["type"]; label: string; desc: string }[] = [
   { value: "fixed", label: "Fixed Fee", desc: "Override match fee with a fixed amount per match" },
   { value: "monthly", label: "Monthly Subscription", desc: "Monthly amount — offsets match fees when active" },
   { value: "sponsored", label: "Club Sponsored", desc: "Fee set to ₹0 (club pays)" },
-  { value: "proxy", label: "Proxy", desc: "Another player pays on behalf of this player" },
 ];
 
 export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> }) {
@@ -170,9 +169,7 @@ export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> })
                   ? `₹${plan.feeAmount} / match`
                   : plan.type === "monthly"
                     ? `₹${plan.monthlyAmount} / month`
-                    : plan.type === "sponsored"
-                      ? "₹0 (Club Sponsored)"
-                      : "Proxy";
+                    : "₹0 (Club Sponsored)";
               return (
                 <div
                   key={plan.id}
@@ -190,9 +187,7 @@ export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> })
                           ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
                           : plan.type === "monthly"
                             ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                            : plan.type === "sponsored"
-                              ? "bg-green-500/10 text-green-400 border-green-500/20"
-                              : "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                            : "bg-green-500/10 text-green-400 border-green-500/20"
                       }`}>
                         {plan.type}
                       </span>

@@ -55,6 +55,8 @@ import {
   MessageSquare,
   Trash2,
   X,
+  Undo2,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, FC } from "react";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
@@ -2590,10 +2592,11 @@ export function MatchPayments({
                     </div>
                   </div>
 
-                  {/* Fee plan quick-apply for admin on unpaid players with plans */}
-                  {isAdmin && payment.status === "Unpaid" && playerPlans.length > 0 && !hasOverride && (
+                  {/* Admin fee actions: plan quick-apply, change fee payer, undo */}
+                  {isAdmin && (
                     <div className="flex flex-wrap gap-1.5 mt-1">
-                      {playerPlans.map((plan: FeePlan) => {
+                      {/* Plan quick-apply for unpaid players without override */}
+                      {payment.status === "Unpaid" && !hasOverride && playerPlans.map((plan: FeePlan) => {
                         if (plan.type === "fixed") {
                           return (
                             <button
@@ -2630,40 +2633,6 @@ export function MatchPayments({
                             </button>
                           );
                         }
-                        if (plan.type === "proxy") {
-                          return (
-                            <button
-                              key={plan.id}
-                              onClick={() => {
-                                const playingPlayers = matchPayments
-                                  .filter((mp) => mp.status !== "Not Playing" && mp.playerId !== payment.playerId)
-                                  .map((mp) => store.players.find((pl) => pl.id === mp.playerId))
-                                  .filter((pl): pl is Player => !!pl);
-                                if (playingPlayers.length === 0) {
-                                  alert("No other players in this match to assign proxy to.");
-                                  return;
-                                }
-                                const names = playingPlayers.map((pl, i) => `${i + 1}. ${pl.name}`).join("\n");
-                                const choice = prompt(`Assign ${player.name}'s fee to:\n${names}\n\nEnter number:`);
-                                if (!choice) return;
-                                const idx = parseInt(choice) - 1;
-                                const target = playingPlayers[idx];
-                                if (!target) { alert("Invalid selection."); return; }
-                                store.assignProxyPayment(
-                                  match.id,
-                                  payment.id,
-                                  player.name,
-                                  target.id,
-                                  target.name,
-                                  match.fee,
-                                );
-                              }}
-                              className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition"
-                            >
-                              {plan.name}
-                            </button>
-                          );
-                        }
                         if (plan.type === "monthly") {
                           return (
                             <button
@@ -2684,6 +2653,54 @@ export function MatchPayments({
                         }
                         return null;
                       })}
+
+                      {/* Universal: Change Fee Payer (sponsorship) */}
+                      {payment.status === "Unpaid" && !payment.sponsoredBy && (
+                        <button
+                          onClick={() => {
+                            const playingPlayers = matchPayments
+                              .filter((mp) => mp.status !== "Not Playing" && mp.playerId !== payment.playerId)
+                              .map((mp) => store.players.find((pl) => pl.id === mp.playerId))
+                              .filter((pl): pl is Player => !!pl);
+                            if (playingPlayers.length === 0) {
+                              alert("No other players in this match.");
+                              return;
+                            }
+                            const names = playingPlayers.map((pl, i) => `${i + 1}. ${pl.name}`).join("\n");
+                            const choice = prompt(`Who will pay ${player.name}'s fee (₹${fee})?\n${names}\n\nEnter number:`);
+                            if (!choice) return;
+                            const idx = parseInt(choice) - 1;
+                            const target = playingPlayers[idx];
+                            if (!target) { alert("Invalid selection."); return; }
+                            store.assignProxyPayment(
+                              match.id,
+                              payment.id,
+                              player.name,
+                              target.id,
+                              target.name,
+                              fee,
+                            );
+                          }}
+                          className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
+                        >
+                          <ArrowRightLeft className="w-3 h-3" />
+                          Change Fee Payer
+                        </button>
+                      )}
+
+                      {/* Undo fee override */}
+                      {hasOverride && (
+                        <button
+                          onClick={() => {
+                            if (!confirm(`Reset ${player.name}'s fee back to standard ₹${match.fee}?`)) return;
+                            store.clearFeeOverride(match.id, payment.id);
+                          }}
+                          className="text-[9px] font-bold uppercase tracking-widest bg-white/10 text-white/60 border border-white/15 px-2 py-1 rounded hover:bg-white/20 hover:text-white transition flex items-center gap-1"
+                        >
+                          <Undo2 className="w-3 h-3" />
+                          Reset Fee
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

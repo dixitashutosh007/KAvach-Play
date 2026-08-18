@@ -52,6 +52,7 @@ import {
   QueryDocumentSnapshot,
   DocumentData,
   writeBatch,
+  deleteField,
 } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
@@ -1545,19 +1546,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     paymentId: string,
     feeOverride: number,
     planTag: string,
-    sponsoredBy?: string,
-    sponsoring?: string,
   ) => {
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
       const updates: any = {
         feeOverride,
         planTag,
-        status: "Paid" as const,
         updatedAt: serverTimestamp(),
       };
-      if (sponsoredBy) updates.sponsoredBy = sponsoredBy;
-      if (sponsoring) updates.sponsoring = sponsoring;
       await updateDoc(docRef, updates);
       setPayments((prev) =>
         prev.map((p) =>
@@ -1571,13 +1567,37 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const clearFeeOverride = async (matchId: string, paymentId: string) => {
+    const docRef = doc(db, "matches", matchId, "payments", paymentId);
+    try {
+      await updateDoc(docRef, {
+        feeOverride: deleteField(),
+        planTag: deleteField(),
+        sponsoredBy: deleteField(),
+        sponsoring: deleteField(),
+        updatedAt: serverTimestamp(),
+      });
+      setPayments((prev) =>
+        prev.map((p) => {
+          if (p.id === paymentId && p.matchId === matchId) {
+            const { feeOverride, planTag, sponsoredBy, sponsoring, ...rest } = p;
+            return { ...rest, updatedAt: Timestamp.now() };
+          }
+          return p;
+        }),
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `payments/${paymentId}`);
+    }
+  };
+
   const assignProxyPayment = async (
     matchId: string,
     sourcePaymentId: string,
     sourcePlayerName: string,
     targetPlayerId: string,
     targetPlayerName: string,
-    matchFee: number,
+    sourceFee: number,
   ) => {
     const sourceRef = doc(db, "matches", matchId, "payments", sourcePaymentId);
     const targetPayment = payments.find(
@@ -1585,6 +1605,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     );
     if (!targetPayment) return;
     const targetRef = doc(db, "matches", matchId, "payments", targetPayment.id);
+    const newTargetFee = (targetPayment.feeOverride ?? sourceFee) + sourceFee;
     const batch = writeBatch(db);
     batch.update(sourceRef, {
       feeOverride: 0,
@@ -1594,8 +1615,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       updatedAt: serverTimestamp(),
     });
     batch.update(targetRef, {
-      feeOverride: (targetPayment.feeOverride ?? matchFee) + matchFee,
-      sponsoring: `On behalf of ${sourcePlayerName}`,
+      feeOverride: newTargetFee,
+      sponsoring: `Paying for ${sourcePlayerName}`,
       updatedAt: serverTimestamp(),
     });
     try {
@@ -1606,7 +1627,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
             return { ...p, feeOverride: 0, planTag: `Sponsored by ${targetPlayerName}`, sponsoredBy: targetPlayerId, status: "Paid" as const };
           }
           if (p.id === targetPayment.id && p.matchId === matchId) {
-            return { ...p, feeOverride: (targetPayment.feeOverride ?? matchFee) + matchFee, sponsoring: `On behalf of ${sourcePlayerName}` };
+            return { ...p, feeOverride: newTargetFee, sponsoring: `Paying for ${sourcePlayerName}` };
           }
           return p;
         }),
@@ -2026,6 +2047,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     updateFeePlan,
     deleteFeePlan,
     applyFeePlanToPayment,
+    clearFeeOverride,
     assignProxyPayment,
     outOfPlays,
     addOutOfPlay,

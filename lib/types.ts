@@ -309,7 +309,7 @@ export type MatchPayment = {
 export type FeePlan = {
   id: string;
   name: string;
-  type: "fixed" | "monthly" | "sponsored" | "proxy";
+  type: "fixed" | "monthly" | "sponsored";
   feeAmount?: number;
   monthlyAmount?: number;
   isActive?: boolean;
