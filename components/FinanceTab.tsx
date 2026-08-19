@@ -1099,7 +1099,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           const active = subTab === tab;
           const labels: Record<string, string> = {
             matches: "Match Fees",
-            razor: "Razor",
+            razor: "Transactions",
             wix: "Wix",
             fee: "Other Fees",
           };

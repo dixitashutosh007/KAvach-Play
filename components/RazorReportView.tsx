@@ -2,12 +2,15 @@ import { useState, useMemo } from "react";
 import { useStore } from "@/hooks/useStore";
 import { formatDate } from "@/lib/utils";
 
+type TxnChannel = "razorpay" | "offset" | "studio";
+
 export default function RazorReportView({
   store,
 }: {
   store: ReturnType<typeof useStore>;
 }) {
   const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState<TxnChannel | "all">("all");
   const itemsPerPage = 10;
 
   const transactions = useMemo(() => {
@@ -17,28 +20,30 @@ export default function RazorReportView({
       name: string;
       product: string;
       amount: number;
+      channel: TxnChannel;
     };
 
     const list: Transaction[] = [];
 
-    // Match Payments (Paid)
     store.payments
       .filter((p) => p.status === "Paid")
       .forEach((p) => {
         const match = store.matches.find((m) => m.id === p.matchId);
         const player = store.players.find((pl) => pl.id === p.playerId);
         if (match && player) {
+          const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+          const isGateway = p.paymentMethod !== "manual" && !p.sponsoredBy;
           list.push({
             id: `match_pay_${p.id}`,
             date: p.updatedAt?.seconds || 0,
             name: player.name,
             product: `Match Fee: ${match.opponent}`,
-            amount: match.fee,
+            amount: effectiveFee,
+            channel: isGateway ? "razorpay" : "offset",
           });
         }
       });
 
-    // Other Fees (Paid)
     store.otherFees
       .filter((f) => f.status === "Paid")
       .forEach((f) => {
@@ -50,11 +55,11 @@ export default function RazorReportView({
             name: player.name,
             product: `Other Fee: ${f.title}`,
             amount: f.amount,
+            channel: "offset",
           });
         }
       });
 
-    // Studio Memberships (Subscription History)
     store.subscriptionHistory?.forEach((h) => {
       const player = store.players.find((pl) => pl.id === h.playerId);
       if (player && h.paidAmount > 0) {
@@ -62,13 +67,13 @@ export default function RazorReportView({
           id: `sub_${h.id}`,
           date: h.createdAt?.seconds || 0,
           name: player.name,
-          product: `Studio Plan: ${h.planName}`,
+          product: `Studio: ${h.planName}`,
           amount: h.paidAmount,
+          channel: "studio",
         });
       }
     });
 
-    // Shop Merchandise Orders (Paid)
     store.merchOrders?.filter((o) => o.paymentStatus === "Paid").forEach((o) => {
       list.push({
         id: `merch_${o.id}`,
@@ -76,10 +81,10 @@ export default function RazorReportView({
         name: o.playerName,
         product: `Shop: ${o.merchName}`,
         amount: o.price,
+        channel: o.isManual ? "offset" : "razorpay",
       });
     });
 
-    // Sort newest first
     return list.sort((a, b) => b.date - a.date);
   }, [
     store.payments,
@@ -90,33 +95,91 @@ export default function RazorReportView({
     store.players,
   ]);
 
-  const totalPages = Math.ceil(transactions.length / itemsPerPage);
-  const currentTransactions = transactions.slice(
+  const filtered = filter === "all" ? transactions : transactions.filter((t) => t.channel === filter);
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const currentTransactions = filtered.slice(
     (page - 1) * itemsPerPage,
     page * itemsPerPage,
   );
+
+  const gatewayTotal = transactions.filter((t) => t.channel === "razorpay").reduce((s, t) => s + t.amount, 0);
+  const offsetTotal = transactions.filter((t) => t.channel === "offset").reduce((s, t) => s + t.amount, 0);
+  const studioTotal = transactions.filter((t) => t.channel === "studio").reduce((s, t) => s + t.amount, 0);
 
   const formatSecTime = (seconds: number) => {
     if (!seconds) return "Unknown";
     return formatDate(new Date(seconds * 1000).toISOString(), "TBD");
   };
 
+  const channelBadge = (ch: TxnChannel) => {
+    switch (ch) {
+      case "razorpay":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-1.5 py-0.5 rounded">Via Razorpay</span>;
+      case "offset":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-red-400 bg-red-500/15 border border-red-500/25 px-1.5 py-0.5 rounded">Offset</span>;
+      case "studio":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-blue-400 bg-blue-500/15 border border-blue-500/25 px-1.5 py-0.5 rounded">Studio</span>;
+    }
+  };
+
+  const amountColor = (ch: TxnChannel) => {
+    switch (ch) {
+      case "razorpay": return "text-emerald-400";
+      case "offset": return "text-red-400";
+      case "studio": return "text-blue-400";
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-bold tracking-tight text-white">
-          Razor Transactions Report
+          Transactions
         </h2>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
-          Total Revenue:{" "}
-          <span className="font-mono ml-1">
-            ₹{transactions.reduce((acc, t) => acc + t.amount, 0)}
-          </span>
+        <div className="flex gap-2 flex-wrap">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+            Gateway: <span className="font-mono ml-1">₹{gatewayTotal}</span>
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-red-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+            Offset: <span className="font-mono ml-1">₹{offsetTotal}</span>
+          </div>
+          {studioTotal > 0 && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+              Studio: <span className="font-mono ml-1">₹{studioTotal}</span>
+            </div>
+          )}
         </div>
       </div>
 
+      <div className="flex gap-1.5">
+        {(["all", "razorpay", "offset", "studio"] as const).map((f) => {
+          const active = filter === f;
+          const labels: Record<string, string> = { all: "All", razorpay: "Via Razorpay", offset: "Offset", studio: "Studio" };
+          const counts: Record<string, number> = {
+            all: transactions.length,
+            razorpay: transactions.filter((t) => t.channel === "razorpay").length,
+            offset: transactions.filter((t) => t.channel === "offset").length,
+            studio: transactions.filter((t) => t.channel === "studio").length,
+          };
+          if (f === "studio" && counts.studio === 0) return null;
+          return (
+            <button
+              key={f}
+              onClick={() => { setFilter(f); setPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
+                active
+                  ? "bg-white/15 text-white border border-white/20"
+                  : "bg-white/5 text-white/50 border border-transparent hover:text-white hover:bg-white/10"
+              }`}
+            >
+              {labels[f]} ({counts[f]})
+            </button>
+          );
+        })}
+      </div>
+
       <div className="glass rounded-xl overflow-hidden border border-glass-border">
-        {transactions.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="p-8 text-center text-white/50 italic text-sm">
             No transactions found.
           </div>
@@ -125,9 +188,10 @@ export default function RazorReportView({
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-black/40 border-b border-glass-border text-[10px] uppercase tracking-widest text-white/60">
                 <tr>
-                  <th className="px-4 py-3 font-bold">Date / Time</th>
-                  <th className="px-4 py-3 font-bold">Player Name</th>
-                  <th className="px-4 py-3 font-bold">Product / Context</th>
+                  <th className="px-4 py-3 font-bold">Date</th>
+                  <th className="px-4 py-3 font-bold">Player</th>
+                  <th className="px-4 py-3 font-bold">Description</th>
+                  <th className="px-4 py-3 font-bold">Type</th>
                   <th className="px-4 py-3 font-bold text-right">Amount</th>
                 </tr>
               </thead>
@@ -149,7 +213,10 @@ export default function RazorReportView({
                     >
                       {t.product}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-400">
+                    <td className="px-4 py-3">
+                      {channelBadge(t.channel)}
+                    </td>
+                    <td className={`px-4 py-3 text-right font-mono font-bold ${amountColor(t.channel)}`}>
                       ₹{t.amount}
                     </td>
                   </tr>
