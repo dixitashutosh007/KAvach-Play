@@ -293,6 +293,7 @@ export type MatchPayment = {
   guestName?: string;
   status: "Paid" | "Unpaid" | "Not Playing" | "Failed";
   paymentMethod?: "razorpay" | "manual";
+  manualBy?: string;
   availability?:
     | "Yes"
     | "No"
@@ -356,7 +357,9 @@ export type OtherFee = {
   title: string;
   amount: number;
   comment?: string;
-  status: "Paid" | "Unpaid" | "Failed";
+  status: "Paid" | "Unpaid" | "Failed" | "Cancelled";
+  cancelledBy?: string;
+  cancelledAt?: any;
   createdAt?: any;
   updatedAt?: any;
 };

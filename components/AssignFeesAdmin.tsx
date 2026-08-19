@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
+import { useAuth } from "./AuthProvider";
 import { MessageSquare } from "lucide-react";
 import { formatDate, dbToInputDate } from "@/lib/utils";
 
@@ -8,6 +9,8 @@ export function AssignFeesAdmin({
 }: {
   store: ReturnType<typeof useStore>;
 }) {
+  const { user } = useAuth();
+  const adminName = store.appUsers.find((u) => u.id === user?.uid)?.name || "Admin";
   const [feeType, setFeeType] = useState<"match" | "other">("match");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [selectedMatch, setSelectedMatch] = useState<string>("");
@@ -478,7 +481,7 @@ export function AssignFeesAdmin({
                                 "Are you sure you want to delete this fee?",
                               )
                             ) {
-                              store.deleteOtherFee(fee.playerId, fee.id);
+                              store.deleteOtherFee(fee.playerId, fee.id, adminName);
                             }
                           }}
                           className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition border border-red-500/20 whitespace-nowrap"

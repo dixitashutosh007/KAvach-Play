@@ -33,11 +33,20 @@ export default function RazorReportView({
         if (match && player) {
           const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
           const isGateway = p.paymentMethod !== "manual" && !p.sponsoredBy;
+          let product: string;
+          if (isGateway) {
+            product = `Match Fee: vs ${match.opponent}`;
+          } else if (p.sponsoredBy) {
+            const sponsor = store.players.find((pl) => pl.id === p.sponsoredBy);
+            product = `Sponsored by ${sponsor?.name || "Unknown"} — vs ${match.opponent}`;
+          } else {
+            product = `Player Offset${p.manualBy ? ` by ${p.manualBy}` : ""} — vs ${match.opponent}`;
+          }
           list.push({
             id: `match_pay_${p.id}`,
             date: p.updatedAt?.seconds || 0,
             name: player.name,
-            product: `Match Fee: ${match.opponent}`,
+            product,
             amount: effectiveFee,
             channel: isGateway ? "razorpay" : "offset",
           });
@@ -45,15 +54,21 @@ export default function RazorReportView({
       });
 
     store.otherFees
-      .filter((f) => f.status === "Paid")
+      .filter((f) => f.status === "Paid" || f.status === "Cancelled")
       .forEach((f) => {
         const player = store.players.find((pl) => pl.id === f.playerId);
         if (player) {
+          let product: string;
+          if (f.status === "Cancelled") {
+            product = `${f.title} Deleted${f.cancelledBy ? ` by ${f.cancelledBy}` : ""}`;
+          } else {
+            product = `${f.title}${f.comment ? ` — ${f.comment}` : ""}`;
+          }
           list.push({
             id: `other_fee_${f.id}`,
-            date: f.updatedAt?.seconds || 0,
+            date: (f.status === "Cancelled" ? f.cancelledAt?.seconds : f.updatedAt?.seconds) || 0,
             name: player.name,
-            product: `Other Fee: ${f.title}`,
+            product,
             amount: f.amount,
             channel: "offset",
           });
@@ -67,7 +82,7 @@ export default function RazorReportView({
           id: `sub_${h.id}`,
           date: h.createdAt?.seconds || 0,
           name: player.name,
-          product: `Studio: ${h.planName}`,
+          product: `Studio Plan: ${h.planName} — enrolled by ${h.adminName}`,
           amount: h.paidAmount,
           channel: "studio",
         });

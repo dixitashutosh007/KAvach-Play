@@ -1258,17 +1258,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     status: MatchPayment["status"],
     matchId: string,
     availability?: MatchPayment["availability"],
-    paymentMethod?: "manual" | "razorpay"
+    paymentMethod?: "manual" | "razorpay",
+    manualBy?: string,
   ) => {
-    // Optimistic fallback update for React UI since we don't sync subcollections with onSnapshot above completely perfectly (we only fetch on match update)
     setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}) } : p)),
+      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}) } : p)),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
       const updateData: any = { status, updatedAt: serverTimestamp() };
       if (availability) updateData.availability = availability;
       if (paymentMethod) updateData.paymentMethod = paymentMethod;
+      if (manualBy) updateData.manualBy = manualBy;
       await updateDoc(docRef, updateData);
 
       const payment = payments.find((p) => p.id === paymentId);
@@ -1456,10 +1457,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
-  const deleteOtherFee = async (playerId: string, feeId: string) => {
+  const deleteOtherFee = async (playerId: string, feeId: string, cancelledBy?: string) => {
     const docRef = doc(db, "players", playerId, "otherFees", feeId);
     try {
-      await deleteDoc(docRef);
+      if (cancelledBy) {
+        await updateDoc(docRef, { status: "Cancelled", cancelledBy, cancelledAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        setOtherFees((prev) => prev.map((f) => f.id === feeId ? { ...f, status: "Cancelled" as const, cancelledBy } : f));
+      } else {
+        await deleteDoc(docRef);
+      }
     } catch (err) {
       handleFirestoreError(
         err,

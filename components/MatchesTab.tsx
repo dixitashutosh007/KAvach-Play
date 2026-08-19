@@ -2562,7 +2562,8 @@ export function MatchPayments({
                                 e.target.value as any,
                                 match.id,
                                 undefined,
-                                e.target.value === "Paid" ? "manual" : undefined
+                                e.target.value === "Paid" ? "manual" : undefined,
+                                e.target.value === "Paid" ? (appUser?.name || "Admin") : undefined,
                               )
                             }
                             className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
