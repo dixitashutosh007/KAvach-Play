@@ -5,6 +5,11 @@ import { Page, expect } from "@playwright/test";
  * Requires ADMIN_EMAIL and ADMIN_PASSWORD env vars.
  *
  * Login screen flow: Phone form → "Email / Google" → "Log in with Email & Password" → fill → Submit
+ *
+ * IMPORTANT: The test admin account MUST have pre-existing Firestore documents:
+ *   - appUsers/{uid} with role: "admin"
+ *   - players/{uid} with at least { name, mobile, inviteStatus: "Accepted" }
+ * Without these, the app shows a registration form instead of the main UI.
  */
 export async function signInAsAdmin(page: Page) {
   const email = process.env.ADMIN_EMAIL;
@@ -17,7 +22,7 @@ export async function signInAsAdmin(page: Page) {
 
   await page.goto("/");
 
-  // Wait for the login screen to render (use heading role to avoid strict mode violation)
+  // Wait for the login screen to render
   await expect(page.getByRole("heading", { name: /kavach play/i })).toBeVisible({ timeout: 15_000 });
 
   // Step 1: Click "Email / Google" to leave the phone OTP form
@@ -40,26 +45,44 @@ export async function signInAsAdmin(page: Page) {
   // Step 4: Submit
   await page.locator('[data-testid="submit-login"]').click();
 
-  // Step 5: Wait for the app to load past the login screen
-  await expect(
-    page.locator("main, [data-testid='main-tabs'], [data-testid='app-loaded']")
-  ).toBeVisible({ timeout: 30_000 });
+  // Step 5: Wait for one of the post-login states:
+  //   - main app (success — admin has Firestore docs)
+  //   - registration form (admin account missing Firestore docs)
+  //   - auth error (wrong credentials)
+  const mainApp = page.locator("main");
+  const registrationForm = page.getByText(/first time here/i);
+  const authError = page.getByText(/failed|error|invalid/i);
+
+  const result = await Promise.race([
+    mainApp.waitFor({ timeout: 30_000 }).then(() => "main" as const),
+    registrationForm.waitFor({ timeout: 30_000 }).then(() => "registration" as const),
+    authError.waitFor({ timeout: 30_000 }).then(() => "error" as const),
+  ]);
+
+  if (result === "registration") {
+    throw new Error(
+      "Admin test account landed on registration form. " +
+      "This means the account is missing Firestore documents. " +
+      "Create appUsers/{uid} with role:'admin' AND players/{uid} with " +
+      "name, mobile, and inviteStatus:'Accepted' in Firestore."
+    );
+  }
+
+  if (result === "error") {
+    throw new Error(
+      "Login failed — check ADMIN_EMAIL and ADMIN_PASSWORD env vars. " +
+      "The account must exist in Firebase Authentication with email/password sign-in."
+    );
+  }
+
+  // result === "main" — we're in the app
 }
 
 /**
  * Wait for the main app to be fully loaded (past loading/splash screens).
  */
 export async function waitForAppReady(page: Page) {
-  await page.waitForSelector("main, [data-testid='main-tabs']", {
-    timeout: 30_000,
-  });
-  // Wait for any loading overlay to disappear
-  await page
-    .waitForFunction(
-      () => !document.querySelector('[data-testid="loading-screen"]'),
-      { timeout: 15_000 }
-    )
-    .catch(() => {});
+  await page.waitForSelector("main", { timeout: 30_000 });
 }
 
 /**
