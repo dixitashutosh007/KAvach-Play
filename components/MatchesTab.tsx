@@ -59,7 +59,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, FC } from "react";
-import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -1774,7 +1774,8 @@ export function MatchPayments({
 
     try {
       if (addingNew) {
-        const existing = store.players.find((p) => p.mobile === newPlayerMobile);
+        const normalizedNewMobile = normalizeIndianMobile(newPlayerMobile);
+        const existing = store.players.find((p) => normalizeIndianMobile(p.mobile) === normalizedNewMobile);
         let pId = "";
         if (existing) {
           pId = existing.id;

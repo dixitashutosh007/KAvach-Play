@@ -327,6 +327,17 @@ export default function Home() {
         })
       : null;
 
+  const existingPlayerWithSameEmail =
+    !isMobileAuth && user?.email
+      ? store.players.find((p) => {
+          if (!p.email || p.disabled || p.mergedInto) return false;
+          return (
+            p.email.trim().toLowerCase() === user.email!.trim().toLowerCase() &&
+            p.id !== user?.uid
+          );
+        })
+      : null;
+
   // Auto-accept synced players who are Unverified
   useEffect(() => {
     if (
@@ -372,15 +383,14 @@ export default function Home() {
 
 
   const handleSyncAccount = async () => {
-    if (!user || !existingPlayerWithSamePhone) return;
+    const existingMatch = existingPlayerWithSamePhone || existingPlayerWithSameEmail;
+    if (!user || !existingMatch) return;
     setIsRegistering(true);
     try {
-      // Find old appUsers doc to preserve roles if necessary
-      const oldUserDoc = doc(db, "appUsers", existingPlayerWithSamePhone.id);
+      const oldUserDoc = doc(db, "appUsers", existingMatch.id);
       const oldUserSnap = await getDoc(oldUserDoc);
       const oldUserData = oldUserSnap.exists() ? oldUserSnap.data() : {};
 
-      // Create the user profile reference using their NEW auth user.uid
       const userDoc = doc(db, "appUsers", user.uid);
       const userSnap = await getDoc(userDoc);
 
@@ -388,39 +398,33 @@ export default function Home() {
         await setDoc(userDoc, {
           ...oldUserData,
           email:
-            existingPlayerWithSamePhone.email ||
+            existingMatch.email ||
             user.email ||
             oldUserData.email ||
             "",
           name:
-            existingPlayerWithSamePhone.name ||
+            existingMatch.name ||
             user.displayName ||
             oldUserData.name ||
             "",
           photoURL: user.photoURL || oldUserData.photoURL || "",
-          role: oldUserData.role || "player", // preserve old role
-          mobile: user.phoneNumber || existingPlayerWithSamePhone.mobile || "",
-          isStudioMember: existingPlayerWithSamePhone.isStudioMember || false,
+          role: oldUserData.role || "player",
+          mobile: user.phoneNumber || existingMatch.mobile || "",
+          isStudioMember: existingMatch.isStudioMember || false,
         });
       } else {
-        // If the user already had a document, just make sure photoURL is somewhat preserved if they had one
         if (user.photoURL && !userSnap.data().photoURL) {
           await updateDoc(userDoc, { photoURL: user.photoURL });
         }
       }
 
-      // Instead of duplicating the old player, we just tell the old player document that
-      // we are the authenticating UID for it.
-      // Firestore rules have been updated to support `isSelf` via authUid field.
-      const playerDoc = doc(db, "players", existingPlayerWithSamePhone.id);
+      const playerDoc = doc(db, "players", existingMatch.id);
       await updateDoc(playerDoc, {
         authUid: user.uid,
         updatedAt: serverTimestamp(),
       });
-      // The store.players will pick this up on snapshot, and currentPlayerObj will find it via authUid matching.
     } catch (err) {
       console.error("Error syncing profile:", err);
-      // Wait for 2 secs so user can be alerted, if we had an alert box.
     } finally {
       setIsRegistering(false);
     }
@@ -429,10 +433,11 @@ export default function Home() {
   // Registration submission moved into <RegistrationForm>.
 
   if (!currentPlayerObj && !currentUserObj && !user?.isAnonymous && user) {
-    if (existingPlayerWithSamePhone) {
+    const existingMatch = existingPlayerWithSamePhone || existingPlayerWithSameEmail;
+    if (existingMatch) {
       return (
         <PhoneSyncPrompt
-          existingPlayer={existingPlayerWithSamePhone}
+          existingPlayer={existingMatch}
           user={user}
           isSubmitting={isRegistering}
           onSync={handleSyncAccount}
@@ -447,6 +452,7 @@ export default function Home() {
     return (
       <RegistrationForm
         user={user}
+        players={store.players}
         onLogOut={logOut}
         themeStyles={themeStyles}
         accentColor={currentThemeObj.accent}

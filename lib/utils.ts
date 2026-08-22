@@ -106,6 +106,42 @@ export function normalizeIndianMobile(input: string | undefined | null): string 
   return `+91${digits}`;
 }
 
+export function normalizeEmail(input: string | undefined | null): string {
+  if (!input) return "";
+  return String(input).trim().toLowerCase();
+}
+
+export interface FindDuplicateResult {
+  player: { id: string; name: string; mobile: string; email?: string };
+  matchedOn: "mobile" | "email";
+}
+
+export function findExistingPlayer(
+  players: Array<{ id: string; name: string; mobile: string; email?: string; disabled?: boolean; mergedInto?: string }>,
+  mobile?: string | null,
+  email?: string | null,
+  excludeId?: string,
+): FindDuplicateResult | null {
+  const normMobile = normalizeIndianMobile(mobile || "");
+  const normEmail = normalizeEmail(email);
+
+  for (const p of players) {
+    if (p.disabled || p.mergedInto) continue;
+    if (excludeId && p.id === excludeId) continue;
+
+    if (normMobile && normMobile.length >= 12) {
+      const pMobile = normalizeIndianMobile(p.mobile);
+      if (pMobile && pMobile === normMobile) return { player: p, matchedOn: "mobile" };
+    }
+
+    if (normEmail && normEmail.includes("@")) {
+      const pEmail = normalizeEmail(p.email);
+      if (pEmail && pEmail === normEmail) return { player: p, matchedOn: "email" };
+    }
+  }
+  return null;
+}
+
 /**
  * Validate a jersey-number string against club rules:
  *   - up to 3 digits, numeric only

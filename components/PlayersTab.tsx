@@ -22,7 +22,7 @@ import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { Player } from "@/lib/types";
-import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
 
 export function PlayersTab({
   store,
@@ -47,11 +47,23 @@ export function PlayersTab({
   const [showDisabled, setShowDisabled] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
+  const [dupWarning, setDupWarning] = useState("");
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const normalizedMobile = normalizeIndianMobile(formData.mobile);
+    const dup = findExistingPlayer(store.players, normalizedMobile, formData.email);
+    if (dup) {
+      const field = dup.matchedOn === "mobile" ? "mobile number" : "email";
+      setDupWarning(
+        `A player "${dup.player.name}" already exists with the same ${field}. Please use their existing profile instead of creating a new one.`
+      );
+      return;
+    }
+    setDupWarning("");
     store.addPlayer({
       ...formData,
-      mobile: normalizeIndianMobile(formData.mobile),
+      mobile: normalizedMobile,
     });
     setIsAdding(false);
     setFormData({ name: "", mobile: "", email: "" });
@@ -223,6 +235,11 @@ export function PlayersTab({
               placeholder="e.g. 9876543210"
             />
           </div>
+          {dupWarning && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
+              {dupWarning}
+            </div>
+          )}
           <div className="pt-2">
             <button
               type="submit"

@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { Shield } from "lucide-react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
+import { normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
 
 interface FormState {
   name: string;
@@ -43,12 +43,14 @@ const EMPTY_STATE: FormState = {
  */
 export function RegistrationForm({
   user,
+  players,
   onLogOut,
   themeStyles,
   accentColor,
   textAccentColor,
 }: {
   user: User;
+  players: Array<{ id: string; name: string; mobile: string; email?: string; disabled?: boolean; mergedInto?: string }>;
   onLogOut: () => Promise<void>;
   themeStyles: React.CSSProperties;
   accentColor: string;
@@ -60,6 +62,8 @@ export function RegistrationForm({
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }));
 
+  const [duplicateWarning, setDuplicateWarning] = useState("");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const jerseyError = validateJerseyNumber(form.jerseyNumber);
@@ -67,11 +71,22 @@ export function RegistrationForm({
       alert(jerseyError);
       return;
     }
+
+    const normalizedMobile = normalizeIndianMobile(user.phoneNumber || "");
+    const emailToCheck = form.email || user.email || "";
+    const dup = findExistingPlayer(players, normalizedMobile, emailToCheck, user.uid);
+    if (dup) {
+      const field = dup.matchedOn === "mobile" ? "mobile number" : "email address";
+      setDuplicateWarning(
+        `A profile for "${dup.player.name}" already exists with the same ${field}. Please sign in with your original account or contact the admin to merge your profiles.`
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const userDoc = doc(db, "appUsers", user.uid);
       const playerDoc = doc(db, "players", user.uid);
-      const normalizedMobile = normalizeIndianMobile(user.phoneNumber || "");
       const normalizedEmergency = normalizeIndianMobile(form.emergencyContact);
       await setDoc(userDoc, {
         email: form.email || user.email || "",
@@ -300,6 +315,12 @@ export function RegistrationForm({
               </p>
             </div>
           </div>
+
+          {duplicateWarning && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
+              {duplicateWarning}
+            </div>
+          )}
 
           <button
             type="submit"
