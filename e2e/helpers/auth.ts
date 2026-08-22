@@ -67,7 +67,7 @@ export async function waitForAppReady(page: Page) {
  */
 export async function navigateToTab(page: Page, tabName: string) {
   // Map user-friendly names to <select> option values
-  const selectValueMap: Record<string, string> = {
+  const valueMap: Record<string, string> = {
     home: "home",
     "admin home": "home",
     finance: "finance",
@@ -86,12 +86,13 @@ export async function navigateToTab(page: Page, tabName: string) {
     players: "studio",
   };
 
-  // Try the mobile dropdown first (visible on < 768px)
-  const mobileSelect = page.locator("select").filter({ has: page.locator('option[value="home"]') });
+  const value = valueMap[tabName.toLowerCase()] || tabName.toLowerCase();
+
+  // Mobile: use the admin tab <select> dropdown (has data-testid="admin-tab-select")
+  const mobileSelect = page.locator('[data-testid="admin-tab-select"]');
   if (await mobileSelect.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    const value = selectValueMap[tabName.toLowerCase()] || tabName.toLowerCase();
     await mobileSelect.selectOption(value);
-    await page.waitForTimeout(1_000);
+    await page.waitForTimeout(1_500);
     return;
   }
 
@@ -101,5 +102,5 @@ export async function navigateToTab(page: Page, tabName: string) {
     .first();
   await expect(tab).toBeVisible({ timeout: 10_000 });
   await tab.click();
-  await page.waitForTimeout(1_000);
+  await page.waitForTimeout(1_500);
 }

@@ -1165,6 +1165,7 @@ export default function Home() {
                     <Check className="w-4 h-4" />
                   </div>
                   <select
+                    data-testid="admin-tab-select"
                     value={activeTab}
                     onChange={(e) => setActiveTab(e.target.value as any)}
                     className="w-full appearance-none bg-black/40 border border-glass-border rounded-xl px-4 py-3 pl-9 text-sm font-bold uppercase tracking-widest text-white focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
