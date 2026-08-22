@@ -48,14 +48,17 @@ export async function signInAsAdmin(page: Page) {
   // Step 5: Wait for one of the post-login states:
   //   - main app (success — admin has Firestore docs)
   //   - registration form (admin account missing Firestore docs)
+  //   - Google sync prompt (email/password user without Google linked)
   //   - auth error (wrong credentials)
   const mainApp = page.locator("main");
   const registrationForm = page.getByText(/first time here/i);
-  const authError = page.getByText(/failed|error|invalid/i);
+  const googleSync = page.getByText(/sync google account/i);
+  const authError = page.locator("[class*='rose']");
 
   const result = await Promise.race([
     mainApp.waitFor({ timeout: 30_000 }).then(() => "main" as const),
     registrationForm.waitFor({ timeout: 30_000 }).then(() => "registration" as const),
+    googleSync.waitFor({ timeout: 30_000 }).then(() => "google-sync" as const),
     authError.waitFor({ timeout: 30_000 }).then(() => "error" as const),
   ]);
 
@@ -65,6 +68,14 @@ export async function signInAsAdmin(page: Page) {
       "This means the account is missing Firestore documents. " +
       "Create appUsers/{uid} with role:'admin' AND players/{uid} with " +
       "name, mobile, and inviteStatus:'Accepted' in Firestore."
+    );
+  }
+
+  if (result === "google-sync") {
+    throw new Error(
+      "Admin test account is blocked by 'Sync Google Account' prompt. " +
+      "Ensure the app code skips this prompt for admins (needsGoogleSync && role !== 'admin'), " +
+      "or set appUsers/{uid}.role to 'admin' in Firestore."
     );
   }
 

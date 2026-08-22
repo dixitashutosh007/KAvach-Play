@@ -476,7 +476,7 @@ export default function Home() {
     }
   }
 
-  if (needsGoogleSync) {
+  if (needsGoogleSync && currentUserObj?.role !== "admin") {
     return (
       <GoogleLinkPrompt onLink={linkGoogleAccount} themeStyles={themeStyles} />
     );
