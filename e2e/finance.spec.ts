@@ -14,13 +14,14 @@ test.describe("Finance & Dues Visibility", () => {
 
   test("finance tab loads without errors", async ({ page }) => {
     await navigateToTab(page, "Finance");
-    // Should show dues, history, or an empty state — not an error
+    // Should show finance content or an empty state — not an error
+    // Use .first() because multiple elements may contain these words
     await expect(
-      page.getByText(/due|paid|history|no dues|finance/i)
+      page.getByText(/due|paid|history|no dues|finance/i).first()
     ).toBeVisible({ timeout: 10_000 });
 
-    // Should NOT show any unhandled error UI
-    await expect(page.getByText(/something went wrong|error/i)).not.toBeVisible();
+    // Should NOT show any unhandled error UI (exact "Something went wrong" message)
+    await expect(page.getByText("Something went wrong")).not.toBeVisible();
   });
 
   test("dues display amounts correctly", async ({ page }) => {

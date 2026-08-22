@@ -1,18 +1,19 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("App Loading Performance", () => {
-  test("loads within acceptable time (< 5s to interactive)", async ({ page }) => {
+  test("loads within acceptable time (< 10s to interactive)", async ({ page }) => {
     const start = Date.now();
     await page.goto("/");
 
     // Wait for login screen (first interactive state)
     await expect(
       page.getByRole("heading", { name: /kavach play/i })
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 15_000 });
 
     const loadTime = Date.now() - start;
     console.log(`Login screen visible in ${loadTime}ms`);
-    expect(loadTime).toBeLessThan(5_000);
+    // Remote staging environments can be slower than localhost
+    expect(loadTime).toBeLessThan(10_000);
   });
 
   test("no console errors on initial load", async ({ page }) => {

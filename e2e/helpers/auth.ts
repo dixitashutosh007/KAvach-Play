@@ -61,14 +61,45 @@ export async function waitForAppReady(page: Page) {
 }
 
 /**
- * Navigate to a specific tab by clicking the bottom nav.
+ * Navigate to a specific tab in the admin interface.
+ * On mobile (< 768px): uses the <select> dropdown.
+ * On desktop (>= 768px): clicks the sidebar button.
  */
 export async function navigateToTab(page: Page, tabName: string) {
-  const tab = page
-    .locator("nav button, [role='tab'], [data-tab]")
-    .filter({ hasText: new RegExp(tabName, "i") });
-  if (await tab.isVisible().catch(() => false)) {
-    await tab.click();
-    await page.waitForTimeout(500);
+  // Map user-friendly names to <select> option values
+  const selectValueMap: Record<string, string> = {
+    home: "home",
+    "admin home": "home",
+    finance: "finance",
+    "finance dashboard": "finance",
+    dues: "dues_and_reminders",
+    squad: "studio",
+    "squad & studio": "studio",
+    studio: "studio",
+    matches: "matches",
+    leaderboard: "leaderboard",
+    shop: "shop",
+    pulse: "opinion",
+    opinion: "opinion",
+    design: "design",
+    settings: "settings",
+    players: "studio",
+  };
+
+  // Try the mobile dropdown first (visible on < 768px)
+  const mobileSelect = page.locator("select").filter({ has: page.locator('option[value="home"]') });
+  if (await mobileSelect.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    const value = selectValueMap[tabName.toLowerCase()] || tabName.toLowerCase();
+    await mobileSelect.selectOption(value);
+    await page.waitForTimeout(1_000);
+    return;
   }
+
+  // Desktop: click the sidebar button
+  const tab = page
+    .getByRole("button", { name: new RegExp(tabName, "i") })
+    .first();
+  await expect(tab).toBeVisible({ timeout: 10_000 });
+  await tab.click();
+  await page.waitForTimeout(1_000);
 }

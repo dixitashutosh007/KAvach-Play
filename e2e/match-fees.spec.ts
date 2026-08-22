@@ -15,8 +15,9 @@ test.describe("Match Fee Assignment", () => {
 
   test("match list loads successfully", async ({ page }) => {
     // Should show matches or an empty state
+    // Use .first() because "match" appears in multiple elements (tab label, headings, cards)
     await expect(
-      page.getByText(/match|no matches|upcoming|schedule/i)
+      page.getByText(/match|no matches|upcoming|schedule/i).first()
     ).toBeVisible({ timeout: 10_000 });
   });
 
