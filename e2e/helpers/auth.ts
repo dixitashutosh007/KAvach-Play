@@ -17,8 +17,8 @@ export async function signInAsAdmin(page: Page) {
 
   await page.goto("/");
 
-  // Wait for the login screen to render
-  await expect(page.getByText(/kavach play/i)).toBeVisible({ timeout: 15_000 });
+  // Wait for the login screen to render (use heading role to avoid strict mode violation)
+  await expect(page.getByRole("heading", { name: /kavach play/i })).toBeVisible({ timeout: 15_000 });
 
   // Step 1: Click "Email / Google" to leave the phone OTP form
   const otherAuthBtn = page.locator('[data-testid="other-auth-options"]');

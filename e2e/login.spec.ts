@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Login & Authentication", () => {
   test("shows login screen on first visit", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText(/kavach play/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /kavach play/i })).toBeVisible({ timeout: 15_000 });
   });
 
   test("shows phone login form by default", async ({ page }) => {
