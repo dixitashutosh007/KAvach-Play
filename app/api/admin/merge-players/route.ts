@@ -77,6 +77,62 @@ const FILL_IF_EMPTY = [
   "photoURL",
 ] as const;
 
+/**
+ * PATCH /api/admin/merge-players
+ *
+ * Repair previously-merged otherFees whose playerId field was not updated.
+ * Finds all players with mergedInto set, then fixes any otherFees under
+ * the keeper that still reference the loser's playerId.
+ */
+export async function PATCH(req: Request) {
+  try {
+    const { requireAdmin } = await import("@/lib/server-auth");
+    const guard = await requireAdmin(req);
+    if (!guard.ok) return guard.response;
+
+    const db = getDb();
+    const mergedSnap = await db
+      .collection("players")
+      .where("mergedInto", "!=", "")
+      .get();
+
+    let totalRepaired = 0;
+    for (const loserDoc of mergedSnap.docs) {
+      const loserId = loserDoc.id;
+      const keeperId = loserDoc.data().mergedInto;
+      if (!keeperId) continue;
+
+      const keeperRef = db.collection("players").doc(keeperId);
+      const feesSnap = await keeperRef.collection("otherFees").get();
+      const batch = db.batch();
+      let batchCount = 0;
+
+      for (const feeDoc of feesSnap.docs) {
+        if (feeDoc.data().playerId === loserId) {
+          batch.update(feeDoc.ref, {
+            playerId: keeperId,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          batchCount++;
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+        totalRepaired += batchCount;
+      }
+    }
+
+    return NextResponse.json({ ok: true, feesRepaired: totalRepaired });
+  } catch (err: any) {
+    console.error("merge-players repair failed", err);
+    return NextResponse.json(
+      { error: err?.message || "repair failed", code: err?.code },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { requireAdmin } = await import("@/lib/server-auth");
@@ -150,14 +206,14 @@ export async function POST(req: Request) {
       paymentsReparented++;
     }
 
-    // 2. Move otherFees under keeper
+    // 2. Move otherFees under keeper (update playerId so UI filters work)
     const feeSnap = await loserRef.collection("otherFees").get();
     let feesMoved = 0;
     for (const feeDoc of feeSnap.docs) {
       await enqueue((b) =>
         b.set(
           keeperRef.collection("otherFees").doc(feeDoc.id),
-          feeDoc.data(),
+          { ...feeDoc.data(), playerId: keeperId, updatedAt: FieldValue.serverTimestamp() },
         ),
       );
       await enqueue((b) =>
