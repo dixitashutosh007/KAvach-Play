@@ -45,48 +45,12 @@ export async function signInAsAdmin(page: Page) {
   // Step 4: Submit
   await page.locator('[data-testid="submit-login"]').click();
 
-  // Step 5: Wait for one of the post-login states:
-  //   - main app (success — admin has Firestore docs)
-  //   - registration form (admin account missing Firestore docs)
-  //   - Google sync prompt (email/password user without Google linked)
-  //   - auth error (wrong credentials)
-  const mainApp = page.locator("main");
-  const registrationForm = page.getByText(/first time here/i);
-  const googleSync = page.getByText(/sync google account/i);
-  const authError = page.locator("[class*='rose']");
-
-  const result = await Promise.race([
-    mainApp.waitFor({ timeout: 30_000 }).then(() => "main" as const),
-    registrationForm.waitFor({ timeout: 30_000 }).then(() => "registration" as const),
-    googleSync.waitFor({ timeout: 30_000 }).then(() => "google-sync" as const),
-    authError.waitFor({ timeout: 30_000 }).then(() => "error" as const),
-  ]);
-
-  if (result === "registration") {
-    throw new Error(
-      "Admin test account landed on registration form. " +
-      "This means the account is missing Firestore documents. " +
-      "Create appUsers/{uid} with role:'admin' AND players/{uid} with " +
-      "name, mobile, and inviteStatus:'Accepted' in Firestore."
-    );
-  }
-
-  if (result === "google-sync") {
-    throw new Error(
-      "Admin test account is blocked by 'Sync Google Account' prompt. " +
-      "Ensure the app code skips this prompt for admins (needsGoogleSync && role !== 'admin'), " +
-      "or set appUsers/{uid}.role to 'admin' in Firestore."
-    );
-  }
-
-  if (result === "error") {
-    throw new Error(
-      "Login failed — check ADMIN_EMAIL and ADMIN_PASSWORD env vars. " +
-      "The account must exist in Firebase Authentication with email/password sign-in."
-    );
-  }
-
-  // result === "main" — we're in the app
+  // Step 5: Wait for the main app to render.
+  // If this times out, common causes:
+  //   - Wrong credentials (auth error shown on login screen)
+  //   - Missing Firestore docs (registration form or Google sync prompt shown)
+  //   - App stuck on loading screen
+  await expect(page.locator("main")).toBeVisible({ timeout: 30_000 });
 }
 
 /**
