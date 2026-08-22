@@ -1548,8 +1548,11 @@ export function MatchPayments({
 
   const filteredPlayers = store.players.filter(
     (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.mobile?.includes(searchQuery),
+      !p.disabled &&
+      p.inviteStatus !== "Rejected" &&
+      p.inviteStatus !== "Pending" &&
+      (p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.mobile?.includes(searchQuery)),
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2917,8 +2920,11 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
 
   const filteredPlayers = store.players.filter(
     (p) =>
-      p.name.toLowerCase().includes(searchPlayer.toLowerCase()) ||
-      p.mobile?.includes(searchPlayer),
+      !p.disabled &&
+      p.inviteStatus !== "Rejected" &&
+      p.inviteStatus !== "Pending" &&
+      (p.name.toLowerCase().includes(searchPlayer.toLowerCase()) ||
+        p.mobile?.includes(searchPlayer)),
   );
 
   const togglePlayer = (id: string) => {
