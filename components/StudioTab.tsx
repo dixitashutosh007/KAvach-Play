@@ -59,12 +59,6 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
     if (!isStudioUser) setPlansExpanded(true);
   }, [isStudioUser]);
 
-  useEffect(() => {
-    if (subscriptionStatus === "Expired" || subscriptionStatus === "Paused") {
-      setPlansExpanded(true);
-    }
-  }, [subscriptionStatus]);
-
   const handlePayment = async (plan: any) => {
     if (store.appConfig?.features?.payments === false) {
       alert("This feature is currently not available. Contact Club Admin");
@@ -365,6 +359,12 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
   const statusBadgeClasses = statusConfig[subscriptionStatus].classes;
 
   const showPlansAlwaysOpen = subscriptionStatus === "Expired" || subscriptionStatus === "Inactive" || subscriptionStatus === "Paused";
+
+  useEffect(() => {
+    if (subscriptionStatus === "Expired" || subscriptionStatus === "Paused") {
+      setPlansExpanded(true);
+    }
+  }, [subscriptionStatus]);
 
   const plansGrid = (
     <div className="space-y-4 pt-4 border-t border-glass-border/40 mt-6 mt-auto">

@@ -103,7 +103,7 @@ export function PlayerFinanceView({
     rawId: string;
     playerId?: string;
     matchId?: string;
-    status: "Paid" | "Unpaid" | "Not Playing" | "Failed";
+    status: "Paid" | "Unpaid" | "Not Playing" | "Failed" | "Cancelled";
     updatedAtSeconds: number;
   };
 

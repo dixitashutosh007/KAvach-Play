@@ -23,7 +23,8 @@ type Tab =
   | "finance"
   | "dues_and_reminders"
   | "shop"
-  | "opinion";
+  | "opinion"
+  | "design";
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
