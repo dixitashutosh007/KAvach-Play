@@ -161,6 +161,7 @@ export function LoginScreen({
               </div>
               <button
                 onClick={() => setEmailForm(true)}
+                data-testid="email-login-toggle"
                 className="font-medium text-white/60 hover:text-white transition underline-offset-4 cursor-pointer focus:outline-none"
               >
                 Log in with Email & Password
@@ -208,6 +209,7 @@ export function LoginScreen({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
+                data-testid="email-input"
                 className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-accent transition"
                 required
               />
@@ -222,6 +224,7 @@ export function LoginScreen({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                data-testid="password-input"
                 className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-accent transition"
                 required
                 minLength={6}
@@ -248,6 +251,7 @@ export function LoginScreen({
               <button
                 type="submit"
                 disabled={isSubmitting}
+                data-testid="submit-login"
                 className="flex-1 py-3 px-4 rounded-xl bg-accent text-black text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                 style={{ color: textAccentColor }}
               >

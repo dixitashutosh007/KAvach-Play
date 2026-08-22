@@ -3,50 +3,59 @@
 ## Setup
 
 ```bash
-# Install (skip browser download — Chromium is pre-installed in CI)
+# Install dependencies
 npm install -D @playwright/test
 
-# For local dev, install browsers:
+# Install browsers (local dev only)
 npx playwright install chromium
 ```
 
 ## Running Tests
 
 ```bash
-# Run all tests
-npm test
+# Run against local dev server (starts automatically)
+npx playwright test
+
+# Run against deployed staging/production
+BASE_URL="https://your-app.amplifyapp.com" npx playwright test
 
 # Run with visible browser
-npm run test:headed
+npx playwright test --headed
 
 # Run specific test file
 npx playwright test e2e/login.spec.ts
 
 # View HTML report after a run
-npm run test:report
+npx playwright show-report
 ```
 
 ## Environment Variables
 
-For admin-level tests (player management, match fees, finance):
+| Variable | Purpose |
+|----------|---------|
+| `BASE_URL` | Target URL (defaults to `http://localhost:3000`) |
+| `ADMIN_EMAIL` | Email/password admin account for authenticated tests |
+| `ADMIN_PASSWORD` | Password for the admin account |
 
-```bash
-export ADMIN_EMAIL="your-admin@email.com"
-export ADMIN_PASSWORD="your-admin-password"
-```
+Tests that require admin access will skip automatically if creds aren't set.
 
-Tests that require admin access will skip automatically if these aren't set.
+### Creating a Test Admin Account
+
+1. Go to Firebase Console -> Authentication -> Add user
+2. Create an email/password user (e.g. `test-admin@yourclub.com`)
+3. In Firestore, set `appUsers/{uid}.role` to `"admin"`
+4. Use those credentials as `ADMIN_EMAIL` / `ADMIN_PASSWORD`
 
 ## Test Structure
 
-| File | What it tests |
-|------|--------------|
-| `app-loading.spec.ts` | Performance, no console errors, no FOUC |
-| `login.spec.ts` | Login screen UI, auth flows |
-| `registration.spec.ts` | Duplicate prevention, admin add-player |
-| `match-fees.spec.ts` | Fee assignment, rejected players excluded |
-| `finance.spec.ts` | Dues visibility, merged player dues |
-| `navigation.spec.ts` | Tab navigation, lazy loading works |
+| File | What it tests | Admin needed? |
+|------|--------------|:---:|
+| `app-loading.spec.ts` | Performance, no console errors, no FOUC | No |
+| `login.spec.ts` | Login screen UI, auth flow navigation | No |
+| `registration.spec.ts` | Duplicate prevention, admin add-player | Yes |
+| `match-fees.spec.ts` | Fee assignment, rejected players excluded | Yes |
+| `finance.spec.ts` | Dues visibility, merged player dues | Yes |
+| `navigation.spec.ts` | Tab navigation, lazy loading works | Yes |
 
 ## Adding New Tests
 
@@ -56,12 +65,11 @@ Tests that require admin access will skip automatically if these aren't set.
 
 ## CI Integration
 
-Add to your GitHub Actions / Amplify build:
-
 ```yaml
 - name: Run E2E Tests
   env:
+    BASE_URL: ${{ vars.STAGING_URL }}
     ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
     ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
-  run: npm test
+  run: npx playwright test
 ```

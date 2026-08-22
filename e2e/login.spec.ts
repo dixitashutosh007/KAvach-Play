@@ -3,46 +3,46 @@ import { test, expect } from "@playwright/test";
 test.describe("Login & Authentication", () => {
   test("shows login screen on first visit", async ({ page }) => {
     await page.goto("/");
-    // Should show the login/welcome screen
-    await expect(
-      page.getByText(/kavach|sign in|welcome/i)
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/kavach play/i)).toBeVisible({ timeout: 15_000 });
   });
 
-  test("shows Google sign-in button", async ({ page }) => {
+  test("shows phone login form by default", async ({ page }) => {
     await page.goto("/");
+    await expect(page.getByPlaceholder("9876543210")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="other-auth-options"]')).toBeVisible();
+  });
+
+  test("shows Google sign-in after switching from phone", async ({ page }) => {
+    await page.goto("/");
+    await page.locator('[data-testid="other-auth-options"]').click();
     const googleBtn = page.getByRole("button", { name: /google/i });
-    await expect(googleBtn).toBeVisible({ timeout: 15_000 });
+    await expect(googleBtn).toBeVisible({ timeout: 10_000 });
   });
 
-  test("shows demo/guest play option", async ({ page }) => {
+  test("email sign-in fields appear after two-step toggle", async ({ page }) => {
     await page.goto("/");
-    const demoBtn = page.getByRole("button", { name: /demo|guest/i });
-    await expect(demoBtn).toBeVisible({ timeout: 15_000 });
-  });
-
-  test("email sign-in fields appear when toggled", async ({ page }) => {
-    await page.goto("/");
-    const emailToggle = page.getByRole("button", { name: /email|sign in with email/i });
-    if (await emailToggle.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await emailToggle.click();
-      await expect(page.getByPlaceholder(/email/i)).toBeVisible();
-      await expect(page.getByPlaceholder(/password/i)).toBeVisible();
-    }
+    // Step 1: Leave phone form
+    await page.locator('[data-testid="other-auth-options"]').click();
+    // Step 2: Click email login toggle
+    await page.locator('[data-testid="email-login-toggle"]').click();
+    // Form fields should now be visible
+    await expect(page.locator('[data-testid="email-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="password-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="submit-login"]')).toBeVisible();
   });
 
   test("invalid email/password shows error", async ({ page }) => {
     await page.goto("/");
-    const emailToggle = page.getByRole("button", { name: /email|sign in with email/i });
-    if (await emailToggle.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await emailToggle.click();
-      await page.getByPlaceholder(/email/i).fill("wrong@test.com");
-      await page.getByPlaceholder(/password/i).fill("wrongpass");
-      await page.getByRole("button", { name: /sign in|log in/i }).click();
-      // Should show error feedback
-      await expect(
-        page.getByText(/failed|error|invalid|incorrect/i)
-      ).toBeVisible({ timeout: 10_000 });
-    }
+    // Navigate to email form
+    await page.locator('[data-testid="other-auth-options"]').click();
+    await page.locator('[data-testid="email-login-toggle"]').click();
+    // Fill invalid credentials
+    await page.locator('[data-testid="email-input"]').fill("wrong@test.com");
+    await page.locator('[data-testid="password-input"]').fill("wrongpass123");
+    await page.locator('[data-testid="submit-login"]').click();
+    // Should show error feedback
+    await expect(
+      page.getByText(/failed|error|invalid|incorrect/i)
+    ).toBeVisible({ timeout: 15_000 });
   });
 });

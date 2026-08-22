@@ -167,6 +167,7 @@ export function PhoneLoginForm({
           <button
             type="button"
             onClick={onOtherOptions}
+            data-testid="other-auth-options"
             className="flex-1 py-3 px-4 rounded-xl border border-white/10 text-white text-xs font-bold hover:bg-white/5 transition cursor-pointer text-center"
           >
             Email / Google

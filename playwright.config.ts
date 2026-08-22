@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+const isRemote = !BASE_URL.includes("localhost");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -15,9 +16,6 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    launchOptions: {
-      executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    },
   },
 
   projects: [
@@ -31,10 +29,15 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: "npm run dev",
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  // Only start a local dev server when testing against localhost
+  ...(isRemote
+    ? {}
+    : {
+        webServer: {
+          command: "npm run dev",
+          url: BASE_URL,
+          reuseExistingServer: true,
+          timeout: 30_000,
+        },
+      }),
 });
