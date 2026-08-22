@@ -377,33 +377,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "players"),
     );
 
-    const unsubStats = onSnapshot(
-      collection(db, "playerStats"),
-      (snapshot) => {
-        setPlayerStats(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as PlayerStat,
-          ),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "playerStats"),
-    );
-
-    const unsubPosts = onSnapshot(
-      collection(db, "posts"),
-      (snapshot) => {
-        setPosts(
-          snapshot.docs
-            .map((doc) => ({ id: doc.id, ...doc.data() }) as Post)
-            .sort((a, b) => {
-              const dateA = a.createdAt?.seconds || 0;
-              const dateB = b.createdAt?.seconds || 0;
-              return dateB - dateA;
-            }),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "posts"),
-    );
+    // playerStats and posts — now lazy, see ensurePlayerStats() / ensurePosts()
+    const unsubStats = () => {};
+    const unsubPosts = () => {};
 
     const unsubMatches = onSnapshot(
       collection(db, "matches"),
@@ -523,41 +499,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     })();
     const unsubMerchandises = () => {};
 
-    const unsubMerchOrders = onSnapshot(
-      collection(db, "merchOrders"),
-      (snapshot) => {
-        setMerchOrders(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as MerchOrder,
-          ),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "merchOrders"),
-    );
-
-    const unsubPolls = onSnapshot(
-      collection(db, "polls"),
-      (snapshot) => {
-        setPolls(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as Poll,
-          ),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "polls"),
-    );
-
-    const unsubPollResponses = onSnapshot(
-      collection(db, "pollResponses"),
-      (snapshot) => {
-        setPollResponses(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as PollResponse,
-          ),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "pollResponses"),
-    );
+    // merchOrders, polls, pollResponses — now lazy, see ensure*() below
+    const unsubMerchOrders = () => {};
+    const unsubPolls = () => {};
+    const unsubPollResponses = () => {};
 
     return () => {
       unsubGrounds();
@@ -629,6 +574,78 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     },
     [user, recomputePayments],
   );
+
+  const ensurePosts = useCallback(() => {
+    if (!user || lazySubsRef.current.has("posts")) return;
+    const unsub = onSnapshot(
+      collection(db, "posts"),
+      (snapshot) => {
+        setPosts(
+          snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }) as Post)
+            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "posts"),
+    );
+    lazySubsRef.current.set("posts", unsub);
+  }, [user]);
+
+  const ensurePlayerStats = useCallback(() => {
+    if (!user || lazySubsRef.current.has("playerStats")) return;
+    const unsub = onSnapshot(
+      collection(db, "playerStats"),
+      (snapshot) => {
+        setPlayerStats(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as PlayerStat),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "playerStats"),
+    );
+    lazySubsRef.current.set("playerStats", unsub);
+  }, [user]);
+
+  const ensureMerchOrders = useCallback(() => {
+    if (!user || lazySubsRef.current.has("merchOrders")) return;
+    const unsub = onSnapshot(
+      collection(db, "merchOrders"),
+      (snapshot) => {
+        setMerchOrders(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as MerchOrder),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "merchOrders"),
+    );
+    lazySubsRef.current.set("merchOrders", unsub);
+  }, [user]);
+
+  const ensurePolls = useCallback(() => {
+    if (!user || lazySubsRef.current.has("polls")) return;
+    const unsub = onSnapshot(
+      collection(db, "polls"),
+      (snapshot) => {
+        setPolls(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Poll),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "polls"),
+    );
+    lazySubsRef.current.set("polls", unsub);
+  }, [user]);
+
+  const ensurePollResponses = useCallback(() => {
+    if (!user || lazySubsRef.current.has("pollResponses")) return;
+    const unsub = onSnapshot(
+      collection(db, "pollResponses"),
+      (snapshot) => {
+        setPollResponses(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as PollResponse),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "pollResponses"),
+    );
+    lazySubsRef.current.set("pollResponses", unsub);
+  }, [user]);
 
   const loadMoreNotifications = useCallback(async () => {
     if (
@@ -2078,6 +2095,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     notificationsLoadingMore,
     otherFees: filteredOtherFees,
     ensureOtherFees,
+    ensurePosts,
+    ensurePlayerStats,
+    ensureMerchOrders,
+    ensurePolls,
+    ensurePollResponses,
     ensureAllAppUsers,
     ensureSubscriptionHistory,
     addOtherFee,

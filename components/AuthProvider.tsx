@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hasAdminClaim, setHasAdminClaim] = useState(false);
 
   useEffect(() => {
+    // Fire-and-forget: don't block rendering on connectivity check
     testConnection();
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (u) {
@@ -55,25 +56,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           localStorage.setItem("kavach_session_time", now.toString());
           setUser(u);
-          // Pull the admin custom claim from the ID token. This is set
-          // server-side via scripts/set-admin-claim.js.
-          try {
-            const tokenResult = await u.getIdTokenResult();
-            setHasAdminClaim(tokenResult.claims?.admin === true);
-          } catch {
-            setHasAdminClaim(false);
-          }
-          // Record auth provider metadata so profile/admin views can show
-          // sign-in method + "first linked" audit info. One write per
-          // session. Guarded so it never fails the login flow.
-          try {
-            if (!u.isAnonymous) {
+
+          // Admin-claim check — needed for UI routing, so we await it.
+          // Metadata write runs in parallel and doesn't block loading.
+          const adminClaimPromise = u.getIdTokenResult()
+            .then((tokenResult) => setHasAdminClaim(tokenResult.claims?.admin === true))
+            .catch(() => setHasAdminClaim(false));
+
+          const metadataPromise = (async () => {
+            if (u.isAnonymous) return;
+            try {
               const providers = (u.providerData || [])
                 .map((p) => p.providerId)
                 .filter(Boolean);
-
-              // Compute firstProviderLinkedAt: preserve existing timestamps,
-              // stamp any providers we haven't seen before with now.
               const nowIso = new Date().toISOString();
               const userDocRef = doc(db, "appUsers", u.uid);
               let existingFirstLinked: Record<string, string> = {};
@@ -90,7 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               for (const pid of providers) {
                 if (!mergedFirstLinked[pid]) mergedFirstLinked[pid] = nowIso;
               }
-
               await setDoc(
                 userDocRef,
                 {
@@ -100,12 +94,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 },
                 { merge: true },
               );
+            } catch {
+              // Silent — metadata, not blocking.
             }
-          } catch (e) {
-            // Silent — this is metadata, not blocking. A non-admin trying
-            // to write before their appUsers doc exists (i.e. before
-            // registration) will get permission-denied; that's fine.
-          }
+          })();
+
+          await adminClaimPromise;
+          metadataPromise.catch(() => {});
         }
       } else {
         setUser(null);

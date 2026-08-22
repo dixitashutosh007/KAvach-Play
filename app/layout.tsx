@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css"; // Global styles
 import { AuthProvider } from "@/components/AuthProvider";
 
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "KAvach Play | Cricket Club Management App",

@@ -10,11 +10,9 @@
 "use client";
 
 import { useStore } from "@/hooks/useStore";
-import { GroundsTab } from "@/components/GroundsTab";
-import { PlayersTab } from "@/components/PlayersTab";
-import { MatchesTab } from "@/components/MatchesTab";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   Home as HomeIcon,
   Trophy,
@@ -37,23 +35,11 @@ import {
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { HomeTab } from "@/components/HomeTab";
-import { LeaderboardTab } from "@/components/LeaderboardTab";
-import { SettingsTab } from "@/components/SettingsTab";
-import { AdminDashboard } from "@/components/AdminDashboard";
 import { ProfileTab } from "@/components/ProfileTab";
-import { StudioTab } from "@/components/StudioTab";
-import { StudioAdminTab } from "@/components/StudioAdminTab";
-import { NotificationsTab } from "@/components/NotificationsTab";
-import { FinanceTab } from "@/components/FinanceTab";
-import { DuesAndRemindersTab } from "@/components/DuesAndRemindersTab";
-import { ShopTab } from "@/components/ShopTab";
-import { OpinionTab } from "@/components/OpinionTab";
-import { DesignTab } from "@/components/DesignTab";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { motion, AnimatePresence } from "motion/react";
 import { Bell, PieChart } from "lucide-react";
 import Image from "next/image";
-import { PhoneLoginForm } from "@/components/PhoneLoginForm";
 import {
   doc,
   setDoc,
@@ -75,6 +61,22 @@ import { GoogleLinkPrompt } from "@/components/onboarding/GoogleLinkPrompt";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
+// Lazy-loaded tab components — only downloaded when the user navigates to them
+const MatchesTab = dynamic(() => import("@/components/MatchesTab").then(m => ({ default: m.MatchesTab })), { ssr: false });
+const GroundsTab = dynamic(() => import("@/components/GroundsTab").then(m => ({ default: m.GroundsTab })), { ssr: false });
+const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ default: m.PlayersTab })), { ssr: false });
+const LeaderboardTab = dynamic(() => import("@/components/LeaderboardTab").then(m => ({ default: m.LeaderboardTab })), { ssr: false });
+const SettingsTab = dynamic(() => import("@/components/SettingsTab").then(m => ({ default: m.SettingsTab })), { ssr: false });
+const AdminDashboard = dynamic(() => import("@/components/AdminDashboard").then(m => ({ default: m.AdminDashboard })), { ssr: false });
+const StudioTab = dynamic(() => import("@/components/StudioTab").then(m => ({ default: m.StudioTab })), { ssr: false });
+const StudioAdminTab = dynamic(() => import("@/components/StudioAdminTab").then(m => ({ default: m.StudioAdminTab })), { ssr: false });
+const NotificationsTab = dynamic(() => import("@/components/NotificationsTab").then(m => ({ default: m.NotificationsTab })), { ssr: false });
+const FinanceTab = dynamic(() => import("@/components/FinanceTab").then(m => ({ default: m.FinanceTab })), { ssr: false });
+const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersTab").then(m => ({ default: m.DuesAndRemindersTab })), { ssr: false });
+const ShopTab = dynamic(() => import("@/components/ShopTab").then(m => ({ default: m.ShopTab })), { ssr: false });
+const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ default: m.OpinionTab })), { ssr: false });
+const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ default: m.DesignTab })), { ssr: false });
+
 export default function Home() {
   const router = useRouter();
   const {
@@ -88,12 +90,6 @@ export default function Home() {
   } = useAuth();
   const store = useStore(user);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
-  const [minWaitDone, setMinWaitDone] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setMinWaitDone(true), 1500);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (user) {
@@ -257,11 +253,22 @@ export default function Home() {
     "players",
     "profile",
   ]);
+  const POSTS_TABS = new Set(["home"]);
+  const STATS_TABS = new Set(["leaderboard", "home"]);
+  const MERCH_TABS = new Set(["shop"]);
+  const POLL_TABS = new Set(["opinion"]);
   useEffect(() => {
     if (!store.isLoaded) return;
     if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.();
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.();
-  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees]);
+    if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
+    if (STATS_TABS.has(activeTab)) store.ensurePlayerStats?.();
+    if (MERCH_TABS.has(activeTab)) store.ensureMerchOrders?.();
+    if (POLL_TABS.has(activeTab)) {
+      store.ensurePolls?.();
+      store.ensurePollResponses?.();
+    }
+  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
@@ -351,7 +358,7 @@ export default function Home() {
   }
 
 
-  if (!store.isLoaded || !minWaitDone) {
+  if (!store.isLoaded) {
     if (quotaExceeded) {
       return <QuotaExceededScreen themeStyles={themeStyles} />;
     }
