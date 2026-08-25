@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import "./globals.css"; // Global styles
+import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
-
+import { ClientOnly } from "@/components/ClientOnly";
 
 export const metadata: Metadata = {
   title: "KAvach Play | Cricket Club Management App",
@@ -32,9 +32,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <ClientOnly>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </ClientOnly>
       </body>
     </html>
   );
