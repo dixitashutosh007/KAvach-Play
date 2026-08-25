@@ -396,7 +396,7 @@ export function ShopTab({
           deliveryStatus: "Processing" as const,
         };
 
-        const res = await fetch("/api/razorpay/order", {
+        const res = await authedFetch("/api/razorpay/order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

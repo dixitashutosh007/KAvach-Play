@@ -8,6 +8,7 @@
  * It contains sub-components for assigning match outcomes and viewing venues.
  */
 import { useStore } from "@/hooks/useStore";
+import { authedFetch } from "@/lib/authed-fetch";
 import { Match, MatchComment, Player, FeePlan } from "@/lib/types";
 
 /**
@@ -59,7 +60,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, FC } from "react";
-import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -1636,7 +1637,7 @@ export function MatchPayments({
         return;
       }
 
-      const res = await fetch("/api/razorpay/order", {
+      const res = await authedFetch("/api/razorpay/order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1778,15 +1779,15 @@ export function MatchPayments({
     try {
       if (addingNew) {
         const normalizedNewMobile = normalizeIndianMobile(newPlayerMobile);
-        const existing = store.players.find((p) => normalizeIndianMobile(p.mobile) === normalizedNewMobile);
+        const dupResult = findExistingPlayer(store.players, newPlayerMobile);
         let pId = "";
-        if (existing) {
-          pId = existing.id;
+        if (dupResult) {
+          pId = dupResult.player.id;
         } else {
           pId =
             (await store.addPlayer({
               name: newPlayerName,
-              mobile: newPlayerMobile,
+              mobile: normalizedNewMobile,
             })) || "";
         }
         if (pId) {

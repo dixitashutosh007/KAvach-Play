@@ -106,6 +106,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const lazySubsRef = useRef<Map<string, () => void>>(new Map());
   const paymentsPerMatchRef = useRef<Map<string, MatchPayment[]>>(new Map());
   const allPaymentsSnapshotRef = useRef<MatchPayment[]>([]);
+  const loadedOneShotsRef = useRef<Set<string>>(new Set());
 
   const recomputePayments = useCallback(() => {
     const dedupedMap = new Map<string, MatchPayment>();
@@ -349,17 +350,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     })();
     const unsubGrounds = () => {};
 
-    // tournaments — small collection; one-shot, refreshed by mutations
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "tournaments"));
-        setTournaments(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament),
-        );
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, "tournaments");
-      }
-    })();
+    // tournaments — now lazy, see ensureTournaments()
 
     const unsubPlayers = onSnapshot(
       collection(db, "players"),
@@ -396,18 +387,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       },
     );
 
-    // subscriptionPlans — one-shot; refreshed by plan mutation methods.
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "subscriptionPlans"));
-        setSubscriptionPlans(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SubscriptionPlan),
-        );
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, "subscriptionPlans");
-      }
-    })();
-    const unsubSubscriptionPlans = () => {};
+    // subscriptionPlans — now lazy, see ensureSubscriptionPlans()
 
     // subscriptionHistory: no default subscription. Loaded via
     // ensureSubscriptionHistory() only for admin tabs (RazorReportView,
@@ -448,56 +428,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
     // otherFees now lazy — see ensureOtherFees.
 
-    // feeTemplates — one-shot; refreshed by fee template mutation methods.
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "feeTemplates"));
-        setFeeTemplates(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeeTemplate),
-        );
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, "feeTemplates");
-      }
-    })();
-    const unsubFeeTemplates = () => {};
+    // feeTemplates — now lazy, see ensureFeeTemplates()
 
-    // feePlans — one-shot; refreshed by fee plan mutation methods.
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "feePlans"));
-        setFeePlans(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeePlan),
-        );
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, "feePlans");
-      }
-    })();
-    const unsubFeePlans = () => {};
+    // feePlans — now lazy, see ensureFeePlans()
 
-    const unsubOutOfPlays = onSnapshot(
-      collection(db, "outOfPlays"),
-      (snapshot) => {
-        setOutOfPlays(
-          snapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as OutOfPlay,
-          ),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "outOfPlays"),
-    );
+    // outOfPlays — now lazy, see ensureOutOfPlays()
 
-    // merchandises — one-shot; refreshed by merch mutation methods.
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "merchandises"));
-        setMerchandises(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Merchandise),
-        );
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, "merchandises");
-      }
-    })();
-    const unsubMerchandises = () => {};
+    // merchandises — now lazy, see ensureMerchandises()
 
     // merchOrders, polls, pollResponses — now lazy, see ensure*() below
     const unsubMerchOrders = () => {};
@@ -512,21 +449,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       unsubPosts();
       unsubAppUsers();
       unsubConfig();
-      unsubSubscriptionPlans();
       unsubSubscriptionHistory();
       unsubNotifications();
-      unsubFeeTemplates();
-      unsubFeePlans();
-      unsubOutOfPlays();
-      unsubMerchandises();
       unsubMerchOrders();
       unsubPolls();
       unsubPollResponses();
-      // Tear down lazy subscriptions (payments, otherFees, per-match payments)
+      // Tear down lazy subscriptions (payments, otherFees, outOfPlays, etc.)
       lazySubsRef.current.forEach((unsub) => unsub());
       lazySubsRef.current.clear();
       paymentsPerMatchRef.current.clear();
       allPaymentsSnapshotRef.current = [];
+      loadedOneShotsRef.current.clear();
     };
   }, [user]);
 
@@ -811,6 +744,92 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         handleFirestoreError(err, OperationType.LIST, "subscriptionHistory"),
     );
     lazySubsRef.current.set("allSubscriptionHistory", unsub);
+  }, [user]);
+
+  const ensureTournaments = useCallback(async () => {
+    if (!user || loadedOneShotsRef.current.has("tournaments")) return;
+    loadedOneShotsRef.current.add("tournaments");
+    try {
+      const snap = await getDocs(collection(db, "tournaments"));
+      setTournaments(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament),
+      );
+    } catch (err) {
+      loadedOneShotsRef.current.delete("tournaments");
+      handleFirestoreError(err, OperationType.LIST, "tournaments");
+    }
+  }, [user]);
+
+  const ensureSubscriptionPlans = useCallback(async () => {
+    if (!user || loadedOneShotsRef.current.has("subscriptionPlans")) return;
+    loadedOneShotsRef.current.add("subscriptionPlans");
+    try {
+      const snap = await getDocs(collection(db, "subscriptionPlans"));
+      setSubscriptionPlans(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SubscriptionPlan),
+      );
+    } catch (err) {
+      loadedOneShotsRef.current.delete("subscriptionPlans");
+      handleFirestoreError(err, OperationType.LIST, "subscriptionPlans");
+    }
+  }, [user]);
+
+  const ensureFeeTemplates = useCallback(async () => {
+    if (!user || loadedOneShotsRef.current.has("feeTemplates")) return;
+    loadedOneShotsRef.current.add("feeTemplates");
+    try {
+      const snap = await getDocs(collection(db, "feeTemplates"));
+      setFeeTemplates(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeeTemplate),
+      );
+    } catch (err) {
+      loadedOneShotsRef.current.delete("feeTemplates");
+      handleFirestoreError(err, OperationType.LIST, "feeTemplates");
+    }
+  }, [user]);
+
+  const ensureFeePlans = useCallback(async () => {
+    if (!user || loadedOneShotsRef.current.has("feePlans")) return;
+    loadedOneShotsRef.current.add("feePlans");
+    try {
+      const snap = await getDocs(collection(db, "feePlans"));
+      setFeePlans(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FeePlan),
+      );
+    } catch (err) {
+      loadedOneShotsRef.current.delete("feePlans");
+      handleFirestoreError(err, OperationType.LIST, "feePlans");
+    }
+  }, [user]);
+
+  const ensureMerchandises = useCallback(async () => {
+    if (!user || loadedOneShotsRef.current.has("merchandises")) return;
+    loadedOneShotsRef.current.add("merchandises");
+    try {
+      const snap = await getDocs(collection(db, "merchandises"));
+      setMerchandises(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Merchandise),
+      );
+    } catch (err) {
+      loadedOneShotsRef.current.delete("merchandises");
+      handleFirestoreError(err, OperationType.LIST, "merchandises");
+    }
+  }, [user]);
+
+  const ensureOutOfPlays = useCallback(() => {
+    if (!user || lazySubsRef.current.has("outOfPlays")) return;
+    const unsub = onSnapshot(
+      collection(db, "outOfPlays"),
+      (snapshot) => {
+        setOutOfPlays(
+          snapshot.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as OutOfPlay,
+          ),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "outOfPlays"),
+    );
+    lazySubsRef.current.set("outOfPlays", unsub);
   }, [user]);
 
   const updateAppConfig = async (config: Partial<AppConfig>) => {
@@ -2102,6 +2121,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     ensurePollResponses,
     ensureAllAppUsers,
     ensureSubscriptionHistory,
+    ensureTournaments,
+    ensureSubscriptionPlans,
+    ensureFeeTemplates,
+    ensureFeePlans,
+    ensureMerchandises,
+    ensureOutOfPlays,
     addOtherFee,
     updateOtherFeeStatus,
     deleteOtherFee,

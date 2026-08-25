@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
+import { authedFetch } from "@/lib/authed-fetch";
 import { useAuth } from "./AuthProvider";
 import {
   Video,
@@ -81,7 +82,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
         return;
       }
 
-      const res = await fetch("/api/razorpay/order", {
+      const res = await authedFetch("/api/razorpay/order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

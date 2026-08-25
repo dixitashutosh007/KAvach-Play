@@ -221,7 +221,7 @@ service cloud.firestore {
     match /paymentLinks/{linkId} {
       allow read: if true;
       allow create: if isAnyAdmin();
-      allow update: if true;
+      allow update: if isSignedIn();
     }
 
     match /subscriptionPlans/{planId} {

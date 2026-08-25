@@ -11,7 +11,7 @@ import { useStore } from "@/hooks/useStore";
 import { useAuth } from "./AuthProvider";
 import { useState } from "react";
 import { Calendar, MapPin, User, Save, CreditCard, Plus, Trash2, Edit2, PieChart, ChevronDown, ChevronRight } from "lucide-react";
-import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
 import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
@@ -136,16 +136,27 @@ export function ProfileTab({
       });
     } else {
       // The user has an appUser document but no player document (e.g. was deleted by admin)
-      // We must recreate the player document so they can be pending again
-      await store.addPlayer({
-        ...processedForm,
-        name: processedForm.name || appUser?.name || "Unknown",
-        mobile: processedForm.mobile || appUser?.mobile || "",
-        email: appUser?.email || user?.email || "",
-        inviteStatus: "Pending",
-        authUid: appUser?.id || user?.uid || ""
-      });
-      // Note: addPlayer generates a new ID. The next render will link them via mobile matching.
+      // Check for an existing player with the same mobile/email before creating
+      const mobile = processedForm.mobile || appUser?.mobile || "";
+      const email = appUser?.email || user?.email || "";
+      const dupResult = findExistingPlayer(store.players, mobile, email, user?.uid);
+      if (dupResult) {
+        await store.updatePlayer(dupResult.player.id, {
+          ...processedForm,
+          authUid: user?.uid,
+          name: processedForm.name || appUser?.name || "Unknown",
+          inviteStatus: "Pending",
+        });
+      } else {
+        await store.addPlayer({
+          ...processedForm,
+          name: processedForm.name || appUser?.name || "Unknown",
+          mobile,
+          email,
+          inviteStatus: "Pending",
+          authUid: appUser?.id || user?.uid || ""
+        });
+      }
     }
     setIsEditing(false);
   };
