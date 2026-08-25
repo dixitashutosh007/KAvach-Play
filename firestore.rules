@@ -43,13 +43,19 @@ service cloud.firestore {
     }
 
     function isFinanceAdmin() {
-      return isSuperAdmin() || (isSignedIn() && 
-        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
+      return isSuperAdmin() || (isSignedIn() &&
+        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isFinanceAdmin', false) == true);
     }
 
+    function isDesignAdmin() {
+      return isSuperAdmin() || (isSignedIn() &&
+        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isDesignAdmin', false) == true);
+    }
+
     function isAnyAdmin() {
-      return isSuperAdmin() || isStudioAdmin() || isMatchAdmin() || isFinanceAdmin();
+      return isSuperAdmin() || isStudioAdmin() || isMatchAdmin() || isFinanceAdmin() || isDesignAdmin();
     }
 
     function isVerified() {

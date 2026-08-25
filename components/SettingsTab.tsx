@@ -1536,8 +1536,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 filter: (u) => u.role === "admin" || u.isFinanceAdmin,
               },
               {
+                label: "Design Admin",
+                desc: "KAvach Design tab management",
+                accent: "border-pink-500/40 bg-pink-500/10 text-pink-300",
+                filter: (u) => u.role === "admin" || u.isDesignAdmin,
+              },
+              {
                 label: "Designer",
-                desc: "KAvach Design tab (post templates)",
+                desc: "Player-level Design tab access",
                 accent: "border-purple-500/40 bg-purple-500/10 text-purple-300",
                 filter: (u) => u.role === "admin" || u.isDesigner,
               },

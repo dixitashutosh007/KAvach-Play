@@ -183,6 +183,7 @@ export default function Home() {
       currentUserObj?.isStudioAdmin ||
       currentUserObj?.isMatchAdmin ||
       currentUserObj?.isFinanceAdmin ||
+      currentUserObj?.isDesignAdmin ||
       hasAdminClaim);
 
   useEffect(() => {
@@ -196,10 +197,12 @@ export default function Home() {
         setActiveTab("home");
       } else if (currentUserObj?.isFinanceAdmin) {
         setActiveTab("finance");
-      } else if (currentUserObj?.isStudioAdmin) {
-        setActiveTab("studio");
       } else if (currentUserObj?.isMatchAdmin) {
         setActiveTab("matches");
+      } else if (currentUserObj?.isStudioAdmin) {
+        setActiveTab("studio");
+      } else if (currentUserObj?.isDesignAdmin) {
+        setActiveTab("design");
       }
     }
   }, [isAdminUser, currentUserObj, user]);
@@ -518,12 +521,11 @@ export default function Home() {
   const isFinanceAdmin = isSuperAdmin || appUser?.isFinanceAdmin;
   const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
   const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;
+  const isDesignAdmin = isSuperAdmin || appUser?.isDesignAdmin;
 
   const isAdmin =
-    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin;
-  // Design tab: any admin, plus players whose appUser doc has the
-  // isDesigner flag explicitly toggled on.
-  const canDesign = isAdmin || !!appUser?.isDesigner;
+    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isDesignAdmin;
+  const canDesign = isDesignAdmin || !!appUser?.isDesigner;
   // Mandatory profile fields every non-admin player must have populated
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
@@ -656,9 +658,11 @@ export default function Home() {
                     setActiveTab("home");
                   } else {
                     setPersona("admin");
-                    if (isMatchAdmin) setActiveTab("matches");
-                    else if (isStudioAdmin) setActiveTab("studio");
+                    if (isSuperAdmin) setActiveTab("home");
                     else if (isFinanceAdmin) setActiveTab("finance");
+                    else if (isMatchAdmin) setActiveTab("matches");
+                    else if (isStudioAdmin) setActiveTab("studio");
+                    else if (isDesignAdmin) setActiveTab("design");
                     else setActiveTab("home");
                   }
                 }}
@@ -949,52 +953,60 @@ export default function Home() {
                     "home",
                     "finance",
                     "dues_and_reminders",
-                    "studio",
-                    "matches",
-                    "leaderboard",
+                    "players",
                     "shop",
+                    "matches",
                     "opinion",
+                    "studio",
                     "design",
+                    "leaderboard",
                     "settings",
                   ]
                     .filter((tab) => {
                       if (tab === "finance" || tab === "dues_and_reminders")
+                        return isFinanceAdmin;
+                      if (tab === "players")
                         return isFinanceAdmin || isSuperAdmin;
-                      if (tab === "studio")
-                        return isStudioAdmin || isSuperAdmin;
+                      if (tab === "shop")
+                        return (isFinanceAdmin || isSuperAdmin) && isFeatureEnabled("shop");
                       if (tab === "matches")
-                        return isMatchAdmin || isSuperAdmin;
-                      if (tab === "settings") return isSuperAdmin;
-                      if (tab === "shop") return isFeatureEnabled("shop");
-                      if (tab === "opinion") return isFeatureEnabled("opinion");
+                        return isMatchAdmin;
+                      if (tab === "opinion")
+                        return (isMatchAdmin || isSuperAdmin) && isFeatureEnabled("opinion");
+                      if (tab === "studio")
+                        return isStudioAdmin;
                       if (tab === "design") return canDesign;
+                      if (tab === "leaderboard") return isSuperAdmin;
+                      if (tab === "settings") return isSuperAdmin;
                       return true;
                     })
                     .map((tab) => {
                       const iconMap: Record<string, any> = {
                         home: HomeIcon,
-                        matches: CalendarDays,
-                        studio: Video,
-                        leaderboard: Trophy,
-                        settings: SettingsIcon,
                         finance: Shield,
                         dues_and_reminders: Bell,
+                        players: Users,
                         shop: ShoppingBag,
+                        matches: CalendarDays,
                         opinion: PieChart,
+                        studio: Video,
                         design: ImageIcon,
+                        leaderboard: Trophy,
+                        settings: SettingsIcon,
                       };
                       const IconComp = iconMap[tab] || Trophy;
                       const uppercaseLabels: Record<string, string> = {
                         home: "Admin Home",
-                        matches: "Matches",
-                        studio: "Squad",
-                        leaderboard: "Leaderboard",
-                        settings: "Settings",
                         finance: "Finance",
                         dues_and_reminders: "Dues",
+                        players: "Players",
                         shop: "Shop",
+                        matches: "Matches",
                         opinion: "Pulse",
+                        studio: "Studio",
                         design: "Design",
+                        leaderboard: "Leaderboard",
+                        settings: "Settings",
                       };
                       return (
                         <button
@@ -1183,22 +1195,29 @@ export default function Home() {
                     className="w-full appearance-none bg-black/40 border border-glass-border rounded-xl px-4 py-3 pl-9 text-sm font-bold uppercase tracking-widest text-white focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
                   >
                     <option value="home">Admin Home</option>
-                    {(isFinanceAdmin || isSuperAdmin) && (
+                    {isFinanceAdmin && (
                       <>
-                        <option value="finance">Finance Dashboard</option>
+                        <option value="finance">Finance</option>
                         <option value="dues_and_reminders">Dues</option>
                       </>
                     )}
-                    {(isStudioAdmin || isSuperAdmin) && (
-                      <option value="studio">Squad & Studio</option>
+                    {(isFinanceAdmin || isSuperAdmin) && (
+                      <option value="players">Players</option>
                     )}
-                    {(isMatchAdmin || isSuperAdmin) && (
+                    {(isFinanceAdmin || isSuperAdmin) && isFeatureEnabled("shop") && (
+                      <option value="shop">Shop</option>
+                    )}
+                    {isMatchAdmin && (
                       <option value="matches">Matches</option>
                     )}
-                    <option value="leaderboard">Leaderboard</option>
-                    {isFeatureEnabled("shop") && <option value="shop">Shop</option>}
-                    {isFeatureEnabled("opinion") && <option value="opinion">Pulse</option>}
+                    {(isMatchAdmin || isSuperAdmin) && isFeatureEnabled("opinion") && (
+                      <option value="opinion">Pulse</option>
+                    )}
+                    {isStudioAdmin && (
+                      <option value="studio">Studio</option>
+                    )}
                     {canDesign && <option value="design">Design</option>}
+                    {isSuperAdmin && <option value="leaderboard">Leaderboard</option>}
                     {isSuperAdmin && <option value="settings">Settings</option>}
                   </select>
                   <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/50">
@@ -1215,7 +1234,18 @@ export default function Home() {
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
                     {activeTab === "home" && (
-                      <AdminDashboard store={store} setActiveTab={setActiveTab} />
+                      <AdminDashboard
+                        store={store}
+                        setActiveTab={setActiveTab}
+                        isSuperAdmin={isSuperAdmin}
+                        isFinanceAdmin={isFinanceAdmin}
+                        isMatchAdmin={isMatchAdmin}
+                        isStudioAdmin={isStudioAdmin}
+                        isDesignAdmin={isDesignAdmin}
+                      />
+                    )}
+                    {activeTab === "players" && (
+                      <PlayersTab store={store} persona={persona} isStudioAdmin={true} />
                     )}
                     {activeTab === "matches" && (
                       <MatchesTab

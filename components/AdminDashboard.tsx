@@ -13,10 +13,20 @@ import {
 
 export function AdminDashboard({
   store,
-  setActiveTab
+  setActiveTab,
+  isSuperAdmin = false,
+  isFinanceAdmin = false,
+  isMatchAdmin = false,
+  isStudioAdmin = false,
+  isDesignAdmin = false,
 }: {
   store: ReturnType<typeof useStore>;
   setActiveTab: (tab: any, action?: string) => void;
+  isSuperAdmin?: boolean;
+  isFinanceAdmin?: boolean;
+  isMatchAdmin?: boolean;
+  isStudioAdmin?: boolean;
+  isDesignAdmin?: boolean;
 }) {
   const { matches, payments, players, otherFees } = store;
 
@@ -284,21 +294,54 @@ export function AdminDashboard({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("dues_and_reminders")}>
-            <div>
-                <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
-                <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
-                <h3 className="text-2xl font-black text-rose-400">₹{totalDueAmount}</h3>
+      {/* Finance: Total Dues + Add No Show + Send Reminders */}
+      {isFinanceAdmin && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("dues_and_reminders")}>
+                <div>
+                    <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
+                    <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
+                    <h3 className="text-2xl font-black text-rose-400">₹{totalDueAmount}</h3>
+                </div>
+                <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-white/50 bg-black/20 p-2 rounded-lg">
+                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {duePlayersCount} Players Due</span>
+                    <span className="text-rose-400 flex items-center gap-1">Notify <ArrowRight className="w-3 h-3" /></span>
+                </div>
             </div>
-            <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-white/50 bg-black/20 p-2 rounded-lg">
-                <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {duePlayersCount} Players Due</span>
-                <span className="text-rose-400 flex items-center gap-1">Notify <ArrowRight className="w-3 h-3" /></span>
-            </div>
-        </div>
 
-        <div className="flex flex-col gap-4">
-            <button 
+            <div className="flex flex-col gap-4">
+              <button onClick={() => setActiveTab("dues_and_reminders")} className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
+                 <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
+                     <Bell className="w-5 h-5 group-hover:scale-110 transition" />
+                 </div>
+                 <div className="text-left">
+                     <p className="font-bold text-white text-sm">Send Reminders</p>
+                     <p className="text-[10px] text-white/50">Notify accounts</p>
+                 </div>
+              </button>
+              <button
+                onClick={() => setIsNoShowModalOpen(true)}
+                className="glass p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
+              >
+                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
+                     <UserX className="w-5 h-5 group-hover:scale-110 transition" />
+                 </div>
+                 <div className="text-left">
+                     <p className="font-bold text-white text-sm">Add No Show</p>
+                     <p className="text-[10px] text-white/50">Fine Absentees</p>
+                 </div>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Matches: Add Match + Assign Fees + Calendar + Poll */}
+      {isMatchAdmin && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <button
               onClick={() => setActiveTab("matches", "add_match")}
               className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
             >
@@ -310,95 +353,68 @@ export function AdminDashboard({
                     <p className="text-[10px] text-white/50">Schedule a fixture</p>
                 </div>
             </button>
-            <button 
-              onClick={() => setActiveTab("studio", "add_player")}
-              className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group"
-            >
-                <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
-                    <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
-                </div>
-                <div className="text-left">
-                    <p className="font-bold text-white text-sm">Add to Studio</p>
-                    <p className="text-[10px] text-white/50">Add a new player</p>
-                </div>
+            <button onClick={() => setActiveTab("matches", "assign")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+               <div className="flex items-center gap-3">
+                   <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
+                       <Calculator className="w-5 h-5" />
+                   </div>
+                   <div className="text-left">
+                       <p className="text-sm font-bold text-white">Assign Fees</p>
+                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">To Players</p>
+                   </div>
+               </div>
+               <ArrowRight className="w-4 h-4 text-white/30" />
             </button>
-        </div>
-      </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+               <div className="flex items-center gap-3">
+                   <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
+                       <Landmark className="w-5 h-5" />
+                   </div>
+                   <div className="text-left">
+                       <p className="text-sm font-bold text-white">View Calendar</p>
+                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
+                   </div>
+               </div>
+               <ArrowRight className="w-4 h-4 text-white/30" />
+            </button>
+            <button onClick={() => setActiveTab("opinion", "add_poll")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+               <div className="flex items-center gap-3">
+                   <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
+                       <PieChart className="w-5 h-5" />
+                   </div>
+                   <div className="text-left">
+                       <p className="text-sm font-bold text-white">Start a Poll</p>
+                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
+                   </div>
+               </div>
+               <ArrowRight className="w-4 h-4 text-white/30" />
+            </button>
+          </div>
+        </>
+      )}
 
-      <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => setActiveTab("dues_and_reminders")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
-             <div className="flex items-center gap-3">
-                 <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
-                     <Bell className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Send Reminders</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Notify accounts</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-
-          <button onClick={() => setActiveTab("matches", "assign")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
-             <div className="flex items-center gap-3">
-                 <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
-                     <Calculator className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Assign Fees</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">To Players</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
+      {/* Studio: Add to Studio */}
+      {isStudioAdmin && (
+        <div className="grid grid-cols-2 gap-4">
           <button
-            onClick={() => setIsNoShowModalOpen(true)}
-            className="glass flex items-center justify-between p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 hover:bg-orange-500/10 transition"
+            onClick={() => setActiveTab("studio", "add_player")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group"
           >
-             <div className="flex items-center gap-3">
-                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
-                     <UserX className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Add No Show</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Fine Absentees</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
+              <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
+                  <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Add to Studio</p>
+                  <p className="text-[10px] text-white/50">Add a new member</p>
+              </div>
           </button>
-
-          <button onClick={() => setActiveTab("opinion", "add_poll")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
-             <div className="flex items-center gap-3">
-                 <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
-                     <PieChart className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Start a Poll</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-      </div>
+        </div>
+      )}
       
-      <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition w-full">
-         <div className="flex items-center gap-3">
-             <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
-                 <Landmark className="w-5 h-5" />
-             </div>
-             <div className="text-left">
-                 <p className="text-sm font-bold text-white">View Calendar</p>
-                 <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
-             </div>
-         </div>
-         <ArrowRight className="w-4 h-4 text-white/30" />
-      </button>
-      
-      {/* Payout to Organiser Panel */}
-      {payoutMatches.length > 0 && (
+      {/* Payout to Organiser Panel — Finance/Super only */}
+      {isFinanceAdmin && payoutMatches.length > 0 && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-4">
              <h3 className="text-lg font-bold text-white tracking-tight">Payout to Organiser</h3>
@@ -452,8 +468,8 @@ export function AdminDashboard({
         </div>
       )}
 
-      {/* Swipe Pane for matches */}
-      <div className="mt-4">
+      {/* Swipe Pane for matches — Match/Super only */}
+      {isMatchAdmin && <div className="mt-4">
         <div className="flex items-center justify-between mb-4">
            <h3 className="text-lg font-bold text-white tracking-tight">Upcoming Matches</h3>
            <span className="text-xs text-white/50 hover:text-white cursor-pointer" onClick={() => setActiveTab("matches")}>View All</span>
@@ -487,8 +503,8 @@ export function AdminDashboard({
                ))
            )}
         </div>
-      </div>
-      
+      </div>}
+
       {/* Group Remind Modal */}
       {isGroupRemindModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">

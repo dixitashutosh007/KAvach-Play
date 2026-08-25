@@ -310,10 +310,12 @@ export function EditPlayerInline({
                     updates.isStudioAdmin = true;
                     updates.isMatchAdmin = true;
                     updates.isFinanceAdmin = true;
+                    updates.isDesignAdmin = true;
                   } else {
                     updates.isStudioAdmin = false;
                     updates.isMatchAdmin = false;
                     updates.isFinanceAdmin = false;
+                    updates.isDesignAdmin = false;
                   }
                   await store.updateAppUserProfile(appUserMatch.id, updates);
                 },
@@ -343,8 +345,16 @@ export function EditPlayerInline({
                   store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: checked }),
               },
               {
+                label: "Design Admin",
+                desc: "Can manage the KAvach Design tab.",
+                checked: isSuperAdminNow || !!appUserMatch.isDesignAdmin,
+                disabled: isSuperAdminNow,
+                onChange: async (checked) =>
+                  store.updateAppUserProfile(appUserMatch.id, { isDesignAdmin: checked }),
+              },
+              {
                 label: "Designer",
-                desc: "Can access the KAvach Design tab (post templates).",
+                desc: "Player-level access to Design tab (post templates).",
                 checked: isSuperAdminNow || !!appUserMatch.isDesigner,
                 disabled: isSuperAdminNow,
                 onChange: async (checked) =>

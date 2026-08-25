@@ -74,6 +74,7 @@ export type AppUser = {
   isStudioAdmin?: boolean;
   isMatchAdmin?: boolean;
   isFinanceAdmin?: boolean;
+  isDesignAdmin?: boolean;
   // When true, this user sees the KAvach Design tab (post templates for
   // match results / milestones / achievements). Admins get access
   // automatically regardless of this flag.
