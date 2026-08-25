@@ -211,7 +211,7 @@ export function PlayerFinanceView({
         return;
       }
 
-      const res = await fetch("/api/razorpay/order", {
+      const res = await authedFetch("/api/razorpay/order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

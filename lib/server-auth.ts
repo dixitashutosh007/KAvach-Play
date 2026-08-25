@@ -28,9 +28,52 @@ function ensureAdminApp() {
   return initializeApp({ projectId: firebaseConfig.projectId });
 }
 
-export type AdminGuardResult =
+export type AuthGuardResult =
   | { ok: true; uid: string; email?: string }
   | { ok: false; response: NextResponse };
+
+export type AdminGuardResult = AuthGuardResult;
+
+/**
+ * Verify the caller is any authenticated Firebase user.
+ * Use this for routes that any signed-in user may call (e.g. creating their own payment order).
+ */
+export async function requireAuth(req: Request): Promise<AuthGuardResult> {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Missing Authorization header." },
+        { status: 401 },
+      ),
+    };
+  }
+  const token = authHeader.substring(7).trim();
+  if (!token) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Empty bearer token." },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const app = ensureAdminApp();
+  try {
+    const decoded = await getAuth(app).verifyIdToken(token);
+    return { ok: true, uid: decoded.uid, email: decoded.email };
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Invalid or expired token." },
+        { status: 401 },
+      ),
+    };
+  }
+}
 
 export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
   const authHeader = req.headers.get("authorization");

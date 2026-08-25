@@ -8,6 +8,7 @@
  * It contains sub-components for assigning match outcomes and viewing venues.
  */
 import { useStore } from "@/hooks/useStore";
+import { authedFetch } from "@/lib/authed-fetch";
 import { Match, MatchComment, Player, FeePlan } from "@/lib/types";
 
 /**
@@ -1636,7 +1637,7 @@ export function MatchPayments({
         return;
       }
 
-      const res = await fetch("/api/razorpay/order", {
+      const res = await authedFetch("/api/razorpay/order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
