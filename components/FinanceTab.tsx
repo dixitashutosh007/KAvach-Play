@@ -256,11 +256,11 @@ export function PlayerFinanceView({
                   );
                 } else if (due.type === "other" && mePlayer) {
                   updates.push(
-                    store.updateOtherFeeStatus(mePlayer.id, due.rawId, "Paid"),
+                    store.updateOtherFeeStatus(mePlayer.id, due.rawId, "Paid", "razorpay"),
                   );
                 } else if (due.type === "merch") {
                   updates.push(
-                    store.updateMerchOrder(due.rawId, { paymentStatus: "Paid" })
+                    store.updateMerchOrder(due.rawId, { paymentStatus: "Paid", paymentMethod: "razorpay" })
                   );
                 }
               }

@@ -423,7 +423,7 @@ export function ShopTab({
           description: `Order: ${selectedMerch.name}`,
           order_id: orderData.id,
           handler: async function (response: any) {
-            await finalizeOrderPlacement(finalPrice, customPriceAdditions);
+            await finalizeOrderPlacement(finalPrice, customPriceAdditions, false);
           },
           prefill: {
             name: playerProfile?.name || userProfile?.name || "Player",
@@ -448,7 +448,7 @@ export function ShopTab({
         });
         paymentObject.open();
       } else {
-        await finalizeOrderPlacement(finalPrice, customPriceAdditions);
+        await finalizeOrderPlacement(finalPrice, customPriceAdditions, true);
       }
     } catch (err) {
       alert("Order failed. Please try again.");
@@ -456,7 +456,7 @@ export function ShopTab({
     }
   };
 
-  const finalizeOrderPlacement = async (finalPrice: number, customPriceAdditions: number) => {
+  const finalizeOrderPlacement = async (finalPrice: number, customPriceAdditions: number, isManual: boolean = true) => {
     if (!selectedMerch) return;
     try {
       setIsOrdering(true);
@@ -496,6 +496,7 @@ export function ShopTab({
         price: finalPrice,
         paymentStatus: "Paid" as const, // Upfront collection
         orderStatus: (reachedMoq ? "Ready to Place Order" : "Awaiting Min Order Qnty") as any,
+        isManual,
       };
 
       const orderId = await store.addMerchOrder(orderPayload);

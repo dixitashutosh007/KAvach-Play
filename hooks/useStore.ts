@@ -1452,10 +1452,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     playerId: string,
     feeId: string,
     status: OtherFee["status"],
+    paymentMethod?: "manual" | "razorpay",
   ) => {
     const docRef = doc(db, "players", playerId, "otherFees", feeId);
     try {
-      await updateDoc(docRef, { status, updatedAt: serverTimestamp() });
+      const updateData: any = { status, updatedAt: serverTimestamp() };
+      if (paymentMethod) updateData.paymentMethod = paymentMethod;
+      await updateDoc(docRef, updateData);
       
       const player = players.find((p) => p.id === playerId);
       const fee = otherFees.find((f) => f.id === feeId);

@@ -32,7 +32,7 @@ export default function RazorReportView({
         const player = store.players.find((pl) => pl.id === p.playerId);
         if (match && player) {
           const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-          const isGateway = p.paymentMethod !== "manual" && !p.sponsoredBy;
+          const isGateway = p.paymentMethod === "razorpay" && !p.sponsoredBy;
           let product: string;
           if (isGateway) {
             product = `Match Fee: vs ${match.opponent}`;
