@@ -257,6 +257,12 @@ export default function Home() {
   const STATS_TABS = new Set(["leaderboard", "home"]);
   const MERCH_TABS = new Set(["shop"]);
   const POLL_TABS = new Set(["opinion"]);
+  const TOURNAMENT_TABS = new Set(["matches"]);
+  const SUB_PLAN_TABS = new Set(["studio"]);
+  const FEE_TEMPLATE_TABS = new Set(["finance", "dues_and_reminders"]);
+  const FEE_PLAN_TABS = new Set(["matches", "finance", "players", "dues_and_reminders"]);
+  const MERCH_CATALOG_TABS = new Set(["shop"]);
+  const OUT_OF_PLAY_TABS = new Set(["profile", "studio"]);
   useEffect(() => {
     if (!store.isLoaded) return;
     if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.();
@@ -268,7 +274,13 @@ export default function Home() {
       store.ensurePolls?.();
       store.ensurePollResponses?.();
     }
-  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses]);
+    if (TOURNAMENT_TABS.has(activeTab)) store.ensureTournaments?.();
+    if (SUB_PLAN_TABS.has(activeTab)) store.ensureSubscriptionPlans?.();
+    if (FEE_TEMPLATE_TABS.has(activeTab)) store.ensureFeeTemplates?.();
+    if (FEE_PLAN_TABS.has(activeTab)) store.ensureFeePlans?.();
+    if (MERCH_CATALOG_TABS.has(activeTab)) store.ensureMerchandises?.();
+    if (OUT_OF_PLAY_TABS.has(activeTab)) store.ensureOutOfPlays?.();
+  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
