@@ -168,7 +168,7 @@ export function PlayerFinanceView({
     }
   }, []);
 
-  const dues = unifiedDues.filter((p) => p.status === "Unpaid");
+  const dues = unifiedDues.filter((p) => p.status === "Unpaid" && p.amount > 0);
   const paid = unifiedDues
     .filter((p) => p.status === "Paid")
     .sort((a, b) => b.updatedAtSeconds - a.updatedAtSeconds);
@@ -1018,7 +1018,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           (p) => p.status === "Paid",
         ).length;
         const unpaidCount = paymentsForMatch.filter(
-          (p) => p.status === "Unpaid",
+          (p) => p.status === "Unpaid" && (p.feeOverride !== undefined ? p.feeOverride : match.fee) > 0,
         ).length;
         const razorpayPaidCount = paymentsForMatch.filter(
           (p) => p.status === "Paid" && p.paymentMethod !== "manual"

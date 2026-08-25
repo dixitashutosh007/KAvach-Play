@@ -155,6 +155,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
          });
 
          const filteredDues = allDues.filter(d => {
+            if (d.amount <= 0) return false;
             if (dueType === "matches" && d.type !== "match") return false;
             if (dueType === "others" && d.type !== "other") return false;
             if (filterMatchId && d.groupKey !== `match_${filterMatchId}`) return false;
