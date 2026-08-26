@@ -1,5 +1,5 @@
 import { useStore } from "@/hooks/useStore";
-import { Copy, MapPin, Plus, Edit2, Trash2 } from "lucide-react";
+import { Copy, MapPin, Plus, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
 export function GroundsTab({
@@ -339,6 +339,21 @@ export function GroundsTab({
                 ) : <div />}
               </div>
             ) : null}
+            {(() => {
+              const missing: string[] = [];
+              if (!ground.practiceFee) missing.push("Practice Fee");
+              if (!ground.tournamentFee) missing.push("Tournament Fee");
+              if (!ground.gpayNumber) missing.push("UPI ID");
+              if (missing.length === 0) return null;
+              return (
+                <div className="mt-3 flex items-start gap-2 border-t border-amber-500/20 pt-3 bg-amber-500/5 -mx-4 -mb-4 px-4 pb-3 rounded-b-xl">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-300/90">
+                    Missing: {missing.join(", ")}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         ))}
         {store.grounds.length === 0 && (

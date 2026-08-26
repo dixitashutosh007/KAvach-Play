@@ -57,6 +57,7 @@ export type AppConfig = {
     isWixEnabled?: boolean;
     shop?: boolean;
     opinion?: boolean;
+    pna?: boolean;
   };
   matchConfiguration?: {
     directionsHoursBefore?: number;

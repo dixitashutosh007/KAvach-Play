@@ -802,18 +802,18 @@ export function ShopTab({
 
         {/* View Toggle — wraps on narrow screens so all pills stay visible
             instead of the last one (Administration) sliding off the right. */}
-        <div className="flex flex-wrap gap-1 bg-black/20 p-1 rounded-xl border border-glass-border w-full lg:w-auto">
+        <div className="flex bg-black/20 p-1 rounded-xl border border-glass-border w-full lg:w-auto overflow-x-auto no-scrollbar">
           <button
             onClick={() => setView("catalog")}
-            className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition whitespace-nowrap ${
+            className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition whitespace-nowrap ${
               view === "catalog" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
             }`}
           >
-            Store Menu
+            Store
           </button>
           <button
             onClick={() => setView("history")}
-            className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
+            className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1 whitespace-nowrap ${
               view === "history" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
             }`}
           >
@@ -821,20 +821,20 @@ export function ShopTab({
           </button>
           <button
             onClick={() => setView("global-list")}
-            className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
+            className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1 whitespace-nowrap ${
               view === "global-list" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
             }`}
           >
-            Club Orders ({store.merchOrders.length})
+            Club ({store.merchOrders.length})
           </button>
           {isAdmin && (
             <button
               onClick={() => setView("admin")}
-              className={`flex-1 lg:flex-none min-w-[7rem] px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
+              className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1 whitespace-nowrap ${
                 view === "admin" ? "bg-accent text-black shadow-lg" : "text-white/60 hover:text-white"
               }`}
             >
-              <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Administration
+              <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Admin
             </button>
           )}
         </div>

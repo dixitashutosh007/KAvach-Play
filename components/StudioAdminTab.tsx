@@ -26,6 +26,7 @@ export function StudioAdminTab({
   isStudioAdmin,
   isSuperAdmin,
   defaultAction,
+  isFeatureEnabled,
 }: {
   store: ReturnType<typeof useStore>;
   adminId: string;
@@ -34,6 +35,7 @@ export function StudioAdminTab({
   isStudioAdmin?: boolean;
   isSuperAdmin?: boolean;
   defaultAction?: string | null;
+  isFeatureEnabled?: (f: string) => boolean;
 }) {
   const [mainTab, setMainTab] = useState<"management" | "pna">(
     "management",
@@ -105,20 +107,22 @@ export function StudioAdminTab({
   return (
     <div className="space-y-6">
       {/* Master Tabs for Studio Section */}
-      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
-        <button
-          onClick={() => setMainTab("management")}
-          className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "management" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-        >
-          <span>🎬</span> Studio
-        </button>
-        <button
-          onClick={() => setMainTab("pna")}
-          className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "pna" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-        >
-          PNA
-        </button>
-      </div>
+      {(!isFeatureEnabled || isFeatureEnabled("pna")) && (
+        <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
+          <button
+            onClick={() => setMainTab("management")}
+            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "management" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
+          >
+            <span>🎬</span> Studio
+          </button>
+          <button
+            onClick={() => setMainTab("pna")}
+            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "pna" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
+          >
+            PNA
+          </button>
+        </div>
+      )}
 
       {/* No Show quick-action — always visible */}
       <button
@@ -134,11 +138,11 @@ export function StudioAdminTab({
         </div>
       </button>
 
-      {mainTab === "pna" ? (
+      {mainTab === "pna" && (!isFeatureEnabled || isFeatureEnabled("pna")) ? (
         <div className="mt-4">
           <PNAView store={store} />
         </div>
-      ) : (
+      ) : mainTab === "pna" ? null : (
         <>
           <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border mt-4">
             <button

@@ -149,6 +149,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     matches: store.appConfig?.features?.matches !== false,
     isWixEnabled: store.appConfig?.features?.isWixEnabled === true,
     shop: store.appConfig?.features?.shop !== false,
+    pna: store.appConfig?.features?.pna !== false,
   });
 
   const [matchConfiguration, setMatchConfiguration] = useState({
@@ -278,6 +279,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       matches: cfg.features?.matches !== false,
       isWixEnabled: cfg.features?.isWixEnabled === true,
       shop: cfg.features?.shop !== false,
+      pna: cfg.features?.pna !== false,
     });
     setMatchConfiguration({
       directionsHoursBefore: cfg.matchConfiguration?.directionsHoursBefore ?? 18,
@@ -1357,6 +1359,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   { key: "matches", label: "Match Fixtures Tab" },
                   { key: "isWixEnabled", label: "Legacy Wix Feature" },
                   { key: "shop", label: "Club Merchandise Shop Menu" },
+                  { key: "pna", label: "Player Not Available (PNA) Report" },
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center gap-3">
                     <input

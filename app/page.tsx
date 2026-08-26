@@ -1238,6 +1238,7 @@ export default function Home() {
                         isStudioAdmin={isStudioAdmin || isSuperAdmin}
                         isSuperAdmin={isSuperAdmin}
                         defaultAction={tabAction}
+                        isFeatureEnabled={isFeatureEnabled}
                       />
                     )}
                     {activeTab === "notifications" && (
