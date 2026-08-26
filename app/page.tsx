@@ -990,6 +990,7 @@ export default function Home() {
                       return (
                         <button
                           key={tab}
+                          data-testid={`sidebar-tab-${tab}`}
                           onClick={() => setActiveTab(tab as any)}
                           className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
                             activeTab === tab

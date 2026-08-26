@@ -108,7 +108,7 @@ export function StudioAdminTab({
     <div className="space-y-6">
       {/* Master Tabs for Studio Section */}
       {(!isFeatureEnabled || isFeatureEnabled("pna")) && (
-        <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
+        <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border" data-testid="studio-tabs">
           <button
             onClick={() => setMainTab("management")}
             className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "management" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
@@ -116,6 +116,7 @@ export function StudioAdminTab({
             <span>🎬</span> Studio
           </button>
           <button
+            data-testid="studio-pna-tab"
             onClick={() => setMainTab("pna")}
             className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "pna" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
           >
@@ -126,6 +127,7 @@ export function StudioAdminTab({
 
       {/* No Show quick-action — always visible */}
       <button
+        data-testid="studio-no-show-button"
         onClick={() => setIsNoShowModalOpen(true)}
         className="w-full glass p-3 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
       >
@@ -174,7 +176,7 @@ export function StudioAdminTab({
 
       {/* No Show Modal — filtered to studio members only */}
       {isNoShowModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div data-testid="studio-no-show-modal" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-md p-5 relative shadow-2xl max-h-[90vh] flex flex-col">
             <button
               onClick={resetNoShow}

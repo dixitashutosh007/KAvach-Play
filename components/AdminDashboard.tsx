@@ -452,7 +452,7 @@ export function AdminDashboard({
 
       {/* Top 5 Dues — Finance/Super only */}
       {isFinanceAdmin && topDuePlayers.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-4" data-testid="top-dues-section">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-bold text-white tracking-tight">Top Dues</h3>
             <button onClick={() => setActiveTab("club", "reminders")} className="text-xs text-accent hover:underline">View All</button>
@@ -476,7 +476,7 @@ export function AdminDashboard({
 
       {/* Recent Transactions — Finance/Super only */}
       {isFinanceAdmin && recentTransactions.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-4" data-testid="recent-transactions-section">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-bold text-white tracking-tight">Recent Transactions</h3>
             <button onClick={() => setActiveTab("finance")} className="text-xs text-accent hover:underline">View All</button>

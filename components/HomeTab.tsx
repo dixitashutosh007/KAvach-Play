@@ -414,6 +414,7 @@ export function HomeTab({
               return (
                 <div
                   key={match.id}
+                  data-testid={`match-card-${match.id}`}
                   className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-white/5 border border-white/10 rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-lg cursor-pointer hover:bg-white/10 transition"
                   onClick={() => onNavigateToMatch?.(match.id)}
                 >
@@ -522,7 +523,7 @@ export function HomeTab({
                     </div>
                   )}
                   {onNavigateToMatch && (
-                    <p className="text-[10px] text-accent font-bold uppercase tracking-widest mt-3 text-center flex items-center justify-center gap-1">
+                    <p data-testid="view-details-link" className="text-[10px] text-accent font-bold uppercase tracking-widest mt-3 text-center flex items-center justify-center gap-1">
                       View Details <ChevronRight className="w-3 h-3" />
                     </p>
                   )}

@@ -42,10 +42,11 @@ export function ClubTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border overflow-x-auto no-scrollbar">
+      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border overflow-x-auto no-scrollbar" data-testid="club-sub-tabs">
         {visibleTabs.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
+            data-testid={`club-sub-tab-${key}`}
             onClick={() => setSubTab(key)}
             className={`flex-1 min-w-0 text-[10px] font-bold uppercase py-2 px-1 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap ${
               subTab === key ? "bg-accent text-black" : "text-white/50 hover:text-white"

@@ -802,7 +802,7 @@ export function ShopTab({
 
         {/* View Toggle — wraps on narrow screens so all pills stay visible
             instead of the last one (Administration) sliding off the right. */}
-        <div className="flex bg-black/20 p-1 rounded-xl border border-glass-border w-full lg:w-auto overflow-x-auto no-scrollbar">
+        <div data-testid="shop-sub-tabs" className="flex bg-black/20 p-1 rounded-xl border border-glass-border w-full lg:w-auto overflow-x-auto no-scrollbar">
           <button
             onClick={() => setView("catalog")}
             className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition whitespace-nowrap ${

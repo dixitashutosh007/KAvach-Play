@@ -1341,6 +1341,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           <div className="border-t border-glass-border pt-4 mt-2 mb-2">
             <button
               type="button"
+              data-testid="app-features-section"
               onClick={() => setIsAppFeaturesOpen(!isAppFeaturesOpen)}
               className="w-full flex items-center justify-between focus:outline-none"
             >
@@ -1364,6 +1365,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   <div key={key} className="flex items-center gap-3">
                     <input
                       type="checkbox"
+                      data-testid={`feature-toggle-${key}`}
                       checked={(features as any)[key]}
                       onChange={(e) =>
                         setFeatures((prev) => ({

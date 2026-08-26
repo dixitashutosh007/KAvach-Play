@@ -317,6 +317,7 @@ export function MatchesTab({
         </div>
         <form
           onSubmit={handleSubmit}
+          data-testid="match-form"
           className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
