@@ -16,7 +16,6 @@ import {
   X,
 } from "lucide-react";
 import { SubscriptionPlan, Player } from "@/lib/types";
-import { PlayersTab } from "./PlayersTab";
 import { formatDate, inputToDbDate } from "@/lib/utils";
 
 export function StudioAdminTab({
@@ -36,8 +35,8 @@ export function StudioAdminTab({
   isSuperAdmin?: boolean;
   defaultAction?: string | null;
 }) {
-  const [mainTab, setMainTab] = useState<"directory" | "management" | "pna">(
-    defaultAction === "add_player" ? "management" : isSuperAdmin ? "directory" : "management",
+  const [mainTab, setMainTab] = useState<"management" | "pna">(
+    "management",
   );
   const [subTab, setSubTab] = useState<"members" | "history">(
     "members",
@@ -107,25 +106,17 @@ export function StudioAdminTab({
     <div className="space-y-6">
       {/* Master Tabs for Studio Section */}
       <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
-        {isSuperAdmin && (
-          <button
-            onClick={() => setMainTab("directory")}
-            className={`flex-[1.5] text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "directory" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-          >
-            Directory
-          </button>
-        )}
-        <button
-          onClick={() => setMainTab("pna")}
-          className={`flex-[1.5] text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "pna" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-        >
-          PNA
-        </button>
         <button
           onClick={() => setMainTab("management")}
           className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "management" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
         >
           <span>🎬</span> Studio
+        </button>
+        <button
+          onClick={() => setMainTab("pna")}
+          className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "pna" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
+        >
+          PNA
         </button>
       </div>
 
@@ -143,11 +134,7 @@ export function StudioAdminTab({
         </div>
       </button>
 
-      {mainTab === "directory" ? (
-        <div className="mt-4">
-          <PlayersTab store={store} persona={persona} isStudioAdmin={isStudioAdmin} />
-        </div>
-      ) : mainTab === "pna" ? (
+      {mainTab === "pna" ? (
         <div className="mt-4">
           <PNAView store={store} />
         </div>
