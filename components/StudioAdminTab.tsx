@@ -1,6 +1,6 @@
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Video,
   Edit2,
@@ -12,10 +12,11 @@ import {
   CreditCard,
   Shield,
   Bell,
+  UserX,
+  X,
 } from "lucide-react";
 import { SubscriptionPlan, Player } from "@/lib/types";
 import { PlayersTab } from "./PlayersTab";
-import { AssignFeesAdmin } from "./AssignFeesAdmin";
 import { formatDate, inputToDbDate } from "@/lib/utils";
 
 export function StudioAdminTab({
@@ -35,12 +36,72 @@ export function StudioAdminTab({
   isSuperAdmin?: boolean;
   defaultAction?: string | null;
 }) {
-  const [mainTab, setMainTab] = useState<"directory" | "management" | "assign-fee" | "pna">(
+  const [mainTab, setMainTab] = useState<"directory" | "management" | "pna">(
     defaultAction === "add_player" ? "management" : isSuperAdmin ? "directory" : "management",
   );
   const [subTab, setSubTab] = useState<"members" | "history">(
     "members",
   );
+
+  // No Show modal state (studio-member-only)
+  const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(false);
+  const [noShowAmount, setNoShowAmount] = useState<number>(0);
+  const [noShowComment, setNoShowComment] = useState("");
+  const [noShowSearch, setNoShowSearch] = useState("");
+  const [noShowSelected, setNoShowSelected] = useState<string[]>([]);
+  const [isSavingNoShow, setIsSavingNoShow] = useState(false);
+
+  const studioMembers = useMemo(
+    () =>
+      store.players
+        .filter((p) => p.isStudioMember && !p.disabled)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [store.players],
+  );
+
+  const noShowFiltered = useMemo(
+    () =>
+      studioMembers.filter(
+        (p) =>
+          !noShowSearch ||
+          p.name.toLowerCase().includes(noShowSearch.toLowerCase()) ||
+          (p.mobile || "").includes(noShowSearch),
+      ),
+    [studioMembers, noShowSearch],
+  );
+
+  const resetNoShow = () => {
+    setIsNoShowModalOpen(false);
+    setNoShowAmount(0);
+    setNoShowComment("");
+    setNoShowSearch("");
+    setNoShowSelected([]);
+    setIsSavingNoShow(false);
+  };
+
+  const handleSaveNoShow = async () => {
+    if (isSavingNoShow) return;
+    if (noShowSelected.length === 0) {
+      alert("Pick at least one studio member.");
+      return;
+    }
+    if (!noShowAmount || noShowAmount <= 0) {
+      alert("Set a No Show amount (₹).");
+      return;
+    }
+    setIsSavingNoShow(true);
+    try {
+      for (const pid of noShowSelected) {
+        await store.addOtherFee(pid, "No Show", noShowAmount, noShowComment);
+      }
+      alert(`No Show fee added to ${noShowSelected.length} studio member(s).`);
+      resetNoShow();
+    } catch (err) {
+      console.error("Failed to add No Show fee", err);
+      alert("Failed to add No Show fee. Try again.");
+      setIsSavingNoShow(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -66,13 +127,21 @@ export function StudioAdminTab({
         >
           <span>🎬</span> Studio
         </button>
-        <button
-          onClick={() => setMainTab("assign-fee")}
-          className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "assign-fee" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-        >
-          Fee
-        </button>
       </div>
+
+      {/* No Show quick-action — always visible */}
+      <button
+        onClick={() => setIsNoShowModalOpen(true)}
+        className="w-full glass p-3 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
+      >
+        <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
+          <UserX className="w-5 h-5 group-hover:scale-110 transition" />
+        </div>
+        <div className="text-left">
+          <p className="font-bold text-white text-sm">Add No Show Fee</p>
+          <p className="text-[10px] text-white/50">Fine absent studio members</p>
+        </div>
+      </button>
 
       {mainTab === "directory" ? (
         <div className="mt-4">
@@ -81,10 +150,6 @@ export function StudioAdminTab({
       ) : mainTab === "pna" ? (
         <div className="mt-4">
           <PNAView store={store} />
-        </div>
-      ) : mainTab === "assign-fee" ? (
-        <div className="mt-4">
-          <AssignFeesAdmin store={store} />
         </div>
       ) : (
         <>
@@ -114,6 +179,138 @@ export function StudioAdminTab({
             <HistoryView store={store} />
           )}
         </>
+      )}
+
+      {/* No Show Modal — filtered to studio members only */}
+      {isNoShowModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-md p-5 relative shadow-2xl max-h-[90vh] flex flex-col">
+            <button
+              onClick={resetNoShow}
+              className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+              disabled={isSavingNoShow}
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-sm font-bold uppercase tracking-widest text-orange-400 mb-3 flex items-center gap-2">
+              <UserX className="w-4 h-4" /> Studio No Show Fee
+            </h3>
+            <p className="text-[11px] text-white/60 mb-4 leading-relaxed">
+              Charges an <span className="text-orange-400 font-bold">Other Fee</span>
+              {" "}called <em>No Show</em> to selected studio members.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Amount (₹) *
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={noShowAmount || ""}
+                  onChange={(e) => setNoShowAmount(Number(e.target.value))}
+                  placeholder="e.g. 200"
+                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-white placeholder-white/30"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                  Selected
+                </label>
+                <div className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white h-[38px] flex items-center">
+                  {noShowSelected.length} member(s)
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                Comment (visible to players)
+              </label>
+              <input
+                type="text"
+                value={noShowComment}
+                onChange={(e) => setNoShowComment(e.target.value)}
+                placeholder="e.g. No show for studio session on 12 Aug"
+                className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-white placeholder-white/30"
+              />
+            </div>
+
+            <div className="mb-3 flex-1 flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                  Select Studio Members
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNoShowSelected(
+                      noShowSelected.length === noShowFiltered.length
+                        ? []
+                        : noShowFiltered.map((p) => p.id),
+                    )
+                  }
+                  className="text-orange-400 text-[10px] uppercase font-bold tracking-wider hover:underline"
+                >
+                  {noShowSelected.length === noShowFiltered.length &&
+                  noShowFiltered.length > 0
+                    ? "Deselect All"
+                    : "Select All"}
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Search studio members..."
+                value={noShowSearch}
+                onChange={(e) => setNoShowSearch(e.target.value)}
+                className="w-full bg-black/40 border border-glass-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-white placeholder-white/30"
+              />
+              <div className="flex-1 overflow-y-auto min-h-[8rem] max-h-[16rem] border border-t-0 border-glass-border rounded-b-lg bg-black/20 p-2 flex flex-col gap-1">
+                {noShowFiltered.length === 0 && (
+                  <div className="text-xs text-white/40 italic p-2 text-center">
+                    No studio members found.
+                  </div>
+                )}
+                {noShowFiltered.map((p) => (
+                  <label
+                    key={p.id}
+                    className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${
+                      noShowSelected.includes(p.id)
+                        ? "bg-orange-500/20 border border-orange-500/40 text-white"
+                        : "hover:bg-white/5 border border-transparent text-white/70"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={noShowSelected.includes(p.id)}
+                      onChange={() =>
+                        setNoShowSelected((prev) =>
+                          prev.includes(p.id)
+                            ? prev.filter((x) => x !== p.id)
+                            : [...prev, p.id],
+                        )
+                      }
+                      className="accent-orange-500"
+                    />
+                    <span className="text-sm">{p.name}</span>
+                    <span className="text-[10px] text-white/40 ml-auto">{p.mobile}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveNoShow}
+              disabled={isSavingNoShow}
+              className="w-full bg-orange-500 text-black font-bold py-2.5 rounded-lg hover:bg-orange-400 transition shadow flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSavingNoShow
+                ? "Saving..."
+                : `Add No Show to ${noShowSelected.length} member(s)`}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
