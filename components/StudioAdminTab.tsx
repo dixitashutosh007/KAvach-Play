@@ -36,7 +36,7 @@ export function StudioAdminTab({
   defaultAction?: string | null;
 }) {
   const [mainTab, setMainTab] = useState<"directory" | "management" | "assign-fee" | "pna">(
-    defaultAction === "add_player" ? "management" : "directory",
+    defaultAction === "add_player" ? "management" : isSuperAdmin ? "directory" : "management",
   );
   const [subTab, setSubTab] = useState<"members" | "history">(
     "members",
@@ -46,12 +46,14 @@ export function StudioAdminTab({
     <div className="space-y-6">
       {/* Master Tabs for Studio Section */}
       <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
-        <button
-          onClick={() => setMainTab("directory")}
-          className={`flex-[1.5] text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "directory" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-        >
-          Directory
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setMainTab("directory")}
+            className={`flex-[1.5] text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "directory" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
+          >
+            Directory
+          </button>
+        )}
         <button
           onClick={() => setMainTab("pna")}
           className={`flex-[1.5] text-[11px] font-bold uppercase py-2 rounded-md transition ${mainTab === "pna" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}

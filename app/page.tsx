@@ -183,7 +183,7 @@ export default function Home() {
       currentUserObj?.isStudioAdmin ||
       currentUserObj?.isMatchAdmin ||
       currentUserObj?.isFinanceAdmin ||
-      currentUserObj?.isDesignAdmin ||
+      currentUserObj?.isClubAdmin ||
       hasAdminClaim);
 
   useEffect(() => {
@@ -201,8 +201,8 @@ export default function Home() {
         setActiveTab("matches");
       } else if (currentUserObj?.isStudioAdmin) {
         setActiveTab("studio");
-      } else if (currentUserObj?.isDesignAdmin) {
-        setActiveTab("design");
+      } else if (currentUserObj?.isClubAdmin) {
+        setActiveTab("players");
       }
     }
   }, [isAdminUser, currentUserObj, user]);
@@ -521,11 +521,11 @@ export default function Home() {
   const isFinanceAdmin = isSuperAdmin || appUser?.isFinanceAdmin;
   const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
   const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;
-  const isDesignAdmin = isSuperAdmin || appUser?.isDesignAdmin;
+  const isClubAdmin = isSuperAdmin || appUser?.isClubAdmin;
 
   const isAdmin =
-    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isDesignAdmin;
-  const canDesign = isDesignAdmin || !!appUser?.isDesigner;
+    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isClubAdmin;
+  const canDesign = isClubAdmin || !!appUser?.isDesigner;
   // Mandatory profile fields every non-admin player must have populated
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
@@ -662,7 +662,7 @@ export default function Home() {
                     else if (isFinanceAdmin) setActiveTab("finance");
                     else if (isMatchAdmin) setActiveTab("matches");
                     else if (isStudioAdmin) setActiveTab("studio");
-                    else if (isDesignAdmin) setActiveTab("design");
+                    else if (isClubAdmin) setActiveTab("players");
                     else setActiveTab("home");
                   }
                 }}
@@ -952,31 +952,32 @@ export default function Home() {
                   {[
                     "home",
                     "finance",
-                    "dues_and_reminders",
+                    "matches",
+                    "studio",
                     "players",
                     "shop",
-                    "matches",
                     "opinion",
-                    "studio",
                     "design",
                     "leaderboard",
+                    "dues_and_reminders",
                     "settings",
                   ]
                     .filter((tab) => {
-                      if (tab === "finance" || tab === "dues_and_reminders")
+                      if (tab === "finance")
                         return isFinanceAdmin;
-                      if (tab === "players")
-                        return isFinanceAdmin || isSuperAdmin;
-                      if (tab === "shop")
-                        return (isFinanceAdmin || isSuperAdmin) && isFeatureEnabled("shop");
                       if (tab === "matches")
                         return isMatchAdmin;
-                      if (tab === "opinion")
-                        return (isMatchAdmin || isSuperAdmin) && isFeatureEnabled("opinion");
                       if (tab === "studio")
                         return isStudioAdmin;
+                      if (tab === "players")
+                        return isClubAdmin;
+                      if (tab === "shop")
+                        return (isClubAdmin) && isFeatureEnabled("shop");
+                      if (tab === "opinion")
+                        return (isClubAdmin) && isFeatureEnabled("opinion");
                       if (tab === "design") return canDesign;
-                      if (tab === "leaderboard") return isSuperAdmin;
+                      if (tab === "leaderboard") return isClubAdmin;
+                      if (tab === "dues_and_reminders") return isClubAdmin;
                       if (tab === "settings") return isSuperAdmin;
                       return true;
                     })
@@ -984,28 +985,28 @@ export default function Home() {
                       const iconMap: Record<string, any> = {
                         home: HomeIcon,
                         finance: Shield,
-                        dues_and_reminders: Bell,
+                        matches: CalendarDays,
+                        studio: Video,
                         players: Users,
                         shop: ShoppingBag,
-                        matches: CalendarDays,
                         opinion: PieChart,
-                        studio: Video,
                         design: ImageIcon,
                         leaderboard: Trophy,
+                        dues_and_reminders: Bell,
                         settings: SettingsIcon,
                       };
                       const IconComp = iconMap[tab] || Trophy;
                       const uppercaseLabels: Record<string, string> = {
                         home: "Admin Home",
                         finance: "Finance",
-                        dues_and_reminders: "Dues",
+                        matches: "Matches",
+                        studio: "Studio",
                         players: "Players",
                         shop: "Shop",
-                        matches: "Matches",
                         opinion: "Pulse",
-                        studio: "Studio",
                         design: "Design",
                         leaderboard: "Leaderboard",
+                        dues_and_reminders: "Reminders",
                         settings: "Settings",
                       };
                       return (
@@ -1196,28 +1197,24 @@ export default function Home() {
                   >
                     <option value="home">Admin Home</option>
                     {isFinanceAdmin && (
-                      <>
-                        <option value="finance">Finance</option>
-                        <option value="dues_and_reminders">Dues</option>
-                      </>
-                    )}
-                    {(isFinanceAdmin || isSuperAdmin) && (
-                      <option value="players">Players</option>
-                    )}
-                    {(isFinanceAdmin || isSuperAdmin) && isFeatureEnabled("shop") && (
-                      <option value="shop">Shop</option>
+                      <option value="finance">Finance</option>
                     )}
                     {isMatchAdmin && (
                       <option value="matches">Matches</option>
                     )}
-                    {(isMatchAdmin || isSuperAdmin) && isFeatureEnabled("opinion") && (
-                      <option value="opinion">Pulse</option>
-                    )}
                     {isStudioAdmin && (
                       <option value="studio">Studio</option>
                     )}
+                    {isClubAdmin && <option value="players">Players</option>}
+                    {isClubAdmin && isFeatureEnabled("shop") && (
+                      <option value="shop">Shop</option>
+                    )}
+                    {isClubAdmin && isFeatureEnabled("opinion") && (
+                      <option value="opinion">Pulse</option>
+                    )}
                     {canDesign && <option value="design">Design</option>}
-                    {isSuperAdmin && <option value="leaderboard">Leaderboard</option>}
+                    {isClubAdmin && <option value="leaderboard">Leaderboard</option>}
+                    {isClubAdmin && <option value="dues_and_reminders">Reminders</option>}
                     {isSuperAdmin && <option value="settings">Settings</option>}
                   </select>
                   <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/50">
@@ -1241,7 +1238,7 @@ export default function Home() {
                         isFinanceAdmin={isFinanceAdmin}
                         isMatchAdmin={isMatchAdmin}
                         isStudioAdmin={isStudioAdmin}
-                        isDesignAdmin={isDesignAdmin}
+                        isClubAdmin={isClubAdmin}
                       />
                     )}
                     {activeTab === "players" && (

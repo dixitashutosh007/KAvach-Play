@@ -30,6 +30,7 @@ import RazorReportView from "./RazorReportView";
 import { CreateFeeAdmin } from "./CreateFeeAdmin";
 import { FeePlansAdmin } from "./FeePlansAdmin";
 import { PlansView } from "./PlansView";
+import { DuesAndRemindersTab } from "./DuesAndRemindersTab";
 
 export function FinanceTab({
   store,
@@ -974,7 +975,7 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
 
 function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof useStore>; defaultAction?: string | null }) {
   const [subTab, setSubTab] = useState<
-    "matches" | "wix" | "fee" | "razor"
+    "matches" | "wix" | "fee" | "razor" | "dues"
   >((defaultAction as any) || "matches");
   const [searchPlayer, setSearchPlayer] = useState("");
   const [filterStartDate, setFilterStartDate] = useState("");
@@ -1092,6 +1093,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
       <div className="flex bg-white/5 p-1.5 rounded-2xl border border-glass-border mb-4 overflow-x-auto hide-scrollbar gap-2">
         {[
           "matches",
+          "dues",
           "razor",
           ...(store.appConfig?.features?.isWixEnabled ? ["wix"] : []),
           "fee",
@@ -1099,6 +1101,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
           const active = subTab === tab;
           const labels: Record<string, string> = {
             matches: "Match Fees",
+            dues: "Dues",
             razor: "Transactions",
             wix: "Wix",
             fee: "Other Fees",
@@ -1225,6 +1228,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         </div>
       )}
 
+      {subTab === "dues" && <DuesAndRemindersTab store={store} isFinanceAdmin={true} />}
       {subTab === "razor" && <RazorReportView store={store} />}
       {subTab === "wix" && <WixFinanceView store={store} />}
 

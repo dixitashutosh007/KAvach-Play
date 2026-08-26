@@ -48,14 +48,14 @@ service cloud.firestore {
         get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isFinanceAdmin', false) == true);
     }
 
-    function isDesignAdmin() {
+    function isClubAdmin() {
       return isSuperAdmin() || (isSignedIn() &&
         exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isDesignAdmin', false) == true);
+        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isClubAdmin', false) == true);
     }
 
     function isAnyAdmin() {
-      return isSuperAdmin() || isStudioAdmin() || isMatchAdmin() || isFinanceAdmin() || isDesignAdmin();
+      return isSuperAdmin() || isStudioAdmin() || isMatchAdmin() || isFinanceAdmin() || isClubAdmin();
     }
 
     function isVerified() {

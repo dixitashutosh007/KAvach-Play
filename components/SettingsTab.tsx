@@ -1536,10 +1536,10 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 filter: (u) => u.role === "admin" || u.isFinanceAdmin,
               },
               {
-                label: "Design Admin",
-                desc: "KAvach Design tab management",
+                label: "Club Admin",
+                desc: "Players, Shop, Pulse, Design, Leaderboard, Reminders",
                 accent: "border-pink-500/40 bg-pink-500/10 text-pink-300",
-                filter: (u) => u.role === "admin" || u.isDesignAdmin,
+                filter: (u) => u.role === "admin" || u.isClubAdmin,
               },
               {
                 label: "Designer",

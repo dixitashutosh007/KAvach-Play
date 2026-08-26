@@ -18,7 +18,7 @@ export function AdminDashboard({
   isFinanceAdmin = false,
   isMatchAdmin = false,
   isStudioAdmin = false,
-  isDesignAdmin = false,
+  isClubAdmin = false,
 }: {
   store: ReturnType<typeof useStore>;
   setActiveTab: (tab: any, action?: string) => void;
@@ -26,7 +26,7 @@ export function AdminDashboard({
   isFinanceAdmin?: boolean;
   isMatchAdmin?: boolean;
   isStudioAdmin?: boolean;
-  isDesignAdmin?: boolean;
+  isClubAdmin?: boolean;
 }) {
   const { matches, payments, players, otherFees } = store;
 
@@ -413,6 +413,36 @@ export function AdminDashboard({
         </div>
       )}
       
+      {/* Club Admin: Players + Reminders */}
+      {isClubAdmin && !isSuperAdmin && (
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => setActiveTab("players")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-sky-500/10 transition group"
+          >
+              <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
+                  <Users className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Manage Players</p>
+                  <p className="text-[10px] text-white/50">Directory & profiles</p>
+              </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("dues_and_reminders")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-rose-500/10 transition group"
+          >
+              <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
+                  <Bell className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Send Reminders</p>
+                  <p className="text-[10px] text-white/50">Payment notifications</p>
+              </div>
+          </button>
+        </div>
+      )}
+
       {/* Payout to Organiser Panel — Finance/Super only */}
       {isFinanceAdmin && payoutMatches.length > 0 && (
         <div className="mt-4">

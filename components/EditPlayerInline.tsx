@@ -310,12 +310,12 @@ export function EditPlayerInline({
                     updates.isStudioAdmin = true;
                     updates.isMatchAdmin = true;
                     updates.isFinanceAdmin = true;
-                    updates.isDesignAdmin = true;
+                    updates.isClubAdmin = true;
                   } else {
                     updates.isStudioAdmin = false;
                     updates.isMatchAdmin = false;
                     updates.isFinanceAdmin = false;
-                    updates.isDesignAdmin = false;
+                    updates.isClubAdmin = false;
                   }
                   await store.updateAppUserProfile(appUserMatch.id, updates);
                 },
@@ -345,12 +345,12 @@ export function EditPlayerInline({
                   store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: checked }),
               },
               {
-                label: "Design Admin",
-                desc: "Can manage the KAvach Design tab.",
-                checked: isSuperAdminNow || !!appUserMatch.isDesignAdmin,
+                label: "Club Admin",
+                desc: "Players, Shop, Pulse, Design, Leaderboard, Reminders.",
+                checked: isSuperAdminNow || !!appUserMatch.isClubAdmin,
                 disabled: isSuperAdminNow,
                 onChange: async (checked) =>
-                  store.updateAppUserProfile(appUserMatch.id, { isDesignAdmin: checked }),
+                  store.updateAppUserProfile(appUserMatch.id, { isClubAdmin: checked }),
               },
               {
                 label: "Designer",
