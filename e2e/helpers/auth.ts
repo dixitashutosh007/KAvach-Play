@@ -30,6 +30,9 @@ export async function signInAsAdmin(page: Page) {
   await page.locator('[data-testid="submit-login"]').click();
 
   await expect(page.locator("main")).toBeVisible({ timeout: 30_000 });
+
+  // Wait for login overlay to fully dismiss before proceeding
+  await expect(page.locator('[data-testid="submit-login"]')).not.toBeVisible({ timeout: 15_000 });
 }
 
 export async function waitForAppReady(page: Page) {

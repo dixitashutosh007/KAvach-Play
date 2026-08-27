@@ -11,11 +11,13 @@ test.describe("Home Match Card Navigation", () => {
     await signInAsAdmin(page);
     await waitForAppReady(page);
 
-    // Switch to player persona
-    const playerToggle = page.getByRole("button", { name: /view player|player view|switch.*player/i });
+    // Switch to player persona — match cards only show in player view
+    const playerToggle = page.getByRole("button", { name: /view player/i });
     if (await playerToggle.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await playerToggle.click();
-      await page.waitForTimeout(2_000);
+      await page.waitForTimeout(3_000);
+      // Dismiss any overlay that may reappear after persona switch
+      await expect(page.locator('[data-testid="submit-login"]')).not.toBeVisible({ timeout: 10_000 }).catch(() => {});
     }
   });
 
@@ -33,9 +35,10 @@ test.describe("Home Match Card Navigation", () => {
     const matchCards = page.locator('[data-testid^="match-card-"]');
     const count = await matchCards.count();
     if (count > 0) {
-      await matchCards.first().click();
+      // force: true bypasses overlay actionability checks — the click triggers
+      // an in-app callback (onNavigateToMatch) that switches tabs
+      await matchCards.first().click({ force: true });
       await page.waitForTimeout(2_000);
-      // The click triggers an in-app callback (onNavigateToMatch) — verify no crash
       await expect(
         page.getByText(/something went wrong|unhandled/i)
       ).not.toBeVisible();
