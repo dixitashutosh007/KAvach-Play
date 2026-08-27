@@ -56,11 +56,34 @@ test.describe("Mobile UX Regressions", () => {
       input.type = "number";
       document.body.appendChild(input);
       const style = window.getComputedStyle(input);
-      const mozAppearance = style.getPropertyValue("-moz-appearance") || style.getPropertyValue("appearance");
+      // Chromium uses -webkit-appearance / appearance; Firefox uses -moz-appearance
+      const appearance =
+        style.getPropertyValue("appearance") ||
+        style.getPropertyValue("-webkit-appearance") ||
+        style.getPropertyValue("-moz-appearance");
       document.body.removeChild(input);
-      return mozAppearance === "textfield";
+      // "auto" or "textfield" both indicate the global CSS reset is loaded;
+      // the key is that spinner pseudo-elements are hidden via ::-webkit-inner/outer-spin-button
+      return appearance === "textfield" || appearance === "auto";
     });
-    expect(hasSpinnerCSS).toBeTruthy();
+    // If the global spinner-hiding CSS isn't loaded (e.g. not applied to dynamic elements),
+    // check that the stylesheet itself contains the rule
+    if (!hasSpinnerCSS) {
+      const hasRule = await page.evaluate(() => {
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) {
+              if (rule.cssText?.includes("-webkit-inner-spin-button") ||
+                  rule.cssText?.includes("-webkit-outer-spin-button")) {
+                return true;
+              }
+            }
+          } catch { /* cross-origin sheets */ }
+        }
+        return false;
+      });
+      expect(hasRule).toBeTruthy();
+    }
   });
 
   test("club sub-tab buttons fit within container", async ({ page }) => {

@@ -53,10 +53,18 @@ test.describe("Studio Admin Tab", () => {
   });
 
   test("Studio members content is visible", async ({ page }) => {
-    const membersBtn = page.getByRole("button", { name: /studio members/i });
-    const content = page.getByText(/studio member|no studio/i);
-    const hasMembers = await membersBtn.isVisible({ timeout: 5_000 }).catch(() => false);
-    const hasContent = await content.isVisible({ timeout: 5_000 }).catch(() => false);
-    expect(hasMembers || hasContent).toBeTruthy();
+    // The Studio tab shows "Studio Members" / "History" sub-tabs by default (management view)
+    const membersSubTab = page.getByRole("button", { name: /^studio members$/i });
+    const hasMembersTab = await membersSubTab.isVisible({ timeout: 10_000 }).catch(() => false);
+    if (hasMembersTab) {
+      await membersSubTab.click();
+      await page.waitForTimeout(1_500);
+    }
+    // Either the sub-tab is visible, or members/search content is rendered
+    const hasContent = await page.getByPlaceholder(/search studio/i)
+      .isVisible({ timeout: 5_000 }).catch(() => false);
+    const hasNoMembers = await page.getByText(/no studio members/i)
+      .isVisible({ timeout: 3_000 }).catch(() => false);
+    expect(hasMembersTab || hasContent || hasNoMembers).toBeTruthy();
   });
 });
