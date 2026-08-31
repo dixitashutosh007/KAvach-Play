@@ -21,7 +21,7 @@ import {
 import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
-import { PlayerBadgeRow } from "./BadgesTab";
+import { PlayerBadgeRow } from "./BadgeIcon";
 import { Player } from "@/lib/types";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
 

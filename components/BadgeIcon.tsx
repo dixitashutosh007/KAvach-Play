@@ -1,4 +1,4 @@
-import { BadgeType, BadgeTier } from "@/lib/types";
+import { BadgeType, BadgeTier, Badge } from "@/lib/types";
 
 const BADGE_META: Record<BadgeType, { label: string; short: string; tier: BadgeTier; emoji: string }> = {
   year_1:      { label: "1 Year with KAvach",        short: "1 Year",     tier: "bronze",  emoji: "1" },
@@ -172,3 +172,34 @@ export const ALL_BADGE_TYPES: BadgeType[] = [
 ];
 
 export const STACKABLE_BADGES: Set<BadgeType> = new Set(["centurion", "hattrick", "5wh"]);
+
+export function PlayerBadgeRow({
+  playerId,
+  badges,
+}: {
+  playerId: string;
+  badges: Badge[];
+}) {
+  const playerBadges = badges.filter((b) => b.playerId === playerId);
+  if (!playerBadges.length) return null;
+
+  const grouped = new Map<BadgeType, Badge[]>();
+  playerBadges.forEach((b) => {
+    const arr = grouped.get(b.badgeType) || [];
+    arr.push(b);
+    grouped.set(b.badgeType, arr);
+  });
+
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {Array.from(grouped.entries()).map(([badgeType, bList]) => (
+        <BadgeIcon
+          key={badgeType}
+          badgeType={badgeType}
+          size={28}
+          count={STACKABLE_BADGES.has(badgeType) ? bList.length : undefined}
+        />
+      ))}
+    </div>
+  );
+}

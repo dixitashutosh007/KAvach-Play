@@ -445,33 +445,3 @@ export function BadgesTab({
   );
 }
 
-export function PlayerBadgeRow({
-  playerId,
-  badges,
-}: {
-  playerId: string;
-  badges: Badge[];
-}) {
-  const playerBadges = badges.filter((b) => b.playerId === playerId);
-  if (!playerBadges.length) return null;
-
-  const grouped = new Map<BadgeType, Badge[]>();
-  playerBadges.forEach((b) => {
-    const arr = grouped.get(b.badgeType) || [];
-    arr.push(b);
-    grouped.set(b.badgeType, arr);
-  });
-
-  return (
-    <div className="flex gap-1.5 flex-wrap">
-      {Array.from(grouped.entries()).map(([badgeType, bList]) => (
-        <BadgeIcon
-          key={badgeType}
-          badgeType={badgeType}
-          size={28}
-          count={STACKABLE_BADGES.has(badgeType) ? bList.length : undefined}
-        />
-      ))}
-    </div>
-  );
-}
