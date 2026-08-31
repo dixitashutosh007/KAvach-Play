@@ -58,7 +58,7 @@ export function BadgesTab({
   const stackableSet = useMemo(() => getStackableSet(customDefs), [customDefs]);
 
   const activePlayers = useMemo(
-    () => players.filter((p) => !p.disabled && p.inviteStatus === "Accepted").sort((a, b) => a.name.localeCompare(b.name)),
+    () => players.filter((p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending").sort((a, b) => a.name.localeCompare(b.name)),
     [players],
   );
 
