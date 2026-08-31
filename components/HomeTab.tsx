@@ -44,11 +44,13 @@ export function HomeTab({
   isAdmin,
   currentUserId,
   currentUserName,
+  onNavigateToMatch,
 }: {
   store: ReturnType<typeof useStore>;
   isAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
+  onNavigateToMatch?: (matchId: string) => void;
 }) {
   const [newPostText, setNewPostText] = useState("");
   const [isAddingPost, setIsAddingPost] = useState(false);
@@ -412,7 +414,9 @@ export function HomeTab({
               return (
                 <div
                   key={match.id}
-                  className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-white/5 border border-white/10 rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-lg"
+                  data-testid={`match-card-${match.id}`}
+                  className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-white/5 border border-white/10 rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-lg cursor-pointer hover:bg-white/10 transition"
+                  onClick={() => onNavigateToMatch?.(match.id)}
                 >
                   <div>
                     <h4 className="font-bold text-lg text-white mb-1 truncate">
@@ -449,7 +453,7 @@ export function HomeTab({
                   </div>
 
                   {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-                    <div className="space-y-2">
+                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
                       <p className="text-[10px] uppercase font-bold text-white/50 tracking-wide text-center">
                         Availability
                       </p>
@@ -459,7 +463,7 @@ export function HomeTab({
                           if (avStat === "Yes") isSelected = isConfirmed;
                           if (avStat === "No") isSelected = isNo;
                           if (avStat === "Tentative") isSelected = isTentative;
-  
+
                           return (
                             <button
                               key={avStat}
@@ -517,6 +521,11 @@ export function HomeTab({
                         })}
                       </div>
                     </div>
+                  )}
+                  {onNavigateToMatch && (
+                    <p data-testid="view-details-link" className="text-[10px] text-accent font-bold uppercase tracking-widest mt-3 text-center flex items-center justify-center gap-1">
+                      View Details <ChevronRight className="w-3 h-3" />
+                    </p>
                   )}
                 </div>
               );

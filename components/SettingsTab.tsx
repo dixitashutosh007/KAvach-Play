@@ -149,6 +149,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     matches: store.appConfig?.features?.matches !== false,
     isWixEnabled: store.appConfig?.features?.isWixEnabled === true,
     shop: store.appConfig?.features?.shop !== false,
+    pna: store.appConfig?.features?.pna !== false,
   });
 
   const [matchConfiguration, setMatchConfiguration] = useState({
@@ -278,6 +279,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       matches: cfg.features?.matches !== false,
       isWixEnabled: cfg.features?.isWixEnabled === true,
       shop: cfg.features?.shop !== false,
+      pna: cfg.features?.pna !== false,
     });
     setMatchConfiguration({
       directionsHoursBefore: cfg.matchConfiguration?.directionsHoursBefore ?? 18,
@@ -1339,6 +1341,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           <div className="border-t border-glass-border pt-4 mt-2 mb-2">
             <button
               type="button"
+              data-testid="app-features-section"
               onClick={() => setIsAppFeaturesOpen(!isAppFeaturesOpen)}
               className="w-full flex items-center justify-between focus:outline-none"
             >
@@ -1357,10 +1360,12 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   { key: "matches", label: "Match Fixtures Tab" },
                   { key: "isWixEnabled", label: "Legacy Wix Feature" },
                   { key: "shop", label: "Club Merchandise Shop Menu" },
+                  { key: "pna", label: "Player Not Available (PNA) Report" },
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center gap-3">
                     <input
                       type="checkbox"
+                      data-testid={`feature-toggle-${key}`}
                       checked={(features as any)[key]}
                       onChange={(e) =>
                         setFeatures((prev) => ({
@@ -1536,8 +1541,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 filter: (u) => u.role === "admin" || u.isFinanceAdmin,
               },
               {
+                label: "Club Admin",
+                desc: "Players, Shop, Pulse, Design, Leaderboard, Reminders",
+                accent: "border-pink-500/40 bg-pink-500/10 text-pink-300",
+                filter: (u) => u.role === "admin" || u.isClubAdmin,
+              },
+              {
                 label: "Designer",
-                desc: "KAvach Design tab (post templates)",
+                desc: "Player-level Design tab access",
                 accent: "border-purple-500/40 bg-purple-500/10 text-purple-300",
                 filter: (u) => u.role === "admin" || u.isDesigner,
               },

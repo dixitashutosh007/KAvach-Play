@@ -1,8 +1,8 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, WalletCards, Copy, CheckCircle2, UserX, Send } from "lucide-react";
-import { format, isPast, isFuture, parseISO } from "date-fns";
+import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send } from "lucide-react";
+import { format, isPast, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
@@ -13,24 +13,35 @@ import {
 
 export function AdminDashboard({
   store,
-  setActiveTab
+  setActiveTab,
+  isSuperAdmin = false,
+  isFinanceAdmin = false,
+  isMatchAdmin = false,
+  isStudioAdmin = false,
+  isClubAdmin = false,
 }: {
   store: ReturnType<typeof useStore>;
   setActiveTab: (tab: any, action?: string) => void;
+  isSuperAdmin?: boolean;
+  isFinanceAdmin?: boolean;
+  isMatchAdmin?: boolean;
+  isStudioAdmin?: boolean;
+  isClubAdmin?: boolean;
 }) {
   const { matches, payments, players, otherFees } = store;
 
-  const { totalDueMatch, totalDueFee, duePlayersCount } = useMemo(() => {
+  const { totalDueMatch, totalDueFee, duePlayersCount, topDuePlayers } = useMemo(() => {
     let matchDue = 0;
     let feeDue = 0;
-    const duePlayers = new Set<string>();
+    const dueByPlayer = new Map<string, number>();
 
     payments.forEach(p => {
         if (p.status === "Unpaid") {
             const match = matches.find(m => m.id === p.matchId);
             if (match && match.result !== "Abandoned" && match.fee) {
-                matchDue += p.feeOverride !== undefined ? p.feeOverride : match.fee;
-                duePlayers.add(p.playerId);
+                const amt = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+                matchDue += amt;
+                dueByPlayer.set(p.playerId, (dueByPlayer.get(p.playerId) || 0) + amt);
             }
         }
     });
@@ -38,15 +49,69 @@ export function AdminDashboard({
     otherFees.forEach(f => {
         if (f.status === "Unpaid") {
              feeDue += f.amount;
-             duePlayers.add(f.playerId);
+             dueByPlayer.set(f.playerId, (dueByPlayer.get(f.playerId) || 0) + f.amount);
         }
     });
-    
+
+    const sorted = [...dueByPlayer.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([pid, amount]) => ({
+        player: players.find(p => p.id === pid),
+        amount,
+      }))
+      .filter(d => d.player);
+
     return {
         totalDueMatch: matchDue,
         totalDueFee: feeDue,
-        duePlayersCount: duePlayers.size
+        duePlayersCount: dueByPlayer.size,
+        topDuePlayers: sorted,
     };
+  }, [matches, payments, players, otherFees]);
+
+  const recentTransactions = useMemo(() => {
+    const txns: { id: string; playerName: string; amount: number; type: string; date: number; method?: string }[] = [];
+
+    payments.forEach(p => {
+      if (p.status === "Paid" && p.updatedAt) {
+        const match = matches.find(m => m.id === p.matchId);
+        const player = players.find(pl => pl.id === p.playerId);
+        if (match && player) {
+          const ts = typeof p.updatedAt === "object" && "seconds" in p.updatedAt
+            ? p.updatedAt.seconds * 1000
+            : new Date(p.updatedAt as any).getTime();
+          txns.push({
+            id: p.id,
+            playerName: player.name,
+            amount: p.feeOverride !== undefined ? p.feeOverride : (match.fee || 0),
+            type: "Match Fee",
+            date: ts,
+            method: p.paymentMethod,
+          });
+        }
+      }
+    });
+
+    otherFees.forEach(f => {
+      if (f.status === "Paid" && f.updatedAt) {
+        const player = players.find(pl => pl.id === f.playerId);
+        if (player) {
+          const ts = typeof f.updatedAt === "object" && "seconds" in f.updatedAt
+            ? f.updatedAt.seconds * 1000
+            : new Date(f.updatedAt as any).getTime();
+          txns.push({
+            id: f.id,
+            playerName: player.name,
+            amount: f.amount,
+            type: f.label || "Other Fee",
+            date: ts,
+          });
+        }
+      }
+    });
+
+    return txns.sort((a, b) => b.date - a.date).slice(0, 10);
   }, [matches, payments, players, otherFees]);
 
   const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
@@ -118,35 +183,6 @@ export function AdminDashboard({
     }
   };
   
-  const getPayoutAmount = (match: Match) => {
-      const ground = store.grounds.find(g => g.id === match.groundId);
-      let calculatedFee = Math.round((match.fee * 12) * 0.96);
-      if (ground) {
-          if (match.matchType === "Practice" && ground.practiceFee) {
-              calculatedFee = ground.practiceFee;
-          } else if (match.matchType === "Tournament" && ground.tournamentFee) {
-              calculatedFee = ground.tournamentFee;
-          }
-      }
-      return calculatedFee;
-  };
-
-  const handlePayout = async (match: Match) => {
-      const calculatedFee = getPayoutAmount(match);
-      if (window.confirm(`Mark ₹${calculatedFee} as paid to Organiser for ${match.opponent} match?`)) {
-          try {
-             await store.updateMatch({
-                 ...match,
-                 isGroundFeePaid: true,
-                 groundFeePaidAmount: calculatedFee
-             });
-          } catch (e) {
-             console.error(e);
-             alert("Failed to mark as paid");
-          }
-      }
-  };
-
   const handleGroupRemind = () => {
     if (!selectedRemindMatch) return;
     
@@ -241,34 +277,15 @@ export function AdminDashboard({
 
   const totalDueAmount = totalDueMatch + totalDueFee;
 
-  const { pastMatches, upcomingMatches, payoutMatches } = useMemo(() => {
-     const now = new Date();
-     const past: Match[] = [];
+  const upcomingMatches = useMemo(() => {
      const up: Match[] = [];
-     const payouts: Match[] = [];
-     
      matches.forEach(m => {
         const timeStr = m.time || "00:00";
         const dateObj = new Date(`${m.date}T${timeStr}`);
-        if (isPast(dateObj)) {
-            past.push(m);
-        } else {
-            up.push(m);
-        }
-        
-        if (!m.isGroundFeePaid && m.fee) {
-            const timeDiff = dateObj.getTime() - Date.now();
-            if (timeDiff <= 3 * 24 * 60 * 60 * 1000 && timeDiff >= -90 * 24 * 60 * 60 * 1000) {
-                 payouts.push(m);
-            }
-        }
+        if (!isPast(dateObj)) up.push(m);
      });
-
-     past.sort((a,b) => new Date(`${b.date}T${b.time || "00:00"}`).getTime() - new Date(`${a.date}T${a.time || "00:00"}`).getTime());
      up.sort((a,b) => new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime());
-     payouts.sort((a,b) => new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime());
-     
-     return { pastMatches: past, upcomingMatches: up, payoutMatches: payouts };
+     return up;
   }, [matches]);
 
   return (
@@ -284,21 +301,54 @@ export function AdminDashboard({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("dues_and_reminders")}>
-            <div>
-                <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
-                <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
-                <h3 className="text-2xl font-black text-rose-400">₹{totalDueAmount}</h3>
+      {/* Finance: Total Dues + Add No Show + Send Reminders */}
+      {isFinanceAdmin && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("club", "reminders")}>
+                <div>
+                    <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
+                    <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
+                    <h3 className="text-2xl font-black text-rose-400">₹{totalDueAmount}</h3>
+                </div>
+                <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-white/50 bg-black/20 p-2 rounded-lg">
+                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {duePlayersCount} Players Due</span>
+                    <span className="text-rose-400 flex items-center gap-1">Notify <ArrowRight className="w-3 h-3" /></span>
+                </div>
             </div>
-            <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-white/50 bg-black/20 p-2 rounded-lg">
-                <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {duePlayersCount} Players Due</span>
-                <span className="text-rose-400 flex items-center gap-1">Notify <ArrowRight className="w-3 h-3" /></span>
-            </div>
-        </div>
 
-        <div className="flex flex-col gap-4">
-            <button 
+            <div className="flex flex-col gap-4">
+              <button onClick={() => setActiveTab("club", "reminders")} className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
+                 <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
+                     <Bell className="w-5 h-5 group-hover:scale-110 transition" />
+                 </div>
+                 <div className="text-left">
+                     <p className="font-bold text-white text-sm">Send Reminders</p>
+                     <p className="text-[10px] text-white/50">Notify accounts</p>
+                 </div>
+              </button>
+              <button
+                onClick={() => setIsNoShowModalOpen(true)}
+                className="glass p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
+              >
+                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
+                     <UserX className="w-5 h-5 group-hover:scale-110 transition" />
+                 </div>
+                 <div className="text-left">
+                     <p className="font-bold text-white text-sm">Add No Show</p>
+                     <p className="text-[10px] text-white/50">Fine Absentees</p>
+                 </div>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Matches: Add Match + Assign Fees + Calendar + Poll */}
+      {isMatchAdmin && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <button
               onClick={() => setActiveTab("matches", "add_match")}
               className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
             >
@@ -310,150 +360,146 @@ export function AdminDashboard({
                     <p className="text-[10px] text-white/50">Schedule a fixture</p>
                 </div>
             </button>
-            <button 
-              onClick={() => setActiveTab("studio", "add_player")}
-              className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group"
-            >
-                <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
-                    <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
-                </div>
-                <div className="text-left">
-                    <p className="font-bold text-white text-sm">Add to Studio</p>
-                    <p className="text-[10px] text-white/50">Add a new player</p>
-                </div>
+            <button onClick={() => setActiveTab("matches", "assign")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+               <div className="flex items-center gap-3">
+                   <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
+                       <Calculator className="w-5 h-5" />
+                   </div>
+                   <div className="text-left">
+                       <p className="text-sm font-bold text-white">Assign Fees</p>
+                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">To Players</p>
+                   </div>
+               </div>
+               <ArrowRight className="w-4 h-4 text-white/30" />
             </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => setActiveTab("dues_and_reminders")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
-             <div className="flex items-center gap-3">
-                 <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
-                     <Bell className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Send Reminders</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Notify accounts</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-
-          <button onClick={() => setActiveTab("matches", "assign")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
-             <div className="flex items-center gap-3">
-                 <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
-                     <Calculator className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Assign Fees</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">To Players</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setIsNoShowModalOpen(true)}
-            className="glass flex items-center justify-between p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 hover:bg-orange-500/10 transition"
-          >
-             <div className="flex items-center gap-3">
-                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
-                     <UserX className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Add No Show</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Fine Absentees</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-
-          <button onClick={() => setActiveTab("opinion", "add_poll")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
-             <div className="flex items-center gap-3">
-                 <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
-                     <PieChart className="w-5 h-5" />
-                 </div>
-                 <div className="text-left">
-                     <p className="text-sm font-bold text-white">Start a Poll</p>
-                     <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
-                 </div>
-             </div>
-             <ArrowRight className="w-4 h-4 text-white/30" />
-          </button>
-      </div>
-      
-      <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition w-full">
-         <div className="flex items-center gap-3">
-             <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
-                 <Landmark className="w-5 h-5" />
-             </div>
-             <div className="text-left">
-                 <p className="text-sm font-bold text-white">View Calendar</p>
-                 <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
-             </div>
-         </div>
-         <ArrowRight className="w-4 h-4 text-white/30" />
-      </button>
-      
-      {/* Payout to Organiser Panel */}
-      {payoutMatches.length > 0 && (
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-4">
-             <h3 className="text-lg font-bold text-white tracking-tight">Payout to Organiser</h3>
           </div>
-          <div className="flex flex-col gap-4">
-             {payoutMatches.map(m => {
-                 const calculatedFee = getPayoutAmount(m);
-                 const ground = store.grounds.find(g => g.id === m.groundId);
-                 const orgNumber = ground?.gpayNumber || ground?.organiserName || 'N/A';
-                 return (
-                     <div key={m.id} className="glass p-4 rounded-xl border border-glass-border flex flex-col md:flex-row md:items-center justify-between gap-4">
-                         <div>
-                             <div className="flex items-center gap-2 mb-1">
-                                 <h4 className="font-bold text-white">vs {m.opponent}</h4>
-                                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">{format(parseISO(m.date), "MMM d")}</span>
-                             </div>
-                             <p className="text-xs text-white/60 mb-2">{m.format} • {m.time ? format(parseISO(`${m.date}T${m.time}`), "h:mm a") : "Time TBD"} • {ground?.name || 'Unknown Ground'}</p>
-                             <div className="flex items-center gap-2 text-sm text-white/80">
-                                 <WalletCards className="w-4 h-4 text-emerald-400" />
-                                 <span>Organiser Contact: <strong className="text-white">{orgNumber}</strong></span>
-                                 {orgNumber !== 'N/A' && (
-                                     <button 
-                                         onClick={() => {
-                                             navigator.clipboard.writeText(orgNumber);
-                                             alert("Copied Organiser Contact!");
-                                         }}
-                                         className="p-1 hover:bg-white/10 rounded transition"
-                                         title="Copy Number"
-                                     >
-                                         <Copy className="w-3.5 h-3.5 text-white/50" />
-                                     </button>
-                                 )}
-                             </div>
-                         </div>
-                         <div className="flex flex-col items-end gap-2 shrink-0">
-                             <div className="text-right">
-                                 <p className="text-[10px] uppercase font-bold tracking-widest text-white/50">Ground Fee</p>
-                                 <p className="text-xl font-black text-rose-400">₹{calculatedFee}</p>
-                             </div>
-                             <button 
-                                 onClick={() => handlePayout(m)}
-                                 className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition flex items-center gap-2"
-                             >
-                                 <CheckCircle2 className="w-4 h-4" /> Mark Paid
-                             </button>
-                         </div>
-                     </div>
-                 )
-             })}
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+               <div className="flex items-center gap-3">
+                   <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
+                       <Landmark className="w-5 h-5" />
+                   </div>
+                   <div className="text-left">
+                       <p className="text-sm font-bold text-white">View Calendar</p>
+                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
+                   </div>
+               </div>
+               <ArrowRight className="w-4 h-4 text-white/30" />
+            </button>
+            <button onClick={() => setActiveTab("club", "pulse")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+               <div className="flex items-center gap-3">
+                   <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
+                       <PieChart className="w-5 h-5" />
+                   </div>
+                   <div className="text-left">
+                       <p className="text-sm font-bold text-white">Start a Poll</p>
+                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
+                   </div>
+               </div>
+               <ArrowRight className="w-4 h-4 text-white/30" />
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Studio: Add to Studio */}
+      {isStudioAdmin && (
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => setActiveTab("studio", "add_player")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group"
+          >
+              <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
+                  <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Add to Studio</p>
+                  <p className="text-[10px] text-white/50">Add a new member</p>
+              </div>
+          </button>
+        </div>
+      )}
+      
+      {/* Club Admin: Players + Reminders */}
+      {isClubAdmin && !isSuperAdmin && (
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => setActiveTab("club", "players")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-sky-500/10 transition group"
+          >
+              <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
+                  <Users className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Manage Players</p>
+                  <p className="text-[10px] text-white/50">Directory & profiles</p>
+              </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("club", "reminders")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-rose-500/10 transition group"
+          >
+              <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
+                  <Bell className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Send Reminders</p>
+                  <p className="text-[10px] text-white/50">Payment notifications</p>
+              </div>
+          </button>
+        </div>
+      )}
+
+      {/* Top 5 Dues — Finance/Super only */}
+      {isFinanceAdmin && topDuePlayers.length > 0 && (
+        <div className="mt-4" data-testid="top-dues-section">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-bold text-white tracking-tight">Top Dues</h3>
+            <button onClick={() => setActiveTab("club", "reminders")} className="text-xs text-accent hover:underline">View All</button>
+          </div>
+          <div className="glass rounded-xl border border-glass-border divide-y divide-glass-border overflow-hidden">
+            {topDuePlayers.map((d, i) => (
+              <div key={d.player!.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black text-white/30 w-4">{i + 1}</span>
+                  <div>
+                    <p className="text-sm font-bold text-white">{d.player!.name}</p>
+                    <p className="text-[10px] text-white/40 font-mono">{d.player!.mobile || ""}</p>
+                  </div>
+                </div>
+                <span className="text-sm font-black text-rose-400">₹{d.amount}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Swipe Pane for matches */}
-      <div className="mt-4">
+      {/* Recent Transactions — Finance/Super only */}
+      {isFinanceAdmin && recentTransactions.length > 0 && (
+        <div className="mt-4" data-testid="recent-transactions-section">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-bold text-white tracking-tight">Recent Transactions</h3>
+            <button onClick={() => setActiveTab("finance")} className="text-xs text-accent hover:underline">View All</button>
+          </div>
+          <div className="glass rounded-xl border border-glass-border divide-y divide-glass-border overflow-hidden">
+            {recentTransactions.map((txn) => (
+              <div key={txn.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition">
+                <div>
+                  <p className="text-sm font-bold text-white">{txn.playerName}</p>
+                  <p className="text-[10px] text-white/40">{txn.type}{txn.method ? ` • ${txn.method}` : ""}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-black text-emerald-400">₹{txn.amount}</span>
+                  <p className="text-[10px] text-white/30">{format(new Date(txn.date), "dd MMM")}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Swipe Pane for matches — Match/Super only */}
+      {isMatchAdmin && <div className="mt-4">
         <div className="flex items-center justify-between mb-4">
            <h3 className="text-lg font-bold text-white tracking-tight">Upcoming Matches</h3>
            <span className="text-xs text-white/50 hover:text-white cursor-pointer" onClick={() => setActiveTab("matches")}>View All</span>
@@ -487,8 +533,8 @@ export function AdminDashboard({
                ))
            )}
         </div>
-      </div>
-      
+      </div>}
+
       {/* Group Remind Modal */}
       {isGroupRemindModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">

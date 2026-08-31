@@ -76,6 +76,7 @@ const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersT
 const ShopTab = dynamic(() => import("@/components/ShopTab").then(m => ({ default: m.ShopTab })), { ssr: false });
 const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ default: m.OpinionTab })), { ssr: false });
 const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ default: m.DesignTab })), { ssr: false });
+const ClubTab = dynamic(() => import("@/components/ClubTab").then(m => ({ default: m.ClubTab })), { ssr: false });
 
 export default function Home() {
   const router = useRouter();
@@ -143,6 +144,7 @@ export default function Home() {
     | "shop"
     | "opinion"
     | "design"
+    | "club"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
 
@@ -183,6 +185,7 @@ export default function Home() {
       currentUserObj?.isStudioAdmin ||
       currentUserObj?.isMatchAdmin ||
       currentUserObj?.isFinanceAdmin ||
+      currentUserObj?.isClubAdmin ||
       hasAdminClaim);
 
   useEffect(() => {
@@ -196,10 +199,12 @@ export default function Home() {
         setActiveTab("home");
       } else if (currentUserObj?.isFinanceAdmin) {
         setActiveTab("finance");
-      } else if (currentUserObj?.isStudioAdmin) {
-        setActiveTab("studio");
       } else if (currentUserObj?.isMatchAdmin) {
         setActiveTab("matches");
+      } else if (currentUserObj?.isStudioAdmin) {
+        setActiveTab("studio");
+      } else if (currentUserObj?.isClubAdmin) {
+        setActiveTab("club");
       }
     }
   }, [isAdminUser, currentUserObj, user]);
@@ -240,28 +245,26 @@ export default function Home() {
     "home",
     "matches",
     "finance",
-    "dues_and_reminders",
+    "club",
     "profile",
-    "players",
     "studio",
     "settings",
   ]);
   const OTHER_FEE_TABS = new Set([
     "home",
     "finance",
-    "dues_and_reminders",
-    "players",
+    "club",
     "profile",
   ]);
   const POSTS_TABS = new Set(["home"]);
-  const STATS_TABS = new Set(["leaderboard", "home"]);
-  const MERCH_TABS = new Set(["shop"]);
-  const POLL_TABS = new Set(["opinion"]);
+  const STATS_TABS = new Set(["club", "home"]);
+  const MERCH_TABS = new Set(["club"]);
+  const POLL_TABS = new Set(["club"]);
   const TOURNAMENT_TABS = new Set(["matches"]);
   const SUB_PLAN_TABS = new Set(["studio"]);
-  const FEE_TEMPLATE_TABS = new Set(["finance", "dues_and_reminders"]);
-  const FEE_PLAN_TABS = new Set(["matches", "finance", "players", "dues_and_reminders"]);
-  const MERCH_CATALOG_TABS = new Set(["shop"]);
+  const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
+  const FEE_PLAN_TABS = new Set(["matches", "finance", "club"]);
+  const MERCH_CATALOG_TABS = new Set(["club"]);
   const OUT_OF_PLAY_TABS = new Set(["profile", "studio"]);
   useEffect(() => {
     if (!store.isLoaded) return;
@@ -518,12 +521,11 @@ export default function Home() {
   const isFinanceAdmin = isSuperAdmin || appUser?.isFinanceAdmin;
   const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
   const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;
+  const isClubAdmin = isSuperAdmin || appUser?.isClubAdmin;
 
   const isAdmin =
-    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin;
-  // Design tab: any admin, plus players whose appUser doc has the
-  // isDesigner flag explicitly toggled on.
-  const canDesign = isAdmin || !!appUser?.isDesigner;
+    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isClubAdmin;
+  const canDesign = isClubAdmin || !!appUser?.isDesigner;
   // Mandatory profile fields every non-admin player must have populated
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
@@ -656,9 +658,11 @@ export default function Home() {
                     setActiveTab("home");
                   } else {
                     setPersona("admin");
-                    if (isMatchAdmin) setActiveTab("matches");
-                    else if (isStudioAdmin) setActiveTab("studio");
+                    if (isSuperAdmin) setActiveTab("home");
                     else if (isFinanceAdmin) setActiveTab("finance");
+                    else if (isMatchAdmin) setActiveTab("matches");
+                    else if (isStudioAdmin) setActiveTab("studio");
+                    else if (isClubAdmin) setActiveTab("club");
                     else setActiveTab("home");
                   }
                 }}
@@ -948,57 +952,45 @@ export default function Home() {
                   {[
                     "home",
                     "finance",
-                    "dues_and_reminders",
-                    "studio",
                     "matches",
-                    "leaderboard",
-                    "shop",
-                    "opinion",
-                    "design",
+                    "studio",
+                    "club",
                     "settings",
                   ]
                     .filter((tab) => {
-                      if (tab === "finance" || tab === "dues_and_reminders")
-                        return isFinanceAdmin || isSuperAdmin;
-                      if (tab === "studio")
-                        return isStudioAdmin || isSuperAdmin;
+                      if (tab === "finance")
+                        return isFinanceAdmin;
                       if (tab === "matches")
-                        return isMatchAdmin || isSuperAdmin;
+                        return isMatchAdmin;
+                      if (tab === "studio")
+                        return isStudioAdmin;
+                      if (tab === "club")
+                        return isClubAdmin;
                       if (tab === "settings") return isSuperAdmin;
-                      if (tab === "shop") return isFeatureEnabled("shop");
-                      if (tab === "opinion") return isFeatureEnabled("opinion");
-                      if (tab === "design") return canDesign;
                       return true;
                     })
                     .map((tab) => {
                       const iconMap: Record<string, any> = {
                         home: HomeIcon,
+                        finance: Shield,
                         matches: CalendarDays,
                         studio: Video,
-                        leaderboard: Trophy,
+                        club: Users,
                         settings: SettingsIcon,
-                        finance: Shield,
-                        dues_and_reminders: Bell,
-                        shop: ShoppingBag,
-                        opinion: PieChart,
-                        design: ImageIcon,
                       };
                       const IconComp = iconMap[tab] || Trophy;
                       const uppercaseLabels: Record<string, string> = {
                         home: "Admin Home",
-                        matches: "Matches",
-                        studio: "Squad",
-                        leaderboard: "Leaderboard",
-                        settings: "Settings",
                         finance: "Finance",
-                        dues_and_reminders: "Dues",
-                        shop: "Shop",
-                        opinion: "Pulse",
-                        design: "Design",
+                        matches: "Matches",
+                        studio: "Studio",
+                        club: "Club",
+                        settings: "Settings",
                       };
                       return (
                         <button
                           key={tab}
+                          data-testid={`sidebar-tab-${tab}`}
                           onClick={() => setActiveTab(tab as any)}
                           className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
                             activeTab === tab
@@ -1148,10 +1140,11 @@ export default function Home() {
                       isAdmin={false}
                       currentUserId={user.uid}
                       currentUserName={player?.name || "Player"}
+                      onNavigateToMatch={(matchId) => setActiveTab("matches", `match_${matchId}`)}
                     />
                   )}
                   {activeTab === "matches" && (
-                    <MatchesTab store={store} persona={persona} />
+                    <MatchesTab store={store} persona={persona} defaultAction={tabAction} />
                   )}
                   {activeTab === "leaderboard" && (
                     <LeaderboardTab store={store} persona={persona} />
@@ -1183,22 +1176,16 @@ export default function Home() {
                     className="w-full appearance-none bg-black/40 border border-glass-border rounded-xl px-4 py-3 pl-9 text-sm font-bold uppercase tracking-widest text-white focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
                   >
                     <option value="home">Admin Home</option>
-                    {(isFinanceAdmin || isSuperAdmin) && (
-                      <>
-                        <option value="finance">Finance Dashboard</option>
-                        <option value="dues_and_reminders">Dues</option>
-                      </>
+                    {isFinanceAdmin && (
+                      <option value="finance">Finance</option>
                     )}
-                    {(isStudioAdmin || isSuperAdmin) && (
-                      <option value="studio">Squad & Studio</option>
-                    )}
-                    {(isMatchAdmin || isSuperAdmin) && (
+                    {isMatchAdmin && (
                       <option value="matches">Matches</option>
                     )}
-                    <option value="leaderboard">Leaderboard</option>
-                    {isFeatureEnabled("shop") && <option value="shop">Shop</option>}
-                    {isFeatureEnabled("opinion") && <option value="opinion">Pulse</option>}
-                    {canDesign && <option value="design">Design</option>}
+                    {isStudioAdmin && (
+                      <option value="studio">Studio</option>
+                    )}
+                    {isClubAdmin && <option value="club">Club</option>}
                     {isSuperAdmin && <option value="settings">Settings</option>}
                   </select>
                   <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/50">
@@ -1215,7 +1202,25 @@ export default function Home() {
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
                     {activeTab === "home" && (
-                      <AdminDashboard store={store} setActiveTab={setActiveTab} />
+                      <AdminDashboard
+                        store={store}
+                        setActiveTab={setActiveTab}
+                        isSuperAdmin={isSuperAdmin}
+                        isFinanceAdmin={isFinanceAdmin}
+                        isMatchAdmin={isMatchAdmin}
+                        isStudioAdmin={isStudioAdmin}
+                        isClubAdmin={isClubAdmin}
+                      />
+                    )}
+                    {activeTab === "club" && (
+                      <ClubTab
+                        store={store}
+                        persona={persona}
+                        canDesign={canDesign}
+                        isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                        isFeatureEnabled={isFeatureEnabled}
+                        defaultSubTab={tabAction as any}
+                      />
                     )}
                     {activeTab === "matches" && (
                       <MatchesTab
@@ -1234,10 +1239,8 @@ export default function Home() {
                         isStudioAdmin={isStudioAdmin || isSuperAdmin}
                         isSuperAdmin={isSuperAdmin}
                         defaultAction={tabAction}
+                        isFeatureEnabled={isFeatureEnabled}
                       />
-                    )}
-                    {activeTab === "leaderboard" && (
-                      <LeaderboardTab store={store} persona={persona} />
                     )}
                     {activeTab === "notifications" && (
                       <NotificationsTab store={store} persona={persona} />
@@ -1251,18 +1254,6 @@ export default function Home() {
                         isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                         defaultAction={tabAction}
                       />
-                    )}
-                    {activeTab === "dues_and_reminders" && (
-                      <DuesAndRemindersTab store={store} isFinanceAdmin={isFinanceAdmin || isSuperAdmin} />
-                    )}
-                    {activeTab === "shop" && (
-                      <ShopTab store={store} persona={persona} isAdmin={true} />
-                    )}
-                    {activeTab === "opinion" && (
-                      <OpinionTab store={store} persona={persona} />
-                    )}
-                    {activeTab === "design" && canDesign && (
-                      <DesignTab store={store} />
                     )}
                   </motion.div>
                 </AnimatePresence>

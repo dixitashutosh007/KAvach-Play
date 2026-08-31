@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signInAsAdmin, waitForAppReady, navigateToTab } from "./helpers/auth";
+import { signInAsAdmin, waitForAppReady, navigateToClubSubTab } from "./helpers/auth";
 
 test.describe("Registration & Duplicate Prevention", () => {
   test.describe("Admin - Add Player", () => {
@@ -11,14 +11,11 @@ test.describe("Registration & Duplicate Prevention", () => {
     test.beforeEach(async ({ page }) => {
       await signInAsAdmin(page);
       await waitForAppReady(page);
-      // PlayersTab lives inside the "Squad" admin tab, under the "Directory" sub-tab (default)
-      await navigateToTab(page, "Squad");
-      // Wait for the Directory sub-tab content (PlayersTab) to render
+      await navigateToClubSubTab(page, "players");
       await page.waitForTimeout(1_000);
     });
 
     test("add player form is accessible to admin", async ({ page }) => {
-      // The "Add Player" button is in the PlayersTab (Directory view within Squad)
       const addBtn = page.getByRole("button", { name: /add player/i });
       await expect(addBtn).toBeVisible({ timeout: 10_000 });
       await addBtn.click();
@@ -31,9 +28,7 @@ test.describe("Registration & Duplicate Prevention", () => {
       await expect(addBtn).toBeVisible({ timeout: 10_000 });
       await addBtn.click();
 
-      // Try adding with a mobile that likely exists
       await page.getByPlaceholder(/dhoni/i).fill("Test Duplicate");
-      // Use a number that the first player in the list has
       const firstPlayerMobile = await page
         .locator("[data-testid='player-mobile'], .text-white\\/50")
         .first()
@@ -46,7 +41,6 @@ test.describe("Registration & Duplicate Prevention", () => {
           await page.getByPlaceholder(/9876/i).fill(digits);
           await page.getByRole("button", { name: /^add player$/i }).click();
 
-          // Should show duplicate warning
           await expect(
             page.getByText(/already exists|duplicate/i).first()
           ).toBeVisible({ timeout: 5_000 });
@@ -55,7 +49,6 @@ test.describe("Registration & Duplicate Prevention", () => {
     });
 
     test("rejected players do not appear in active list", async ({ page }) => {
-      // Check that the main player list doesn't show rejected players by default
       const playerCards = page.locator("[data-testid='player-row'], .glass");
       const count = await playerCards.count();
       if (count > 0) {
@@ -63,7 +56,6 @@ test.describe("Registration & Duplicate Prevention", () => {
         const hasRejectedLabel = playerNames.some(
           (t) => t.toLowerCase().includes("(rejected)")
         );
-        // By default, rejected shouldn't be visible in the main list
         expect(hasRejectedLabel).toBeFalsy();
       }
     });
