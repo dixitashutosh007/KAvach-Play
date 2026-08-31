@@ -1222,7 +1222,7 @@ export default function Home() {
                         isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                         isClubAdmin={isClubAdmin || isSuperAdmin}
                         currentUserId={user?.uid || ""}
-                        currentUserName={mePlayer?.name || user?.displayName || "Admin"}
+                        currentUserName={player?.name || user?.displayName || "Admin"}
                         isFeatureEnabled={isFeatureEnabled}
                         defaultSubTab={tabAction as any}
                       />
