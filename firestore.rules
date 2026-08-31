@@ -297,6 +297,18 @@ service cloud.firestore {
       allow delete: if isMatchAdmin() && isValidId(statId);
     }
 
+    match /badgeTypes/{defId} {
+      allow read: if isSignedIn();
+      allow create: if isClubAdmin()
+        && isValidId(defId)
+        && incoming().label is string
+        && incoming().short is string
+        && incoming().tier is string
+        && incoming().emoji is string;
+      allow update: if isClubAdmin();
+      allow delete: if isClubAdmin();
+    }
+
     match /badges/{badgeId} {
       allow read: if isSignedIn();
       allow create: if isClubAdmin()

@@ -384,18 +384,21 @@ export type PlayerStat = {
   updatedAt?: any;
 };
 
-export type BadgeType =
-  | "year_1" | "year_2" | "year_3" | "year_4" | "year_5"
-  | "original"
-  | "core"
-  | "elite"
-  | "centurion"
-  | "hattrick"
-  | "5wh"
-  | "runs_2k" | "runs_5k" | "runs_10k"
-  | "wickets_100" | "wickets_200" | "wickets_300" | "wickets_500";
+export type BadgeType = string;
 
 export type BadgeTier = "bronze" | "silver" | "gold" | "diamond";
+
+export type BadgeTypeDef = {
+  id: string;
+  label: string;
+  short: string;
+  tier: BadgeTier;
+  emoji: string;
+  stackable: boolean;
+  order: number;
+  createdAt?: any;
+  updatedAt?: any;
+};
 
 export type Badge = {
   id: string;

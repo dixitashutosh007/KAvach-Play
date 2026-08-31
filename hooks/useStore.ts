@@ -32,6 +32,7 @@ import {
   Tournament,
   FeePlan,
   Badge,
+  BadgeTypeDef,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -100,6 +101,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [pollResponses, setPollResponses] = useState<PollResponse[]>([]);
   const [feePlans, setFeePlans] = useState<FeePlan[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
+  const [badgeTypeDefs, setBadgeTypeDefs] = useState<BadgeTypeDef[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
@@ -622,6 +624,45 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await deleteDoc(doc(db, "badges", badgeId));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
+    }
+  };
+
+  const ensureBadgeTypeDefs = useCallback(() => {
+    if (!user || lazySubsRef.current.has("badgeTypeDefs")) return;
+    const unsub = onSnapshot(
+      collection(db, "badgeTypes"),
+      (snapshot) => {
+        setBadgeTypeDefs(
+          snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as BadgeTypeDef),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "badgeTypes"),
+    );
+    lazySubsRef.current.set("badgeTypeDefs", unsub);
+  }, [user]);
+
+  const addBadgeTypeDef = async (def: Omit<BadgeTypeDef, "createdAt" | "updatedAt">) => {
+    const docRef = doc(db, "badgeTypes", def.id);
+    try {
+      await setDoc(docRef, cleanPayload({ ...def, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `badgeTypes/${def.id}`);
+    }
+  };
+
+  const updateBadgeTypeDef = async (defId: string, updates: Partial<BadgeTypeDef>) => {
+    try {
+      await updateDoc(doc(db, "badgeTypes", defId), cleanPayload({ ...updates, updatedAt: serverTimestamp() }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `badgeTypes/${defId}`);
+    }
+  };
+
+  const deleteBadgeTypeDef = async (defId: string) => {
+    try {
+      await deleteDoc(doc(db, "badgeTypes", defId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `badgeTypes/${defId}`);
     }
   };
 
@@ -2207,6 +2248,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     addBadge,
     updateBadge,
     deleteBadge,
+    badgeTypeDefs,
+    ensureBadgeTypeDefs,
+    addBadgeTypeDef,
+    updateBadgeTypeDef,
+    deleteBadgeTypeDef,
     isLoaded,
   };
 }

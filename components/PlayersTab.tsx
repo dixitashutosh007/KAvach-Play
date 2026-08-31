@@ -400,7 +400,7 @@ export function PlayersTab({
                         Due: ₹{getTotalDue(player.id)}
                       </span>
                     </div>
-                    <PlayerBadgeRow playerId={player.id} badges={store.badges} />
+                    <PlayerBadgeRow playerId={player.id} badges={store.badges} customDefs={store.badgeTypeDefs} />
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">

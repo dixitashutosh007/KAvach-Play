@@ -1,35 +1,68 @@
-import { BadgeType, BadgeTier, Badge } from "@/lib/types";
+import { BadgeType, BadgeTier, Badge, BadgeTypeDef } from "@/lib/types";
 
-const BADGE_META: Record<BadgeType, { label: string; short: string; tier: BadgeTier; emoji: string }> = {
-  year_1:      { label: "1 Year with KAvach",        short: "1 Year",     tier: "bronze",  emoji: "1" },
-  year_2:      { label: "2 Years with KAvach",       short: "2 Years",    tier: "bronze",  emoji: "2" },
-  year_3:      { label: "3 Years with KAvach",       short: "3 Years",    tier: "silver",  emoji: "3" },
-  year_4:      { label: "4 Years with KAvach",       short: "4 Years",    tier: "silver",  emoji: "4" },
-  year_5:      { label: "5 Years with KAvach",       short: "5 Years",    tier: "gold",    emoji: "5" },
-  original:    { label: "KAvach Original",            short: "Original",   tier: "gold",    emoji: "OG" },
-  core:        { label: "KAvach Core",                short: "Core",       tier: "gold",    emoji: "★" },
-  elite:       { label: "KAvach Elite",               short: "Elite",      tier: "diamond", emoji: "♛" },
-  centurion:   { label: "KAvach Centurion",           short: "Centurion",  tier: "diamond", emoji: "💯" },
-  hattrick:    { label: "KAvach Hattrick",            short: "Hattrick",   tier: "diamond", emoji: "🎯" },
-  "5wh":       { label: "KAvach 5 Wicket Haul",      short: "5WH",        tier: "diamond", emoji: "🔥" },
-  runs_2k:     { label: "KAvach 2K Run Club",         short: "2K Runs",    tier: "silver",  emoji: "2K" },
-  runs_5k:     { label: "KAvach 5K Run Club",         short: "5K Runs",    tier: "gold",    emoji: "5K" },
-  runs_10k:    { label: "KAvach 10K Run Club",        short: "10K Runs",   tier: "diamond", emoji: "10K" },
-  wickets_100: { label: "KAvach 100 Wicket Club",     short: "100 Wkts",   tier: "silver",  emoji: "100" },
-  wickets_200: { label: "KAvach 200 Wicket Club",     short: "200 Wkts",   tier: "gold",    emoji: "200" },
-  wickets_300: { label: "KAvach 300 Wicket Club",     short: "300 Wkts",   tier: "gold",    emoji: "300" },
-  wickets_500: { label: "KAvach 500 Wicket Club",     short: "500 Wkts",   tier: "diamond", emoji: "500" },
+export type BadgeMeta = { label: string; short: string; tier: BadgeTier; emoji: string; stackable: boolean };
+
+const DEFAULT_BADGE_DEFS: Record<string, BadgeMeta> = {
+  year_1:      { label: "1 Year with KAvach",        short: "1 Year",     tier: "bronze",  emoji: "1",   stackable: false },
+  year_2:      { label: "2 Years with KAvach",       short: "2 Years",    tier: "bronze",  emoji: "2",   stackable: false },
+  year_3:      { label: "3 Years with KAvach",       short: "3 Years",    tier: "silver",  emoji: "3",   stackable: false },
+  year_4:      { label: "4 Years with KAvach",       short: "4 Years",    tier: "silver",  emoji: "4",   stackable: false },
+  year_5:      { label: "5 Years with KAvach",       short: "5 Years",    tier: "gold",    emoji: "5",   stackable: false },
+  original:    { label: "KAvach Original",            short: "Original",   tier: "gold",    emoji: "OG",  stackable: false },
+  core:        { label: "KAvach Core",                short: "Core",       tier: "gold",    emoji: "★",   stackable: false },
+  elite:       { label: "KAvach Elite",               short: "Elite",      tier: "diamond", emoji: "♛",   stackable: false },
+  centurion:   { label: "KAvach Centurion",           short: "Centurion",  tier: "diamond", emoji: "💯",  stackable: true },
+  hattrick:    { label: "KAvach Hattrick",            short: "Hattrick",   tier: "diamond", emoji: "🎯",  stackable: true },
+  "5wh":       { label: "KAvach 5 Wicket Haul",      short: "5WH",        tier: "diamond", emoji: "🔥",  stackable: true },
+  runs_2k:     { label: "KAvach 2K Run Club",         short: "2K Runs",    tier: "silver",  emoji: "2K",  stackable: false },
+  runs_5k:     { label: "KAvach 5K Run Club",         short: "5K Runs",    tier: "gold",    emoji: "5K",  stackable: false },
+  runs_10k:    { label: "KAvach 10K Run Club",        short: "10K Runs",   tier: "diamond", emoji: "10K", stackable: false },
+  wickets_100: { label: "KAvach 100 Wicket Club",     short: "100 Wkts",   tier: "silver",  emoji: "100", stackable: false },
+  wickets_200: { label: "KAvach 200 Wicket Club",     short: "200 Wkts",   tier: "gold",    emoji: "200", stackable: false },
+  wickets_300: { label: "KAvach 300 Wicket Club",     short: "300 Wkts",   tier: "gold",    emoji: "300", stackable: false },
+  wickets_500: { label: "KAvach 500 Wicket Club",     short: "500 Wkts",   tier: "diamond", emoji: "500", stackable: false },
 };
 
-const TIER_COLORS: Record<BadgeTier, { bg: string; border: string; text: string; glow: string }> = {
+const FALLBACK_META: BadgeMeta = { label: "Badge", short: "Badge", tier: "bronze", emoji: "?", stackable: false };
+
+export const TIER_COLORS: Record<BadgeTier, { bg: string; border: string; text: string; glow: string }> = {
   bronze:  { bg: "#CD7F32", border: "#A0522D", text: "#FFF8E7", glow: "rgba(205,127,50,0.4)" },
   silver:  { bg: "#C0C0C0", border: "#808080", text: "#1a1a1a", glow: "rgba(192,192,192,0.4)" },
   gold:    { bg: "#FFD700", border: "#DAA520", text: "#1a1a1a", glow: "rgba(255,215,0,0.4)" },
   diamond: { bg: "#B9F2FF", border: "#00CED1", text: "#003333", glow: "rgba(0,206,209,0.5)" },
 };
 
-export function getBadgeMeta(badgeType: BadgeType) {
-  return BADGE_META[badgeType];
+export function buildBadgeMetaMap(customDefs: BadgeTypeDef[]): Record<string, BadgeMeta> {
+  const map: Record<string, BadgeMeta> = { ...DEFAULT_BADGE_DEFS };
+  for (const def of customDefs) {
+    map[def.id] = { label: def.label, short: def.short, tier: def.tier, emoji: def.emoji, stackable: def.stackable };
+  }
+  return map;
+}
+
+export function getAllBadgeTypes(customDefs: BadgeTypeDef[]): string[] {
+  const metaMap = buildBadgeMetaMap(customDefs);
+  const defaultKeys = Object.keys(DEFAULT_BADGE_DEFS);
+  const customKeys = customDefs.map(d => d.id).filter(k => !DEFAULT_BADGE_DEFS[k]);
+  customKeys.sort((a, b) => {
+    const aOrder = customDefs.find(d => d.id === a)?.order ?? 999;
+    const bOrder = customDefs.find(d => d.id === b)?.order ?? 999;
+    return aOrder - bOrder;
+  });
+  return [...defaultKeys, ...customKeys];
+}
+
+export function getStackableSet(customDefs: BadgeTypeDef[]): Set<string> {
+  const metaMap = buildBadgeMetaMap(customDefs);
+  return new Set(Object.entries(metaMap).filter(([_, m]) => m.stackable).map(([k]) => k));
+}
+
+export function getBadgeMeta(badgeType: BadgeType, customDefs?: BadgeTypeDef[]): BadgeMeta {
+  if (customDefs?.length) {
+    const custom = customDefs.find(d => d.id === badgeType);
+    if (custom) return { label: custom.label, short: custom.short, tier: custom.tier, emoji: custom.emoji, stackable: custom.stackable };
+  }
+  return DEFAULT_BADGE_DEFS[badgeType] || FALLBACK_META;
 }
 
 export function getBadgeTierColors(tier: BadgeTier) {
@@ -41,16 +74,17 @@ export function BadgeIcon({
   size = 48,
   count,
   className,
+  customDefs,
 }: {
   badgeType: BadgeType;
   size?: number;
   count?: number;
   className?: string;
+  customDefs?: BadgeTypeDef[];
 }) {
-  const meta = BADGE_META[badgeType];
+  const meta = getBadgeMeta(badgeType, customDefs);
   const colors = TIER_COLORS[meta.tier];
   const r = size / 2;
-  const innerR = r * 0.82;
   const textSize = meta.emoji.length > 2 ? size * 0.22 : size * 0.32;
 
   return (
@@ -75,7 +109,6 @@ export function BadgeIcon({
           </filter>
         </defs>
 
-        {/* Shield shape */}
         <path
           d={`M ${r} ${size * 0.05}
               L ${size * 0.92} ${size * 0.2}
@@ -90,7 +123,6 @@ export function BadgeIcon({
           filter={`url(#glow-${badgeType}-${size})`}
         />
 
-        {/* Inner ring */}
         <path
           d={`M ${r} ${size * 0.12}
               L ${size * 0.85} ${size * 0.24}
@@ -105,7 +137,6 @@ export function BadgeIcon({
           opacity={0.3}
         />
 
-        {/* Badge text/emoji */}
         <text
           x={r}
           y={r * 1.12}
@@ -120,13 +151,12 @@ export function BadgeIcon({
         </text>
       </svg>
 
-      {/* Count badge for stackable badges */}
       {count && count > 1 && (
         <span
           className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center"
           style={{ width: size * 0.4, height: size * 0.4, minWidth: 16, minHeight: 16 }}
         >
-          ×{count}
+          x{count}
         </span>
       )}
     </div>
@@ -137,12 +167,14 @@ export function BadgeCard({
   badgeType,
   count,
   showLabel = true,
+  customDefs,
 }: {
   badgeType: BadgeType;
   count?: number;
   showLabel?: boolean;
+  customDefs?: BadgeTypeDef[];
 }) {
-  const meta = BADGE_META[badgeType];
+  const meta = getBadgeMeta(badgeType, customDefs);
   const colors = TIER_COLORS[meta.tier];
 
   return (
@@ -153,7 +185,7 @@ export function BadgeCard({
         background: colors.bg + "10",
       }}
     >
-      <BadgeIcon badgeType={badgeType} size={40} count={count} />
+      <BadgeIcon badgeType={badgeType} size={40} count={count} customDefs={customDefs} />
       {showLabel && (
         <span className="text-[9px] font-bold text-white/70 text-center leading-tight">
           {meta.short}
@@ -163,25 +195,19 @@ export function BadgeCard({
   );
 }
 
-export const ALL_BADGE_TYPES: BadgeType[] = [
-  "year_1", "year_2", "year_3", "year_4", "year_5",
-  "original", "core", "elite",
-  "centurion", "hattrick", "5wh",
-  "runs_2k", "runs_5k", "runs_10k",
-  "wickets_100", "wickets_200", "wickets_300", "wickets_500",
-];
-
-export const STACKABLE_BADGES: Set<BadgeType> = new Set(["centurion", "hattrick", "5wh"]);
-
 export function PlayerBadgeRow({
   playerId,
   badges,
+  customDefs,
 }: {
   playerId: string;
   badges: Badge[];
+  customDefs?: BadgeTypeDef[];
 }) {
   const playerBadges = badges.filter((b) => b.playerId === playerId);
   if (!playerBadges.length) return null;
+
+  const stackable = getStackableSet(customDefs || []);
 
   const grouped = new Map<BadgeType, Badge[]>();
   playerBadges.forEach((b) => {
@@ -197,7 +223,8 @@ export function PlayerBadgeRow({
           key={badgeType}
           badgeType={badgeType}
           size={28}
-          count={STACKABLE_BADGES.has(badgeType) ? bList.length : undefined}
+          count={stackable.has(badgeType) ? bList.length : undefined}
+          customDefs={customDefs}
         />
       ))}
     </div>
