@@ -58,6 +58,7 @@ export type AppConfig = {
     shop?: boolean;
     opinion?: boolean;
     pna?: boolean;
+    badges?: boolean;
   };
   matchConfiguration?: {
     directionsHoursBefore?: number;
@@ -381,6 +382,33 @@ export type PlayerStat = {
   runs: number;
   wickets: number;
   updatedAt?: any;
+};
+
+export type BadgeType =
+  | "year_1" | "year_2" | "year_3" | "year_4" | "year_5"
+  | "original"
+  | "core"
+  | "elite"
+  | "centurion"
+  | "hattrick"
+  | "5wh"
+  | "runs_2k" | "runs_5k" | "runs_10k"
+  | "wickets_100" | "wickets_200" | "wickets_300" | "wickets_500";
+
+export type BadgeTier = "bronze" | "silver" | "gold" | "diamond";
+
+export type Badge = {
+  id: string;
+  playerId: string;
+  playerName: string;
+  badgeType: BadgeType;
+  matchId?: string;
+  note?: string;
+  awardedBy: string;
+  awardedByName: string;
+  awardedAt: any;
+  redeemed: boolean;
+  redeemedAt?: any;
 };
 
 export type MerchCustomFieldOption = {

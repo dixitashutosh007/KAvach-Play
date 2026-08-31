@@ -31,6 +31,7 @@ import {
   PollResponse,
   Tournament,
   FeePlan,
+  Badge,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -98,6 +99,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollResponses, setPollResponses] = useState<PollResponse[]>([]);
   const [feePlans, setFeePlans] = useState<FeePlan[]>([]);
+  const [badges, setBadges] = useState<Badge[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
@@ -579,6 +581,49 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     );
     lazySubsRef.current.set("pollResponses", unsub);
   }, [user]);
+
+  const ensureBadges = useCallback(() => {
+    if (!user || lazySubsRef.current.has("badges")) return;
+    const unsub = onSnapshot(
+      collection(db, "badges"),
+      (snapshot) => {
+        setBadges(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Badge),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "badges"),
+    );
+    lazySubsRef.current.set("badges", unsub);
+  }, [user]);
+
+  const addBadge = async (badge: Omit<Badge, "id">) => {
+    const id = crypto.randomUUID();
+    const docRef = doc(db, "badges", id);
+    try {
+      await setDoc(docRef, cleanPayload({ ...badge }));
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `badges/${id}`);
+    }
+  };
+
+  const updateBadge = async (badgeId: string, updates: Partial<Badge>) => {
+    try {
+      await updateDoc(doc(db, "badges", badgeId), cleanPayload({
+        ...updates,
+      }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `badges/${badgeId}`);
+    }
+  };
+
+  const deleteBadge = async (badgeId: string) => {
+    try {
+      await deleteDoc(doc(db, "badges", badgeId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
+    }
+  };
 
   const loadMoreNotifications = useCallback(async () => {
     if (
@@ -2157,6 +2202,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     deleteMerchOrder,
     polls,
     pollResponses,
+    badges,
+    ensureBadges,
+    addBadge,
+    updateBadge,
+    deleteBadge,
     isLoaded,
   };
 }

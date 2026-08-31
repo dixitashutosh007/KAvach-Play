@@ -297,6 +297,24 @@ service cloud.firestore {
       allow delete: if isMatchAdmin() && isValidId(statId);
     }
 
+    match /badges/{badgeId} {
+      allow read: if isSignedIn();
+      allow create: if isClubAdmin()
+        && isValidId(badgeId)
+        && incoming().playerId is string
+        && incoming().badgeType is string
+        && incoming().awardedBy is string
+        && incoming().awardedAt == request.time
+        && incoming().redeemed == false
+        && exists(/databases/$(database)/documents/players/$(incoming().playerId));
+      allow update: if isClubAdmin()
+        && incoming().playerId == existing().playerId
+        && incoming().badgeType == existing().badgeType
+        && incoming().awardedBy == existing().awardedBy
+        && incoming().awardedAt == existing().awardedAt;
+      allow delete: if isClubAdmin();
+    }
+
     match /posts/{postId} {
       allow read: if isSignedIn();
       allow create: if isAnyAdmin();

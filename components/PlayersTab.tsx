@@ -21,6 +21,7 @@ import {
 import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
+import { PlayerBadgeRow } from "./BadgesTab";
 import { Player } from "@/lib/types";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
 
@@ -399,6 +400,7 @@ export function PlayersTab({
                         Due: ₹{getTotalDue(player.id)}
                       </span>
                     </div>
+                    <PlayerBadgeRow playerId={player.id} badges={store.badges} />
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">

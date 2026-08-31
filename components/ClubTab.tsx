@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell } from "lucide-react";
+import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ default: m.PlayersTab })), { ssr: false });
@@ -9,14 +9,18 @@ const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ 
 const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ default: m.DesignTab })), { ssr: false });
 const LeaderboardTab = dynamic(() => import("@/components/LeaderboardTab").then(m => ({ default: m.LeaderboardTab })), { ssr: false });
 const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersTab").then(m => ({ default: m.DuesAndRemindersTab })), { ssr: false });
+const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
 
-type ClubSubTab = "players" | "shop" | "pulse" | "design" | "leaderboard" | "reminders";
+type ClubSubTab = "players" | "shop" | "pulse" | "design" | "leaderboard" | "reminders" | "badges";
 
 export function ClubTab({
   store,
   persona,
   canDesign,
   isFinanceAdmin,
+  isClubAdmin,
+  currentUserId,
+  currentUserName,
   isFeatureEnabled,
   defaultSubTab,
 }: {
@@ -24,6 +28,9 @@ export function ClubTab({
   persona: string;
   canDesign: boolean;
   isFinanceAdmin: boolean;
+  isClubAdmin: boolean;
+  currentUserId: string;
+  currentUserName: string;
   isFeatureEnabled: (f: string) => boolean;
   defaultSubTab?: ClubSubTab | null;
 }) {
@@ -31,6 +38,7 @@ export function ClubTab({
 
   const tabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
     { key: "players", label: "Players", icon: Users, visible: true },
+    { key: "badges", label: "Badges", icon: Award, visible: isFeatureEnabled("badges") },
     { key: "shop", label: "Shop", icon: ShoppingBag, visible: isFeatureEnabled("shop") },
     { key: "pulse", label: "Pulse", icon: PieChart, visible: isFeatureEnabled("opinion") },
     { key: "design", label: "Design", icon: ImageIcon, visible: canDesign },
@@ -61,6 +69,14 @@ export function ClubTab({
 
       {subTab === "players" && (
         <PlayersTab store={store} persona={persona} isStudioAdmin={true} />
+      )}
+      {subTab === "badges" && (
+        <BadgesTab
+          store={store}
+          isClubAdmin={isClubAdmin}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+        />
       )}
       {subTab === "shop" && (
         <ShopTab store={store} persona={persona} isAdmin={true} />

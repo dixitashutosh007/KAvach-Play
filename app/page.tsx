@@ -260,6 +260,7 @@ export default function Home() {
   const STATS_TABS = new Set(["club", "home"]);
   const MERCH_TABS = new Set(["club"]);
   const POLL_TABS = new Set(["club"]);
+  const BADGE_TABS = new Set(["club", "home", "profile"]);
   const TOURNAMENT_TABS = new Set(["matches"]);
   const SUB_PLAN_TABS = new Set(["studio"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
@@ -283,7 +284,8 @@ export default function Home() {
     if (FEE_PLAN_TABS.has(activeTab)) store.ensureFeePlans?.();
     if (MERCH_CATALOG_TABS.has(activeTab)) store.ensureMerchandises?.();
     if (OUT_OF_PLAY_TABS.has(activeTab)) store.ensureOutOfPlays?.();
-  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays]);
+    if (BADGE_TABS.has(activeTab)) store.ensureBadges?.();
+  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
@@ -1218,6 +1220,9 @@ export default function Home() {
                         persona={persona}
                         canDesign={canDesign}
                         isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                        isClubAdmin={isClubAdmin || isSuperAdmin}
+                        currentUserId={user?.uid || ""}
+                        currentUserName={mePlayer?.name || user?.displayName || "Admin"}
                         isFeatureEnabled={isFeatureEnabled}
                         defaultSubTab={tabAction as any}
                       />
