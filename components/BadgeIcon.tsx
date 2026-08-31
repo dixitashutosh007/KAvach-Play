@@ -2,7 +2,7 @@ import { BadgeType, BadgeTier, Badge, BadgeTypeDef } from "@/lib/types";
 
 export type BadgeMeta = { label: string; short: string; tier: BadgeTier; emoji: string; stackable: boolean };
 
-const DEFAULT_BADGE_DEFS: Record<string, BadgeMeta> = {
+export const DEFAULT_BADGE_DEFS: Record<string, BadgeMeta> = {
   year_1:      { label: "1 Year with KAvach",        short: "1 Year",     tier: "bronze",  emoji: "1",   stackable: false },
   year_2:      { label: "2 Years with KAvach",       short: "2 Years",    tier: "bronze",  emoji: "2",   stackable: false },
   year_3:      { label: "3 Years with KAvach",       short: "3 Years",    tier: "silver",  emoji: "3",   stackable: false },

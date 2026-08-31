@@ -10,8 +10,17 @@ import {
   getAllBadgeTypes,
   getStackableSet,
   TIER_COLORS,
+  DEFAULT_BADGE_DEFS,
 } from "./BadgeIcon";
-import { Award, Search, Plus, Trash2, X, Share2, Trophy, Settings, Edit, Check } from "lucide-react";
+import { Award, Search, Plus, Trash2, X, Share2, Trophy, Settings, Edit, Check, Palette, Upload } from "lucide-react";
+
+const ICON_LIBRARY: { cat: string; icons: string[] }[] = [
+  { cat: "Cricket", icons: ["🏏", "🏆", "🎯", "🔥", "💯", "🎳", "⚾", "🥎", "🏟"] },
+  { cat: "Achievement", icons: ["⭐", "🌟", "✨", "💎", "👑", "🎖", "🏅", "★", "♛", "☆", "🎗", "🥇", "🥈", "🥉"] },
+  { cat: "Power", icons: ["⚡", "🦁", "💪", "🐯", "🦅", "☄", "🔱", "⚔", "🛡", "🎪", "🫡"] },
+  { cat: "Text", icons: ["MVP", "ACE", "PRO", "TOP", "MOM", "CAP", "ALL", "OG", "GOD", "VIP", "KAV", "MAX", "WIN"] },
+  { cat: "Numbers", icons: ["1", "2", "3", "4", "5", "10", "25", "50", "2K", "5K", "10K", "100", "200", "300", "500"] },
+];
 import { serverTimestamp } from "firebase/firestore";
 
 export function BadgesTab({
@@ -38,6 +47,9 @@ export function BadgesTab({
   const [defForm, setDefForm] = useState({ id: "", label: "", short: "", tier: "bronze" as BadgeTier, emoji: "", stackable: false });
   const [isSavingDef, setIsSavingDef] = useState(false);
   const [confirmDeleteDef, setConfirmDeleteDef] = useState<string | null>(null);
+  const [showDefForm, setShowDefForm] = useState(false);
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [isSeedingDefaults, setIsSeedingDefaults] = useState(false);
 
   const { players, badges, matches, badgeTypeDefs } = store;
   const customDefs = badgeTypeDefs;
@@ -186,11 +198,15 @@ export function BadgesTab({
   const openNewDefForm = () => {
     setEditingDef(null);
     setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false });
+    setShowDefForm(true);
+    setShowIconPicker(false);
   };
 
   const openEditDefForm = (def: BadgeTypeDef) => {
     setEditingDef(def);
     setDefForm({ id: def.id, label: def.label, short: def.short, tier: def.tier, emoji: def.emoji, stackable: def.stackable });
+    setShowDefForm(true);
+    setShowIconPicker(false);
   };
 
   const handleSaveDef = async () => {
@@ -221,6 +237,8 @@ export function BadgesTab({
       }
       setEditingDef(null);
       setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false });
+      setShowDefForm(false);
+      setShowIconPicker(false);
     } finally {
       setIsSavingDef(false);
     }
@@ -233,7 +251,30 @@ export function BadgesTab({
 
   const badgesExistForType = (typeId: string) => badges.some(b => b.badgeType === typeId);
 
-  const showDefForm = view === "manage" && (editingDef !== null || defForm.label !== "" || defForm.id === "");
+  const handleSeedDefaults = async () => {
+    const existing = new Set(customDefs.map(d => d.id));
+    const entries = Object.entries(DEFAULT_BADGE_DEFS);
+    setIsSeedingDefaults(true);
+    try {
+      let order = customDefs.length + 1;
+      for (const [id, meta] of entries) {
+        if (existing.has(id)) continue;
+        await store.addBadgeTypeDef({
+          id,
+          label: meta.label,
+          short: meta.short,
+          tier: meta.tier,
+          emoji: meta.emoji,
+          stackable: meta.stackable,
+          order: order++,
+        });
+      }
+    } finally {
+      setIsSeedingDefaults(false);
+    }
+  };
+
+  const unseededDefaults = getAllBadgeTypes([]).filter(bt => !customDefs.some(d => d.id === bt));
 
   return (
     <div className="space-y-4">
@@ -472,12 +513,23 @@ export function BadgesTab({
                 <Settings className="w-5 h-5 text-accent" />
                 Manage Badge Types
               </h3>
-              <button
-                onClick={openNewDefForm}
-                className="bg-accent text-black text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:brightness-110 transition"
-              >
-                <Plus className="w-3.5 h-3.5" /> New Badge
-              </button>
+              <div className="flex gap-2">
+                {unseededDefaults.length > 0 && (
+                  <button
+                    onClick={handleSeedDefaults}
+                    disabled={isSeedingDefaults}
+                    className="bg-white/5 text-white/70 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-white/10 border border-white/10 transition disabled:opacity-50"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> {isSeedingDefaults ? "Importing..." : "Import Defaults"}
+                  </button>
+                )}
+                <button
+                  onClick={openNewDefForm}
+                  className="bg-accent text-black text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:brightness-110 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New Badge
+                </button>
+              </div>
             </div>
 
             <p className="text-xs text-white/40">
@@ -485,7 +537,7 @@ export function BadgesTab({
             </p>
 
             {/* Badge Type Form */}
-            {(editingDef !== null || defForm.id === "") && (
+            {showDefForm && (
               <div className="bg-black/30 rounded-lg p-3 border border-white/10 space-y-3">
                 <h4 className="text-sm font-bold text-white">
                   {editingDef ? `Edit: ${editingDef.label}` : "Create New Badge Type"}
@@ -535,15 +587,25 @@ export function BadgesTab({
                     </div>
                   )}
                   <div>
-                    <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Emoji / Symbol</label>
-                    <input
-                      type="text"
-                      value={defForm.emoji}
-                      onChange={(e) => setDefForm(f => ({ ...f, emoji: e.target.value }))}
-                      placeholder="MVP"
-                      maxLength={5}
-                      className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center placeholder:text-white/30"
-                    />
+                    <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Badge Face Text</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={defForm.emoji}
+                        onChange={(e) => setDefForm(f => ({ ...f, emoji: e.target.value }))}
+                        placeholder="MVP"
+                        maxLength={6}
+                        className="flex-1 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center placeholder:text-white/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowIconPicker(!showIconPicker)}
+                        className={`p-1.5 rounded-lg border transition ${showIconPicker ? "border-accent bg-accent/10 text-accent" : "border-white/10 text-white/50 hover:text-white"}`}
+                        title="Browse icons"
+                      >
+                        <Palette className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Tier</label>
@@ -559,6 +621,30 @@ export function BadgesTab({
                     </select>
                   </div>
                 </div>
+
+                {showIconPicker && (
+                  <div className="bg-black/20 rounded-lg p-2 border border-white/10 space-y-2 max-h-52 overflow-y-auto">
+                    {ICON_LIBRARY.map(({ cat, icons }) => (
+                      <div key={cat}>
+                        <p className="text-[9px] text-white/40 uppercase tracking-widest mb-1">{cat}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {icons.map(icon => (
+                            <button
+                              key={icon}
+                              type="button"
+                              onClick={() => { setDefForm(f => ({ ...f, emoji: icon })); setShowIconPicker(false); }}
+                              className={`px-2 py-1 rounded text-sm border transition hover:bg-white/10 ${
+                                defForm.emoji === icon ? "border-accent bg-accent/10 text-accent" : "border-white/10 text-white/70"
+                              }`}
+                            >
+                              {icon}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
@@ -586,7 +672,7 @@ export function BadgesTab({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { setEditingDef(null); setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false }); }}
+                    onClick={() => { setShowDefForm(false); setShowIconPicker(false); setEditingDef(null); setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false }); }}
                     className="flex-1 py-2 border border-white/10 rounded-lg text-white/70 text-sm hover:bg-white/5"
                   >
                     Cancel
@@ -646,20 +732,22 @@ export function BadgesTab({
             )}
 
             {/* Default badge types */}
-            <div className="space-y-2">
-              <h4 className="text-xs text-white/50 uppercase tracking-widest">Default Badges (17)</h4>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {getAllBadgeTypes([]).map((bt) => {
-                  const meta = getBadgeMeta(bt);
-                  return (
-                    <div key={bt} className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/5 bg-black/10">
-                      <BadgeIcon badgeType={bt} size={28} />
-                      <span className="text-[8px] text-white/40 text-center leading-tight">{meta.short}</span>
-                    </div>
-                  );
-                })}
+            {unseededDefaults.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs text-white/50 uppercase tracking-widest">Default Badges ({unseededDefaults.length})</h4>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {unseededDefaults.map((bt) => {
+                    const meta = getBadgeMeta(bt);
+                    return (
+                      <div key={bt} className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/5 bg-black/10">
+                        <BadgeIcon badgeType={bt} size={28} />
+                        <span className="text-[8px] text-white/40 text-center leading-tight">{meta.short}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
