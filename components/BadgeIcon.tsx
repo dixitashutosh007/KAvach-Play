@@ -15,6 +15,7 @@ export const DEFAULT_BADGE_DEFS: Record<string, BadgeMeta> = {
   centurion:   { label: "KAvach Centurion",           short: "Centurion",  tier: "diamond", emoji: "💯",  stackable: true },
   hattrick:    { label: "KAvach Hattrick",            short: "Hattrick",   tier: "diamond", emoji: "🎯",  stackable: true },
   "5wh":       { label: "KAvach 5 Wicket Haul",      short: "5WH",        tier: "diamond", emoji: "🔥",  stackable: true },
+  runs_1k:     { label: "KAvach 1K Run Club",         short: "1K Runs",    tier: "bronze",  emoji: "1K",  stackable: false },
   runs_2k:     { label: "KAvach 2K Run Club",         short: "2K Runs",    tier: "silver",  emoji: "2K",  stackable: false },
   runs_5k:     { label: "KAvach 5K Run Club",         short: "5K Runs",    tier: "gold",    emoji: "5K",  stackable: false },
   runs_10k:    { label: "KAvach 10K Run Club",        short: "10K Runs",   tier: "diamond", emoji: "10K", stackable: false },

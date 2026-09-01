@@ -48,6 +48,8 @@ export function EditPlayerInline({
     studioPlan: player.studioPlan || "Trial",
     kavachJoiningMonth: player.kavachJoining ? player.kavachJoining.split("/")[0] : "",
     kavachJoiningYear: player.kavachJoining ? player.kavachJoining.split("/")[1] : "",
+    totalRuns: player.totalRuns !== undefined ? String(player.totalRuns) : "",
+    totalWickets: player.totalWickets !== undefined ? String(player.totalWickets) : "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +64,7 @@ export function EditPlayerInline({
         return;
       }
     }
-    const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, kavachJoiningMonth, kavachJoiningYear, ...rest } =
+    const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, kavachJoiningMonth, kavachJoiningYear, totalRuns, totalWickets, ...rest } =
       formData;
     const updatedData: Partial<Player> = {
       ...rest,
@@ -78,6 +80,8 @@ export function EditPlayerInline({
       kavachJoining: kavachJoiningMonth && kavachJoiningYear
         ? `${kavachJoiningMonth}/${kavachJoiningYear}`
         : undefined,
+      totalRuns: totalRuns !== "" ? Number(totalRuns) : undefined,
+      totalWickets: totalWickets !== "" ? Number(totalWickets) : undefined,
       ...(isSuperAdmin ? { feePlanIds: selectedPlanIds.length > 0 ? selectedPlanIds : [] } : {}),
     };
     await store.updatePlayer(player.id, updatedData);
@@ -206,6 +210,34 @@ export function EditPlayerInline({
                 <option key={year} value={String(year)}>{year}</option>
               ))}
             </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+              Total Runs
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={formData.totalRuns}
+              onChange={(e) => setFormData({ ...formData, totalRuns: e.target.value })}
+              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+              Total Wickets
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={formData.totalWickets}
+              onChange={(e) => setFormData({ ...formData, totalWickets: e.target.value })}
+              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              placeholder="0"
+            />
           </div>
         </div>
         <div>

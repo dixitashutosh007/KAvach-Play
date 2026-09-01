@@ -244,6 +244,8 @@ export type Player = {
     paidStatus: "Paid" | "Unpaid";
   };
   kavachJoining?: string;
+  totalRuns?: number;
+  totalWickets?: number;
   droppedCatches?: number;
   stunningCatches?: number;
   createdAt?: any;

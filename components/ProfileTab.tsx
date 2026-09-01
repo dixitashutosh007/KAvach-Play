@@ -625,6 +625,13 @@ export function ProfileTab({
         />
       )}
 
+      {!isEditing && linkedPlayer && ((linkedPlayer.totalRuns ?? 0) > 0 || (linkedPlayer.totalWickets ?? 0) > 0) && (
+        <CricketStatsCards
+          runs={linkedPlayer.totalRuns ?? 0}
+          wickets={linkedPlayer.totalWickets ?? 0}
+        />
+      )}
+
       {!isEditing && linkedPlayer && ((linkedPlayer.stunningCatches ?? 0) > 0 || (linkedPlayer.droppedCatches ?? 0) > 0) && (
         <CatchStatsCards
           stunning={linkedPlayer.stunningCatches ?? 0}
@@ -1011,6 +1018,27 @@ function MyBadgesSection({
           customDefs={badgeTypeDefs}
           onClose={() => setShowcaseBadge(null)}
         />
+      )}
+    </div>
+  );
+}
+
+function CricketStatsCards({ runs, wickets }: { runs: number; wickets: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 pt-2">
+      {runs > 0 && (
+        <div className="glass rounded-xl p-4 border border-blue-500/30 bg-blue-500/5 text-center">
+          <div className="text-3xl mb-1">🏏</div>
+          <p className="text-2xl font-black text-blue-400">{runs.toLocaleString()}</p>
+          <p className="text-[10px] text-blue-300/70 font-bold uppercase tracking-wider mt-1">Total Runs</p>
+        </div>
+      )}
+      {wickets > 0 && (
+        <div className="glass rounded-xl p-4 border border-purple-500/30 bg-purple-500/5 text-center">
+          <div className="text-3xl mb-1">🎳</div>
+          <p className="text-2xl font-black text-purple-400">{wickets}</p>
+          <p className="text-[10px] text-purple-300/70 font-bold uppercase tracking-wider mt-1">Total Wickets</p>
+        </div>
       )}
     </div>
   );

@@ -589,7 +589,7 @@ function BulkEditTable({
     <>
       <div className="glass rounded-xl overflow-hidden border border-glass-border">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse">
+          <table className="w-full min-w-[1050px] border-collapse">
             <thead>
               <tr className="bg-black/60 text-white/70 text-[10px] uppercase tracking-wider">
                 <th className="text-left px-2 py-2 font-bold">Name</th>
@@ -598,6 +598,8 @@ function BulkEditTable({
                 <th className="text-center px-2 py-2 font-bold">WK</th>
                 <th className="text-left px-2 py-2 font-bold">Jersey#</th>
                 <th className="text-left px-2 py-2 font-bold">KAvach Joining</th>
+                <th className="text-right px-2 py-2 font-bold">Runs</th>
+                <th className="text-right px-2 py-2 font-bold">Wkts</th>
                 <th className="text-left px-2 py-2 font-bold">Emergency</th>
                 <th className="text-center px-2 py-2 font-bold">Status</th>
               </tr>
@@ -605,7 +607,7 @@ function BulkEditTable({
             <tbody>
               {players.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-white/50">
+                  <td colSpan={10} className="py-8 text-center text-sm text-white/50">
                     No players to display.
                   </td>
                 </tr>
@@ -682,6 +684,26 @@ function BulkEditTable({
                         ))}
                       </select>
                     </div>
+                  </td>
+                  <td className="bg-transparent px-0">
+                    <input
+                      type="number"
+                      min={0}
+                      value={getVal(player, "totalRuns") ?? ""}
+                      onChange={(e) => setField(player.id, "totalRuns", e.target.value ? Number(e.target.value) : undefined)}
+                      className={`${inputClass} max-w-[70px] text-right`}
+                      placeholder="—"
+                    />
+                  </td>
+                  <td className="bg-transparent px-0">
+                    <input
+                      type="number"
+                      min={0}
+                      value={getVal(player, "totalWickets") ?? ""}
+                      onChange={(e) => setField(player.id, "totalWickets", e.target.value ? Number(e.target.value) : undefined)}
+                      className={`${inputClass} max-w-[70px] text-right`}
+                      placeholder="—"
+                    />
                   </td>
                   <td className="bg-transparent px-0">
                     <input

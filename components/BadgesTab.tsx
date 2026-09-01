@@ -26,6 +26,7 @@ const ICON_LIBRARY: { cat: string; icons: string[] }[] = [
 import { serverTimestamp } from "firebase/firestore";
 import dynamic from "next/dynamic";
 const TenureBadgeEvaluator = dynamic(() => import("./TenureBadgeEvaluator"), { ssr: false });
+const StatsBadgeEvaluator = dynamic(() => import("./StatsBadgeEvaluator"), { ssr: false });
 
 export function BadgesTab({
   store,
@@ -51,6 +52,7 @@ export function BadgesTab({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
   const [showTenureEval, setShowTenureEval] = useState(false);
+  const [showStatsEval, setShowStatsEval] = useState(false);
 
   const [editingDef, setEditingDef] = useState<BadgeTypeDef | null>(null);
   const [defForm, setDefForm] = useState({ id: "", label: "", short: "", tier: "bronze" as BadgeTier, emoji: "", stackable: false });
@@ -415,13 +417,22 @@ export function BadgesTab({
               <Award className="w-5 h-5 text-accent" />
               Grant a Badge
             </h3>
-            <button
-              onClick={() => setShowTenureEval(true)}
-              className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-glass-border text-white/70 hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
-            >
-              <Award className="w-3.5 h-3.5" />
-              Tenure Awards
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowTenureEval(true)}
+                className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-glass-border text-white/70 hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+              >
+                <Award className="w-3.5 h-3.5" />
+                Tenure
+              </button>
+              <button
+                onClick={() => setShowStatsEval(true)}
+                className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-glass-border text-white/70 hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                Stats
+              </button>
+            </div>
           </div>
 
           <div>
@@ -815,6 +826,15 @@ export function BadgesTab({
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           onClose={() => setShowTenureEval(false)}
+        />
+      )}
+
+      {showStatsEval && (
+        <StatsBadgeEvaluator
+          store={store}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          onClose={() => setShowStatsEval(false)}
         />
       )}
 

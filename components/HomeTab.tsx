@@ -542,6 +542,32 @@ export function HomeTab({
         </div>
       )}
 
+      {/* Cricket Stats Cards */}
+      {!isAdmin && mePlayer && ((mePlayer.totalRuns ?? 0) > 0 || (mePlayer.totalWickets ?? 0) > 0) && (
+        <div className="md:col-span-12 lg:col-span-12">
+          <div className="grid grid-cols-2 gap-3">
+            {(mePlayer.totalRuns ?? 0) > 0 && (
+              <div className="glass rounded-2xl p-4 border border-blue-500/30 bg-blue-500/5 flex items-center gap-3">
+                <span className="text-3xl">🏏</span>
+                <div>
+                  <p className="text-2xl font-black text-blue-400">{(mePlayer.totalRuns ?? 0).toLocaleString()}</p>
+                  <p className="text-[10px] text-blue-300/70 font-bold uppercase tracking-wider">Total Runs</p>
+                </div>
+              </div>
+            )}
+            {(mePlayer.totalWickets ?? 0) > 0 && (
+              <div className="glass rounded-2xl p-4 border border-purple-500/30 bg-purple-500/5 flex items-center gap-3">
+                <span className="text-3xl">🎳</span>
+                <div>
+                  <p className="text-2xl font-black text-purple-400">{mePlayer.totalWickets}</p>
+                  <p className="text-[10px] text-purple-300/70 font-bold uppercase tracking-wider">Total Wickets</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Catch Stats Cards */}
       {!isAdmin && mePlayer && ((mePlayer.stunningCatches ?? 0) > 0 || (mePlayer.droppedCatches ?? 0) > 0) && (
         <div className="md:col-span-12 lg:col-span-12">
