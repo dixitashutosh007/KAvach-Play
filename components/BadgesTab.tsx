@@ -122,8 +122,10 @@ export function BadgesTab({
         const nameStr = names.length <= 3
           ? names.join(", ")
           : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
+        const tierEmoji = { bronze: "\u{1F949}", silver: "\u{1F948}", gold: "\u{1F947}", diamond: "\u{1F48E}" }[meta.tier] || "\u{1F3C6}";
+        const postText = `${tierEmoji} BADGE UNLOCKED!\n\n${nameStr} earned the ✨ ${meta.label} ✨ badge!\n\n${meta.emoji}  ${meta.tier.toUpperCase()} Tier\n\n#KAvachPlay #CricketBadge`;
         await store.addPost?.({
-          text: `\u{1F3C6} ${nameStr} earned the ${meta.label} badge!`,
+          text: postText,
           authorName: "KAvach Badges",
           authorId: currentUserId,
         });
@@ -144,52 +146,187 @@ export function BadgesTab({
     setConfirmDelete(null);
   };
 
+  const renderBadgeSVG = (ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, meta: ReturnType<typeof getBadgeMeta>) => {
+    const colors = getBadgeTierColors(meta.tier);
+    const size = r * 2;
+
+    ctx.save();
+    ctx.translate(cx - r, cy - r);
+
+    ctx.shadowColor = colors.glow;
+    ctx.shadowBlur = r * 0.5;
+
+    ctx.beginPath();
+    ctx.moveTo(r, size * 0.05);
+    ctx.lineTo(size * 0.92, size * 0.2);
+    ctx.lineTo(size * 0.92, size * 0.55);
+    ctx.quadraticCurveTo(size * 0.92, size * 0.82, r, size * 0.97);
+    ctx.quadraticCurveTo(size * 0.08, size * 0.82, size * 0.08, size * 0.55);
+    ctx.lineTo(size * 0.08, size * 0.2);
+    ctx.closePath();
+
+    const grad = ctx.createRadialGradient(size * 0.35, size * 0.3, 0, r, r, r);
+    grad.addColorStop(0, colors.bg);
+    grad.addColorStop(1, colors.border);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = colors.border;
+    ctx.lineWidth = size * 0.04;
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+
+    ctx.beginPath();
+    ctx.moveTo(r, size * 0.12);
+    ctx.lineTo(size * 0.85, size * 0.24);
+    ctx.lineTo(size * 0.85, size * 0.54);
+    ctx.quadraticCurveTo(size * 0.85, size * 0.76, r, size * 0.9);
+    ctx.quadraticCurveTo(size * 0.15, size * 0.76, size * 0.15, size * 0.54);
+    ctx.lineTo(size * 0.15, size * 0.24);
+    ctx.closePath();
+    ctx.strokeStyle = colors.text + "4D";
+    ctx.lineWidth = size * 0.015;
+    ctx.stroke();
+
+    const textSize = meta.emoji.length > 2 ? size * 0.22 : size * 0.32;
+    ctx.fillStyle = colors.text;
+    ctx.font = `900 ${textSize}px system-ui, -apple-system, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(meta.emoji, r, r * 1.12);
+
+    ctx.restore();
+  };
+
   const handleShare = async (badge: Badge) => {
     const meta = getBadgeMeta(badge.badgeType, customDefs);
-    const text = `${badge.playerName} earned the ${meta.label} badge at KAvach Play!`;
+    const colors = getBadgeTierColors(meta.tier);
+    const awardDate = badge.awardedAt?.toDate?.() ? badge.awardedAt.toDate() : new Date();
+    const dateStr = awardDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    const caption = `${badge.playerName} earned the "${meta.label}" badge at KAvach Play!\n\n#KAvachPlay #CricketBadge #${meta.label.replace(/\s+/g, "")} #Cricket #BadgeUnlocked`;
 
     if (navigator.share) {
       try {
+        const W = 1080, H = 1080;
         const canvas = document.createElement("canvas");
-        canvas.width = 600;
-        canvas.height = 400;
+        canvas.width = W;
+        canvas.height = H;
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          const colors = getBadgeTierColors(meta.tier);
-          ctx.fillStyle = "#0a0a0a";
-          ctx.fillRect(0, 0, 600, 400);
-          ctx.strokeStyle = colors.border;
+          const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+          bgGrad.addColorStop(0, "#022c22");
+          bgGrad.addColorStop(0.5, "#0a0a1a");
+          bgGrad.addColorStop(1, "#0f172a");
+          ctx.fillStyle = bgGrad;
+          ctx.fillRect(0, 0, W, H);
+
+          for (let i = 0; i < 60; i++) {
+            const sx = Math.random() * W, sy = Math.random() * H;
+            const sr = Math.random() * 1.5 + 0.5;
+            ctx.beginPath();
+            ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.15 + 0.05})`;
+            ctx.fill();
+          }
+
+          ctx.strokeStyle = colors.border + "40";
           ctx.lineWidth = 3;
-          ctx.strokeRect(20, 20, 560, 360);
-          ctx.fillStyle = colors.bg;
-          ctx.font = "bold 48px system-ui";
+          const inset = 30;
+          const cr = 20;
+          ctx.beginPath();
+          ctx.moveTo(inset + cr, inset);
+          ctx.lineTo(W - inset - cr, inset);
+          ctx.quadraticCurveTo(W - inset, inset, W - inset, inset + cr);
+          ctx.lineTo(W - inset, H - inset - cr);
+          ctx.quadraticCurveTo(W - inset, H - inset, W - inset - cr, H - inset);
+          ctx.lineTo(inset + cr, H - inset);
+          ctx.quadraticCurveTo(inset, H - inset, inset, H - inset - cr);
+          ctx.lineTo(inset, inset + cr);
+          ctx.quadraticCurveTo(inset, inset, inset + cr, inset);
+          ctx.closePath();
+          ctx.stroke();
+
+          const accentColor = "rgb(52, 211, 153)";
+          ctx.fillStyle = accentColor;
+          ctx.font = "bold 18px system-ui, -apple-system, sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText(meta.emoji, 300, 140);
+          ctx.letterSpacing = "6px";
+          ctx.fillText("K A V A C H   P L A Y", W / 2, 80);
+          ctx.letterSpacing = "0px";
+
+          ctx.strokeStyle = accentColor + "60";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(W * 0.25, 100);
+          ctx.lineTo(W * 0.75, 100);
+          ctx.stroke();
+
+          renderBadgeSVG(ctx, W / 2, 340, 160, meta);
+
           ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 28px system-ui";
-          ctx.fillText(meta.label, 300, 200);
-          ctx.fillStyle = "#aaaaaa";
-          ctx.font = "20px system-ui";
-          ctx.fillText(`Awarded to ${badge.playerName}`, 300, 250);
-          ctx.fillStyle = colors.bg + "80";
-          ctx.font = "bold 14px system-ui";
-          ctx.fillText("KAvach Play", 300, 350);
+          ctx.font = "bold 44px system-ui, -apple-system, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(meta.label, W / 2, 570);
+
+          const tierLabel = meta.tier.charAt(0).toUpperCase() + meta.tier.slice(1);
+          ctx.fillStyle = colors.bg;
+          ctx.font = `bold 20px system-ui, -apple-system, sans-serif`;
+          ctx.letterSpacing = "8px";
+          ctx.fillText(tierLabel.toUpperCase(), W / 2, 610);
+          ctx.letterSpacing = "0px";
+
+          ctx.strokeStyle = "rgba(255,255,255,0.1)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(W * 0.3, 640);
+          ctx.lineTo(W * 0.7, 640);
+          ctx.stroke();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 32px system-ui, -apple-system, sans-serif";
+          ctx.fillText(badge.playerName, W / 2, 700);
+
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.font = "500 22px system-ui, -apple-system, sans-serif";
+          ctx.fillText(`Awarded on ${dateStr}`, W / 2, 745);
+
+          if (badge.note) {
+            ctx.fillStyle = "rgba(255,255,255,0.35)";
+            ctx.font = "italic 18px system-ui, -apple-system, sans-serif";
+            ctx.fillText(`"${badge.note}"`, W / 2, 785);
+          }
+
+          ctx.save();
+          ctx.translate(W - 55, H / 2);
+          ctx.rotate(Math.PI / 2);
+          ctx.fillStyle = "rgba(255,255,255,0.08)";
+          ctx.font = "900 40px system-ui, -apple-system, sans-serif";
+          ctx.textAlign = "center";
+          ctx.letterSpacing = "12px";
+          ctx.fillText("GO GET THEM", 0, 0);
+          ctx.letterSpacing = "0px";
+          ctx.restore();
+
+          ctx.fillStyle = "rgba(255,255,255,0.25)";
+          ctx.font = "500 16px system-ui, -apple-system, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("kavachplay.com", W / 2, H - 50);
 
           const blob = await new Promise<Blob | null>((resolve) =>
             canvas.toBlob(resolve, "image/png"),
           );
           if (blob) {
             const file = new File([blob], "kavach-badge.png", { type: "image/png" });
-            await navigator.share({ text, files: [file] });
+            await navigator.share({ text: caption, files: [file] });
             return;
           }
         }
-        await navigator.share({ text });
+        await navigator.share({ text: caption });
       } catch {
         // user cancelled
       }
     } else {
-      await navigator.clipboard?.writeText(text);
+      await navigator.clipboard?.writeText(caption);
       alert("Badge info copied to clipboard!");
     }
   };
