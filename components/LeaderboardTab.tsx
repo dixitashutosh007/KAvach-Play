@@ -3,7 +3,7 @@ import { Trophy, Medal, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Player } from "@/lib/types";
 
-type Category = "runs" | "wickets" | "stunning" | "dropped" | "performers";
+type Category = "runs" | "wickets" | "stunning" | "dropped" | "badges";
 
 const PAGE_SIZE = 10;
 const MAX_ENTRIES = 30;
@@ -11,17 +11,17 @@ const MAX_ENTRIES = 30;
 const CATEGORY_CONFIG: Record<Category, {
   label: string;
   shortLabel: string;
-  field: keyof Player | "performerPoints";
+  field: keyof Player | "badgeCount";
   unit: string;
   accent: string;
   valueColor: string;
   emoji: string;
 }> = {
-  runs:       { label: "Top Runs",             shortLabel: "Runs",    field: "totalRuns",       unit: "Runs",    accent: "accent",      valueColor: "text-accent",      emoji: "🏏" },
-  wickets:    { label: "Top Wickets",           shortLabel: "Wkts",    field: "totalWickets",    unit: "Wkts",    accent: "accent",      valueColor: "text-accent",      emoji: "🎳" },
-  stunning:   { label: "Stunning Catches",      shortLabel: "Catch",   field: "stunningCatches", unit: "Catches", accent: "emerald-400", valueColor: "text-emerald-400", emoji: "🧤" },
-  dropped:    { label: "Dropped Catches",       shortLabel: "Drops",   field: "droppedCatches",  unit: "Drops",   accent: "red-400",     valueColor: "text-red-400",     emoji: "🫳" },
-  performers: { label: "Top Performers",        shortLabel: "Star",    field: "performerPoints", unit: "Pts",     accent: "accent",      valueColor: "text-accent",      emoji: "⭐" },
+  runs:     { label: "Top Runs",           shortLabel: "Runs",    field: "totalRuns",       unit: "Runs",    accent: "accent",      valueColor: "text-accent",      emoji: "🏏" },
+  wickets:  { label: "Top Wickets",        shortLabel: "Wkts",    field: "totalWickets",    unit: "Wkts",    accent: "accent",      valueColor: "text-accent",      emoji: "🎳" },
+  stunning: { label: "Stunning Catches",   shortLabel: "Catch",   field: "stunningCatches", unit: "Catches", accent: "emerald-400", valueColor: "text-emerald-400", emoji: "🧤" },
+  dropped:  { label: "Dropped Catches",    shortLabel: "Drops",   field: "droppedCatches",  unit: "Drops",   accent: "red-400",     valueColor: "text-red-400",     emoji: "🫳" },
+  badges:   { label: "Most Badges",        shortLabel: "Badge",   field: "badgeCount",      unit: "Badges",  accent: "yellow-400",  valueColor: "text-yellow-400",  emoji: "🏅" },
 };
 
 export function LeaderboardTab({
@@ -39,32 +39,25 @@ export function LeaderboardTab({
     [store.players],
   );
 
-  const performerPoints = useMemo(() => {
-    const pts = new Map<string, number>();
-    for (const p of activePlayers) pts.set(p.id, 0);
-    for (const m of store.matches) {
-      if (m.isTentative) continue;
-      if (m.potmId && pts.has(m.potmId)) pts.set(m.potmId, (pts.get(m.potmId) || 0) + 3);
-      if (m.topPerformerIds) {
-        for (const id of m.topPerformerIds) {
-          if (pts.has(id)) pts.set(id, (pts.get(id) || 0) + 1);
-        }
-      }
+  const badgeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const b of store.badges) {
+      counts.set(b.playerId, (counts.get(b.playerId) || 0) + 1);
     }
-    return pts;
-  }, [activePlayers, store.matches]);
+    return counts;
+  }, [store.badges]);
 
   const sorted = useMemo(() => {
     const cfg = CATEGORY_CONFIG[category];
     const list = activePlayers.map(p => {
-      const value = cfg.field === "performerPoints"
-        ? (performerPoints.get(p.id) || 0)
+      const value = cfg.field === "badgeCount"
+        ? (badgeCounts.get(p.id) || 0)
         : ((p as any)[cfg.field] || 0) as number;
       return { player: p, value };
     });
     list.sort((a, b) => b.value - a.value);
     return list.filter(e => e.value > 0).slice(0, MAX_ENTRIES);
-  }, [activePlayers, category, performerPoints]);
+  }, [activePlayers, category, badgeCounts]);
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageItems = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
