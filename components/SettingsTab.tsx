@@ -283,6 +283,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       shop: cfg.features?.shop !== false,
       pna: cfg.features?.pna !== false,
       badges: cfg.features?.badges !== false,
+      cricketStatsLeaderboard: cfg.features?.cricketStatsLeaderboard !== false,
     });
     setMatchConfiguration({
       directionsHoursBefore: cfg.matchConfiguration?.directionsHoursBefore ?? 18,
