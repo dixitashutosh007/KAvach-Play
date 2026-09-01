@@ -44,7 +44,7 @@ export function ClubTab({
     { key: "shop", label: "Shop", icon: ShoppingBag, visible: isFeatureEnabled("shop") },
     { key: "pulse", label: "Pulse", icon: PieChart, visible: isFeatureEnabled("opinion") },
     { key: "design", label: "Design", icon: ImageIcon, visible: canDesign },
-    { key: "leaderboard", label: "Board", icon: Trophy, visible: true },
+    { key: "leaderboard", label: "Leaderboard", icon: Trophy, visible: true },
     { key: "reminders", label: "Reminders", icon: Bell, visible: true },
   ];
 

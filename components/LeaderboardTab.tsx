@@ -19,7 +19,7 @@ const CATEGORY_CONFIG: Record<Category, {
 }> = {
   runs:     { label: "Top Runs",           shortLabel: "Runs",    field: "totalRuns",       unit: "Runs",    accent: "accent",      valueColor: "text-accent",      emoji: "🏏" },
   wickets:  { label: "Top Wickets",        shortLabel: "Wkts",    field: "totalWickets",    unit: "Wkts",    accent: "accent",      valueColor: "text-accent",      emoji: "🎳" },
-  stunning: { label: "Stunning Catches",   shortLabel: "Catch",   field: "stunningCatches", unit: "Catches", accent: "emerald-400", valueColor: "text-emerald-400", emoji: "🧤" },
+  stunning: { label: "Stunning Catches",   shortLabel: "Stunning",field: "stunningCatches", unit: "Catches", accent: "emerald-400", valueColor: "text-emerald-400", emoji: "🧤" },
   dropped:  { label: "Dropped Catches",    shortLabel: "Drops",   field: "droppedCatches",  unit: "Drops",   accent: "red-400",     valueColor: "text-red-400",     emoji: "🫳" },
   badges:   { label: "Most Badges",        shortLabel: "Badge",   field: "badgeCount",      unit: "Badges",  accent: "yellow-400",  valueColor: "text-yellow-400",  emoji: "🏅" },
 };
