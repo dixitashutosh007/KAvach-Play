@@ -1,7 +1,8 @@
 import { useStore } from "@/hooks/useStore";
-import { Trophy, Medal, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trophy, Medal, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
-import { Player } from "@/lib/types";
+import { Player, Badge } from "@/lib/types";
+import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet } from "./BadgeIcon";
 
 type Category = "runs" | "wickets" | "stunning" | "dropped" | "badges";
 
@@ -40,6 +41,7 @@ export function LeaderboardTab({
 
   const [category, setCategory] = useState<Category>(availableCategories[0]);
   const [page, setPage] = useState(0);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!availableCategories.includes(category)) {
@@ -120,10 +122,12 @@ export function LeaderboardTab({
 
         {pageItems.map((entry, idx) => {
           const rank = page * PAGE_SIZE + idx + 1;
+          const isBadgeCategory = category === "badges";
           return (
             <div
               key={entry.player.id}
-              className={`flex items-center px-4 py-3 group transition ${isDropped ? "hover:bg-red-500/5" : "hover:bg-white/5"}`}
+              onClick={isBadgeCategory ? () => setSelectedPlayerId(entry.player.id) : undefined}
+              className={`flex items-center px-4 py-3 group transition ${isBadgeCategory ? "cursor-pointer" : ""} ${isDropped ? "hover:bg-red-500/5" : "hover:bg-white/5"}`}
             >
               <div className="w-8 text-center text-[12px] font-bold text-white/40 group-hover:text-white/80 transition">
                 {rank === 1 ? (
@@ -142,6 +146,9 @@ export function LeaderboardTab({
               <div className={`w-20 text-right font-mono font-bold text-[16px] ${cfg.valueColor}`}>
                 {entry.value.toLocaleString()}
               </div>
+              {isBadgeCategory && (
+                <ChevronRight className="w-4 h-4 text-white/30 group-hover:text-white/60 ml-1 transition" />
+              )}
             </div>
           );
         })}
@@ -168,6 +175,102 @@ export function LeaderboardTab({
           </button>
         </div>
       )}
+
+      {selectedPlayerId && (
+        <PlayerBadgesModal
+          playerId={selectedPlayerId}
+          playerName={activePlayers.find(p => p.id === selectedPlayerId)?.name || "Player"}
+          badges={store.badges}
+          badgeTypeDefs={store.badgeTypeDefs}
+          onClose={() => setSelectedPlayerId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PlayerBadgesModal({
+  playerId,
+  playerName,
+  badges,
+  badgeTypeDefs,
+  onClose,
+}: {
+  playerId: string;
+  playerName: string;
+  badges: Badge[];
+  badgeTypeDefs: import("@/lib/types").BadgeTypeDef[];
+  onClose: () => void;
+}) {
+  const playerBadges = badges.filter(b => b.playerId === playerId);
+  const stackable = getStackableSet(badgeTypeDefs);
+
+  const grouped = new Map<string, Badge[]>();
+  playerBadges.forEach(b => {
+    const arr = grouped.get(b.badgeType) || [];
+    arr.push(b);
+    grouped.set(b.badgeType, arr);
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="glass rounded-2xl border border-glass-border w-full max-w-md max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-glass-border">
+          <div>
+            <h3 className="font-bold text-white text-lg">{playerName}</h3>
+            <p className="text-xs text-white/50">{playerBadges.length} badge{playerBadges.length !== 1 ? "s" : ""} earned</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {playerBadges.length === 0 ? (
+          <div className="py-10 text-center text-sm text-white/40">
+            No badges yet.
+          </div>
+        ) : (
+          <div className="p-5">
+            <div className="flex flex-wrap gap-3">
+              {Array.from(grouped.entries()).map(([badgeType, bList]) => {
+                const meta = getBadgeMeta(badgeType, badgeTypeDefs);
+                const colors = getBadgeTierColors(meta.tier);
+                const count = stackable.has(badgeType) ? bList.length : undefined;
+                return (
+                  <div
+                    key={badgeType}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-black/20 min-w-[80px]"
+                  >
+                    <div className="relative">
+                      <BadgeIcon badgeType={badgeType} size={48} customDefs={badgeTypeDefs} />
+                      {count && count > 1 && (
+                        <span
+                          className="absolute -top-1 -right-1 text-[9px] font-bold rounded-full px-1 min-w-[16px] text-center"
+                          style={{ background: colors.bg, color: "#000" }}
+                        >
+                          x{count}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-white/70 text-center leading-tight font-medium">
+                      {meta.short}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
