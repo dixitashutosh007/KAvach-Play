@@ -24,6 +24,8 @@ const ICON_LIBRARY: { cat: string; icons: string[] }[] = [
   { cat: "Numbers", icons: ["1", "2", "3", "4", "5", "10", "25", "50", "2K", "5K", "10K", "100", "200", "300", "500"] },
 ];
 import { serverTimestamp } from "firebase/firestore";
+import dynamic from "next/dynamic";
+const TenureBadgeEvaluator = dynamic(() => import("./TenureBadgeEvaluator"), { ssr: false });
 
 export function BadgesTab({
   store,
@@ -48,6 +50,7 @@ export function BadgesTab({
   const [isAwarding, setIsAwarding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
+  const [showTenureEval, setShowTenureEval] = useState(false);
 
   const [editingDef, setEditingDef] = useState<BadgeTypeDef | null>(null);
   const [defForm, setDefForm] = useState({ id: "", label: "", short: "", tier: "bronze" as BadgeTier, emoji: "", stackable: false });
@@ -407,10 +410,19 @@ export function BadgesTab({
       {/* Award View */}
       {view === "award" && isClubAdmin && (
         <div className="glass rounded-xl p-4 border border-glass-border space-y-4">
-          <h3 className="font-bold text-white flex items-center gap-2">
-            <Award className="w-5 h-5 text-accent" />
-            Grant a Badge
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-white flex items-center gap-2">
+              <Award className="w-5 h-5 text-accent" />
+              Grant a Badge
+            </h3>
+            <button
+              onClick={() => setShowTenureEval(true)}
+              className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-glass-border text-white/70 hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+            >
+              <Award className="w-3.5 h-3.5" />
+              Tenure Awards
+            </button>
+          </div>
 
           <div>
             <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">
@@ -794,6 +806,15 @@ export function BadgesTab({
           badge={showcaseBadge}
           customDefs={customDefs}
           onClose={() => setShowcaseBadge(null)}
+        />
+      )}
+
+      {showTenureEval && (
+        <TenureBadgeEvaluator
+          store={store}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          onClose={() => setShowTenureEval(false)}
         />
       )}
 
