@@ -59,6 +59,7 @@ export type AppConfig = {
     opinion?: boolean;
     pna?: boolean;
     badges?: boolean;
+    cricketStatsLeaderboard?: boolean;
   };
   matchConfiguration?: {
     directionsHoursBefore?: number;

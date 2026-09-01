@@ -151,6 +151,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     shop: store.appConfig?.features?.shop !== false,
     pna: store.appConfig?.features?.pna !== false,
     badges: store.appConfig?.features?.badges !== false,
+    cricketStatsLeaderboard: store.appConfig?.features?.cricketStatsLeaderboard !== false,
   });
 
   const [matchConfiguration, setMatchConfiguration] = useState({
@@ -1364,6 +1365,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   { key: "shop", label: "Club Merchandise Shop Menu" },
                   { key: "pna", label: "Player Not Available (PNA) Report" },
                   { key: "badges", label: "Player Badges / Achievements" },
+                  { key: "cricketStatsLeaderboard", label: "Show Runs & Wickets on Leaderboard" },
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center gap-3">
                     <input

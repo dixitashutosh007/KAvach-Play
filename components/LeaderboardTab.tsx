@@ -31,7 +31,14 @@ export function LeaderboardTab({
   store: ReturnType<typeof useStore>;
   persona?: "admin" | "player";
 }) {
-  const [category, setCategory] = useState<Category>("runs");
+  const showCricketStats = store.appConfig?.features?.cricketStatsLeaderboard !== false;
+  const availableCategories = useMemo(() => {
+    const all = Object.keys(CATEGORY_CONFIG) as Category[];
+    if (showCricketStats) return all;
+    return all.filter(c => c !== "runs" && c !== "wickets");
+  }, [showCricketStats]);
+
+  const [category, setCategory] = useState<Category>(availableCategories[0]);
   const [page, setPage] = useState(0);
 
   const activePlayers = useMemo(
@@ -74,7 +81,7 @@ export function LeaderboardTab({
       </div>
 
       <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border overflow-x-auto no-scrollbar">
-        {(Object.keys(CATEGORY_CONFIG) as Category[]).map(cat => (
+        {availableCategories.map(cat => (
           <button
             key={cat}
             onClick={() => { setCategory(cat); setPage(0); }}

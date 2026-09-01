@@ -625,13 +625,6 @@ export function ProfileTab({
         />
       )}
 
-      {!isEditing && linkedPlayer && ((linkedPlayer.totalRuns ?? 0) > 0 || (linkedPlayer.totalWickets ?? 0) > 0) && (
-        <CricketStatsCards
-          runs={linkedPlayer.totalRuns ?? 0}
-          wickets={linkedPlayer.totalWickets ?? 0}
-        />
-      )}
-
       {!isEditing && linkedPlayer && ((linkedPlayer.stunningCatches ?? 0) > 0 || (linkedPlayer.droppedCatches ?? 0) > 0) && (
         <CatchStatsCards
           stunning={linkedPlayer.stunningCatches ?? 0}
