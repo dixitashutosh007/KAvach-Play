@@ -36,7 +36,8 @@ export function BadgesTab({
 }) {
   const [view, setView] = useState<"gallery" | "award" | "hall" | "manage">("gallery");
   const [search, setSearch] = useState("");
-  const [awardPlayer, setAwardPlayer] = useState<string | null>(null);
+  const [awardPlayers, setAwardPlayers] = useState<string[]>([]);
+  const [awardSearch, setAwardSearch] = useState("");
   const [awardBadge, setAwardBadge] = useState<BadgeType | null>(null);
   const [awardNote, setAwardNote] = useState("");
   const [awardMatchId, setAwardMatchId] = useState("");
@@ -92,32 +93,44 @@ export function BadgesTab({
   );
 
   const handleAward = async () => {
-    if (!awardPlayer || !awardBadge) return;
-    const player = players.find((p) => p.id === awardPlayer);
-    if (!player) return;
+    if (!awardPlayers.length || !awardBadge) return;
 
     setIsAwarding(true);
     try {
-      await store.addBadge({
-        playerId: awardPlayer,
-        playerName: player.name,
-        badgeType: awardBadge,
-        awardedBy: currentUserId,
-        awardedByName: currentUserName,
-        awardedAt: serverTimestamp(),
-        redeemed: false,
-        ...(awardNote ? { note: awardNote } : {}),
-        ...(awardMatchId ? { matchId: awardMatchId } : {}),
-      });
-
       const meta = getBadgeMeta(awardBadge, customDefs);
-      await store.addPost?.({
-        text: `\u{1F3C6} ${player.name} earned the ${meta.label} badge!`,
-        authorName: "KAvach Badges",
-        authorId: currentUserId,
-      });
+      const names: string[] = [];
 
-      setAwardPlayer(null);
+      for (const pid of awardPlayers) {
+        const player = players.find((p) => p.id === pid);
+        if (!player) continue;
+        names.push(player.name);
+
+        await store.addBadge({
+          playerId: pid,
+          playerName: player.name,
+          badgeType: awardBadge,
+          awardedBy: currentUserId,
+          awardedByName: currentUserName,
+          awardedAt: serverTimestamp(),
+          redeemed: false,
+          ...(awardNote ? { note: awardNote } : {}),
+          ...(awardMatchId ? { matchId: awardMatchId } : {}),
+        });
+      }
+
+      if (names.length) {
+        const nameStr = names.length <= 3
+          ? names.join(", ")
+          : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
+        await store.addPost?.({
+          text: `\u{1F3C6} ${nameStr} earned the ${meta.label} badge!`,
+          authorName: "KAvach Badges",
+          authorId: currentUserId,
+        });
+      }
+
+      setAwardPlayers([]);
+      setAwardSearch("");
       setAwardBadge(null);
       setAwardNote("");
       setAwardMatchId("");
@@ -186,11 +199,11 @@ export function BadgesTab({
     return new Set(playerBadges.map((b) => b.badgeType));
   };
 
-  const availableBadgesForPlayer = (playerId: string): BadgeType[] => {
-    const existing = existingBadgeTypes(playerId);
-    return allBadgeTypes.filter(
-      (bt) => stackableSet.has(bt) || !existing.has(bt),
-    );
+  const availableBadgesForPlayers = (playerIds: string[]): BadgeType[] => {
+    return allBadgeTypes.filter((bt) => {
+      if (stackableSet.has(bt)) return true;
+      return playerIds.some(pid => !existingBadgeTypes(pid).has(bt));
+    });
   };
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -422,24 +435,81 @@ export function BadgesTab({
           </h3>
 
           <div>
-            <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">Player</label>
-            <select
-              value={awardPlayer || ""}
-              onChange={(e) => setAwardPlayer(e.target.value || null)}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-            >
-              <option value="">Select a player...</option>
-              {activePlayers.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">
+              Players {awardPlayers.length > 0 && <span className="text-accent">({awardPlayers.length} selected)</span>}
+            </label>
+
+            {awardPlayers.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {awardPlayers.map(pid => {
+                  const p = players.find(pl => pl.id === pid);
+                  return (
+                    <span key={pid} className="inline-flex items-center gap-1 bg-accent/15 border border-accent/30 text-accent text-xs font-bold px-2 py-0.5 rounded-full">
+                      {p?.name || pid}
+                      <button onClick={() => setAwardPlayers(prev => prev.filter(id => id !== pid))} className="hover:text-white transition">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+                <button
+                  onClick={() => setAwardPlayers([])}
+                  className="text-[10px] text-white/40 hover:text-white/70 transition px-1"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <input
+                type="text"
+                value={awardSearch}
+                onChange={(e) => setAwardSearch(e.target.value)}
+                placeholder="Search players..."
+                className="w-full bg-black/30 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-white/30"
+              />
+            </div>
+
+            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-black/20 divide-y divide-white/5">
+              {(awardSearch
+                ? activePlayers.filter(p => p.name.toLowerCase().includes(awardSearch.toLowerCase()))
+                : activePlayers
+              ).map(p => {
+                const selected = awardPlayers.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setAwardPlayers(prev =>
+                        selected ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                      );
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition ${
+                      selected ? "bg-accent/10 text-accent" : "text-white/80 hover:bg-white/5"
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                      selected ? "border-accent bg-accent" : "border-white/20"
+                    }`}>
+                      {selected && <Check className="w-3 h-3 text-black" />}
+                    </div>
+                    {p.name}
+                  </button>
+                );
+              })}
+              {awardSearch && activePlayers.filter(p => p.name.toLowerCase().includes(awardSearch.toLowerCase())).length === 0 && (
+                <p className="text-xs text-white/30 text-center py-3">No players match "{awardSearch}"</p>
+              )}
+            </div>
           </div>
 
-          {awardPlayer && (
+          {awardPlayers.length > 0 && (
             <div>
               <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">Badge</label>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {availableBadgesForPlayer(awardPlayer).map((bt) => {
+                {availableBadgesForPlayers(awardPlayers).map((bt) => {
                   const meta = getBadgeMeta(bt, customDefs);
                   return (
                     <button
@@ -494,10 +564,12 @@ export function BadgesTab({
 
               <button
                 onClick={handleAward}
-                disabled={isAwarding}
+                disabled={isAwarding || !awardPlayers.length}
                 className="w-full bg-accent text-black font-bold py-2.5 rounded-lg hover:brightness-110 transition disabled:opacity-50"
               >
-                {isAwarding ? "Awarding..." : `Award ${getBadgeMeta(awardBadge, customDefs).label}`}
+                {isAwarding
+                  ? "Awarding..."
+                  : `Award ${getBadgeMeta(awardBadge, customDefs).label} to ${awardPlayers.length} player${awardPlayers.length > 1 ? "s" : ""}`}
               </button>
             </>
           )}
