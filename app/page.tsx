@@ -1067,7 +1067,7 @@ export default function Home() {
             {persona === "admin" &&
               store.players.filter((p) => p.inviteStatus === "Pending").length >
                 0 &&
-              activeTab !== "studio" && (
+              activeTab !== "studio" && activeTab !== "club" && (
                 <motion.div
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1096,7 +1096,7 @@ export default function Home() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setActiveTab("studio")}
+                    onClick={() => setActiveTab("club", "players")}
                     className="text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-4 py-2 rounded-xl hover:opacity-90 transition inline-flex items-center gap-1 shrink-0 self-start sm:self-auto cursor-pointer"
                     style={{ color: currentThemeObj.textAccent }}
                   >

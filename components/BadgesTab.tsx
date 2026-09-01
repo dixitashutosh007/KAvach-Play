@@ -125,8 +125,7 @@ export function BadgesTab({
         const nameStr = names.length <= 3
           ? names.join(", ")
           : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
-        const tierEmoji = { bronze: "\u{1F949}", silver: "\u{1F948}", gold: "\u{1F947}", diamond: "\u{1F48E}" }[meta.tier] || "\u{1F3C6}";
-        const postText = `${tierEmoji} BADGE UNLOCKED!\n\n${nameStr} earned the ✨ ${meta.label} ✨ badge!\n\n${meta.emoji}  ${meta.tier.toUpperCase()} Tier\n\n#KAvachPlay #CricketBadge`;
+        const postText = `🏆 BADGE UNLOCKED!\n\n${nameStr} earned the ✨ ${meta.label} ✨ badge!\n\n${meta.emoji}\n\n#KAvachPlay #CricketBadge`;
         await store.addPost?.({
           text: postText,
           authorName: "KAvach Badges",
@@ -656,19 +655,6 @@ export function BadgesTab({
                       </button>
                     </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Tier</label>
-                    <select
-                      value={defForm.tier}
-                      onChange={(e) => setDefForm(f => ({ ...f, tier: e.target.value as BadgeTier }))}
-                      className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
-                    >
-                      <option value="bronze">Bronze</option>
-                      <option value="silver">Silver</option>
-                      <option value="gold">Gold</option>
-                      <option value="diamond">Diamond</option>
-                    </select>
-                  </div>
                 </div>
 
                 {showIconPicker && (
@@ -754,8 +740,7 @@ export function BadgesTab({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-white truncate">{def.label}</p>
                         <p className="text-[10px] text-white/40">
-                          {def.short} · <span style={{ color: colors.bg }}>{def.tier}</span>
-                          {def.stackable && " · stackable"}
+                          {def.short}{def.stackable && " · stackable"}
                         </p>
                       </div>
                       <div className="flex gap-1">

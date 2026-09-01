@@ -346,26 +346,20 @@ export async function generateBadgeShareImage(badge: Badge, meta: BadgeMeta): Pr
   ctx.textAlign = "center";
   ctx.fillText(meta.label, W / 2, 570);
 
-  ctx.fillStyle = colors.bg;
-  ctx.font = "bold 20px system-ui, -apple-system, sans-serif";
-  ctx.letterSpacing = "8px";
-  ctx.fillText(meta.tier.toUpperCase(), W / 2, 610);
-  ctx.letterSpacing = "0px";
-
   ctx.strokeStyle = "rgba(255,255,255,0.1)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(W * 0.3, 640);
-  ctx.lineTo(W * 0.7, 640);
+  ctx.moveTo(W * 0.3, 610);
+  ctx.lineTo(W * 0.7, 610);
   ctx.stroke();
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 32px system-ui, -apple-system, sans-serif";
-  ctx.fillText(badge.playerName, W / 2, 700);
+  ctx.fillText(badge.playerName, W / 2, 670);
 
   ctx.fillStyle = "rgba(255,255,255,0.5)";
   ctx.font = "500 22px system-ui, -apple-system, sans-serif";
-  ctx.fillText(`Awarded on ${dateStr}`, W / 2, 745);
+  ctx.fillText(`Awarded on ${dateStr}`, W / 2, 715);
 
   if (badge.note) {
     ctx.fillStyle = "rgba(255,255,255,0.35)";
@@ -482,14 +476,6 @@ export function BadgeShowcase({
           <h2 className="text-white font-bold text-2xl text-center mb-1">
             {meta.label}
           </h2>
-
-          {/* Tier label */}
-          <p
-            className="text-sm font-bold tracking-[0.4em] uppercase mb-6"
-            style={{ color: colors.bg }}
-          >
-            {meta.tier}
-          </p>
 
           {/* Divider */}
           <div className="w-32 h-px bg-white/10 mb-6" />
