@@ -1,6 +1,6 @@
 import { useStore } from "@/hooks/useStore";
 import { Trophy, Medal, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Player } from "@/lib/types";
 
 type Category = "runs" | "wickets" | "stunning" | "dropped" | "badges";
@@ -40,6 +40,13 @@ export function LeaderboardTab({
 
   const [category, setCategory] = useState<Category>(availableCategories[0]);
   const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    if (!availableCategories.includes(category)) {
+      setCategory(availableCategories[0]);
+      setPage(0);
+    }
+  }, [availableCategories, category]);
 
   const activePlayers = useMemo(
     () => store.players.filter(p => !p.disabled && p.inviteStatus !== "Pending"),
