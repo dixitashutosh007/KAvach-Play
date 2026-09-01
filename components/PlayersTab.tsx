@@ -369,6 +369,9 @@ export function PlayersTab({
           </div>
         )}
 
+        {viewMode === "table" && isAdmin ? (
+          <BulkEditTable store={store} players={displayPlayers} />
+        ) : (
         <div className="glass rounded-xl overflow-hidden divide-y divide-glass-border">
           {displayPlayers.length === 0 && (
             <div className="py-8 text-center text-sm text-white/50">
@@ -484,6 +487,7 @@ export function PlayersTab({
             </div>
           ))}
         </div>
+        )}
       </>
 
       {selectedPlayer && (
@@ -495,6 +499,226 @@ export function PlayersTab({
         />
       )}
     </div>
+  );
+}
+
+const BATTING_STYLE_OPTIONS = [
+  "",
+  "Right-hand bat",
+  "Left-hand bat",
+  "Right-arm medium",
+  "Right-arm fast",
+  "Left-arm medium",
+  "Left-arm fast",
+  "Right-arm spin",
+  "Left-arm spin",
+  "All-rounder",
+];
+
+const MONTHS = Array.from({ length: 12 }, (_, i) =>
+  String(i + 1).padStart(2, "0"),
+);
+const YEARS = Array.from({ length: 12 }, (_, i) => String(2015 + i));
+
+function BulkEditTable({
+  store,
+  players,
+}: {
+  store: ReturnType<typeof useStore>;
+  players: Player[];
+}) {
+  const [dirty, setDirty] = useState<Map<string, Partial<Player>>>(new Map());
+  const [saving, setSaving] = useState(false);
+
+  const getVal = (player: Player, field: keyof Player) => {
+    const dirtyRow = dirty.get(player.id);
+    if (dirtyRow && field in dirtyRow) return (dirtyRow as any)[field];
+    return (player as any)[field];
+  };
+
+  const setField = (playerId: string, field: keyof Player, value: any) => {
+    setDirty((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(playerId) || {};
+      next.set(playerId, { ...existing, [field]: value });
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const entries = Array.from(dirty.entries());
+      for (const [id, changes] of entries) {
+        await store.updatePlayer(id, changes);
+      }
+      setDirty(new Map());
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const parseKavachMonth = (val?: string) => (val ? val.split("/")[0] || "" : "");
+  const parseKavachYear = (val?: string) => (val ? val.split("/")[1] || "" : "");
+
+  const setKavachJoiningPart = (
+    playerId: string,
+    player: Player,
+    part: "month" | "year",
+    value: string,
+  ) => {
+    const current = getVal(player, "kavachJoining") as string | undefined;
+    const month = part === "month" ? value : parseKavachMonth(current);
+    const year = part === "year" ? value : parseKavachYear(current);
+    if (month && year) {
+      setField(playerId, "kavachJoining", `${month}/${year}`);
+    } else if (!month && !year) {
+      setField(playerId, "kavachJoining", "");
+    } else {
+      // Partial — store what we have so the other dropdown keeps its value
+      setField(playerId, "kavachJoining", `${month}/${year}`);
+    }
+  };
+
+  const inputClass =
+    "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-2 py-1.5 w-full";
+  const selectClass =
+    "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-1 py-1.5 appearance-none cursor-pointer";
+
+  return (
+    <>
+      <div className="glass rounded-xl overflow-hidden border border-glass-border">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] border-collapse">
+            <thead>
+              <tr className="bg-black/60 text-white/70 text-[10px] uppercase tracking-wider">
+                <th className="text-left px-2 py-2 font-bold">Name</th>
+                <th className="text-left px-2 py-2 font-bold">Phone</th>
+                <th className="text-left px-2 py-2 font-bold">Role</th>
+                <th className="text-center px-2 py-2 font-bold">WK</th>
+                <th className="text-left px-2 py-2 font-bold">Jersey#</th>
+                <th className="text-left px-2 py-2 font-bold">KAvach Joining</th>
+                <th className="text-left px-2 py-2 font-bold">Emergency</th>
+                <th className="text-center px-2 py-2 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {players.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-sm text-white/50">
+                    No players to display.
+                  </td>
+                </tr>
+              )}
+              {players.map((player) => (
+                <tr key={player.id} className="border-b border-glass-border hover:bg-white/[0.03] transition">
+                  <td className="bg-transparent px-0">
+                    <input
+                      type="text"
+                      value={getVal(player, "name") ?? ""}
+                      onChange={(e) => setField(player.id, "name", e.target.value)}
+                      className={inputClass}
+                    />
+                  </td>
+                  <td className="bg-transparent px-0">
+                    <input
+                      type="text"
+                      value={getVal(player, "mobile") ?? ""}
+                      onChange={(e) => setField(player.id, "mobile", e.target.value)}
+                      className={inputClass}
+                    />
+                  </td>
+                  <td className="bg-transparent px-0">
+                    <select
+                      value={getVal(player, "battingStyle") ?? ""}
+                      onChange={(e) => setField(player.id, "battingStyle", e.target.value)}
+                      className={selectClass}
+                    >
+                      {BATTING_STYLE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt} className="bg-[#0f172a] text-white">
+                          {opt || "-- Select --"}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="bg-transparent text-center px-0">
+                    <input
+                      type="checkbox"
+                      checked={!!getVal(player, "isWicketKeeper")}
+                      onChange={(e) => setField(player.id, "isWicketKeeper", e.target.checked)}
+                      className="accent-accent w-3.5 h-3.5 cursor-pointer"
+                    />
+                  </td>
+                  <td className="bg-transparent px-0">
+                    <input
+                      type="text"
+                      maxLength={3}
+                      value={getVal(player, "jerseyNumber") ?? ""}
+                      onChange={(e) => setField(player.id, "jerseyNumber", e.target.value)}
+                      className={`${inputClass} max-w-[50px]`}
+                    />
+                  </td>
+                  <td className="bg-transparent px-1">
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={parseKavachMonth(getVal(player, "kavachJoining") as string | undefined)}
+                        onChange={(e) => setKavachJoiningPart(player.id, player, "month", e.target.value)}
+                        className={`${selectClass} w-[52px]`}
+                      >
+                        <option value="" className="bg-[#0f172a] text-white">MM</option>
+                        {MONTHS.map((m) => (
+                          <option key={m} value={m} className="bg-[#0f172a] text-white">{m}</option>
+                        ))}
+                      </select>
+                      <span className="text-white/30 text-xs">/</span>
+                      <select
+                        value={parseKavachYear(getVal(player, "kavachJoining") as string | undefined)}
+                        onChange={(e) => setKavachJoiningPart(player.id, player, "year", e.target.value)}
+                        className={`${selectClass} w-[62px]`}
+                      >
+                        <option value="" className="bg-[#0f172a] text-white">YYYY</option>
+                        {YEARS.map((y) => (
+                          <option key={y} value={y} className="bg-[#0f172a] text-white">{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </td>
+                  <td className="bg-transparent px-0">
+                    <input
+                      type="text"
+                      value={getVal(player, "emergencyContact") ?? ""}
+                      onChange={(e) => setField(player.id, "emergencyContact", e.target.value)}
+                      className={inputClass}
+                    />
+                  </td>
+                  <td className="bg-transparent text-center px-2">
+                    {player.disabled ? (
+                      <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30">
+                        Disabled
+                      </span>
+                    ) : (
+                      <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        Active
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {dirty.size > 0 && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-accent text-black font-bold px-6 py-3 rounded-xl shadow-lg z-50 hover:bg-accent/90 transition disabled:opacity-50"
+        >
+          {saving ? "Saving..." : `Save Changes (${dirty.size})`}
+        </button>
+      )}
+    </>
   );
 }
 
