@@ -46,6 +46,8 @@ export function EditPlayerInline({
       player.studioExpiryDate || player.studioEndDate,
     ),
     studioPlan: player.studioPlan || "Trial",
+    kavachJoiningMonth: player.kavachJoining ? player.kavachJoining.split("/")[0] : "",
+    kavachJoiningYear: player.kavachJoining ? player.kavachJoining.split("/")[1] : "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,7 +62,7 @@ export function EditPlayerInline({
         return;
       }
     }
-    const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, ...rest } =
+    const { lastPaidAmount, dob, lastPaidDate, studioExpiryDate, kavachJoiningMonth, kavachJoiningYear, ...rest } =
       formData;
     const updatedData: Partial<Player> = {
       ...rest,
@@ -73,6 +75,9 @@ export function EditPlayerInline({
         formData.isStudioMember && lastPaidAmount !== ""
           ? Number(lastPaidAmount)
           : undefined,
+      kavachJoining: kavachJoiningMonth && kavachJoiningYear
+        ? `${kavachJoiningMonth}/${kavachJoiningYear}`
+        : undefined,
       ...(isSuperAdmin ? { feePlanIds: selectedPlanIds.length > 0 ? selectedPlanIds : [] } : {}),
     };
     await store.updatePlayer(player.id, updatedData);
@@ -162,6 +167,46 @@ export function EditPlayerInline({
             onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
             className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+            KAvach Joining Date
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={formData.kavachJoiningMonth}
+              onChange={(e) =>
+                setFormData({ ...formData, kavachJoiningMonth: e.target.value })
+              }
+              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            >
+              <option value="">Month</option>
+              <option value="01">Jan</option>
+              <option value="02">Feb</option>
+              <option value="03">Mar</option>
+              <option value="04">Apr</option>
+              <option value="05">May</option>
+              <option value="06">Jun</option>
+              <option value="07">Jul</option>
+              <option value="08">Aug</option>
+              <option value="09">Sep</option>
+              <option value="10">Oct</option>
+              <option value="11">Nov</option>
+              <option value="12">Dec</option>
+            </select>
+            <select
+              value={formData.kavachJoiningYear}
+              onChange={(e) =>
+                setFormData({ ...formData, kavachJoiningYear: e.target.value })
+              }
+              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            >
+              <option value="">Year</option>
+              {Array.from({ length: 2026 - 2015 + 1 }, (_, i) => 2015 + i).map((year) => (
+                <option key={year} value={String(year)}>{year}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div>
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">

@@ -101,6 +101,7 @@ export type AppUser = {
   lastPaidDate?: string;
   lastPaidAmount?: number;
   studioExpiryDate?: string;
+  kavachJoining?: string;
   // Firebase Auth providers linked to this user, captured on login.
   // Values: "google.com" | "phone" | "password" | "anonymous" | "apple.com" | ...
   authProviders?: string[];
@@ -242,6 +243,7 @@ export type Player = {
     endDate: string;
     paidStatus: "Paid" | "Unpaid";
   };
+  kavachJoining?: string;
   droppedCatches?: number;
   stunningCatches?: number;
   createdAt?: any;

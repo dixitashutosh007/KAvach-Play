@@ -22,6 +22,8 @@ import { Award } from "lucide-react";
 import type { Badge } from "@/lib/types";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 export function ProfileTab({
   store,
   forceEdit,
@@ -534,6 +536,23 @@ export function ProfileTab({
                 </p>
               </div>
             </div>
+
+            {linkedPlayer?.kavachJoining && (() => {
+              const [mm, yyyy] = linkedPlayer.kavachJoining.split("/");
+              const monthIdx = parseInt(mm, 10) - 1;
+              const label = (monthIdx >= 0 && monthIdx < 12)
+                ? `${MONTH_NAMES[monthIdx]} ${yyyy}`
+                : linkedPlayer.kavachJoining;
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20">
+                  <Calendar className="w-4 h-4 text-accent shrink-0" />
+                  <p className="text-xs text-white/70">
+                    <span className="font-bold text-white">KAvach Member Since</span>{" "}
+                    <span className="text-accent font-semibold">{label}</span>
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="pt-1">
               <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1.5">

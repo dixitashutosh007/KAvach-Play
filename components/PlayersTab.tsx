@@ -16,6 +16,7 @@ import {
   CheckCircle,
   Trash2,
   Calendar,
+  Table2,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -47,6 +48,7 @@ export function PlayersTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [showDisabled, setShowDisabled] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "table">("list");
 
   const [dupWarning, setDupWarning] = useState("");
 
@@ -262,6 +264,15 @@ export function PlayersTab({
           className="bg-black/40 border border-glass-border text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-accent flex-1 max-w-sm"
         />
         <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setViewMode(viewMode === "list" ? "table" : "list")}
+              className={`text-xs px-3 py-2 rounded-xl font-bold border transition flex items-center gap-1.5 ${viewMode === "table" ? "bg-accent/20 text-accent border-accent/30" : "bg-white/5 text-white/60 border-glass-border hover:bg-white/10"}`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              {viewMode === "table" ? "Table View" : "Table View"}
+            </button>
+          )}
           <button
             onClick={() => setShowDisabled(!showDisabled)}
             className={`text-xs px-3 py-2 rounded-xl font-bold border transition ${showDisabled ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-white/5 text-white/60 border-glass-border hover:bg-white/10"}`}

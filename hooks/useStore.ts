@@ -1297,6 +1297,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           "lastPaidDate",
           "lastPaidAmount",
           "studioExpiryDate",
+          "kavachJoining",
         ];
 
         fieldsToSync.forEach((field) => {
