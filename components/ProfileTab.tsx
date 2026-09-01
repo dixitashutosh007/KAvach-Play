@@ -606,6 +606,13 @@ export function ProfileTab({
         />
       )}
 
+      {!isEditing && linkedPlayer && ((linkedPlayer.stunningCatches ?? 0) > 0 || (linkedPlayer.droppedCatches ?? 0) > 0) && (
+        <CatchStatsCards
+          stunning={linkedPlayer.stunningCatches ?? 0}
+          dropped={linkedPlayer.droppedCatches ?? 0}
+        />
+      )}
+
       <div className="pt-2">
         <PlayerFinanceView
           store={store}
@@ -985,6 +992,27 @@ function MyBadgesSection({
           customDefs={badgeTypeDefs}
           onClose={() => setShowcaseBadge(null)}
         />
+      )}
+    </div>
+  );
+}
+
+function CatchStatsCards({ stunning, dropped }: { stunning: number; dropped: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 pt-2">
+      {stunning > 0 && (
+        <div className="glass rounded-xl p-4 border border-emerald-500/30 bg-emerald-500/5 text-center">
+          <div className="text-3xl mb-1">🧤</div>
+          <p className="text-2xl font-black text-emerald-400">{stunning}</p>
+          <p className="text-[10px] text-emerald-300/70 font-bold uppercase tracking-wider mt-1">Stunning Catches</p>
+        </div>
+      )}
+      {dropped > 0 && (
+        <div className="glass rounded-xl p-4 border border-red-500/30 bg-red-500/5 text-center">
+          <div className="text-3xl mb-1">🫳</div>
+          <p className="text-2xl font-black text-red-400">{dropped}</p>
+          <p className="text-[10px] text-red-300/70 font-bold uppercase tracking-wider mt-1">Dropped Catches</p>
+        </div>
       )}
     </div>
   );

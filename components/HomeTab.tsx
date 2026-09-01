@@ -542,6 +542,32 @@ export function HomeTab({
         </div>
       )}
 
+      {/* Catch Stats Cards */}
+      {!isAdmin && mePlayer && ((mePlayer.stunningCatches ?? 0) > 0 || (mePlayer.droppedCatches ?? 0) > 0) && (
+        <div className="md:col-span-12 lg:col-span-12">
+          <div className="grid grid-cols-2 gap-3">
+            {(mePlayer.stunningCatches ?? 0) > 0 && (
+              <div className="glass rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-3">
+                <span className="text-3xl">🧤</span>
+                <div>
+                  <p className="text-2xl font-black text-emerald-400">{mePlayer.stunningCatches}</p>
+                  <p className="text-[10px] text-emerald-300/70 font-bold uppercase tracking-wider">Stunning Catches</p>
+                </div>
+              </div>
+            )}
+            {(mePlayer.droppedCatches ?? 0) > 0 && (
+              <div className="glass rounded-2xl p-4 border border-red-500/30 bg-red-500/5 flex items-center gap-3">
+                <span className="text-3xl">🫳</span>
+                <div>
+                  <p className="text-2xl font-black text-red-400">{mePlayer.droppedCatches}</p>
+                  <p className="text-[10px] text-red-300/70 font-bold uppercase tracking-wider">Dropped Catches</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Feed Column (Left) */}
       <div className={`md:col-span-12 ${hasBirthdays ? 'lg:col-span-8' : 'lg:col-span-12'} lg:col-start-1 flex flex-col gap-6`}>
         {/* Admin Add Post Form */}

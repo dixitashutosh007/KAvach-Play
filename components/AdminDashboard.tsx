@@ -1,7 +1,7 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send } from "lucide-react";
+import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
@@ -29,6 +29,7 @@ export function AdminDashboard({
   isClubAdmin?: boolean;
 }) {
   const { matches, payments, players, otherFees } = store;
+  const [showCatchModal, setShowCatchModal] = useState(false);
 
   const { totalDueMatch, totalDueFee, duePlayersCount, topDuePlayers } = useMemo(() => {
     let matchDue = 0;
@@ -402,6 +403,36 @@ export function AdminDashboard({
         </>
       )}
 
+      {/* Badge + Catches shortcuts */}
+      {(isClubAdmin || isMatchAdmin) && (
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => setActiveTab("club", "badges")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-yellow-500/10 transition group"
+          >
+            <div className="bg-yellow-500/20 text-yellow-400 p-2 rounded-lg">
+              <Award className="w-5 h-5 group-hover:scale-110 transition" />
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-white text-sm">Add Badge</p>
+              <p className="text-[10px] text-white/50">Award to players</p>
+            </div>
+          </button>
+          <button
+            onClick={() => setShowCatchModal(true)}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-teal-500/10 transition group"
+          >
+            <div className="bg-teal-500/20 text-teal-400 p-2 rounded-lg">
+              <Target className="w-5 h-5 group-hover:scale-110 transition" />
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-white text-sm">Record Catches</p>
+              <p className="text-[10px] text-white/50">Drop / Stunning</p>
+            </div>
+          </button>
+        </div>
+      )}
+
       {/* Studio: Add to Studio */}
       {isStudioAdmin && (
         <div className="grid grid-cols-2 gap-4">
@@ -711,6 +742,216 @@ export function AdminDashboard({
         </div>
       )}
 
+      {/* Record Catches Modal */}
+      {showCatchModal && (
+        <RecordCatchesModal
+          store={store}
+          onClose={() => setShowCatchModal(false)}
+        />
+      )}
+
+    </div>
+  );
+}
+
+function RecordCatchesModal({
+  store,
+  onClose,
+}: {
+  store: ReturnType<typeof useStore>;
+  onClose: () => void;
+}) {
+  const [catchType, setCatchType] = useState<"dropped" | "stunning">("stunning");
+  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
+  const [matchId, setMatchId] = useState("");
+  const [comment, setComment] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const activePlayers = useMemo(
+    () => store.players.filter((p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending").sort((a, b) => a.name.localeCompare(b.name)),
+    [store.players],
+  );
+
+  const recentMatches = useMemo(
+    () => [...store.matches].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 20),
+    [store.matches],
+  );
+
+  const filtered = searchQ
+    ? activePlayers.filter((p) => p.name.toLowerCase().includes(searchQ.toLowerCase()))
+    : activePlayers;
+
+  const togglePlayer = (id: string) => {
+    setSelectedPlayers((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+    if (!playerCounts[id]) setPlayerCounts((c) => ({ ...c, [id]: 1 }));
+  };
+
+  const updateCount = (id: string, delta: number) => {
+    setPlayerCounts((c) => ({ ...c, [id]: Math.max(1, (c[id] || 1) + delta) }));
+  };
+
+  const handleSave = async () => {
+    if (!selectedPlayers.length) return;
+    if (!matchId && !comment.trim()) return;
+    setIsSaving(true);
+    try {
+      for (const pid of selectedPlayers) {
+        const player = activePlayers.find((p) => p.id === pid);
+        if (!player) continue;
+        await store.recordCatch({
+          playerId: pid,
+          playerName: player.name,
+          type: catchType,
+          count: playerCounts[pid] || 1,
+          matchId: matchId || undefined,
+          comment: comment.trim() || undefined,
+          recordedBy: "admin",
+        });
+      }
+      onClose();
+    } catch {
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const isValid = selectedPlayers.length > 0 && (matchId || comment.trim());
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-md w-full border border-white/10 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-white flex items-center gap-2">
+            <Target className="w-5 h-5 text-teal-400" />
+            Record Catches
+          </h3>
+          <button onClick={onClose} className="text-white/40 hover:text-white p-1"><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Type toggle */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setCatchType("stunning")}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "stunning" ? "bg-emerald-500 text-black" : "border border-white/10 text-white/50 hover:text-white"}`}
+          >
+            Stunning Catch
+          </button>
+          <button
+            onClick={() => setCatchType("dropped")}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "dropped" ? "bg-red-500 text-white" : "border border-white/10 text-white/50 hover:text-white"}`}
+          >
+            Dropped Catch
+          </button>
+        </div>
+
+        {/* Match selection */}
+        <div>
+          <label className="text-[10px] text-white/50 uppercase tracking-widest mb-1 block">Match (optional)</label>
+          <select
+            value={matchId}
+            onChange={(e) => setMatchId(e.target.value)}
+            className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-2 text-sm text-white"
+          >
+            <option value="">— Select a match —</option>
+            {recentMatches.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.date ? format(parseISO(m.date), "dd MMM yyyy") : "No date"} — {m.opponent || m.title || "Match"}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Comment */}
+        <div>
+          <label className="text-[10px] text-white/50 uppercase tracking-widest mb-1 block">Comment {!matchId && <span className="text-red-400">(required if no match)</span>}</label>
+          <input
+            type="text"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="e.g. Practice session"
+            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+
+        {/* Player search */}
+        <div>
+          <label className="text-[10px] text-white/50 uppercase tracking-widest mb-1 block">Select Players</label>
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+            <input
+              type="text"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              placeholder="Search players..."
+              className="w-full bg-black/30 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder:text-white/30"
+            />
+          </div>
+
+          {/* Selected chips */}
+          {selectedPlayers.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {selectedPlayers.map((pid) => {
+                const p = activePlayers.find((x) => x.id === pid);
+                return (
+                  <span key={pid} className="inline-flex items-center gap-1 bg-teal-500/20 text-teal-300 text-xs px-2 py-0.5 rounded-full">
+                    {p?.name}
+                    <span className="font-bold mx-1">x{playerCounts[pid] || 1}</span>
+                    <button className="flex items-center" onClick={() => updateCount(pid, -1)} disabled={(playerCounts[pid] || 1) <= 1}>
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <button className="flex items-center" onClick={() => updateCount(pid, 1)}>
+                      <Plus className="w-3 h-3" />
+                    </button>
+                    <button onClick={() => setSelectedPlayers((prev) => prev.filter((x) => x !== pid))} className="ml-1 hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Player list */}
+          <div className="max-h-40 overflow-y-auto space-y-0.5 border border-white/10 rounded-lg p-1">
+            {filtered.map((p) => (
+              <label
+                key={p.id}
+                className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition text-xs ${
+                  selectedPlayers.includes(p.id)
+                    ? "bg-teal-500/20 border border-teal-500/40 text-white"
+                    : "hover:bg-white/5 border border-transparent text-white/70"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedPlayers.includes(p.id)}
+                  onChange={() => togglePlayer(p.id)}
+                  className="accent-teal-500"
+                />
+                <span className="truncate flex-1">{p.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={isSaving || !isValid}
+          className={`w-full font-bold py-2.5 rounded-lg transition shadow flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+            catchType === "stunning"
+              ? "bg-emerald-500 text-black hover:bg-emerald-400"
+              : "bg-red-500 text-white hover:bg-red-400"
+          }`}
+        >
+          {isSaving
+            ? "Saving..."
+            : `Record ${catchType === "stunning" ? "Stunning" : "Dropped"} Catch for ${selectedPlayers.length} player(s)`}
+        </button>
+      </div>
     </div>
   );
 }

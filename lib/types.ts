@@ -242,8 +242,22 @@ export type Player = {
     endDate: string;
     paidStatus: "Paid" | "Unpaid";
   };
+  droppedCatches?: number;
+  stunningCatches?: number;
   createdAt?: any;
   updatedAt?: any;
+};
+
+export type CatchLogEntry = {
+  id: string;
+  playerId: string;
+  playerName: string;
+  type: "dropped" | "stunning";
+  count: number;
+  matchId?: string;
+  comment?: string;
+  recordedBy: string;
+  recordedAt?: any;
 };
 
 export type SubscriptionPlan = {

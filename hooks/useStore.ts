@@ -33,6 +33,7 @@ import {
   FeePlan,
   Badge,
   BadgeTypeDef,
+  CatchLogEntry,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -55,6 +56,8 @@ import {
   DocumentData,
   writeBatch,
   deleteField,
+  increment,
+  addDoc,
 } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
@@ -663,6 +666,23 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       await deleteDoc(doc(db, "badgeTypes", defId));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `badgeTypes/${defId}`);
+    }
+  };
+
+  const recordCatch = async (entry: Omit<CatchLogEntry, "id" | "recordedAt">) => {
+    try {
+      const playerRef = doc(db, "players", entry.playerId);
+      const field = entry.type === "dropped" ? "droppedCatches" : "stunningCatches";
+      await updateDoc(playerRef, {
+        [field]: increment(entry.count),
+        updatedAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, "catchLog"), cleanPayload({
+        ...entry,
+        recordedAt: serverTimestamp(),
+      }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `players/${entry.playerId}`);
     }
   };
 
@@ -2253,6 +2273,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     addBadgeTypeDef,
     updateBadgeTypeDef,
     deleteBadgeTypeDef,
+    recordCatch,
     isLoaded,
   };
 }

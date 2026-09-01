@@ -327,6 +327,15 @@ service cloud.firestore {
       allow delete: if isClubAdmin();
     }
 
+    match /catchLog/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isMatchAdmin() || isClubAdmin()
+        && incoming().playerId is string
+        && incoming().type is string
+        && incoming().count is int;
+      allow delete: if isClubAdmin();
+    }
+
     match /posts/{postId} {
       allow read: if isSignedIn();
       allow create: if isAnyAdmin();
