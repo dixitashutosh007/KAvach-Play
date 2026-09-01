@@ -30,13 +30,15 @@ export function BadgesTab({
   isClubAdmin,
   currentUserId,
   currentUserName,
+  defaultView,
 }: {
   store: ReturnType<typeof useStore>;
   isClubAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
+  defaultView?: "gallery" | "award" | "hall" | "manage";
 }) {
-  const [view, setView] = useState<"gallery" | "award" | "hall" | "manage">("gallery");
+  const [view, setView] = useState<"gallery" | "award" | "hall" | "manage">(defaultView || "gallery");
   const [search, setSearch] = useState("");
   const [awardPlayers, setAwardPlayers] = useState<string[]>([]);
   const [awardSearch, setAwardSearch] = useState("");
@@ -270,7 +272,7 @@ export function BadgesTab({
             { key: "gallery" as const, label: "Badges", icon: Award },
             { key: "hall" as const, label: "Hall of Fame", icon: Trophy },
             ...(isClubAdmin ? [
-              { key: "award" as const, label: "Award", icon: Plus },
+              { key: "award" as const, label: "Grant", icon: Plus },
               { key: "manage" as const, label: "Manage", icon: Settings },
             ] : []),
           ] as { key: typeof view; label: string; icon: any }[]
@@ -407,7 +409,7 @@ export function BadgesTab({
         <div className="glass rounded-xl p-4 border border-glass-border space-y-4">
           <h3 className="font-bold text-white flex items-center gap-2">
             <Award className="w-5 h-5 text-accent" />
-            Award a Badge
+            Grant a Badge
           </h3>
 
           <div>

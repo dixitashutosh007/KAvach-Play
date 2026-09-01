@@ -32,9 +32,11 @@ export function ClubTab({
   currentUserId: string;
   currentUserName: string;
   isFeatureEnabled: (f: string) => boolean;
-  defaultSubTab?: ClubSubTab | null;
+  defaultSubTab?: ClubSubTab | string | null;
 }) {
-  const [subTab, setSubTab] = useState<ClubSubTab>(defaultSubTab || "players");
+  const badgesDefaultView = defaultSubTab === "badges_grant" ? "award" : undefined;
+  const resolvedSubTab: ClubSubTab = defaultSubTab === "badges_grant" ? "badges" : (defaultSubTab as ClubSubTab) || "players";
+  const [subTab, setSubTab] = useState<ClubSubTab>(resolvedSubTab);
 
   const tabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
     { key: "players", label: "Players", icon: Users, visible: true },
@@ -76,6 +78,7 @@ export function ClubTab({
           isClubAdmin={isClubAdmin}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
+          defaultView={badgesDefaultView}
         />
       )}
       {subTab === "shop" && (

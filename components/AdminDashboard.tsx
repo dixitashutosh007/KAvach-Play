@@ -407,15 +407,15 @@ export function AdminDashboard({
       {(isClubAdmin || isMatchAdmin) && (
         <div className="grid grid-cols-2 gap-4">
           <button
-            onClick={() => setActiveTab("club", "badges")}
+            onClick={() => setActiveTab("club", "badges_grant")}
             className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-yellow-500/10 transition group"
           >
             <div className="bg-yellow-500/20 text-yellow-400 p-2 rounded-lg">
               <Award className="w-5 h-5 group-hover:scale-110 transition" />
             </div>
             <div className="text-left">
-              <p className="font-bold text-white text-sm">Add Badge</p>
-              <p className="text-[10px] text-white/50">Award to players</p>
+              <p className="font-bold text-white text-sm">Grant Badge</p>
+              <p className="text-[10px] text-white/50">Grant to players</p>
             </div>
           </button>
           <button
