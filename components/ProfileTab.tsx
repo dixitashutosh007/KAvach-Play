@@ -17,8 +17,9 @@ import Image from "next/image";
 import { PlayerFinanceView } from "./FinanceTab";
 import { PollInteraction, PollResults } from "./OpinionTab";
 import { AuthProviderBadges } from "./AuthProviderBadges";
-import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet } from "./BadgeIcon";
+import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet, BadgeShowcase } from "./BadgeIcon";
 import { Award } from "lucide-react";
+import type { Badge } from "@/lib/types";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 export function ProfileTab({
@@ -597,48 +598,13 @@ export function ProfileTab({
         </div>
       )}
 
-      {!isEditing && linkedPlayer?.id && (() => {
-        const myBadges = store.badges.filter(b => b.playerId === linkedPlayer.id);
-        if (!myBadges.length) return null;
-        const grouped = new Map<string, typeof myBadges>();
-        myBadges.forEach(b => {
-          const arr = grouped.get(b.badgeType) || [];
-          arr.push(b);
-          grouped.set(b.badgeType, arr);
-        });
-        const stackable = getStackableSet(store.badgeTypeDefs);
-        return (
-          <div className="pt-2">
-            <div className="glass rounded-xl p-4 border border-glass-border">
-              <h3 className="font-bold text-white flex items-center gap-2 mb-3">
-                <Award className="w-5 h-5 text-accent" />
-                My Badges
-                <span className="text-xs text-white/40 font-normal ml-auto">{myBadges.length} earned</span>
-              </h3>
-              <div className="flex flex-wrap gap-3">
-                {Array.from(grouped.entries()).map(([badgeType, bList]) => {
-                  const meta = getBadgeMeta(badgeType, store.badgeTypeDefs);
-                  const colors = getBadgeTierColors(meta.tier);
-                  const count = stackable.has(badgeType) ? bList.length : undefined;
-                  return (
-                    <div key={badgeType} className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/10 bg-black/20 min-w-[72px]">
-                      <div className="relative">
-                        <BadgeIcon badgeType={badgeType} size={40} customDefs={store.badgeTypeDefs} />
-                        {count && count > 1 && (
-                          <span className="absolute -top-1 -right-1 text-[9px] font-bold rounded-full px-1 min-w-[16px] text-center" style={{ background: colors.bg, color: "#000" }}>
-                            x{count}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[9px] text-white/60 text-center leading-tight">{meta.short}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {!isEditing && linkedPlayer?.id && (
+        <MyBadgesSection
+          badges={store.badges}
+          playerId={linkedPlayer.id}
+          badgeTypeDefs={store.badgeTypeDefs}
+        />
+      )}
 
       <div className="pt-2">
         <PlayerFinanceView
@@ -951,6 +917,74 @@ function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+function MyBadgesSection({
+  badges,
+  playerId,
+  badgeTypeDefs,
+}: {
+  badges: Badge[];
+  playerId: string;
+  badgeTypeDefs: import("@/lib/types").BadgeTypeDef[];
+}) {
+  const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
+
+  const myBadges = badges.filter(b => b.playerId === playerId);
+  if (!myBadges.length) return null;
+
+  const grouped = new Map<string, Badge[]>();
+  myBadges.forEach(b => {
+    const arr = grouped.get(b.badgeType) || [];
+    arr.push(b);
+    grouped.set(b.badgeType, arr);
+  });
+  const stackable = getStackableSet(badgeTypeDefs);
+
+  return (
+    <div className="pt-2">
+      <div className="glass rounded-xl p-4 border border-glass-border">
+        <h3 className="font-bold text-white flex items-center gap-2 mb-3">
+          <Award className="w-5 h-5 text-accent" />
+          My Badges
+          <span className="text-xs text-white/40 font-normal ml-auto">{myBadges.length} earned</span>
+        </h3>
+        <div className="flex flex-wrap gap-3">
+          {Array.from(grouped.entries()).map(([badgeType, bList]) => {
+            const meta = getBadgeMeta(badgeType, badgeTypeDefs);
+            const colors = getBadgeTierColors(meta.tier);
+            const count = stackable.has(badgeType) ? bList.length : undefined;
+            return (
+              <button
+                key={badgeType}
+                onClick={() => setShowcaseBadge(bList[0])}
+                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/10 bg-black/20 min-w-[72px] hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition cursor-pointer"
+              >
+                <div className="relative">
+                  <BadgeIcon badgeType={badgeType} size={48} customDefs={badgeTypeDefs} />
+                  {count && count > 1 && (
+                    <span className="absolute -top-1 -right-1 text-[9px] font-bold rounded-full px-1 min-w-[16px] text-center" style={{ background: colors.bg, color: "#000" }}>
+                      x{count}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[9px] text-white/60 text-center leading-tight">{meta.short}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-white/25 mt-3 text-center">Tap a badge to view &amp; share</p>
+      </div>
+
+      {showcaseBadge && (
+        <BadgeShowcase
+          badge={showcaseBadge}
+          customDefs={badgeTypeDefs}
+          onClose={() => setShowcaseBadge(null)}
+        />
       )}
     </div>
   );

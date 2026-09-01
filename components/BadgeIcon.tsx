@@ -1,4 +1,5 @@
 import { BadgeType, BadgeTier, Badge, BadgeTypeDef } from "@/lib/types";
+import { useState } from "react";
 
 export type BadgeMeta = { label: string; short: string; tier: BadgeTier; emoji: string; stackable: boolean };
 
@@ -227,6 +228,325 @@ export function PlayerBadgeRow({
           customDefs={customDefs}
         />
       ))}
+    </div>
+  );
+}
+
+function renderBadgeToCanvas(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, meta: BadgeMeta) {
+  const colors = TIER_COLORS[meta.tier];
+  const size = r * 2;
+  ctx.save();
+  ctx.translate(cx - r, cy - r);
+
+  ctx.shadowColor = colors.glow;
+  ctx.shadowBlur = r * 0.5;
+
+  ctx.beginPath();
+  ctx.moveTo(r, size * 0.05);
+  ctx.lineTo(size * 0.92, size * 0.2);
+  ctx.lineTo(size * 0.92, size * 0.55);
+  ctx.quadraticCurveTo(size * 0.92, size * 0.82, r, size * 0.97);
+  ctx.quadraticCurveTo(size * 0.08, size * 0.82, size * 0.08, size * 0.55);
+  ctx.lineTo(size * 0.08, size * 0.2);
+  ctx.closePath();
+
+  const grad = ctx.createRadialGradient(size * 0.35, size * 0.3, 0, r, r, r);
+  grad.addColorStop(0, colors.bg);
+  grad.addColorStop(1, colors.border);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = size * 0.04;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.beginPath();
+  ctx.moveTo(r, size * 0.12);
+  ctx.lineTo(size * 0.85, size * 0.24);
+  ctx.lineTo(size * 0.85, size * 0.54);
+  ctx.quadraticCurveTo(size * 0.85, size * 0.76, r, size * 0.9);
+  ctx.quadraticCurveTo(size * 0.15, size * 0.76, size * 0.15, size * 0.54);
+  ctx.lineTo(size * 0.15, size * 0.24);
+  ctx.closePath();
+  ctx.strokeStyle = colors.text + "4D";
+  ctx.lineWidth = size * 0.015;
+  ctx.stroke();
+
+  const textSize = meta.emoji.length > 2 ? size * 0.22 : size * 0.32;
+  ctx.fillStyle = colors.text;
+  ctx.font = `900 ${textSize}px system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(meta.emoji, r, r * 1.12);
+  ctx.restore();
+}
+
+export async function generateBadgeShareImage(badge: Badge, meta: BadgeMeta): Promise<{ blob: Blob | null; caption: string }> {
+  const colors = TIER_COLORS[meta.tier];
+  const awardDate = badge.awardedAt?.toDate?.() ? badge.awardedAt.toDate() : new Date();
+  const dateStr = awardDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const caption = `${badge.playerName} earned the "${meta.label}" badge at KAvach Play!\n\n#KAvachPlay #CricketBadge #${meta.label.replace(/\s+/g, "")} #Cricket #BadgeUnlocked`;
+
+  const W = 1080, H = 1080;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return { blob: null, caption };
+
+  const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+  bgGrad.addColorStop(0, "#022c22");
+  bgGrad.addColorStop(0.5, "#0a0a1a");
+  bgGrad.addColorStop(1, "#0f172a");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  for (let i = 0; i < 60; i++) {
+    ctx.beginPath();
+    ctx.arc(Math.random() * W, Math.random() * H, Math.random() * 1.5 + 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.15 + 0.05})`;
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = colors.border + "40";
+  ctx.lineWidth = 3;
+  const inset = 30, cr = 20;
+  ctx.beginPath();
+  ctx.moveTo(inset + cr, inset);
+  ctx.lineTo(W - inset - cr, inset);
+  ctx.quadraticCurveTo(W - inset, inset, W - inset, inset + cr);
+  ctx.lineTo(W - inset, H - inset - cr);
+  ctx.quadraticCurveTo(W - inset, H - inset, W - inset - cr, H - inset);
+  ctx.lineTo(inset + cr, H - inset);
+  ctx.quadraticCurveTo(inset, H - inset, inset, H - inset - cr);
+  ctx.lineTo(inset, inset + cr);
+  ctx.quadraticCurveTo(inset, inset, inset + cr, inset);
+  ctx.closePath();
+  ctx.stroke();
+
+  const accent = "rgb(52, 211, 153)";
+  ctx.fillStyle = accent;
+  ctx.font = "bold 18px system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "center";
+  ctx.letterSpacing = "6px";
+  ctx.fillText("K A V A C H   P L A Y", W / 2, 80);
+  ctx.letterSpacing = "0px";
+
+  ctx.strokeStyle = accent + "60";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.25, 100);
+  ctx.lineTo(W * 0.75, 100);
+  ctx.stroke();
+
+  renderBadgeToCanvas(ctx, W / 2, 340, 160, meta);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 44px system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(meta.label, W / 2, 570);
+
+  ctx.fillStyle = colors.bg;
+  ctx.font = "bold 20px system-ui, -apple-system, sans-serif";
+  ctx.letterSpacing = "8px";
+  ctx.fillText(meta.tier.toUpperCase(), W / 2, 610);
+  ctx.letterSpacing = "0px";
+
+  ctx.strokeStyle = "rgba(255,255,255,0.1)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.3, 640);
+  ctx.lineTo(W * 0.7, 640);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 32px system-ui, -apple-system, sans-serif";
+  ctx.fillText(badge.playerName, W / 2, 700);
+
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = "500 22px system-ui, -apple-system, sans-serif";
+  ctx.fillText(`Awarded on ${dateStr}`, W / 2, 745);
+
+  if (badge.note) {
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "italic 18px system-ui, -apple-system, sans-serif";
+    ctx.fillText(`"${badge.note}"`, W / 2, 785);
+  }
+
+  ctx.save();
+  ctx.translate(W - 55, H / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.font = "900 40px system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "center";
+  ctx.letterSpacing = "12px";
+  ctx.fillText("GO GET THEM", 0, 0);
+  ctx.letterSpacing = "0px";
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(255,255,255,0.25)";
+  ctx.font = "500 16px system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("kavachplay.com", W / 2, H - 50);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  return { blob, caption };
+}
+
+export function BadgeShowcase({
+  badge,
+  customDefs,
+  onClose,
+}: {
+  badge: Badge;
+  customDefs?: BadgeTypeDef[];
+  onClose: () => void;
+}) {
+  const [isSharing, setIsSharing] = useState(false);
+  const meta = getBadgeMeta(badge.badgeType, customDefs);
+  const colors = TIER_COLORS[meta.tier];
+  const awardDate = badge.awardedAt?.toDate?.() ? badge.awardedAt.toDate() : new Date();
+  const dateStr = awardDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+  const handleShare = async () => {
+    setIsSharing(true);
+    try {
+      const { blob, caption } = await generateBadgeShareImage(badge, meta);
+      if (navigator.share && blob) {
+        const file = new File([blob], "kavach-badge.png", { type: "image/png" });
+        await navigator.share({ text: caption, files: [file] });
+      } else if (navigator.share) {
+        await navigator.share({ text: caption });
+      } else {
+        const caption2 = `${badge.playerName} earned the "${meta.label}" badge at KAvach Play!\n\n#KAvachPlay #CricketBadge #Cricket`;
+        await navigator.clipboard?.writeText(caption2);
+        alert("Badge info copied to clipboard!");
+      }
+    } catch {
+      // user cancelled
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+      <div
+        className="relative w-full max-w-sm rounded-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "linear-gradient(160deg, #022c22 0%, #0a0a1a 50%, #0f172a 100%)",
+        }}
+      >
+        {/* Decorative particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full"
+              style={{
+                width: Math.random() * 3 + 1,
+                height: Math.random() * 3 + 1,
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                background: `rgba(255,255,255,${Math.random() * 0.15 + 0.05})`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Border glow */}
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{ boxShadow: `inset 0 0 0 1.5px ${colors.border}40, 0 0 40px ${colors.glow}` }}
+        />
+
+        <div className="relative z-10 flex flex-col items-center py-8 px-6">
+          {/* KAvach branding */}
+          <p className="text-accent text-xs font-bold tracking-[0.3em] uppercase mb-1">
+            KAvach Play
+          </p>
+          <div className="w-24 h-px bg-accent/40 mb-8" />
+
+          {/* Large badge */}
+          <div className="relative mb-6">
+            <div
+              className="absolute inset-0 rounded-full blur-3xl opacity-40"
+              style={{ background: colors.bg, transform: "scale(1.5)" }}
+            />
+            <BadgeIcon badgeType={badge.badgeType} size={160} customDefs={customDefs} />
+          </div>
+
+          {/* Badge name */}
+          <h2 className="text-white font-bold text-2xl text-center mb-1">
+            {meta.label}
+          </h2>
+
+          {/* Tier label */}
+          <p
+            className="text-sm font-bold tracking-[0.4em] uppercase mb-6"
+            style={{ color: colors.bg }}
+          >
+            {meta.tier}
+          </p>
+
+          {/* Divider */}
+          <div className="w-32 h-px bg-white/10 mb-6" />
+
+          {/* Player name */}
+          <p className="text-white font-bold text-lg mb-1">
+            {badge.playerName}
+          </p>
+
+          {/* Award date */}
+          <p className="text-white/40 text-sm mb-1">
+            Awarded on {dateStr}
+          </p>
+
+          {/* Note */}
+          {badge.note && (
+            <p className="text-white/30 text-xs italic mt-1 mb-2 text-center">
+              &ldquo;{badge.note}&rdquo;
+            </p>
+          )}
+
+          {/* Vertical text decoration */}
+          <div
+            className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{
+              writingMode: "vertical-rl",
+              color: "rgba(255,255,255,0.06)",
+              fontSize: 20,
+              fontWeight: 900,
+              letterSpacing: "0.3em",
+            }}
+          >
+            GO GET THEM
+          </div>
+
+          {/* Share button */}
+          <button
+            onClick={handleShare}
+            disabled={isSharing}
+            className="mt-6 flex items-center gap-2.5 bg-accent text-black font-bold py-3 px-8 rounded-full hover:brightness-110 transition disabled:opacity-50 text-sm"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            {isSharing ? "Sharing..." : "Share on Social Media"}
+          </button>
+
+          {/* Close */}
+          <button
+            onClick={onClose}
+            className="mt-4 text-white/30 text-xs hover:text-white/60 transition"
+          >
+            Tap anywhere to close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

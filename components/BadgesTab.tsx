@@ -11,6 +11,8 @@ import {
   getStackableSet,
   TIER_COLORS,
   DEFAULT_BADGE_DEFS,
+  BadgeShowcase,
+  generateBadgeShareImage,
 } from "./BadgeIcon";
 import { Award, Search, Plus, Trash2, X, Share2, Trophy, Settings, Edit, Check, Palette, Upload } from "lucide-react";
 
@@ -43,6 +45,7 @@ export function BadgesTab({
   const [awardMatchId, setAwardMatchId] = useState("");
   const [isAwarding, setIsAwarding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
 
   const [editingDef, setEditingDef] = useState<BadgeTypeDef | null>(null);
   const [defForm, setDefForm] = useState({ id: "", label: "", short: "", tier: "bronze" as BadgeTier, emoji: "", stackable: false });
@@ -146,188 +149,21 @@ export function BadgesTab({
     setConfirmDelete(null);
   };
 
-  const renderBadgeSVG = (ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, meta: ReturnType<typeof getBadgeMeta>) => {
-    const colors = getBadgeTierColors(meta.tier);
-    const size = r * 2;
-
-    ctx.save();
-    ctx.translate(cx - r, cy - r);
-
-    ctx.shadowColor = colors.glow;
-    ctx.shadowBlur = r * 0.5;
-
-    ctx.beginPath();
-    ctx.moveTo(r, size * 0.05);
-    ctx.lineTo(size * 0.92, size * 0.2);
-    ctx.lineTo(size * 0.92, size * 0.55);
-    ctx.quadraticCurveTo(size * 0.92, size * 0.82, r, size * 0.97);
-    ctx.quadraticCurveTo(size * 0.08, size * 0.82, size * 0.08, size * 0.55);
-    ctx.lineTo(size * 0.08, size * 0.2);
-    ctx.closePath();
-
-    const grad = ctx.createRadialGradient(size * 0.35, size * 0.3, 0, r, r, r);
-    grad.addColorStop(0, colors.bg);
-    grad.addColorStop(1, colors.border);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.strokeStyle = colors.border;
-    ctx.lineWidth = size * 0.04;
-    ctx.stroke();
-
-    ctx.shadowBlur = 0;
-
-    ctx.beginPath();
-    ctx.moveTo(r, size * 0.12);
-    ctx.lineTo(size * 0.85, size * 0.24);
-    ctx.lineTo(size * 0.85, size * 0.54);
-    ctx.quadraticCurveTo(size * 0.85, size * 0.76, r, size * 0.9);
-    ctx.quadraticCurveTo(size * 0.15, size * 0.76, size * 0.15, size * 0.54);
-    ctx.lineTo(size * 0.15, size * 0.24);
-    ctx.closePath();
-    ctx.strokeStyle = colors.text + "4D";
-    ctx.lineWidth = size * 0.015;
-    ctx.stroke();
-
-    const textSize = meta.emoji.length > 2 ? size * 0.22 : size * 0.32;
-    ctx.fillStyle = colors.text;
-    ctx.font = `900 ${textSize}px system-ui, -apple-system, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(meta.emoji, r, r * 1.12);
-
-    ctx.restore();
-  };
-
   const handleShare = async (badge: Badge) => {
     const meta = getBadgeMeta(badge.badgeType, customDefs);
-    const colors = getBadgeTierColors(meta.tier);
-    const awardDate = badge.awardedAt?.toDate?.() ? badge.awardedAt.toDate() : new Date();
-    const dateStr = awardDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-    const caption = `${badge.playerName} earned the "${meta.label}" badge at KAvach Play!\n\n#KAvachPlay #CricketBadge #${meta.label.replace(/\s+/g, "")} #Cricket #BadgeUnlocked`;
-
-    if (navigator.share) {
-      try {
-        const W = 1080, H = 1080;
-        const canvas = document.createElement("canvas");
-        canvas.width = W;
-        canvas.height = H;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-          bgGrad.addColorStop(0, "#022c22");
-          bgGrad.addColorStop(0.5, "#0a0a1a");
-          bgGrad.addColorStop(1, "#0f172a");
-          ctx.fillStyle = bgGrad;
-          ctx.fillRect(0, 0, W, H);
-
-          for (let i = 0; i < 60; i++) {
-            const sx = Math.random() * W, sy = Math.random() * H;
-            const sr = Math.random() * 1.5 + 0.5;
-            ctx.beginPath();
-            ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.15 + 0.05})`;
-            ctx.fill();
-          }
-
-          ctx.strokeStyle = colors.border + "40";
-          ctx.lineWidth = 3;
-          const inset = 30;
-          const cr = 20;
-          ctx.beginPath();
-          ctx.moveTo(inset + cr, inset);
-          ctx.lineTo(W - inset - cr, inset);
-          ctx.quadraticCurveTo(W - inset, inset, W - inset, inset + cr);
-          ctx.lineTo(W - inset, H - inset - cr);
-          ctx.quadraticCurveTo(W - inset, H - inset, W - inset - cr, H - inset);
-          ctx.lineTo(inset + cr, H - inset);
-          ctx.quadraticCurveTo(inset, H - inset, inset, H - inset - cr);
-          ctx.lineTo(inset, inset + cr);
-          ctx.quadraticCurveTo(inset, inset, inset + cr, inset);
-          ctx.closePath();
-          ctx.stroke();
-
-          const accentColor = "rgb(52, 211, 153)";
-          ctx.fillStyle = accentColor;
-          ctx.font = "bold 18px system-ui, -apple-system, sans-serif";
-          ctx.textAlign = "center";
-          ctx.letterSpacing = "6px";
-          ctx.fillText("K A V A C H   P L A Y", W / 2, 80);
-          ctx.letterSpacing = "0px";
-
-          ctx.strokeStyle = accentColor + "60";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(W * 0.25, 100);
-          ctx.lineTo(W * 0.75, 100);
-          ctx.stroke();
-
-          renderBadgeSVG(ctx, W / 2, 340, 160, meta);
-
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 44px system-ui, -apple-system, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(meta.label, W / 2, 570);
-
-          const tierLabel = meta.tier.charAt(0).toUpperCase() + meta.tier.slice(1);
-          ctx.fillStyle = colors.bg;
-          ctx.font = `bold 20px system-ui, -apple-system, sans-serif`;
-          ctx.letterSpacing = "8px";
-          ctx.fillText(tierLabel.toUpperCase(), W / 2, 610);
-          ctx.letterSpacing = "0px";
-
-          ctx.strokeStyle = "rgba(255,255,255,0.1)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(W * 0.3, 640);
-          ctx.lineTo(W * 0.7, 640);
-          ctx.stroke();
-
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 32px system-ui, -apple-system, sans-serif";
-          ctx.fillText(badge.playerName, W / 2, 700);
-
-          ctx.fillStyle = "rgba(255,255,255,0.5)";
-          ctx.font = "500 22px system-ui, -apple-system, sans-serif";
-          ctx.fillText(`Awarded on ${dateStr}`, W / 2, 745);
-
-          if (badge.note) {
-            ctx.fillStyle = "rgba(255,255,255,0.35)";
-            ctx.font = "italic 18px system-ui, -apple-system, sans-serif";
-            ctx.fillText(`"${badge.note}"`, W / 2, 785);
-          }
-
-          ctx.save();
-          ctx.translate(W - 55, H / 2);
-          ctx.rotate(Math.PI / 2);
-          ctx.fillStyle = "rgba(255,255,255,0.08)";
-          ctx.font = "900 40px system-ui, -apple-system, sans-serif";
-          ctx.textAlign = "center";
-          ctx.letterSpacing = "12px";
-          ctx.fillText("GO GET THEM", 0, 0);
-          ctx.letterSpacing = "0px";
-          ctx.restore();
-
-          ctx.fillStyle = "rgba(255,255,255,0.25)";
-          ctx.font = "500 16px system-ui, -apple-system, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("kavachplay.com", W / 2, H - 50);
-
-          const blob = await new Promise<Blob | null>((resolve) =>
-            canvas.toBlob(resolve, "image/png"),
-          );
-          if (blob) {
-            const file = new File([blob], "kavach-badge.png", { type: "image/png" });
-            await navigator.share({ text: caption, files: [file] });
-            return;
-          }
-        }
+    try {
+      const { blob, caption } = await generateBadgeShareImage(badge, meta);
+      if (navigator.share && blob) {
+        const file = new File([blob], "kavach-badge.png", { type: "image/png" });
+        await navigator.share({ text: caption, files: [file] });
+      } else if (navigator.share) {
         await navigator.share({ text: caption });
-      } catch {
-        // user cancelled
+      } else {
+        await navigator.clipboard?.writeText(caption);
+        alert("Badge info copied to clipboard!");
       }
-    } else {
-      await navigator.clipboard?.writeText(caption);
-      alert("Badge info copied to clipboard!");
+    } catch {
+      // user cancelled
     }
   };
 
@@ -484,14 +320,18 @@ export function BadgesTab({
                 <h3 className="font-bold text-white text-sm mb-2">{player.name}</h3>
                 <div className="flex flex-wrap gap-2">
                   {Array.from(grouped.entries()).map(([badgeType, bList]) => (
-                    <div key={badgeType} className="relative group">
+                    <div
+                      key={badgeType}
+                      className="relative group cursor-pointer"
+                      onClick={() => setShowcaseBadge(bList[0])}
+                    >
                       <BadgeCard
                         badgeType={badgeType}
                         count={stackableSet.has(badgeType) ? bList.length : undefined}
                         customDefs={customDefs}
                       />
                       <button
-                        onClick={() => handleShare(bList[0])}
+                        onClick={(e) => { e.stopPropagation(); handleShare(bList[0]); }}
                         className="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 bg-accent text-black rounded-full p-1 transition"
                         title="Share badge"
                       >
@@ -499,7 +339,7 @@ export function BadgesTab({
                       </button>
                       {isClubAdmin && (
                         <button
-                          onClick={() => setConfirmDelete(bList[bList.length - 1].id)}
+                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(bList[bList.length - 1].id); }}
                           className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full p-1 transition"
                           title="Remove badge"
                         >
@@ -959,6 +799,15 @@ export function BadgesTab({
             )}
           </div>
         </div>
+      )}
+
+      {/* Badge Showcase Modal */}
+      {showcaseBadge && (
+        <BadgeShowcase
+          badge={showcaseBadge}
+          customDefs={customDefs}
+          onClose={() => setShowcaseBadge(null)}
+        />
       )}
 
       {/* Delete Badge Confirmation */}
