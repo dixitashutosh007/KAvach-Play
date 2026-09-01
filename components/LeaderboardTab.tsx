@@ -1,14 +1,28 @@
-/**
- * Player Statistics & Rankings (`components/LeaderboardTab.tsx`)
- *
- * Aggregates statistics (runs/wickets) from all recorded matches to construct
- * Top Batsman and Top Bowler leaderboards. Allows filtering by specific years
- * or viewing 'All Time' records. Admins can manually update statistics for
- * given players here. Highlights top 3 performers with special visuals.
- */
 import { useStore } from "@/hooks/useStore";
-import { Trophy, Medal } from "lucide-react";
-import { useState } from "react";
+import { Trophy, Medal, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Player } from "@/lib/types";
+
+type Category = "runs" | "wickets" | "stunning" | "dropped" | "performers";
+
+const PAGE_SIZE = 10;
+const MAX_ENTRIES = 30;
+
+const CATEGORY_CONFIG: Record<Category, {
+  label: string;
+  shortLabel: string;
+  field: keyof Player | "performerPoints";
+  unit: string;
+  accent: string;
+  valueColor: string;
+  emoji: string;
+}> = {
+  runs:       { label: "Top Runs",             shortLabel: "Runs",    field: "totalRuns",       unit: "Runs",    accent: "accent",      valueColor: "text-accent",      emoji: "🏏" },
+  wickets:    { label: "Top Wickets",           shortLabel: "Wkts",    field: "totalWickets",    unit: "Wkts",    accent: "accent",      valueColor: "text-accent",      emoji: "🎳" },
+  stunning:   { label: "Stunning Catches",      shortLabel: "Catch",   field: "stunningCatches", unit: "Catches", accent: "emerald-400", valueColor: "text-emerald-400", emoji: "🧤" },
+  dropped:    { label: "Dropped Catches",       shortLabel: "Drops",   field: "droppedCatches",  unit: "Drops",   accent: "red-400",     valueColor: "text-red-400",     emoji: "🫳" },
+  performers: { label: "Top Performers",        shortLabel: "Star",    field: "performerPoints", unit: "Pts",     accent: "accent",      valueColor: "text-accent",      emoji: "⭐" },
+};
 
 export function LeaderboardTab({
   store,
@@ -17,78 +31,46 @@ export function LeaderboardTab({
   store: ReturnType<typeof useStore>;
   persona?: "admin" | "player";
 }) {
-  const [year, setYear] = useState<number | string>(new Date().getFullYear());
-  const years = ["All Time", 2026, 2025, 2024, 2023, 2022];
-  const isAdmin = persona === "admin";
+  const [category, setCategory] = useState<Category>("runs");
+  const [page, setPage] = useState(0);
 
-  const [view, setView] = useState<"batting" | "bowling" | "performers">("batting");
+  const activePlayers = useMemo(
+    () => store.players.filter(p => !p.disabled && p.inviteStatus !== "Pending"),
+    [store.players],
+  );
 
-  const [editPlayerId, setEditPlayerId] = useState<string | null>(null);
-  const [editRuns, setEditRuns] = useState<number>(0);
-  const [editWickets, setEditWickets] = useState<number>(0);
+  const performerPoints = useMemo(() => {
+    const pts = new Map<string, number>();
+    for (const p of activePlayers) pts.set(p.id, 0);
+    for (const m of store.matches) {
+      if (m.isTentative) continue;
+      if (m.potmId && pts.has(m.potmId)) pts.set(m.potmId, (pts.get(m.potmId) || 0) + 3);
+      if (m.topPerformerIds) {
+        for (const id of m.topPerformerIds) {
+          if (pts.has(id)) pts.set(id, (pts.get(id) || 0) + 1);
+        }
+      }
+    }
+    return pts;
+  }, [activePlayers, store.matches]);
 
-  const currentStats = store.players.map((p) => {
-    let potmCount = 0;
-    let tpCount = 0;
-
-    const matchesForYear = store.matches.filter(m => {
-      if (m.isTentative) return false;
-      if (year === "All Time") return true;
-      if (!m.date) return false;
-      return new Date(m.date).getFullYear() === Number(year);
+  const sorted = useMemo(() => {
+    const cfg = CATEGORY_CONFIG[category];
+    const list = activePlayers.map(p => {
+      const value = cfg.field === "performerPoints"
+        ? (performerPoints.get(p.id) || 0)
+        : ((p as any)[cfg.field] || 0) as number;
+      return { player: p, value };
     });
+    list.sort((a, b) => b.value - a.value);
+    return list.filter(e => e.value > 0).slice(0, MAX_ENTRIES);
+  }, [activePlayers, category, performerPoints]);
 
-    for (const m of matchesForYear) {
-      if (m.potmId === p.id) {
-        potmCount += 3;
-      }
-      if (m.topPerformerIds && m.topPerformerIds.includes(p.id)) {
-        tpCount += 1;
-      }
-    }
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const pageItems = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-    const performerPoints = potmCount + tpCount;
-
-    if (year === "All Time") {
-      const allPlayerStats = store.playerStats.filter(
-        (s) => s.playerId === p.id,
-      );
-      return {
-        player: p,
-        runs: allPlayerStats.reduce((sum, s) => sum + (s.runs || 0), 0),
-        wickets: allPlayerStats.reduce((sum, s) => sum + (s.wickets || 0), 0),
-        performerPoints,
-      };
-    } else {
-      const stat = store.playerStats.find(
-        (s) => s.playerId === p.id && s.year === year,
-      );
-      return {
-        player: p,
-        runs: stat?.runs || 0,
-        wickets: stat?.wickets || 0,
-        performerPoints,
-      };
-    }
-  });
-
-  const sortedStats = [...currentStats].sort((a, b) => {
-    if (view === "batting") return b.runs - a.runs;
-    if (view === "performers") return b.performerPoints - a.performerPoints;
-    return b.wickets - a.wickets;
-  });
-
-  const handleEdit = (pId: string, runs: number, wickets: number) => {
-    setEditPlayerId(pId);
-    setEditRuns(runs);
-    setEditWickets(wickets);
-  };
-
-  const handleSave = async (pId: string) => {
-    if (year === "All Time") return; // Should not happen
-    await store.updatePlayerStat(pId, year as number, editRuns, editWickets);
-    setEditPlayerId(null);
-  };
+  const cfg = CATEGORY_CONFIG[category];
+  const isDropped = category === "dropped";
 
   return (
     <div className="space-y-4">
@@ -96,157 +78,89 @@ export function LeaderboardTab({
         <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
           <Trophy className="w-5 h-5 text-accent" /> Leaderboard
         </h2>
-        <select
-          value={year}
-          onChange={(e) =>
-            setYear(
-              e.target.value === "All Time"
-                ? "All Time"
-                : Number(e.target.value),
-            )
-          }
-          className="bg-white/10 border border-glass-border rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none [&>option]:bg-emerald-950 font-bold"
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
       </div>
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => setView("batting")}
-          className={`flex-1 py-2 text-[12px] font-bold uppercase tracking-widest rounded-lg transition border ${view === "batting" ? "bg-accent/20 text-accent border-accent/50" : "bg-transparent text-white/50 border-glass-border hover:bg-white/5 hover:text-white"}`}
-        >
-          Batting (Runs)
-        </button>
-        <button
-          onClick={() => setView("bowling")}
-          className={`flex-1 py-2 text-[12px] font-bold uppercase tracking-widest rounded-lg transition border ${view === "bowling" ? "bg-accent/20 text-accent border-accent/50" : "bg-transparent text-white/50 border-glass-border hover:bg-white/5 hover:text-white"}`}
-        >
-          Bowling (Wickets)
-        </button>
-        <button
-          onClick={() => setView("performers")}
-          className={`flex-1 py-2 text-[12px] font-bold uppercase tracking-widest rounded-lg transition border ${view === "performers" ? "bg-accent/20 text-accent border-accent/50" : "bg-transparent text-white/50 border-glass-border hover:bg-white/5 hover:text-white"}`}
-        >
-          Performers
-        </button>
+      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border overflow-x-auto no-scrollbar">
+        {(Object.keys(CATEGORY_CONFIG) as Category[]).map(cat => (
+          <button
+            key={cat}
+            onClick={() => { setCategory(cat); setPage(0); }}
+            className={`flex-1 min-w-0 text-[10px] font-bold uppercase py-2 px-1 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap ${
+              category === cat
+                ? cat === "dropped" ? "bg-red-500/20 text-red-400" : "bg-accent text-black"
+                : "text-white/50 hover:text-white"
+            }`}
+          >
+            <span>{CATEGORY_CONFIG[cat].emoji}</span>
+            <span className="hidden sm:inline">{CATEGORY_CONFIG[cat].shortLabel}</span>
+            <span className="sm:hidden">{CATEGORY_CONFIG[cat].shortLabel.slice(0, 4)}</span>
+          </button>
+        ))}
       </div>
 
-      <div className="glass rounded-xl overflow-hidden divide-y divide-glass-border mt-4">
-        <div className="flex items-center px-4 py-3 bg-white/5 font-bold text-[10px] uppercase tracking-widest text-white/70">
+      <div className={`glass rounded-xl overflow-hidden divide-y divide-glass-border ${isDropped ? "border border-red-500/20" : ""}`}>
+        <div className={`flex items-center px-4 py-3 font-bold text-[10px] uppercase tracking-widest ${isDropped ? "bg-red-500/5 text-red-300/70" : "bg-white/5 text-white/70"}`}>
           <div className="w-8 text-center">#</div>
           <div className="flex-1">Player</div>
-          <div className="w-20 text-right">
-            {view === "batting" ? "Runs" : view === "performers" ? "Pts" : "Wickets"}
-          </div>
-          {isAdmin && year !== "All Time" && view !== "performers" && (
-            <div className="w-24 text-right">Action</div>
-          )}
+          <div className="w-20 text-right">{cfg.unit}</div>
         </div>
 
-        {sortedStats.slice(0, 15).map((stat, idx) => {
-          const isEditing = editPlayerId === stat.player.id;
-          
-          let displayValue = 0;
-          if (view === "batting") displayValue = stat.runs;
-          else if (view === "performers") displayValue = stat.performerPoints;
-          else displayValue = stat.wickets;
+        {pageItems.length === 0 && (
+          <div className="py-8 text-center text-sm text-white/50">
+            No data yet. Update player stats from Club &gt; Squad &gt; Table View.
+          </div>
+        )}
 
+        {pageItems.map((entry, idx) => {
+          const rank = page * PAGE_SIZE + idx + 1;
           return (
             <div
-              key={stat.player.id}
-              className="flex flex-col hover:bg-white/5 transition"
+              key={entry.player.id}
+              className={`flex items-center px-4 py-3 group transition ${isDropped ? "hover:bg-red-500/5" : "hover:bg-white/5"}`}
             >
-              <div className="flex items-center px-4 py-3 group relative">
-                <div className="w-8 text-center text-[12px] font-bold text-white/40 group-hover:text-white/80 transition">
-                  {idx === 0 && displayValue > 0 ? (
-                    <Medal className="w-4 h-4 text-yellow-400 mx-auto" />
-                  ) : idx === 1 && displayValue > 0 ? (
-                    <Medal className="w-4 h-4 text-slate-300 mx-auto" />
-                  ) : idx === 2 && displayValue > 0 ? (
-                    <Medal className="w-4 h-4 text-amber-600 mx-auto" />
-                  ) : (
-                    idx + 1
-                  )}
-                </div>
-                <div className="flex-1 font-semibold text-white ml-2 text-[14px] truncate">
-                  {stat.player.name}
-                </div>
-                <div className="w-20 text-right font-mono font-bold text-accent text-[16px]">
-                  {displayValue}
-                </div>
-                {isAdmin && year !== "All Time" && view !== "performers" && (
-                  <div className="w-24 text-right flex justify-end">
-                    <button
-                      onClick={() =>
-                        handleEdit(stat.player.id, stat.runs, stat.wickets)
-                      }
-                      className="text-[10px] px-2.5 py-1 rounded bg-white/10 text-white/70 hover:bg-accent hover:text-black transition uppercase font-bold cursor-pointer"
-                    >
-                      Edit
-                    </button>
-                  </div>
+              <div className="w-8 text-center text-[12px] font-bold text-white/40 group-hover:text-white/80 transition">
+                {rank === 1 ? (
+                  <Medal className={`w-4 h-4 mx-auto ${isDropped ? "text-red-400" : "text-yellow-400"}`} />
+                ) : rank === 2 ? (
+                  <Medal className={`w-4 h-4 mx-auto ${isDropped ? "text-red-300" : "text-slate-300"}`} />
+                ) : rank === 3 ? (
+                  <Medal className={`w-4 h-4 mx-auto ${isDropped ? "text-red-200" : "text-amber-600"}`} />
+                ) : (
+                  rank
                 )}
               </div>
-              {isAdmin && year !== "All Time" && view !== "performers" && isEditing && (
-                <div className="px-4 pb-3.5 pt-1.5 flex flex-wrap gap-2.5 items-center justify-end bg-accent/5 border-t border-glass-border">
-                  <span className="text-[10px] uppercase tracking-wider text-accent font-bold mr-auto">
-                    Modify Stats ({year})
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase text-white/55 font-bold font-mono">
-                      Runs:
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editRuns}
-                      onChange={(e) => setEditRuns(Number(e.target.value))}
-                      className="w-14 bg-black/40 border border-glass-border rounded px-2 py-1 text-xs text-white font-mono focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase text-white/55 font-bold font-mono">
-                      Wickets:
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editWickets}
-                      onChange={(e) => setEditWickets(Number(e.target.value))}
-                      className="w-14 bg-black/40 border border-glass-border rounded px-2 py-1 text-xs text-white font-mono focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex gap-1.5 ml-1 select-none">
-                    <button
-                      onClick={() => handleSave(stat.player.id)}
-                      className="text-[11px] px-2.5 py-1 bg-accent text-black font-extrabold rounded hover:opacity-90 transition cursor-pointer"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setEditPlayerId(null)}
-                      className="text-[11px] px-2.5 py-1 bg-white/5 border border-glass-border text-white/60 hover:text-white rounded transition cursor-pointer"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="flex-1 font-semibold text-white ml-2 text-[14px] truncate">
+                {entry.player.name}
+              </div>
+              <div className={`w-20 text-right font-mono font-bold text-[16px] ${cfg.valueColor}`}>
+                {entry.value.toLocaleString()}
+              </div>
             </div>
           );
         })}
-
-        {sortedStats.length === 0 && (
-          <div className="py-8 text-center text-sm text-white/50">
-            No players available. Add players in the Squad tab.
-          </div>
-        )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-1">
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="p-1.5 rounded-lg bg-white/5 border border-glass-border text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-xs text-white/50 font-bold">
+            {page + 1} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="p-1.5 rounded-lg bg-white/5 border border-glass-border text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

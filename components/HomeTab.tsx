@@ -543,7 +543,7 @@ export function HomeTab({
       )}
 
       {/* Cricket Stats Cards */}
-      {!isAdmin && mePlayer && ((mePlayer.totalRuns ?? 0) > 0 || (mePlayer.totalWickets ?? 0) > 0) && (
+      {mePlayer && ((mePlayer.totalRuns ?? 0) > 0 || (mePlayer.totalWickets ?? 0) > 0) && (
         <div className="md:col-span-12 lg:col-span-12">
           <div className="grid grid-cols-2 gap-3">
             {(mePlayer.totalRuns ?? 0) > 0 && (
@@ -569,7 +569,7 @@ export function HomeTab({
       )}
 
       {/* Catch Stats Cards */}
-      {!isAdmin && mePlayer && ((mePlayer.stunningCatches ?? 0) > 0 || (mePlayer.droppedCatches ?? 0) > 0) && (
+      {mePlayer && ((mePlayer.stunningCatches ?? 0) > 0 || (mePlayer.droppedCatches ?? 0) > 0) && (
         <div className="md:col-span-12 lg:col-span-12">
           <div className="grid grid-cols-2 gap-3">
             {(mePlayer.stunningCatches ?? 0) > 0 && (
