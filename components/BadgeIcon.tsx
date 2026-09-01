@@ -281,135 +281,17 @@ function renderBadgeToCanvas(ctx: CanvasRenderingContext2D, cx: number, cy: numb
   ctx.restore();
 }
 
-function drawKAvachLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
-  ctx.save();
-  ctx.translate(cx - size / 2, cy - size / 2);
-  const s = size / 100;
-
-  // Outer shield — black stroke
-  ctx.beginPath();
-  ctx.moveTo(50 * s, 2 * s);
-  ctx.lineTo(95 * s, 18 * s);
-  ctx.lineTo(95 * s, 55 * s);
-  ctx.quadraticCurveTo(95 * s, 82 * s, 50 * s, 98 * s);
-  ctx.quadraticCurveTo(5 * s, 82 * s, 5 * s, 55 * s);
-  ctx.lineTo(5 * s, 18 * s);
-  ctx.closePath();
-  ctx.fillStyle = "#1a1a1a";
-  ctx.fill();
-
-  // Inner shield — gold fill
-  ctx.beginPath();
-  ctx.moveTo(50 * s, 8 * s);
-  ctx.lineTo(89 * s, 22 * s);
-  ctx.lineTo(89 * s, 53 * s);
-  ctx.quadraticCurveTo(89 * s, 77 * s, 50 * s, 92 * s);
-  ctx.quadraticCurveTo(11 * s, 77 * s, 11 * s, 53 * s);
-  ctx.lineTo(11 * s, 22 * s);
-  ctx.closePath();
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-
-  // White inner border
-  ctx.beginPath();
-  ctx.moveTo(50 * s, 14 * s);
-  ctx.lineTo(83 * s, 26 * s);
-  ctx.lineTo(83 * s, 52 * s);
-  ctx.quadraticCurveTo(83 * s, 73 * s, 50 * s, 86 * s);
-  ctx.quadraticCurveTo(17 * s, 73 * s, 17 * s, 52 * s);
-  ctx.lineTo(17 * s, 26 * s);
-  ctx.closePath();
-  ctx.strokeStyle = "#1a1a1a";
-  ctx.lineWidth = 2 * s;
-  ctx.stroke();
-
-  // Cricket batsman silhouette
-  ctx.fillStyle = "#F5C518";
-  ctx.beginPath();
-  // Head (helmet)
-  ctx.arc(48 * s, 32 * s, 8 * s, 0, Math.PI * 2);
-  ctx.fill();
-  // Helmet visor
-  ctx.fillStyle = "#1a1a1a";
-  ctx.fillRect(40 * s, 33 * s, 16 * s, 3 * s);
-  // Body
-  ctx.fillStyle = "#F5C518";
-  ctx.beginPath();
-  ctx.moveTo(42 * s, 40 * s);
-  ctx.lineTo(55 * s, 40 * s);
-  ctx.lineTo(58 * s, 60 * s);
-  ctx.lineTo(52 * s, 72 * s);
-  ctx.lineTo(46 * s, 72 * s);
-  ctx.lineTo(38 * s, 60 * s);
-  ctx.closePath();
-  ctx.fill();
-  // Bat
-  ctx.fillStyle = "#F5C518";
-  ctx.save();
-  ctx.translate(62 * s, 38 * s);
-  ctx.rotate(-0.5);
-  ctx.fillRect(0, 0, 5 * s, 30 * s);
-  ctx.fillRect(-1 * s, 28 * s, 7 * s, 8 * s);
-  ctx.restore();
-
-  // "KAVACH" banner
-  ctx.fillStyle = "#F5C518";
-  const bY = 76 * s, bH = 14 * s;
-  ctx.fillRect(18 * s, bY, 64 * s, bH);
-  ctx.fillStyle = "#1a1a1a";
-  ctx.font = `900 ${10 * s}px system-ui, -apple-system, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("KAVACH", 50 * s, bY + bH / 2);
-
-  // ® symbol
-  ctx.fillStyle = "#F5C518";
-  ctx.font = `bold ${6 * s}px system-ui, -apple-system, sans-serif`;
-  ctx.beginPath();
-  ctx.arc(74 * s, 20 * s, 5 * s, 0, Math.PI * 2);
-  ctx.fillStyle = "#e5b800";
-  ctx.fill();
-  ctx.strokeStyle = "#1a1a1a";
-  ctx.lineWidth = 0.8 * s;
-  ctx.stroke();
-  ctx.fillStyle = "#1a1a1a";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = `bold ${6 * s}px system-ui, -apple-system, sans-serif`;
-  ctx.fillText("R", 74 * s, 20 * s);
-
-  ctx.restore();
-}
-
-export function KAvachLogoSVG({ size = 48 }: { size?: number }) {
-  const s = size / 100;
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Outer shield */}
-      <path d="M50 2 L95 18 L95 55 Q95 82 50 98 Q5 82 5 55 L5 18 Z" fill="#1a1a1a" />
-      {/* Inner shield white */}
-      <path d="M50 8 L89 22 L89 53 Q89 77 50 92 Q11 77 11 53 L11 22 Z" fill="#ffffff" />
-      {/* Inner border */}
-      <path d="M50 14 L83 26 L83 52 Q83 73 50 86 Q17 73 17 52 L17 26 Z" fill="none" stroke="#1a1a1a" strokeWidth="2" />
-      {/* Batsman head */}
-      <circle cx="48" cy="32" r="8" fill="#F5C518" />
-      {/* Helmet visor */}
-      <rect x="40" y="33" width="16" height="3" fill="#1a1a1a" />
-      {/* Body */}
-      <path d="M42 40 L55 40 L58 60 L52 72 L46 72 L38 60 Z" fill="#F5C518" />
-      {/* Bat */}
-      <g transform="translate(62,38) rotate(-28)">
-        <rect width="5" height="30" fill="#F5C518" />
-        <rect x="-1" y="28" width="7" height="8" fill="#F5C518" />
-      </g>
-      {/* KAVACH banner */}
-      <rect x="18" y={76} width="64" height="14" fill="#F5C518" />
-      <text x="50" y="84" textAnchor="middle" dominantBaseline="middle" fill="#1a1a1a" fontWeight="900" fontSize="10" fontFamily="system-ui, sans-serif">KAVACH</text>
-      {/* R symbol */}
-      <circle cx="74" cy="20" r="5" fill="#e5b800" stroke="#1a1a1a" strokeWidth="0.8" />
-      <text x="74" y="20" textAnchor="middle" dominantBaseline="middle" fill="#1a1a1a" fontWeight="bold" fontSize="6" fontFamily="system-ui, sans-serif">R</text>
-    </svg>
-  );
+const LOGO_URL = "/kavach-logo.png";
+let _logoCache: HTMLImageElement | null = null;
+function loadLogo(): Promise<HTMLImageElement> {
+  if (_logoCache) return Promise.resolve(_logoCache);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => { _logoCache = img; resolve(img); };
+    img.onerror = reject;
+    img.src = LOGO_URL;
+  });
 }
 
 export async function generateBadgeShareImage(badge: Badge, meta: BadgeMeta): Promise<{ blob: Blob | null; caption: string }> {
@@ -455,49 +337,54 @@ export async function generateBadgeShareImage(badge: Badge, meta: BadgeMeta): Pr
   ctx.closePath();
   ctx.stroke();
 
-  drawKAvachLogo(ctx, W / 2, 110, 140);
+  try {
+    const logo = await loadLogo();
+    const logoH = 150;
+    const logoW = logoH * (logo.naturalWidth / logo.naturalHeight);
+    ctx.drawImage(logo, (W - logoW) / 2, 35, logoW, logoH);
+  } catch {}
 
   const accent = "rgb(52, 211, 153)";
   ctx.fillStyle = accent;
   ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
   ctx.textAlign = "center";
   ctx.letterSpacing = "4px";
-  ctx.fillText("P L A Y", W / 2, 195);
+  ctx.fillText("P L A Y", W / 2, 205);
   ctx.letterSpacing = "0px";
 
   ctx.strokeStyle = accent + "60";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(W * 0.3, 212);
-  ctx.lineTo(W * 0.7, 212);
+  ctx.moveTo(W * 0.3, 222);
+  ctx.lineTo(W * 0.7, 222);
   ctx.stroke();
 
-  renderBadgeToCanvas(ctx, W / 2, 380, 160, meta);
+  renderBadgeToCanvas(ctx, W / 2, 400, 160, meta);
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 44px system-ui, -apple-system, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(meta.label, W / 2, 610);
+  ctx.fillText(meta.label, W / 2, 630);
 
   ctx.strokeStyle = "rgba(255,255,255,0.1)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(W * 0.3, 645);
-  ctx.lineTo(W * 0.7, 645);
+  ctx.moveTo(W * 0.3, 665);
+  ctx.lineTo(W * 0.7, 665);
   ctx.stroke();
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 32px system-ui, -apple-system, sans-serif";
-  ctx.fillText(badge.playerName, W / 2, 700);
+  ctx.fillText(badge.playerName, W / 2, 720);
 
   ctx.fillStyle = "rgba(255,255,255,0.5)";
   ctx.font = "500 22px system-ui, -apple-system, sans-serif";
-  ctx.fillText(`Awarded on ${dateStr}`, W / 2, 745);
+  ctx.fillText(`Awarded on ${dateStr}`, W / 2, 765);
 
   if (badge.note) {
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.font = "italic 18px system-ui, -apple-system, sans-serif";
-    ctx.fillText(`"${badge.note}"`, W / 2, 800);
+    ctx.fillText(`"${badge.note}"`, W / 2, 820);
   }
 
   ctx.save();
@@ -591,7 +478,7 @@ export function BadgeShowcase({
 
         <div className="relative z-10 flex flex-col items-center py-8 px-6">
           {/* KAvach logo */}
-          <KAvachLogoSVG size={72} />
+          <img src="/kavach-logo.png" alt="KAvach" className="h-20 w-auto object-contain" />
           <p className="text-accent text-[10px] font-bold tracking-[0.3em] uppercase mt-1 mb-1">
             Play
           </p>
