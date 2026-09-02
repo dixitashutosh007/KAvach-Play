@@ -3236,6 +3236,79 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
     return list;
   }, [store.matches, filter]);
 
+  const doubleBookedDates = useMemo(() => {
+    const tournamentsByDate = new Map<string, number>();
+    for (const m of store.matches) {
+      if (m.matchType === "Tournament") {
+        const iso = inputToDbDate(dbToInputDate(m.date));
+        if (iso) tournamentsByDate.set(iso, (tournamentsByDate.get(iso) || 0) + 1);
+      }
+    }
+    const result = new Set<string>();
+    for (const [date, count] of tournamentsByDate) {
+      if (count >= 2) result.add(date);
+    }
+    return result;
+  }, [store.matches]);
+
+  type SheetRow = { kind: "match"; match: Match } | { kind: "empty"; dateStr: string; dayLabel: string };
+
+  const sheetRows = useMemo<SheetRow[]>(() => {
+    const matchRows: SheetRow[] = filteredMatches.map(m => ({ kind: "match" as const, match: m }));
+
+    if (filter.startsWith("past")) return matchRows;
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const addMonths = (d: Date, months: number) => {
+      const r = new Date(d);
+      r.setMonth(r.getMonth() + months);
+      return r;
+    };
+    let endDate: Date;
+    switch (filter) {
+      case "next_1m": endDate = addMonths(now, 1); break;
+      case "next_3m": endDate = addMonths(now, 3); break;
+      case "next_6m": endDate = addMonths(now, 6); break;
+      default: endDate = addMonths(now, 12); break;
+    }
+
+    const matchDateSet = new Set<string>();
+    for (const m of filteredMatches) {
+      matchDateSet.add(inputToDbDate(dbToInputDate(m.date)));
+    }
+
+    const emptySlots: SheetRow[] = [];
+    const cursor = new Date(now);
+    while (cursor <= endDate) {
+      const dow = cursor.getDay();
+      if (dow === 0 || dow === 6) {
+        const y = cursor.getFullYear();
+        const mo = String(cursor.getMonth() + 1).padStart(2, "0");
+        const da = String(cursor.getDate()).padStart(2, "0");
+        const iso = `${y}-${mo}-${da}`;
+        if (!matchDateSet.has(iso)) {
+          const dayLabel = cursor.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+          emptySlots.push({ kind: "empty", dateStr: iso, dayLabel });
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const all = [...matchRows, ...emptySlots];
+    all.sort((a, b) => {
+      const da = a.kind === "match" ? inputToDbDate(dbToInputDate(a.match.date)) : a.dateStr;
+      const db2 = b.kind === "match" ? inputToDbDate(dbToInputDate(b.match.date)) : b.dateStr;
+      if (da !== db2) return da < db2 ? -1 : 1;
+      if (a.kind === "empty") return 1;
+      if (b.kind === "empty") return -1;
+      return 0;
+    });
+
+    return all;
+  }, [filteredMatches, filter]);
+
   const isValidUrl = (val: string) => {
     if (!val) return true;
     try { new URL(val); return true; } catch { return false; }
@@ -3267,7 +3340,12 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
             <option key={f} value={f}>{SHEET_FILTER_LABELS[f]}</option>
           ))}
         </select>
-        <span className="text-xs text-white/40 font-bold">{filteredMatches.length} match{filteredMatches.length !== 1 ? "es" : ""}</span>
+        <span className="text-xs text-white/40 font-bold">
+          {filteredMatches.length} match{filteredMatches.length !== 1 ? "es" : ""}
+          {sheetRows.filter(r => r.kind === "empty").length > 0 && (
+            <span className="text-white/30"> · {sheetRows.filter(r => r.kind === "empty").length} open slot{sheetRows.filter(r => r.kind === "empty").length !== 1 ? "s" : ""}</span>
+          )}
+        </span>
       </div>
 
       <div className="glass rounded-xl overflow-hidden border border-glass-border">
@@ -3292,14 +3370,25 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-glass-border">
-              {filteredMatches.length === 0 && (
+              {sheetRows.length === 0 && (
                 <tr>
                   <td colSpan={14} className="py-8 text-center text-sm text-white/50">
                     No matches in this range.
                   </td>
                 </tr>
               )}
-              {filteredMatches.map((match, idx) => {
+              {sheetRows.map((row, idx) => {
+                if (row.kind === "empty") {
+                  return (
+                    <tr key={`empty-${row.dateStr}`} className="bg-white/[0.02]">
+                      <td className="text-center text-xs text-white/20 font-mono px-2">-</td>
+                      <td className="px-2 py-2 text-xs text-white/30 font-medium" colSpan={2}>{row.dayLabel}</td>
+                      <td colSpan={11} className="px-2 py-2 text-xs text-emerald-400/60 italic">Empty Slot</td>
+                    </tr>
+                  );
+                }
+
+                const match = row.match;
                 const dateVal = inputToDbDate(dbToInputDate(getVal(match, "date")));
                 const currentGroundId = getVal(match, "groundId") as string;
                 const currentMatchType = getVal(match, "matchType") as string;
@@ -3307,9 +3396,10 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
                 const streamUrlVal = (getVal(match, "streamingUrl") || "") as string;
                 const matchUrlInvalid = matchUrlVal && !isValidUrl(matchUrlVal);
                 const streamUrlInvalid = streamUrlVal && !isValidUrl(streamUrlVal);
+                const isDoubleBooked = doubleBookedDates.has(dateVal) && currentMatchType === "Tournament";
 
                 return (
-                  <tr key={match.id} className="hover:bg-white/5 transition">
+                  <tr key={match.id} className={`hover:bg-white/5 transition ${isDoubleBooked ? "bg-orange-500/10 border-l-2 border-l-orange-400" : ""}`}>
                     <td className="text-center text-xs text-white/40 font-mono px-2">{idx + 1}</td>
                     <td className="bg-transparent px-0">
                       <input
