@@ -1232,6 +1232,7 @@ export default function Home() {
                         store={store}
                         persona={persona}
                         isMatchAdmin={isMatchAdmin || isSuperAdmin}
+                        isSuperAdmin={isSuperAdmin}
                         defaultAction={tabAction}
                       />
                     )}

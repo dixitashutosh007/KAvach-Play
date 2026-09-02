@@ -83,11 +83,13 @@ export function MatchesTab({
   store,
   persona,
   isMatchAdmin,
+  isSuperAdmin,
   defaultAction,
 }: {
   store: ReturnType<typeof useStore>;
   persona?: "admin" | "player";
   isMatchAdmin?: boolean;
+  isSuperAdmin?: boolean;
   defaultAction?: string | null;
 }) {
   const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign" | "tournaments">(
@@ -105,7 +107,7 @@ export function MatchesTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "calendar">(
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "sheet">(
     defaultAction === "calendar" ? "calendar" : (persona === "admin" ? "calendar" : "list")
   );
 
@@ -1004,7 +1006,7 @@ export function MatchesTab({
                     viewMode === "list" ? "bg-accent text-black shadow" : "text-white/40 hover:text-white"
                   }`}
                 >
-                  List View
+                  List
                 </button>
                 <button
                   onClick={() => setViewMode("calendar")}
@@ -1012,8 +1014,18 @@ export function MatchesTab({
                     viewMode === "calendar" ? "bg-accent text-black shadow" : "text-white/40 hover:text-white"
                   }`}
                 >
-                  Calendar View
+                  Calendar
                 </button>
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => setViewMode("sheet")}
+                    className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
+                      viewMode === "sheet" ? "bg-accent text-black shadow" : "text-white/40 hover:text-white"
+                    }`}
+                  >
+                    Sheet
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1473,6 +1485,10 @@ export function MatchesTab({
                 });
               }}
             />
+          )}
+
+          {viewMode === "sheet" && isSuperAdmin && (
+            <MatchSheetView store={store} />
           )}
         </>
       )}
@@ -3135,6 +3151,336 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
         </button>
       </form>
     </div>
+  );
+}
+
+type SheetFilter = "past_3m" | "past_all" | "next_1m" | "next_3m" | "next_6m" | "next_all";
+
+const SHEET_FILTER_LABELS: Record<SheetFilter, string> = {
+  past_3m: "Past 3 Months",
+  past_all: "Past All",
+  next_1m: "Next 1 Month",
+  next_3m: "Next 3 Months",
+  next_6m: "Next 6 Months",
+  next_all: "Next All",
+};
+
+function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
+  const [dirty, setDirty] = useState<Map<string, Partial<Match>>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState<SheetFilter>("next_3m");
+
+  const getVal = (match: Match, field: keyof Match) => {
+    const dirtyRow = dirty.get(match.id);
+    if (dirtyRow && field in dirtyRow) return (dirtyRow as any)[field];
+    return (match as any)[field];
+  };
+
+  const setField = (matchId: string, field: keyof Match, value: any) => {
+    setDirty((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(matchId) || {};
+      next.set(matchId, { ...existing, [field]: value });
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      for (const [id, changes] of Array.from(dirty.entries())) {
+        const existing = store.matches.find(m => m.id === id);
+        if (existing) {
+          await store.updateMatch({ ...existing, ...changes });
+        }
+      }
+      setDirty(new Map());
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredMatches = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const parseMatchDate = (m: Match): Date => {
+      const iso = inputToDbDate(dbToInputDate(m.date));
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? now : d;
+    };
+
+    const addMonths = (d: Date, months: number) => {
+      const r = new Date(d);
+      r.setMonth(r.getMonth() + months);
+      return r;
+    };
+
+    let list = store.matches.filter(m => {
+      const d = parseMatchDate(m);
+      switch (filter) {
+        case "past_3m": return d < now && d >= addMonths(now, -3);
+        case "past_all": return d < now;
+        case "next_1m": return d >= now && d <= addMonths(now, 1);
+        case "next_3m": return d >= now && d <= addMonths(now, 3);
+        case "next_6m": return d >= now && d <= addMonths(now, 6);
+        case "next_all": return d >= now;
+        default: return true;
+      }
+    });
+
+    list.sort((a, b) => {
+      const da = new Date(inputToDbDate(dbToInputDate(a.date))).getTime() || 0;
+      const db2 = new Date(inputToDbDate(dbToInputDate(b.date))).getTime() || 0;
+      return filter.startsWith("past") ? db2 - da : da - db2;
+    });
+
+    return list;
+  }, [store.matches, filter]);
+
+  const isValidUrl = (val: string) => {
+    if (!val) return true;
+    try { new URL(val); return true; } catch { return false; }
+  };
+
+  const autoCalcFee = (matchId: string, groundId: string, matchType: string) => {
+    const ground = store.grounds.find(g => g.id === groundId);
+    if (!ground) return;
+    const groundFee = matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+    if (groundFee > 0) {
+      setField(matchId, "fee", Math.round((groundFee / 12) * 1.05));
+    }
+  };
+
+  const inputClass = "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-2 py-1.5 w-full";
+  const selectClass = "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-1 py-1.5 appearance-none cursor-pointer w-full [&>option]:bg-neutral-950";
+
+  const activeTournaments = store.tournaments.filter(t => t.status === "Ongoing" || t.status === "Upcoming");
+
+  return (
+    <>
+      <div className="flex items-center gap-3 mb-3">
+        <select
+          value={filter}
+          onChange={e => setFilter(e.target.value as SheetFilter)}
+          className="rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs font-bold text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+        >
+          {(Object.keys(SHEET_FILTER_LABELS) as SheetFilter[]).map(f => (
+            <option key={f} value={f}>{SHEET_FILTER_LABELS[f]}</option>
+          ))}
+        </select>
+        <span className="text-xs text-white/40 font-bold">{filteredMatches.length} match{filteredMatches.length !== 1 ? "es" : ""}</span>
+      </div>
+
+      <div className="glass rounded-xl overflow-hidden border border-glass-border">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1500px] border-collapse">
+            <thead>
+              <tr className="bg-black/60 text-white/70 text-[10px] uppercase tracking-wider">
+                <th className="text-left px-2 py-2 font-bold">Date</th>
+                <th className="text-left px-2 py-2 font-bold">Time</th>
+                <th className="text-left px-2 py-2 font-bold">Ground</th>
+                <th className="text-left px-2 py-2 font-bold">Type</th>
+                <th className="text-left px-2 py-2 font-bold">Tournament</th>
+                <th className="text-left px-2 py-2 font-bold">Opponent</th>
+                <th className="text-center px-2 py-2 font-bold">Format</th>
+                <th className="text-center px-2 py-2 font-bold">Jersey</th>
+                <th className="text-right px-2 py-2 font-bold">Fee</th>
+                <th className="text-center px-2 py-2 font-bold">Squad</th>
+                <th className="text-left px-2 py-2 font-bold">Match URL</th>
+                <th className="text-left px-2 py-2 font-bold">Stream URL</th>
+                <th className="text-center px-2 py-2 font-bold">Result</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-glass-border">
+              {filteredMatches.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="py-8 text-center text-sm text-white/50">
+                    No matches in this range.
+                  </td>
+                </tr>
+              )}
+              {filteredMatches.map(match => {
+                const dateVal = inputToDbDate(dbToInputDate(getVal(match, "date")));
+                const currentGroundId = getVal(match, "groundId") as string;
+                const currentMatchType = getVal(match, "matchType") as string;
+                const matchUrlVal = (getVal(match, "matchUrl") || "") as string;
+                const streamUrlVal = (getVal(match, "streamingUrl") || "") as string;
+                const matchUrlInvalid = matchUrlVal && !isValidUrl(matchUrlVal);
+                const streamUrlInvalid = streamUrlVal && !isValidUrl(streamUrlVal);
+
+                return (
+                  <tr key={match.id} className="hover:bg-white/5 transition">
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="date"
+                        value={dateVal}
+                        onChange={e => setField(match.id, "date", e.target.value)}
+                        className={`${inputClass} max-w-[130px]`}
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="time"
+                        value={getVal(match, "time") || "07:00"}
+                        onChange={e => setField(match.id, "time", e.target.value)}
+                        className={`${inputClass} max-w-[100px]`}
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <select
+                        value={currentGroundId}
+                        onChange={e => {
+                          const newGroundId = e.target.value;
+                          setField(match.id, "groundId", newGroundId);
+                          autoCalcFee(match.id, newGroundId, currentMatchType);
+                        }}
+                        className={selectClass}
+                      >
+                        <option value="">—</option>
+                        {store.grounds.map(g => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <select
+                        value={currentMatchType}
+                        onChange={e => {
+                          const newType = e.target.value as Match["matchType"];
+                          setField(match.id, "matchType", newType);
+                          if (newType === "Practice") setField(match.id, "tournamentId", "");
+                          autoCalcFee(match.id, currentGroundId, newType);
+                        }}
+                        className={selectClass}
+                      >
+                        <option value="Practice">Practice</option>
+                        <option value="Tournament">Tournament</option>
+                      </select>
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <select
+                        value={(getVal(match, "tournamentId") || "") as string}
+                        disabled={currentMatchType !== "Tournament"}
+                        onChange={e => {
+                          const tId = e.target.value;
+                          setField(match.id, "tournamentId", tId);
+                          const t = store.tournaments.find(t => t.id === tId);
+                          if (t && t.perPlayerFee) {
+                            setField(match.id, "fee", t.perPlayerFee);
+                          }
+                          if (t?.groundId) setField(match.id, "groundId", t.groundId);
+                        }}
+                        className={`${selectClass} ${currentMatchType !== "Tournament" ? "opacity-30" : ""}`}
+                      >
+                        <option value="">— None —</option>
+                        {activeTournaments.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="text"
+                        value={(getVal(match, "opponent") || "") as string}
+                        onChange={e => setField(match.id, "opponent", e.target.value)}
+                        className={inputClass}
+                        placeholder="Opponent"
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <select
+                        value={(getVal(match, "format") || "T30") as string}
+                        onChange={e => setField(match.id, "format", e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="T20">T20</option>
+                        <option value="T30">T30</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <select
+                        value={(getVal(match, "jerseyColor") || "Scarlet Red") as string}
+                        onChange={e => setField(match.id, "jerseyColor", e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="Scarlet Red">Scarlet Red</option>
+                        <option value="Whites">Whites</option>
+                      </select>
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="number"
+                        min={0}
+                        value={getVal(match, "fee") ?? ""}
+                        onChange={e => setField(match.id, "fee", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+                        className={`${inputClass} max-w-[70px] text-right`}
+                        placeholder="₹"
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={getVal(match, "maxSquadSize") ?? 12}
+                        onChange={e => setField(match.id, "maxSquadSize", parseInt(e.target.value) || 12)}
+                        className={`${inputClass} max-w-[50px] text-center`}
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="url"
+                        value={matchUrlVal}
+                        onChange={e => setField(match.id, "matchUrl", e.target.value)}
+                        className={`${inputClass} ${matchUrlInvalid ? "text-red-400" : ""}`}
+                        placeholder="URL"
+                        title={matchUrlInvalid ? "Invalid URL" : ""}
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <input
+                        type="url"
+                        value={streamUrlVal}
+                        onChange={e => setField(match.id, "streamingUrl", e.target.value)}
+                        className={`${inputClass} ${streamUrlInvalid ? "text-red-400" : ""}`}
+                        placeholder="URL"
+                        title={streamUrlInvalid ? "Invalid URL" : ""}
+                      />
+                    </td>
+                    <td className="bg-transparent px-0">
+                      <select
+                        value={(getVal(match, "result") || "Pending") as string}
+                        onChange={e => setField(match.id, "result", e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="KAvach Won">Won</option>
+                        <option value="KAvach Lost">Lost</option>
+                        <option value="Draw">Draw</option>
+                        <option value="Tie">Tie</option>
+                        <option value="Abandoned">Abandoned</option>
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {dirty.size > 0 && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-accent text-black font-bold px-6 py-3 rounded-xl shadow-lg z-50 hover:bg-accent/90 transition disabled:opacity-50"
+        >
+          {saving ? "Saving..." : `Save Changes (${dirty.size})`}
+        </button>
+      )}
+    </>
   );
 }
 
