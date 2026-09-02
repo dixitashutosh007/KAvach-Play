@@ -1032,7 +1032,9 @@ export function MatchesTab({
 
           {editMatchModal}
 
-          {viewMode === "list" ? (
+          {viewMode === "sheet" && isSuperAdmin ? (
+            <MatchSheetView store={store} />
+          ) : viewMode === "list" ? (
             <div className="space-y-4">
             {(() => {
               const now = new Date();
