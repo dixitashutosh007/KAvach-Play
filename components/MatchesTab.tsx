@@ -1488,10 +1488,6 @@ export function MatchesTab({
               }}
             />
           )}
-
-          {viewMode === "sheet" && isSuperAdmin && (
-            <MatchSheetView store={store} />
-          )}
         </>
       )}
     </div>
@@ -3279,6 +3275,7 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
           <table className="w-full min-w-[1500px] border-collapse">
             <thead>
               <tr className="bg-black/60 text-white/70 text-[10px] uppercase tracking-wider">
+                <th className="text-center px-2 py-2 font-bold w-8">#</th>
                 <th className="text-left px-2 py-2 font-bold">Date</th>
                 <th className="text-left px-2 py-2 font-bold">Time</th>
                 <th className="text-left px-2 py-2 font-bold">Ground</th>
@@ -3297,12 +3294,12 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
             <tbody className="divide-y divide-glass-border">
               {filteredMatches.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="py-8 text-center text-sm text-white/50">
+                  <td colSpan={14} className="py-8 text-center text-sm text-white/50">
                     No matches in this range.
                   </td>
                 </tr>
               )}
-              {filteredMatches.map(match => {
+              {filteredMatches.map((match, idx) => {
                 const dateVal = inputToDbDate(dbToInputDate(getVal(match, "date")));
                 const currentGroundId = getVal(match, "groundId") as string;
                 const currentMatchType = getVal(match, "matchType") as string;
@@ -3313,6 +3310,7 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
 
                 return (
                   <tr key={match.id} className="hover:bg-white/5 transition">
+                    <td className="text-center text-xs text-white/40 font-mono px-2">{idx + 1}</td>
                     <td className="bg-transparent px-0">
                       <input
                         type="date"
