@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award } from "lucide-react";
+import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award, ScrollText } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ default: m.PlayersTab })), { ssr: false });
@@ -10,8 +10,9 @@ const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ de
 const LeaderboardTab = dynamic(() => import("@/components/LeaderboardTab").then(m => ({ default: m.LeaderboardTab })), { ssr: false });
 const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersTab").then(m => ({ default: m.DuesAndRemindersTab })), { ssr: false });
 const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
+const AuditLogTab = dynamic(() => import("@/components/AuditLogTab").then(m => ({ default: m.AuditLogTab })), { ssr: false });
 
-type ClubSubTab = "players" | "shop" | "pulse" | "design" | "leaderboard" | "reminders" | "badges";
+type ClubSubTab = "players" | "shop" | "pulse" | "design" | "leaderboard" | "reminders" | "badges" | "activity";
 
 export function ClubTab({
   store,
@@ -19,6 +20,7 @@ export function ClubTab({
   canDesign,
   isFinanceAdmin,
   isClubAdmin,
+  isSuperAdmin,
   currentUserId,
   currentUserName,
   isFeatureEnabled,
@@ -29,6 +31,7 @@ export function ClubTab({
   canDesign: boolean;
   isFinanceAdmin: boolean;
   isClubAdmin: boolean;
+  isSuperAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
   isFeatureEnabled: (f: string) => boolean;
@@ -46,6 +49,7 @@ export function ClubTab({
     { key: "design", label: "Design", icon: ImageIcon, visible: canDesign },
     { key: "leaderboard", label: "Leaderboard", icon: Trophy, visible: true },
     { key: "reminders", label: "Reminders", icon: Bell, visible: true },
+    { key: "activity", label: "Activity", icon: ScrollText, visible: isSuperAdmin },
   ];
 
   const visibleTabs = tabs.filter(t => t.visible);
@@ -95,6 +99,9 @@ export function ClubTab({
       )}
       {subTab === "reminders" && (
         <DuesAndRemindersTab store={store} isFinanceAdmin={isFinanceAdmin} />
+      )}
+      {subTab === "activity" && isSuperAdmin && (
+        <AuditLogTab isSuperAdmin={isSuperAdmin} />
       )}
     </div>
   );

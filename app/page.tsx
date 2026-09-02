@@ -1221,6 +1221,7 @@ export default function Home() {
                         canDesign={canDesign}
                         isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                         isClubAdmin={isClubAdmin || isSuperAdmin}
+                        isSuperAdmin={isSuperAdmin}
                         currentUserId={user?.uid || ""}
                         currentUserName={player?.name || user?.displayName || "Admin"}
                         isFeatureEnabled={isFeatureEnabled}

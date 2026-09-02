@@ -62,6 +62,7 @@ import {
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
 import { createNotification } from "@/lib/notifications";
+import { logAudit, diffChanges, AuditActorType } from "@/lib/auditLog";
 
 function cleanPayload<T extends object>(obj: T): Partial<T> {
   const result: any = {};
@@ -601,11 +602,23 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     lazySubsRef.current.set("badges", unsub);
   }, [user]);
 
+  const getActor = (): { actorId: string; actorName: string; actorType: AuditActorType } => {
+    const uid = user?.uid || "unknown";
+    const au = appUsers.find(u => u.id === uid);
+    const pl = players.find(p => p.id === uid);
+    return {
+      actorId: uid,
+      actorName: au?.name || pl?.name || user?.displayName || "Unknown",
+      actorType: au?.role === "admin" ? "admin" : "player",
+    };
+  };
+
   const addBadge = async (badge: Omit<Badge, "id">) => {
     const id = crypto.randomUUID();
     const docRef = doc(db, "badges", id);
     try {
       await setDoc(docRef, cleanPayload({ ...badge }));
+      logAudit({ ...getActor(), action: "created", entity: "badge", entityId: id, entityLabel: badge.badgeType, changes: [], summary: `Awarded "${badge.badgeType}" badge to ${badge.playerName}` });
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `badges/${id}`);
@@ -614,17 +627,21 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updateBadge = async (badgeId: string, updates: Partial<Badge>) => {
     try {
+      const oldBadge = badges.find(b => b.id === badgeId);
       await updateDoc(doc(db, "badges", badgeId), cleanPayload({
         ...updates,
       }));
+      logAudit({ ...getActor(), action: "updated", entity: "badge", entityId: badgeId, entityLabel: oldBadge?.badgeType || badgeId, changes: diffChanges(oldBadge, updates), summary: `Updated badge "${oldBadge?.badgeType || badgeId}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `badges/${badgeId}`);
     }
   };
 
   const deleteBadge = async (badgeId: string) => {
+    const oldBadge = badges.find(b => b.id === badgeId);
     try {
       await deleteDoc(doc(db, "badges", badgeId));
+      logAudit({ ...getActor(), action: "deleted", entity: "badge", entityId: badgeId, entityLabel: oldBadge?.badgeType || badgeId, changes: [], summary: `Removed "${oldBadge?.badgeType || ""}" badge from ${oldBadge?.playerName || "player"}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
     }
@@ -648,6 +665,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const docRef = doc(db, "badgeTypes", def.id);
     try {
       await setDoc(docRef, cleanPayload({ ...def, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+      logAudit({ ...getActor(), action: "created", entity: "badge_type", entityId: def.id, entityLabel: def.label, changes: [], summary: `Created badge type "${def.label}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `badgeTypes/${def.id}`);
     }
@@ -655,15 +673,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updateBadgeTypeDef = async (defId: string, updates: Partial<BadgeTypeDef>) => {
     try {
+      const oldDef = badgeTypeDefs.find(d => d.id === defId);
       await updateDoc(doc(db, "badgeTypes", defId), cleanPayload({ ...updates, updatedAt: serverTimestamp() }));
+      logAudit({ ...getActor(), action: "updated", entity: "badge_type", entityId: defId, entityLabel: oldDef?.label || defId, changes: diffChanges(oldDef, updates), summary: `Updated badge type "${oldDef?.label || defId}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `badgeTypes/${defId}`);
     }
   };
 
   const deleteBadgeTypeDef = async (defId: string) => {
+    const oldDef = badgeTypeDefs.find(d => d.id === defId);
     try {
       await deleteDoc(doc(db, "badgeTypes", defId));
+      logAudit({ ...getActor(), action: "deleted", entity: "badge_type", entityId: defId, entityLabel: oldDef?.label || defId, changes: [], summary: `Deleted badge type "${oldDef?.label || defId}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `badgeTypes/${defId}`);
     }
@@ -681,6 +703,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         ...entry,
         recordedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "catch", entityId: entry.playerId, entityLabel: entry.playerName, changes: [{ field: "type", newValue: entry.type }, { field: "count", newValue: String(entry.count) }], summary: `Recorded ${entry.count} ${entry.type} catch${entry.count !== 1 ? "es" : ""} for ${entry.playerName}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `players/${entry.playerId}`);
     }
@@ -953,7 +976,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       for (const [k, v] of Object.entries(cleanPayload(config))) {
         if (!SECRET_FIELDS.has(k)) filtered[k] = v;
       }
+      const oldConfig = appConfig ? { ...appConfig } : undefined;
       await updateDoc(doc(db, "appConfig", "default"), filtered);
+      logAudit({ ...getActor(), action: "updated", entity: "settings", entityId: "default", entityLabel: "App Settings", changes: diffChanges(oldConfig, filtered as Record<string, any>), summary: `Updated app settings` });
       await refreshAppConfig();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "appConfig/default");
@@ -966,7 +991,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updateAppUserRole = async (userId: string, role: string) => {
     try {
+      const oldUser = appUsers.find(u => u.id === userId);
       await updateDoc(doc(db, "appUsers", userId), { role });
+      logAudit({ ...getActor(), action: "updated", entity: "user_role", entityId: userId, entityLabel: oldUser?.name || userId, changes: [{ field: "role", oldValue: oldUser?.role, newValue: role }], summary: `Changed role of ${oldUser?.name || userId} to "${role}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `appUsers/${userId}`);
     }
@@ -994,6 +1021,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "ground", entityId: id, entityLabel: ground.name, changes: [], summary: `Added ground "${ground.name}"` });
       await refreshGrounds();
       return id;
     } catch (err) {
@@ -1002,12 +1030,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const updateGround = async (groundId: string, ground: Partial<Ground>) => {
+    const oldGround = grounds.find(g => g.id === groundId);
     const docRef = doc(db, "grounds", groundId);
     try {
       await updateDoc(
         docRef,
         cleanPayload({ ...ground, updatedAt: serverTimestamp() }),
       );
+      logAudit({ ...getActor(), action: "updated", entity: "ground", entityId: groundId, entityLabel: oldGround?.name || groundId, changes: diffChanges(oldGround, ground), summary: `Updated ground "${oldGround?.name || groundId}"` });
       await refreshGrounds();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `grounds/${groundId}`);
@@ -1015,8 +1045,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteGround = async (groundId: string) => {
+    const oldGround = grounds.find(g => g.id === groundId);
     try {
       await deleteDoc(doc(db, "grounds", groundId));
+      logAudit({ ...getActor(), action: "deleted", entity: "ground", entityId: groundId, entityLabel: oldGround?.name || groundId, changes: [], summary: `Deleted ground "${oldGround?.name || groundId}"` });
       await refreshGrounds();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `grounds/${groundId}`);
@@ -1037,6 +1069,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           updatedAt: serverTimestamp(),
         }),
       );
+      logAudit({ ...getActor(), action: "created", entity: "tournament", entityId: id, entityLabel: tournament.name, changes: [], summary: `Created tournament "${tournament.name}"` });
       await refreshTournaments();
       return id;
     } catch (err) {
@@ -1049,12 +1082,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     tournamentId: string,
     tournament: Partial<Tournament>,
   ) => {
+    const oldTournament = tournaments.find(t => t.id === tournamentId);
     const docRef = doc(db, "tournaments", tournamentId);
     try {
       await updateDoc(
         docRef,
         cleanPayload({ ...tournament, updatedAt: serverTimestamp() }),
       );
+      logAudit({ ...getActor(), action: "updated", entity: "tournament", entityId: tournamentId, entityLabel: oldTournament?.name || tournamentId, changes: diffChanges(oldTournament, tournament), summary: `Updated tournament "${oldTournament?.name || tournamentId}"` });
       await refreshTournaments();
     } catch (err) {
       handleFirestoreError(
@@ -1070,8 +1105,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   // check `matches.some(m => m.tournamentId === id && !isPastMatch(m))`
   // and prompt the admin; this is a raw delete, not a policy layer.
   const deleteTournament = async (tournamentId: string) => {
+    const oldTournament = tournaments.find(t => t.id === tournamentId);
     try {
       await deleteDoc(doc(db, "tournaments", tournamentId));
+      logAudit({ ...getActor(), action: "deleted", entity: "tournament", entityId: tournamentId, entityLabel: oldTournament?.name || tournamentId, changes: [], summary: `Deleted tournament "${oldTournament?.name || tournamentId}"` });
       await refreshTournaments();
     } catch (err) {
       handleFirestoreError(
@@ -1164,6 +1201,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         }
         await batch.commit();
       }
+      logAudit({ ...getActor(), action: "created", entity: "match", entityId: id, entityLabel: `vs ${match.opponent}`, changes: [], summary: `Created ${match.matchType} match vs ${match.opponent} on ${match.date}` });
       syncMatchToCalendar("upsert", id);
       return id;
     } catch (err) {
@@ -1172,6 +1210,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const updateMatch = async (match: Match) => {
+    const oldMatch = matches.find(m => m.id === match.id);
     const docRef = doc(db, "matches", match.id);
     const { id, createdAt, updatedAt, ...data } = match;
     try {
@@ -1179,6 +1218,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         docRef,
         cleanPayload({ ...data, updatedAt: serverTimestamp() }),
       );
+      logAudit({ ...getActor(), action: "updated", entity: "match", entityId: match.id, entityLabel: `vs ${match.opponent}`, changes: diffChanges(oldMatch, data), summary: `Updated match vs ${match.opponent} on ${match.date}` });
       // Notify all players individually
       for (const p of players) {
         if (!p.disabled && p.inviteStatus === "Verified") {
@@ -1199,12 +1239,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteMatch = async (matchId: string) => {
+    const oldMatch = matches.find((m) => m.id === matchId);
     const docRef = doc(db, "matches", matchId);
-    // Capture the calendar event id before the doc is gone so we can
-    // remove the event after the Firestore delete succeeds.
-    const existingEventId = matches.find((m) => m.id === matchId)?.googleEventId;
+    const existingEventId = oldMatch?.googleEventId;
     try {
       await deleteDoc(docRef);
+      logAudit({ ...getActor(), action: "deleted", entity: "match", entityId: matchId, entityLabel: `vs ${oldMatch?.opponent || ""}`, changes: [], summary: `Deleted match vs ${oldMatch?.opponent || "unknown"} on ${oldMatch?.date || ""}` });
       if (existingEventId) {
         syncMatchToCalendar("delete", matchId, existingEventId);
       }
@@ -1226,6 +1266,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "player", entityId: id, entityLabel: player.name, changes: [], summary: `Added player "${player.name}"` });
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `players/${id}`);
@@ -1267,6 +1308,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         updatedAt: serverTimestamp(),
       });
       await updateDoc(doc(db, "players", playerId), cleanedUpdates);
+      logAudit({ ...getActor(), action: "updated", entity: "player", entityId: playerId, entityLabel: existingPlayer?.name || playerId, changes: diffChanges(existingPlayer, updates), summary: `Updated player "${existingPlayer?.name || playerId}"` });
 
       // Auto-sync updates to appUsers if matching user is found
       const playerObj = players.find((p) => p.id === playerId);
@@ -1320,9 +1362,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deletePlayer = async (playerId: string) => {
+    const p = players.find(x => x.id === playerId);
     try {
-      const p = players.find(x => x.id === playerId);
       await deleteDoc(doc(db, "players", playerId));
+      logAudit({ ...getActor(), action: "deleted", entity: "player", entityId: playerId, entityLabel: p?.name || playerId, changes: [], summary: `Deleted player "${p?.name || playerId}"` });
 
       // Also attempt to delete from appUsers if they exist
       if (p && p.authUid) {
@@ -1361,6 +1404,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("Not signed in.");
     const idToken = await currentUser.getIdToken();
+    const loserPlayer = players.find(p => p.id === loserId);
+    const keeperPlayer = players.find(p => p.id === keeperId);
     const res = await fetch("/api/admin/merge-players", {
       method: "POST",
       headers: {
@@ -1377,6 +1422,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (errBody?.code) err.code = errBody.code;
       throw err;
     }
+    logAudit({ ...getActor(), action: "updated", entity: "player", entityId: keeperId, entityLabel: keeperPlayer?.name || keeperId, changes: [{ field: "mergedFrom", newValue: loserPlayer?.name || loserId }], summary: `Merged player "${loserPlayer?.name || loserId}" into "${keeperPlayer?.name || keeperId}"` });
     // The server merge doesn't push snapshot updates for the docs it
     // rewrites — the client's onSnapshot listeners will catch up when
     // Firestore emits the change events (usually within a second).
@@ -1419,15 +1465,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const player = players.find((p) => p.id === payment?.playerId);
       const match = matches.find((m) => m.id === matchId);
 
+      const auditAction = status === "Paid" ? "paid" as const : "status_change" as const;
+      logAudit({ ...getActor(), action: auditAction, entity: "payment", entityId: paymentId, entityLabel: `${player?.name || "Player"} - ${match?.opponent || matchId}`, changes: [{ field: "status", oldValue: payment?.status, newValue: status }, ...(availability ? [{ field: "availability", oldValue: payment?.availability, newValue: availability }] : [])], summary: `${player?.name || "Player"} ${status === "Paid" ? "paid" : `status → ${status}`} for match vs ${match?.opponent || ""}` });
       if (status === "Paid" && match && player) {
-        // Notify player
         createNotification(
           player.id,
           "Payment Successful",
           `Your payment for the match against ${match.opponent} was successful.`,
           "in_app"
         );
-        // Notify Admin
         createNotification(
           "admin",
           "Payment Received",
@@ -1435,7 +1481,6 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           "in_app"
         );
       } else if (status === "Failed" && match && player) {
-        // Notify Admin
         createNotification(
           "admin",
           "Payment Failed",
@@ -1465,6 +1510,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const p = payments.find((p) => p.id === paymentId);
       const playerObj = players.find((pl) => pl.id === p?.playerId);
       await updateDoc(docRef, { availability, updatedAt: serverTimestamp() });
+      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerObj?.name || "Player"} availability`, changes: [{ field: "availability", oldValue: p?.availability, newValue: availability }], summary: `${playerObj?.name || "Player"} changed availability to ${availability}` });
       createNotification(
         "admin",
         "Player Availability Changed",
@@ -1509,6 +1555,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      const pName = players.find(pl => pl.id === playerId)?.name || playerId;
+      const mLabel = matches.find(m => m.id === matchId)?.opponent || matchId;
+      logAudit({ ...getActor(), action: "created", entity: "payment", entityId: id, entityLabel: `${pName} - ${mLabel}`, changes: [{ field: "availability", newValue: availability }], summary: `${pName} set availability to ${availability} for match vs ${mLabel}` });
     } catch (err) {
       handleFirestoreError(
         err,
@@ -1540,6 +1589,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         updatedAt: serverTimestamp(),
       });
       const p = players.find((p) => p.id === playerId);
+      logAudit({ ...getActor(), action: "created", entity: "fee", entityId: id, entityLabel: title, changes: [{ field: "amount", newValue: `₹${amount}` }], summary: `Added fee "${title}" (₹${amount}) for ${p?.name || playerId}` });
       createNotification(
         playerId,
         "Fee Added",
@@ -1566,12 +1616,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const updateData: any = { status, updatedAt: serverTimestamp() };
       if (paymentMethod) updateData.paymentMethod = paymentMethod;
       await updateDoc(docRef, updateData);
-      
+
       const player = players.find((p) => p.id === playerId);
       const fee = otherFees.find((f) => f.id === feeId);
+      const auditAction = status === "Paid" ? "paid" as const : "status_change" as const;
+      logAudit({ ...getActor(), action: auditAction, entity: "fee", entityId: feeId, entityLabel: fee?.title || feeId, changes: [{ field: "status", oldValue: fee?.status, newValue: status }], summary: `${player?.name || "Player"} ${status === "Paid" ? "paid" : `status → ${status}`} fee "${fee?.title || ""}"` });
 
       if (status === "Paid" && player && fee) {
-        // Notify player
         createNotification(
           player.id,
           "Payment Successful",
@@ -1604,13 +1655,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteOtherFee = async (playerId: string, feeId: string, cancelledBy?: string) => {
+    const oldFee = otherFees.find(f => f.id === feeId);
+    const playerName = players.find(p => p.id === playerId)?.name || playerId;
     const docRef = doc(db, "players", playerId, "otherFees", feeId);
     try {
       if (cancelledBy) {
         await updateDoc(docRef, { status: "Cancelled", cancelledBy, cancelledAt: serverTimestamp(), updatedAt: serverTimestamp() });
         setOtherFees((prev) => prev.map((f) => f.id === feeId ? { ...f, status: "Cancelled" as const, cancelledBy } : f));
+        logAudit({ ...getActor(), action: "status_change", entity: "fee", entityId: feeId, entityLabel: oldFee?.title || feeId, changes: [{ field: "status", oldValue: oldFee?.status, newValue: "Cancelled" }], summary: `Cancelled fee "${oldFee?.title || ""}" for ${playerName}` });
       } else {
         await deleteDoc(docRef);
+        logAudit({ ...getActor(), action: "deleted", entity: "fee", entityId: feeId, entityLabel: oldFee?.title || feeId, changes: [], summary: `Deleted fee "${oldFee?.title || ""}" for ${playerName}` });
       }
     } catch (err) {
       handleFirestoreError(
@@ -1632,6 +1687,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      logAudit({ ...getActor(), action: "created", entity: "fee", entityId: id, entityLabel: name, changes: [{ field: "amount", newValue: `₹${amount}` }], summary: `Created fee template "${name}" (₹${amount})` });
       await refreshFeeTemplates();
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `feeTemplates/${id}`);
@@ -1639,9 +1695,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteFeeTemplate = async (templateId: string) => {
+    const oldTpl = feeTemplates.find(t => t.id === templateId);
     const docRef = doc(db, "feeTemplates", templateId);
     try {
       await deleteDoc(docRef);
+      logAudit({ ...getActor(), action: "deleted", entity: "fee", entityId: templateId, entityLabel: oldTpl?.name || templateId, changes: [], summary: `Deleted fee template "${oldTpl?.name || templateId}"` });
       await refreshFeeTemplates();
     } catch (err) {
       handleFirestoreError(
@@ -1664,6 +1722,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "fee_plan", entityId: id, entityLabel: plan.name, changes: [], summary: `Created fee plan "${plan.name}"` });
       await refreshFeePlans();
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `feePlans/${id}`);
@@ -1672,9 +1731,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const updateFeePlan = async (planId: string, updates: Partial<FeePlan>) => {
+    const oldPlan = feePlans.find(p => p.id === planId);
     const docRef = doc(db, "feePlans", planId);
     try {
       await updateDoc(docRef, cleanPayload({ ...updates, updatedAt: serverTimestamp() }));
+      logAudit({ ...getActor(), action: "updated", entity: "fee_plan", entityId: planId, entityLabel: oldPlan?.name || planId, changes: diffChanges(oldPlan, updates), summary: `Updated fee plan "${oldPlan?.name || planId}"` });
       await refreshFeePlans();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `feePlans/${planId}`);
@@ -1683,9 +1744,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteFeePlan = async (planId: string) => {
+    const oldPlan = feePlans.find(p => p.id === planId);
     const docRef = doc(db, "feePlans", planId);
     try {
       await deleteDoc(docRef);
+      logAudit({ ...getActor(), action: "deleted", entity: "fee_plan", entityId: planId, entityLabel: oldPlan?.name || planId, changes: [], summary: `Deleted fee plan "${oldPlan?.name || planId}"` });
       await refreshFeePlans();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `feePlans/${planId}`);
@@ -1707,6 +1770,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         updatedAt: serverTimestamp(),
       };
       await updateDoc(docRef, updates);
+      const pmt = payments.find(p => p.id === paymentId);
+      const playerName = players.find(p => p.id === pmt?.playerId)?.name || "Player";
+      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerName} fee plan`, changes: [{ field: "feeOverride", newValue: `₹${feeOverride}` }, { field: "planTag", newValue: planTag }], summary: `Applied fee plan "${planTag}" (₹${feeOverride}) to ${playerName}` });
       setPayments((prev) =>
         prev.map((p) =>
           p.id === paymentId && p.matchId === matchId
@@ -1811,6 +1877,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     });
     try {
       await batch.commit();
+      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: sourcePaymentId, entityLabel: `${sourcePlayerName} sponsored`, changes: [{ field: "sponsoredBy", newValue: targetPlayerName }, { field: "feeOverride", newValue: "₹0" }], summary: `${targetPlayerName} is now sponsoring ${sourcePlayerName}'s match fee` });
       setPayments((prev) =>
         prev.map((p) => {
           if (p.id === sourcePaymentId && p.matchId === matchId) {
@@ -1859,6 +1926,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       };
       if (guestName) data.guestName = guestName;
       await setDoc(docRef, data);
+      const pName = players.find(pl => pl.id === playerId)?.name || playerId;
+      const mOpponent = matches.find(m => m.id === matchId)?.opponent || matchId;
+      logAudit({ ...getActor(), action: "created", entity: "payment", entityId: id, entityLabel: `${pName} - ${mOpponent}`, changes: [{ field: "status", newValue: status }, { field: "availability", newValue: availability }, ...(guestName ? [{ field: "guestName", newValue: guestName }] : [])], summary: `Added ${guestName ? `guest "${guestName}"` : pName} to match vs ${mOpponent}` });
       if (status === "Unpaid") {
         createNotification(
           playerId,
@@ -1930,6 +2000,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "post", entityId: id, entityLabel: (post.text || "").slice(0, 40), changes: [], summary: `Created post: "${(post.text || "").slice(0, 60)}"` });
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `posts/${id}`);
@@ -1938,18 +2009,22 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updatePost = async (postId: string, text: string) => {
     try {
+      const oldPost = posts.find(p => p.id === postId);
       await updateDoc(doc(db, "posts", postId), {
         text,
         updatedAt: serverTimestamp(),
       });
+      logAudit({ ...getActor(), action: "updated", entity: "post", entityId: postId, entityLabel: (text || "").slice(0, 40), changes: [{ field: "text", oldValue: (oldPost?.text || "").slice(0, 60), newValue: text.slice(0, 60) }], summary: `Updated post` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `posts/${postId}`);
     }
   };
 
   const deletePost = async (postId: string) => {
+    const oldPost = posts.find(p => p.id === postId);
     try {
       await deleteDoc(doc(db, "posts", postId));
+      logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted post` });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
     }
@@ -1998,6 +2073,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "subscription", entityId: id, entityLabel: plan.name, changes: [], summary: `Created subscription plan "${plan.name}"` });
       await refreshSubscriptionPlans();
       return id;
     } catch (err) {
@@ -2010,6 +2086,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const updateSubscriptionPlan = async (plan: SubscriptionPlan) => {
+    const oldPlan = subscriptionPlans.find(s => s.id === plan.id);
     const docRef = doc(db, "subscriptionPlans", plan.id);
     const { id, createdAt, updatedAt, ...data } = plan;
     try {
@@ -2017,6 +2094,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         docRef,
         cleanPayload({ ...data, updatedAt: serverTimestamp() }),
       );
+      logAudit({ ...getActor(), action: "updated", entity: "subscription", entityId: plan.id, entityLabel: plan.name, changes: diffChanges(oldPlan, data), summary: `Updated subscription plan "${plan.name}"` });
       await refreshSubscriptionPlans();
     } catch (err) {
       handleFirestoreError(
@@ -2028,8 +2106,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteSubscriptionPlan = async (planId: string) => {
+    const oldPlan = subscriptionPlans.find(s => s.id === planId);
     try {
       await deleteDoc(doc(db, "subscriptionPlans", planId));
+      logAudit({ ...getActor(), action: "deleted", entity: "subscription", entityId: planId, entityLabel: oldPlan?.name || planId, changes: [], summary: `Deleted subscription plan "${oldPlan?.name || planId}"` });
       await refreshSubscriptionPlans();
     } catch (err) {
       handleFirestoreError(
@@ -2048,6 +2128,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     try {
       const dataToSave = cleanPayload({ ...history, createdAt: serverTimestamp() });
       await setDoc(docRef, dataToSave);
+      const playerName = players.find(p => p.id === history.playerId)?.name || history.playerId;
+      logAudit({ ...getActor(), action: "updated", entity: "subscription", entityId: id, entityLabel: `${playerName} subscription`, changes: [{ field: "oldExpiryDate", oldValue: history.oldExpiryDate, newValue: undefined }, { field: "newExpiryDate", newValue: history.newExpiryDate }, { field: "paidAmount", newValue: `₹${history.paidAmount}` }], summary: `${history.adminName} renewed subscription for ${playerName} (₹${history.paidAmount})` });
       return id;
     } catch (err) {
       handleFirestoreError(
@@ -2062,23 +2144,31 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     try {
       await setDoc(doc(db, "outOfPlays", id), cleanPayload({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+      const playerName = players.find(p => p.id === data.playerId)?.name || data.playerId;
+      logAudit({ ...getActor(), action: "created", entity: "out_of_play", entityId: id, entityLabel: playerName, changes: [{ field: "startDate", newValue: data.startDate }, { field: "endDate", newValue: data.endDate }], summary: `Marked ${playerName} as PNA from ${data.startDate} to ${data.endDate}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `outOfPlays/${id}`);
     }
   };
 
   const updateOutOfPlay = async (data: OutOfPlay) => {
+    const oldOop = outOfPlays.find(o => o.id === data.id);
     const { id, createdAt, updatedAt, ...rest } = data;
     try {
       await updateDoc(doc(db, "outOfPlays", id), cleanPayload({ ...rest, updatedAt: serverTimestamp() }));
+      const playerName = players.find(p => p.id === data.playerId)?.name || data.playerId;
+      logAudit({ ...getActor(), action: "updated", entity: "out_of_play", entityId: id, entityLabel: playerName, changes: diffChanges(oldOop, rest), summary: `Updated PNA for ${playerName}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `outOfPlays/${id}`);
     }
   };
 
   const deleteOutOfPlay = async (id: string) => {
+    const oldOop = outOfPlays.find(o => o.id === id);
+    const playerName = oldOop ? (players.find(p => p.id === oldOop.playerId)?.name || oldOop.playerId) : id;
     try {
       await deleteDoc(doc(db, "outOfPlays", id));
+      logAudit({ ...getActor(), action: "deleted", entity: "out_of_play", entityId: id, entityLabel: playerName, changes: [], summary: `Removed PNA for ${playerName}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `outOfPlays/${id}`);
     }
@@ -2095,6 +2185,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "merchandise", entityId: id, entityLabel: merch.name, changes: [], summary: `Added merchandise "${merch.name}" (₹${merch.basePrice})` });
       await refreshMerchandises();
       return id;
     } catch (err) {
@@ -2103,12 +2194,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const updateMerchandise = async (id: string, merch: Partial<Merchandise>) => {
+    const oldMerch = merchandises.find(m => m.id === id);
     const docRef = doc(db, "merchandises", id);
     try {
       await updateDoc(
         docRef,
         cleanPayload({ ...merch, updatedAt: serverTimestamp() }),
       );
+      logAudit({ ...getActor(), action: "updated", entity: "merchandise", entityId: id, entityLabel: oldMerch?.name || id, changes: diffChanges(oldMerch, merch), summary: `Updated merchandise "${oldMerch?.name || id}"` });
       await refreshMerchandises();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `merchandises/${id}`);
@@ -2116,8 +2209,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deleteMerchandise = async (id: string) => {
+    const oldMerch = merchandises.find(m => m.id === id);
     try {
       await deleteDoc(doc(db, "merchandises", id));
+      logAudit({ ...getActor(), action: "deleted", entity: "merchandise", entityId: id, entityLabel: oldMerch?.name || id, changes: [], summary: `Deleted merchandise "${oldMerch?.name || id}"` });
       await refreshMerchandises();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `merchandises/${id}`);
@@ -2135,6 +2230,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
+      logAudit({ ...getActor(), action: "created", entity: "merch_order", entityId: id, entityLabel: `${order.playerName} - ${order.merchName}`, changes: [], summary: `${order.playerName} ordered "${order.merchName}" (₹${order.price})` });
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `merchOrders/${id}`);
@@ -2142,20 +2238,24 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const updateMerchOrder = async (id: string, order: Partial<MerchOrder>) => {
+    const oldOrder = merchOrders.find(o => o.id === id);
     const docRef = doc(db, "merchOrders", id);
     try {
       await updateDoc(
         docRef,
         cleanPayload({ ...order, updatedAt: serverTimestamp() }),
       );
+      logAudit({ ...getActor(), action: "updated", entity: "merch_order", entityId: id, entityLabel: `${oldOrder?.playerName || ""} - ${oldOrder?.merchName || id}`, changes: diffChanges(oldOrder, order), summary: `Updated order for "${oldOrder?.merchName || id}" by ${oldOrder?.playerName || ""}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `merchOrders/${id}`);
     }
   };
 
   const deleteMerchOrder = async (id: string) => {
+    const oldOrder = merchOrders.find(o => o.id === id);
     try {
       await deleteDoc(doc(db, "merchOrders", id));
+      logAudit({ ...getActor(), action: "deleted", entity: "merch_order", entityId: id, entityLabel: `${oldOrder?.playerName || ""} - ${oldOrder?.merchName || id}`, changes: [], summary: `Deleted order for "${oldOrder?.merchName || id}" by ${oldOrder?.playerName || ""}` });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `merchOrders/${id}`);
     }
