@@ -591,9 +591,6 @@ function MembersView({
                 if (foundPlan) {
                   setPaidAmount(foundPlan.fee);
                   const todayStr = new Date().toISOString().split("T")[0];
-                  // Only default start/paid dates when they're still blank;
-                  // don't clobber a date the admin already picked.
-                  const effectiveStart = startDate || todayStr;
                   if (!startDate) {
                     setStartDate(todayStr);
                     setAutoCalculated((prev) => ({ ...prev, start: true }));
@@ -603,7 +600,17 @@ function MembersView({
                     setAutoCalculated((prev) => ({ ...prev, paid: true }));
                   }
                   if (foundPlan.durationDays > 0) {
-                    const newExpiry = addDays(effectiveStart, foundPlan.durationDays);
+                    const pid = editingPlayerId || selectedPlayerId;
+                    const currentPlayer = pid ? store.players.find(p => p.id === pid) : undefined;
+                    const currentExpiry = currentPlayer?.studioExpiryDate || currentPlayer?.studioEndDate;
+                    let baseDate = todayStr;
+                    if (currentExpiry) {
+                      const expDate = new Date(currentExpiry);
+                      if (!isNaN(expDate.getTime()) && expDate > new Date()) {
+                        baseDate = expDate.toISOString().split("T")[0];
+                      }
+                    }
+                    const newExpiry = addDays(baseDate, foundPlan.durationDays);
                     if (newExpiry) {
                       setExpiryDate(newExpiry);
                       setAutoCalculated((prev) => ({ ...prev, expiry: true }));

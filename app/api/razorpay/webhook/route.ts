@@ -101,16 +101,41 @@ export async function POST(req: NextRequest) {
                } else if (data.type === "subscription") {
                   if (data.planId && data.userId) {
                     const durationDays = data.durationDays || 30;
-                    const endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-                    
+                    const now = new Date();
+
+                    let currentExpiry: string | undefined;
+                    try {
+                       const playerQuery = await db.collection("players").where("id", "==", data.userId).get();
+                       if (!playerQuery.empty) {
+                          const pData = playerQuery.docs[0].data();
+                          currentExpiry = pData.studioExpiryDate || pData.studioEndDate;
+                       }
+                       if (!currentExpiry) {
+                          const appUserDoc = await db.collection("appUsers").doc(data.userId).get();
+                          if (appUserDoc.exists) {
+                             const aData = appUserDoc.data();
+                             currentExpiry = aData?.studioExpiryDate || aData?.studioEndDate;
+                          }
+                       }
+                    } catch (_) {}
+
+                    let baseDate = now;
+                    if (currentExpiry) {
+                       const exp = new Date(currentExpiry);
+                       if (!isNaN(exp.getTime()) && exp > now) {
+                          baseDate = exp;
+                       }
+                    }
+                    const endDate = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
                     await db.collection("subscriptionHistory").add({
                       planId: data.planId,
                       userId: data.userId,
                       amount: data.amount || 0,
-                      startDate: new Date().toISOString(),
+                      startDate: now.toISOString(),
                       endDate: endDate,
                       status: "Active",
-                      createdAt: new Date()
+                      createdAt: now
                     });
 
                     try {
@@ -118,21 +143,21 @@ export async function POST(req: NextRequest) {
                        if (!playerQuery.empty) {
                           await playerQuery.docs[0].ref.update({
                              studioExpiryDate: endDate,
-                             updatedAt: new Date()
+                             updatedAt: now
                           });
                        }
                        const appUserQuery = await db.collection("appUsers").where("uid", "==", data.userId).get();
                        if (!appUserQuery.empty) {
                           await appUserQuery.docs[0].ref.update({
                              studioExpiryDate: endDate,
-                             updatedAt: new Date()
+                             updatedAt: now
                           });
                        } else {
                           const appUserDoc = await db.collection("appUsers").doc(data.userId).get();
                           if (appUserDoc.exists) {
                              await appUserDoc.ref.update({
                                 studioExpiryDate: endDate,
-                                updatedAt: new Date()
+                                updatedAt: now
                              });
                           }
                        }
