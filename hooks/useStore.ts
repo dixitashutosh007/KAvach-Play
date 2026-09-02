@@ -1238,6 +1238,25 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const bulkUpdateMatches = async (updates: { match: Match; changes: Partial<Match> }[]) => {
+    if (updates.length === 0) return;
+    const BATCH_LIMIT = 400;
+    for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
+      const chunk = updates.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      for (const { match, changes } of chunk) {
+        const { id, createdAt, updatedAt, ...existing } = match;
+        batch.update(doc(db, "matches", id), cleanPayload({ ...changes, updatedAt: serverTimestamp() }));
+      }
+      await batch.commit();
+    }
+    for (const { match, changes } of updates) {
+      const oldMatch = matches.find(m => m.id === match.id);
+      logAudit({ ...getActor(), action: "updated", entity: "match", entityId: match.id, entityLabel: `vs ${match.opponent}`, changes: diffChanges(oldMatch, changes), summary: `Updated match vs ${match.opponent} on ${match.date}` });
+      syncMatchToCalendar("upsert", match.id);
+    }
+  };
+
   const deleteMatch = async (matchId: string) => {
     const oldMatch = matches.find((m) => m.id === matchId);
     const docRef = doc(db, "matches", matchId);
@@ -2281,6 +2300,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     matches,
     addMatch,
     updateMatch,
+    bulkUpdateMatches,
     deleteMatch,
     players,
     addPlayer,

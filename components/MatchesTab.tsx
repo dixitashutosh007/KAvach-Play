@@ -3186,12 +3186,13 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      for (const [id, changes] of Array.from(dirty.entries())) {
-        const existing = store.matches.find(m => m.id === id);
-        if (existing) {
-          await store.updateMatch({ ...existing, ...changes });
-        }
-      }
+      const updates = Array.from(dirty.entries())
+        .map(([id, changes]) => {
+          const match = store.matches.find(m => m.id === id);
+          return match ? { match, changes } : null;
+        })
+        .filter(Boolean) as { match: Match; changes: Partial<Match> }[];
+      await store.bulkUpdateMatches(updates);
       setDirty(new Map());
     } finally {
       setSaving(false);
@@ -3383,7 +3384,7 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
                     <tr key={`empty-${row.dateStr}`} className="bg-white/[0.02]">
                       <td className="text-center text-xs text-white/20 font-mono px-2">-</td>
                       <td className="px-2 py-2 text-xs text-white/30 font-medium" colSpan={2}>{row.dayLabel}</td>
-                      <td colSpan={11} className="px-2 py-2 text-xs text-emerald-400/60 italic">Empty Slot</td>
+                      <td colSpan={11} className="px-2 py-2 text-xs text-emerald-400/60 italic">Open Slot</td>
                     </tr>
                   );
                 }
