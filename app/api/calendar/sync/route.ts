@@ -13,6 +13,7 @@
  *   { action: "resync"  }                          — re-push every active match
  *   { action: "status"  }                          — SA email + connectivity test
  *   { action: "list-events" }                      — list all calendar events
+ *   { action: "purge" }                            — delete ALL calendar events + clear googleEventIds
  */
 
 import { NextResponse } from "next/server";
@@ -103,6 +104,46 @@ export async function POST(req: Request) {
     if (action === "list-events") {
       const events = await listAllEvents();
       return NextResponse.json({ ok: true, events });
+    }
+
+    // ---- purge: wipe ALL events from the calendar + clear googleEventIds ----
+    if (action === "purge") {
+      const [calendarEvents, matchSnap] = await Promise.all([
+        listAllEvents(),
+        db.collection("matches").get(),
+      ]);
+
+      let deleted = 0;
+      const errors: string[] = [];
+
+      for (const evt of calendarEvents) {
+        try {
+          await deleteMatchEvent(evt.eventId);
+          deleted++;
+        } catch (err: any) {
+          errors.push(`${evt.summary || evt.eventId}: ${err?.message || String(err)}`);
+        }
+      }
+
+      const BATCH_SIZE = 400;
+      const docsWithEventId = matchSnap.docs.filter(
+        (d) => (d.data() as any)?.googleEventId,
+      );
+      for (let i = 0; i < docsWithEventId.length; i += BATCH_SIZE) {
+        const chunk = docsWithEventId.slice(i, i + BATCH_SIZE);
+        const batch = db.batch();
+        for (const d of chunk) {
+          batch.update(d.ref, { googleEventId: FieldValue.delete() });
+        }
+        await batch.commit();
+      }
+
+      return NextResponse.json({
+        ok: errors.length === 0,
+        deleted,
+        clearedMatches: docsWithEventId.length,
+        errors,
+      });
     }
 
     // ---- delete ----

@@ -3181,6 +3181,8 @@ type SyncProgress = {
 
 function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
   const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [purging, setPurging] = useState(false);
+  const [purgeConfirm, setPurgeConfirm] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{
     checked: boolean;
     inSync: boolean;
@@ -3367,6 +3369,23 @@ function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
     URL.revokeObjectURL(url);
   };
 
+  const handlePurge = async () => {
+    setPurging(true);
+    setSyncMsg("");
+    setSyncStatus(null);
+    try {
+      const json = await calPost({ action: "purge" });
+      setSyncMsg(
+        `Calendar reset: ${json.deleted} event${json.deleted === 1 ? "" : "s"} deleted, ${json.clearedMatches} match link${json.clearedMatches === 1 ? "" : "s"} cleared.${json.errors?.length ? ` ${json.errors.length} failed.` : ""} Now hit "Sync to Calendar" to push fresh.`,
+      );
+    } catch (err: any) {
+      setSyncMsg(`Purge failed: ${err?.message || String(err)}`);
+    } finally {
+      setPurging(false);
+      setPurgeConfirm(false);
+    }
+  };
+
   const busy = !!progress && progress.phase !== "done";
 
   return (
@@ -3406,6 +3425,34 @@ function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
           <Download className="w-3.5 h-3.5" />
           Export Schedule
         </button>
+        {!purgeConfirm ? (
+          <button
+            onClick={() => setPurgeConfirm(true)}
+            disabled={busy || purging}
+            className="flex items-center gap-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-300 transition disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Reset Calendar
+          </button>
+        ) : (
+          <span className="flex items-center gap-1.5">
+            <span className="text-[11px] text-red-300">Delete all calendar events?</span>
+            <button
+              onClick={handlePurge}
+              disabled={purging}
+              className="rounded-lg bg-red-500 hover:bg-red-600 px-3 py-1.5 text-[11px] font-bold uppercase text-white transition disabled:opacity-50"
+            >
+              {purging ? "Deleting…" : "Yes, Reset"}
+            </button>
+            <button
+              onClick={() => setPurgeConfirm(false)}
+              disabled={purging}
+              className="rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase text-white transition"
+            >
+              Cancel
+            </button>
+          </span>
+        )}
       </div>
 
       {syncStatus && (
