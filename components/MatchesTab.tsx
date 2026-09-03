@@ -58,6 +58,9 @@ import {
   X,
   Undo2,
   ArrowRightLeft,
+  Download,
+  RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, FC } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
@@ -1027,6 +1030,10 @@ export function MatchesTab({
                   </button>
                 )}
               </div>
+            )}
+
+            {isAdmin && !isAdding && (
+              <MatchToolbar store={store} />
             )}
           </div>
 
@@ -3162,6 +3169,139 @@ const SHEET_FILTER_LABELS: Record<SheetFilter, string> = {
   next_6m: "Next 6 Months",
   next_all: "Next All",
 };
+
+function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+
+  const calendarId = store.appConfig?.googleCalendarId;
+  const calendarUrl = calendarId
+    ? `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}`
+    : "";
+
+  const handleResync = async () => {
+    setSyncing(true);
+    setSyncMsg("");
+    try {
+      const res = await authedFetch("/api/calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resync" }),
+      });
+      const text = await res.text();
+      if (!text) {
+        setSyncMsg("Resync timed out — try again.");
+        return;
+      }
+      const json = JSON.parse(text);
+      if (json.ok) {
+        setSyncMsg(
+          `Synced ${json.synced} match${json.synced === 1 ? "" : "es"}${json.removed ? `, removed ${json.removed}` : ""}.`,
+        );
+      } else {
+        setSyncMsg(
+          `Synced ${json.synced || 0}, ${json.errors?.length || 0} failed.`,
+        );
+      }
+    } catch (err: any) {
+      setSyncMsg(`Sync failed: ${err?.message || String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleExport = () => {
+    const activeMatches = store.matches.filter(
+      (m) => !m.isArchived && m.result !== "Abandoned",
+    );
+    const sorted = [...activeMatches].sort((a, b) => {
+      const da = a.date.replace(/\//g, "-");
+      const db_ = b.date.replace(/\//g, "-");
+      return da.localeCompare(db_);
+    });
+
+    const groundMap = new Map(store.grounds.map((g) => [g.id, g.name]));
+    const tournamentMap = new Map(store.tournaments.map((t) => [t.id, t.name]));
+
+    const esc = (v: string) => {
+      if (!v) return "";
+      if (v.includes(",") || v.includes('"') || v.includes("\n"))
+        return `"${v.replace(/"/g, '""')}"`;
+      return v;
+    };
+
+    const header = "Date,Time,Opponent,Type,Format,Jersey,Ground,Tournament,Result";
+    const rows = sorted.map((m) => {
+      const ground = m.groundId ? groundMap.get(m.groundId) || "" : "";
+      const tournament = m.tournamentId ? tournamentMap.get(m.tournamentId) || "" : "";
+      let result = m.result || "Pending";
+      if (
+        (m.result === "KAvach Won" || m.result === "KAvach Lost") &&
+        m.resultMarginAmount
+      ) {
+        result += ` by ${m.resultMarginAmount} ${m.resultMarginType || "runs"}`;
+      }
+      return [
+        formatDate(m.date),
+        m.time || "",
+        m.opponent || "TBD",
+        m.matchType || "",
+        m.format || "",
+        m.jerseyColor || "",
+        ground,
+        tournament,
+        result,
+      ]
+        .map(esc)
+        .join(",");
+    });
+
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `KAvach_Match_Schedule_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={handleResync}
+        disabled={syncing}
+        className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition disabled:opacity-50"
+      >
+        <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+        {syncing ? "Syncing…" : "Sync to Calendar"}
+      </button>
+      {calendarUrl && (
+        <a
+          href={calendarUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          View Calendar
+        </a>
+      )}
+      <button
+        onClick={handleExport}
+        className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
+      >
+        <Download className="w-3.5 h-3.5" />
+        Export Schedule
+      </button>
+      {syncMsg && (
+        <span className="text-[11px] text-white/60">{syncMsg}</span>
+      )}
+    </div>
+  );
+}
 
 function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
   const [dirty, setDirty] = useState<Map<string, Partial<Match>>>(new Map());
