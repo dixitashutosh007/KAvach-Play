@@ -1238,7 +1238,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
-  const bulkUpdateMatches = async (updates: { match: Match; changes: Partial<Match> }[]) => {
+  const bulkUpdateMatches = async (
+    updates: { match: Match; changes: Partial<Match> }[],
+    opts?: { skipCalendarSync?: boolean },
+  ) => {
     if (updates.length === 0) return;
     const BATCH_LIMIT = 400;
     for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
@@ -1253,7 +1256,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     for (const { match, changes } of updates) {
       const oldMatch = matches.find(m => m.id === match.id);
       logAudit({ ...getActor(), action: "updated", entity: "match", entityId: match.id, entityLabel: `vs ${match.opponent}`, changes: diffChanges(oldMatch, changes), summary: `Updated match vs ${match.opponent} on ${match.date}` });
-      syncMatchToCalendar("upsert", match.id);
+      if (!opts?.skipCalendarSync) {
+        syncMatchToCalendar("upsert", match.id);
+      }
     }
   };
 

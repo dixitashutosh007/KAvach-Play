@@ -300,3 +300,43 @@ export async function testCalendarAccess(): Promise<{ ok: boolean; error?: strin
     return { ok: false, error: err?.message || String(err) };
   }
 }
+
+export type CalendarEvent = {
+  eventId: string;
+  kavachMatchId?: string;
+  summary: string;
+  startDate?: string;
+};
+
+/** Fetch all events from the calendar (paginated). */
+export async function listAllEvents(): Promise<CalendarEvent[]> {
+  const events: CalendarEvent[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({ maxResults: "250", showDeleted: "false" });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await calendarFetch(`/events?${params}`, { method: "GET" });
+    if (!res.ok) throw new Error(`List events failed (${res.status}): ${await res.text()}`);
+    const json = (await res.json()) as {
+      items?: Array<{
+        id: string;
+        summary?: string;
+        start?: { dateTime?: string; date?: string };
+        extendedProperties?: { private?: Record<string, string> };
+        status?: string;
+      }>;
+      nextPageToken?: string;
+    };
+    for (const item of json.items || []) {
+      if (item.status === "cancelled") continue;
+      events.push({
+        eventId: item.id,
+        kavachMatchId: item.extendedProperties?.private?.kavachMatchId,
+        summary: item.summary || "",
+        startDate: item.start?.dateTime || item.start?.date || "",
+      });
+    }
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return events;
+}

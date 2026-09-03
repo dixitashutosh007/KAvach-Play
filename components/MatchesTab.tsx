@@ -3170,8 +3170,26 @@ const SHEET_FILTER_LABELS: Record<SheetFilter, string> = {
   next_all: "Next All",
 };
 
+type SyncProgress = {
+  phase: "checking" | "syncing" | "done";
+  current: number;
+  total: number;
+  synced: number;
+  removed: number;
+  errors: number;
+};
+
 function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
-  const [syncing, setSyncing] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    checked: boolean;
+    inSync: boolean;
+    appCount: number;
+    calCount: number;
+    missing: number;
+    orphans: number;
+  } | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
 
   const calendarId = store.appConfig?.googleCalendarId;
@@ -3179,41 +3197,122 @@ function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
     ? `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}`
     : "";
 
-  const handleResync = async () => {
-    setSyncing(true);
+  const calPost = async (body: any) => {
+    const res = await authedFetch("/api/calendar/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!text) throw new Error("Empty response (timeout)");
+    return JSON.parse(text);
+  };
+
+  const activeMatches = store.matches.filter(
+    (m) => !m.isArchived && m.result !== "Abandoned",
+  );
+
+  const handleCheckSync = async () => {
+    setStatusLoading(true);
     setSyncMsg("");
     try {
-      const res = await authedFetch("/api/calendar/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "resync" }),
+      const json = await calPost({ action: "list-events" });
+      const calEvents: Array<{ eventId: string; kavachMatchId?: string; summary: string }> =
+        json.events || [];
+      const calMatchIds = new Set(
+        calEvents.filter((e) => e.kavachMatchId).map((e) => e.kavachMatchId!),
+      );
+      const appMatchIds = new Set(activeMatches.map((m) => m.id));
+
+      const missing = activeMatches.filter((m) => !calMatchIds.has(m.id)).length;
+      const orphans = calEvents.filter(
+        (e) => e.kavachMatchId && !appMatchIds.has(e.kavachMatchId),
+      ).length;
+
+      setSyncStatus({
+        checked: true,
+        inSync: missing === 0 && orphans === 0,
+        appCount: activeMatches.length,
+        calCount: calEvents.length,
+        missing,
+        orphans,
       });
-      const text = await res.text();
-      if (!text) {
-        setSyncMsg("Resync timed out — try again.");
-        return;
+    } catch (err: any) {
+      setSyncMsg(`Check failed: ${err?.message || String(err)}`);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const handleResync = async () => {
+    setSyncMsg("");
+    setSyncStatus(null);
+
+    const prog: SyncProgress = {
+      phase: "checking",
+      current: 0,
+      total: 0,
+      synced: 0,
+      removed: 0,
+      errors: 0,
+    };
+    setProgress({ ...prog });
+
+    try {
+      const json = await calPost({ action: "list-events" });
+      const calEvents: Array<{ eventId: string; kavachMatchId?: string }> =
+        json.events || [];
+      const calMatchIds = new Set(
+        calEvents.filter((e) => e.kavachMatchId).map((e) => e.kavachMatchId!),
+      );
+      const appMatchIds = new Set(activeMatches.map((m) => m.id));
+
+      const toUpsert = activeMatches;
+      const orphanEventIds = calEvents
+        .filter((e) => e.kavachMatchId && !appMatchIds.has(e.kavachMatchId))
+        .map((e) => e.eventId);
+
+      prog.total = toUpsert.length + orphanEventIds.length;
+      prog.phase = "syncing";
+      setProgress({ ...prog });
+
+      for (const match of toUpsert) {
+        try {
+          await calPost({ action: "upsert", matchId: match.id });
+          prog.synced++;
+        } catch {
+          prog.errors++;
+        }
+        prog.current++;
+        setProgress({ ...prog });
       }
-      const json = JSON.parse(text);
-      if (json.ok) {
-        setSyncMsg(
-          `Synced ${json.synced} match${json.synced === 1 ? "" : "es"}${json.removed ? `, removed ${json.removed}` : ""}.`,
-        );
-      } else {
-        setSyncMsg(
-          `Synced ${json.synced || 0}, ${json.errors?.length || 0} failed.`,
-        );
+
+      for (const eventId of orphanEventIds) {
+        try {
+          await calPost({ action: "delete", googleEventId: eventId });
+          prog.removed++;
+        } catch {
+          prog.errors++;
+        }
+        prog.current++;
+        setProgress({ ...prog });
       }
+
+      prog.phase = "done";
+      setProgress({ ...prog });
+
+      const parts: string[] = [];
+      if (prog.synced) parts.push(`${prog.synced} synced`);
+      if (prog.removed) parts.push(`${prog.removed} removed`);
+      if (prog.errors) parts.push(`${prog.errors} failed`);
+      setSyncMsg(parts.join(", ") || "Nothing to sync.");
     } catch (err: any) {
       setSyncMsg(`Sync failed: ${err?.message || String(err)}`);
-    } finally {
-      setSyncing(false);
+      setProgress(null);
     }
   };
 
   const handleExport = () => {
-    const activeMatches = store.matches.filter(
-      (m) => !m.isArchived && m.result !== "Abandoned",
-    );
     const sorted = [...activeMatches].sort((a, b) => {
       const da = a.date.replace(/\//g, "-");
       const db_ = b.date.replace(/\//g, "-");
@@ -3268,36 +3367,90 @@ function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
     URL.revokeObjectURL(url);
   };
 
+  const busy = !!progress && progress.phase !== "done";
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <button
-        onClick={handleResync}
-        disabled={syncing}
-        className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition disabled:opacity-50"
-      >
-        <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
-        {syncing ? "Syncing…" : "Sync to Calendar"}
-      </button>
-      {calendarUrl && (
-        <a
-          href={calendarUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={handleCheckSync}
+          disabled={busy || statusLoading}
+          className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition disabled:opacity-50"
+        >
+          <Search className="w-3.5 h-3.5" />
+          {statusLoading ? "Checking…" : "Check Sync"}
+        </button>
+        <button
+          onClick={handleResync}
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded-lg bg-accent/90 hover:bg-accent px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-black transition disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
+          {busy ? "Syncing…" : "Sync to Calendar"}
+        </button>
+        {calendarUrl && (
+          <a
+            href={calendarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            View Calendar
+          </a>
+        )}
+        <button
+          onClick={handleExport}
           className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
         >
-          <ExternalLink className="w-3.5 h-3.5" />
-          View Calendar
-        </a>
+          <Download className="w-3.5 h-3.5" />
+          Export Schedule
+        </button>
+      </div>
+
+      {syncStatus && (
+        <div
+          className={`text-[11px] font-bold rounded-lg p-2 ${
+            syncStatus.inSync
+              ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"
+              : "bg-amber-500/10 border border-amber-500/30 text-amber-300"
+          }`}
+        >
+          {syncStatus.inSync
+            ? `In Sync — ${syncStatus.appCount} matches in app, ${syncStatus.calCount} events on calendar.`
+            : `Out of Sync — ${syncStatus.appCount} in app, ${syncStatus.calCount} on calendar. ${syncStatus.missing ? `${syncStatus.missing} missing from calendar. ` : ""}${syncStatus.orphans ? `${syncStatus.orphans} orphan event${syncStatus.orphans > 1 ? "s" : ""} on calendar.` : ""}`}
+        </div>
       )}
-      <button
-        onClick={handleExport}
-        className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
-      >
-        <Download className="w-3.5 h-3.5" />
-        Export Schedule
-      </button>
+
+      {progress && progress.phase !== "done" && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] text-white/60">
+            <span>
+              {progress.phase === "checking"
+                ? "Loading calendar events…"
+                : `${progress.current} / ${progress.total}`}
+            </span>
+            <span>
+              {progress.synced > 0 && `${progress.synced} synced`}
+              {progress.removed > 0 && ` · ${progress.removed} removed`}
+              {progress.errors > 0 && ` · ${progress.errors} failed`}
+            </span>
+          </div>
+          {progress.total > 0 && (
+            <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent transition-all duration-200 rounded-full"
+                style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {syncMsg && (
-        <span className="text-[11px] text-white/60">{syncMsg}</span>
+        <div className="text-[11px] text-white/60 bg-black/30 border border-glass-border rounded-lg p-2">
+          {syncMsg}
+        </div>
       )}
     </div>
   );
@@ -3306,6 +3459,12 @@ function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
 function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
   const [dirty, setDirty] = useState<Map<string, Partial<Match>>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{
+    phase: "db" | "calendar";
+    current: number;
+    total: number;
+  } | null>(null);
+  const [saveResult, setSaveResult] = useState("");
   const [filter, setFilter] = useState<SheetFilter>("next_3m");
 
   const getVal = (match: Match, field: keyof Match) => {
@@ -3325,17 +3484,38 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveResult("");
+    const updates = Array.from(dirty.entries())
+      .map(([id, changes]) => {
+        const match = store.matches.find(m => m.id === id);
+        return match ? { match, changes } : null;
+      })
+      .filter(Boolean) as { match: Match; changes: Partial<Match> }[];
+
     try {
-      const updates = Array.from(dirty.entries())
-        .map(([id, changes]) => {
-          const match = store.matches.find(m => m.id === id);
-          return match ? { match, changes } : null;
-        })
-        .filter(Boolean) as { match: Match; changes: Partial<Match> }[];
-      await store.bulkUpdateMatches(updates);
+      setSaveProgress({ phase: "db", current: 0, total: updates.length });
+      await store.bulkUpdateMatches(updates, { skipCalendarSync: true });
+
+      setSaveProgress({ phase: "calendar", current: 0, total: updates.length });
+      let calSynced = 0;
+      for (const { match } of updates) {
+        try {
+          await authedFetch("/api/calendar/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "upsert", matchId: match.id }),
+          });
+          calSynced++;
+        } catch {}
+        setSaveProgress((p) => p ? { ...p, current: p.current + 1 } : null);
+      }
       setDirty(new Map());
+      setSaveResult(`Saved ${updates.length} match${updates.length > 1 ? "es" : ""}, ${calSynced} calendar update${calSynced > 1 ? "s" : ""}.`);
+    } catch (err: any) {
+      setSaveResult(`Save failed: ${err?.message || String(err)}`);
     } finally {
       setSaving(false);
+      setSaveProgress(null);
     }
   };
 
@@ -3702,14 +3882,40 @@ function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
       </div>
 
-      {dirty.size > 0 && (
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-accent text-black font-bold px-6 py-3 rounded-xl shadow-lg z-50 hover:bg-accent/90 transition disabled:opacity-50"
-        >
-          {saving ? "Saving..." : `Save Changes (${dirty.size})`}
-        </button>
+      {(dirty.size > 0 || saving || saveResult) && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1.5">
+          {saveProgress && (
+            <div className="bg-black/90 border border-glass-border rounded-xl px-4 py-2 text-[11px] text-white/70 min-w-[200px]">
+              <div className="flex justify-between mb-1">
+                <span>{saveProgress.phase === "db" ? "Saving to database…" : `Calendar ${saveProgress.current}/${saveProgress.total}`}</span>
+              </div>
+              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-accent transition-all duration-200 rounded-full"
+                  style={{
+                    width: saveProgress.phase === "db"
+                      ? "100%"
+                      : `${saveProgress.total > 0 ? Math.round((saveProgress.current / saveProgress.total) * 100) : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {!saving && saveResult && (
+            <div className="bg-black/90 border border-glass-border rounded-xl px-4 py-2 text-[11px] text-emerald-300 font-bold">
+              {saveResult}
+            </div>
+          )}
+          {dirty.size > 0 && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-accent text-black font-bold px-6 py-3 rounded-xl shadow-lg hover:bg-accent/90 transition disabled:opacity-50"
+            >
+              {saving ? "Saving…" : `Save Changes (${dirty.size})`}
+            </button>
+          )}
+        </div>
       )}
     </>
   );

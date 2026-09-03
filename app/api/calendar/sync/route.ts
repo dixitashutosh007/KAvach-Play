@@ -12,6 +12,7 @@
  *   { action: "delete",  matchId, googleEventId? } — remove the event
  *   { action: "resync"  }                          — re-push every active match
  *   { action: "status"  }                          — SA email + connectivity test
+ *   { action: "list-events" }                      — list all calendar events
  */
 
 import { NextResponse } from "next/server";
@@ -26,6 +27,7 @@ import {
   getServiceAccountEmail,
   getCalendarId,
   setCalendarId,
+  listAllEvents,
   type EventContext,
 } from "@/lib/google-calendar";
 
@@ -97,6 +99,12 @@ export async function POST(req: Request) {
       });
     }
 
+    // ---- list-events: return all calendar events for client-side diff ----
+    if (action === "list-events") {
+      const events = await listAllEvents();
+      return NextResponse.json({ ok: true, events });
+    }
+
     // ---- delete ----
     if (action === "delete") {
       const eventId =
@@ -106,12 +114,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // ---- resync: re-push every active match, remove archived/abandoned ----
+    // ---- resync: re-push every active match, remove archived/abandoned + orphans ----
     if (action === "resync") {
-      const [matchSnap, groundSnap, tournamentSnap] = await Promise.all([
+      const [matchSnap, groundSnap, tournamentSnap, calendarEvents] = await Promise.all([
         db.collection("matches").get(),
         db.collection("grounds").get(),
         db.collection("tournaments").get(),
+        listAllEvents(),
       ]);
 
       const groundMap = new Map<string, { name?: string; mapUrl?: string }>();
@@ -137,6 +146,7 @@ export async function POST(req: Request) {
       };
 
       const shouldRemove = (m: Match) => m.isArchived || m.result === "Abandoned";
+      const activeMatchIds = new Set<string>();
 
       let synced = 0;
       let removed = 0;
@@ -157,6 +167,7 @@ export async function POST(req: Request) {
               }
               return "skip" as const;
             }
+            activeMatchIds.add(match.id);
             const ctx = buildCtxLocal(match);
             const eventId = await upsertMatchEvent(match, ctx);
             if (eventId !== match.googleEventId) {
@@ -177,6 +188,20 @@ export async function POST(req: Request) {
           }
         }
       }
+
+      // Delete orphaned calendar events (on calendar but no active app match)
+      const orphans = calendarEvents.filter(
+        (e) => e.kavachMatchId && !activeMatchIds.has(e.kavachMatchId),
+      );
+      for (const orphan of orphans) {
+        try {
+          await deleteMatchEvent(orphan.eventId);
+          removed++;
+        } catch (err: any) {
+          errors.push(`Orphan ${orphan.summary || orphan.eventId}: ${err?.message || String(err)}`);
+        }
+      }
+
       return NextResponse.json({ ok: errors.length === 0, synced, removed, errors });
     }
 
