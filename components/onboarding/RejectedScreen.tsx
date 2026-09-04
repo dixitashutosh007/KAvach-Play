@@ -59,7 +59,7 @@ export function RejectedScreen({
     }
 
     await store.updatePlayer(player.id, {
-      inviteStatus: "Unverified",
+      inviteStatus: "Pending",
       rejectedAt: undefined,
     });
   };

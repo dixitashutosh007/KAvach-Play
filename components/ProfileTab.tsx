@@ -135,7 +135,9 @@ export function ProfileTab({
         authUid: user?.uid,
         name: processedForm.name || "Unknown",
         inviteStatus:
-          formData.mobile && playerToUpdate.inviteStatus !== "Verified"
+          formData.mobile &&
+          playerToUpdate.inviteStatus !== "Verified" &&
+          playerToUpdate.inviteStatus !== "Accepted"
             ? "Pending"
             : playerToUpdate.inviteStatus || "Unverified",
       });

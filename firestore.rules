@@ -125,7 +125,7 @@ service cloud.firestore {
       return data.keys().hasAll(['name', 'mobile', 'inviteStatus', 'createdAt', 'updatedAt'])
         && data.name is string && data.name.size() <= 100
         && data.mobile is string && data.mobile.size() <= 20
-        && data.inviteStatus in ['Pending', 'Accepted', 'Invited', 'Unverified', 'Verified']
+        && data.inviteStatus in ['Pending', 'Accepted', 'Invited', 'Unverified', 'Verified', 'Rejected']
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }

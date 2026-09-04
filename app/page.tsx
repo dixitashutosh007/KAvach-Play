@@ -585,7 +585,12 @@ export default function Home() {
               {clubName}
             </h1>
             <p className="text-white/60 text-xs uppercase tracking-widest font-semibold">
-              Complete Registration
+              Complete Your Profile
+            </p>
+            <p className="text-white/40 text-[11px] mt-2 max-w-xs mx-auto leading-relaxed">
+              {hasMissingMandatory
+                ? `Please fill in: ${missingMandatoryLabels.join(", ")}. Save to submit for admin approval.`
+                : "Fill in the required details below and save to submit for admin approval."}
             </p>
           </div>
           <ProfileTab store={store} forceEdit={true} />

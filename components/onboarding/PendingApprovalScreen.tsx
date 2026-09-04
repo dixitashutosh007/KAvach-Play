@@ -1,81 +1,110 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Shield, Users } from "lucide-react";
+import { CheckCircle, Clock } from "lucide-react";
 
 /**
- * "Registration Pending" and "Awaiting Admin Approval" screens. Both are
- * shown after a player has submitted their info but the admin hasn't yet
- * approved. Two visual styles because they originally lived in different
- * branches — `variant` picks between them.
+ * Shown after a player submits registration. Shows clear step progress
+ * so the player knows exactly where they are in the onboarding flow.
  */
 export function PendingApprovalScreen({
-  variant,
   onLogOut,
   themeStyles,
 }: {
-  variant: "pending" | "awaiting";
+  variant?: "pending" | "awaiting";
   onLogOut: () => Promise<void>;
   themeStyles: React.CSSProperties;
 }) {
-  if (variant === "pending") {
-    return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative"
-        style={themeStyles}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="glass max-w-sm w-full p-8 rounded-2xl border border-white/10 shadow-xl z-10"
-        >
-          <div className="w-12 h-12 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-6 h-6 text-blue-400" />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">Registration Pending</h2>
-          <p className="text-xs text-white/70 leading-relaxed mb-6">
-            Your request has been registered. As soon as the club admin approves it,
-            you will be able to log in. Come back in some time!
-          </p>
-          <button
-            onClick={onLogOut}
-            className="w-full py-3.5 px-6 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20 transition-all text-xs"
-          >
-            Log Out
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
+  const steps = [
+    { label: "Sign Up", done: true },
+    { label: "Profile Submitted", done: true },
+    { label: "Admin Review", done: false, current: true },
+    { label: "Access Granted", done: false },
+  ];
 
-  // "awaiting" variant — larger, more prominent
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-4"
+      className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative"
       style={themeStyles}
     >
-      <div className="glass p-8 rounded-2xl max-w-sm w-full text-center space-y-6 shadow-2xl relative overflow-hidden border border-white/10">
-        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
-        <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-accent/20 animate-pulse">
-          <Users className="w-8 h-8 text-accent" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="glass max-w-sm w-full p-8 rounded-2xl border border-white/10 shadow-xl z-10"
+      >
+        <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto mb-5">
+          <Clock className="w-7 h-7 text-amber-400 animate-pulse" />
         </div>
-        <div className="space-y-3">
-          <h2 className="font-black text-lg text-white tracking-wide uppercase">
-            Awaiting Admin to Approve Your Request
-          </h2>
-          <p className="text-xs text-white/60 leading-relaxed">
-            Your profile registration has been successfully recorded in the squad
-            database. Contact the club desk or stay tuned while your membership is
-            being verified.
+
+        <h2 className="text-xl font-bold text-white mb-1">
+          Waiting for Approval
+        </h2>
+        <p className="text-xs text-white/50 mb-6">
+          Your profile has been submitted successfully
+        </p>
+
+        {/* Step progress */}
+        <div className="flex items-center justify-between mb-6 px-2">
+          {steps.map((step, i) => (
+            <div key={step.label} className="flex items-center">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    step.done
+                      ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
+                      : step.current
+                        ? "bg-amber-500/20 border border-amber-500/40 text-amber-400 animate-pulse"
+                        : "bg-white/5 border border-white/10 text-white/30"
+                  }`}
+                >
+                  {step.done ? (
+                    <CheckCircle className="w-3.5 h-3.5" />
+                  ) : step.current ? (
+                    <Clock className="w-3.5 h-3.5" />
+                  ) : (
+                    <span>{i + 1}</span>
+                  )}
+                </div>
+                <span
+                  className={`text-[9px] mt-1 font-semibold leading-tight ${
+                    step.done
+                      ? "text-emerald-400/80"
+                      : step.current
+                        ? "text-amber-400/80"
+                        : "text-white/30"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+              {i < steps.length - 1 && (
+                <div
+                  className={`w-4 sm:w-6 h-px mx-0.5 mb-4 ${
+                    step.done ? "bg-emerald-500/40" : "bg-white/10"
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
+          <p className="text-xs text-white/70 leading-relaxed">
+            The club admin will review and approve your request.
+            You&apos;ll get full access once approved.{" "}
+            <span className="text-white/40">
+              Check back later or contact the club desk.
+            </span>
           </p>
         </div>
+
         <button
           onClick={onLogOut}
-          className="w-full bg-white/15 text-white font-extrabold py-3 rounded-xl hover:bg-white/20 transition text-xs uppercase tracking-wider"
+          className="w-full py-3 px-6 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20 transition-all text-xs"
         >
           Sign Out
         </button>
-      </div>
+      </motion.div>
     </div>
   );
 }

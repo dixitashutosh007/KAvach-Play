@@ -107,6 +107,7 @@ export function RegistrationForm({
       });
       await setDoc(playerDoc, {
         name: form.name || user.displayName || "",
+        email: form.email || user.email || "",
         mobile: normalizedMobile,
         inviteStatus: "Pending",
         createdAt: serverTimestamp(),
