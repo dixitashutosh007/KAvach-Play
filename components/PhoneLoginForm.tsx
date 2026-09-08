@@ -7,7 +7,13 @@ import {
   ConfirmationResult,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, AlertTriangle, LogIn } from "lucide-react";
+
+interface ExistingPlayerInfo {
+  name: string;
+  loginMethod: string;
+  maskedEmail?: string;
+}
 
 export function PhoneLoginForm({
   onOtherOptions,
@@ -24,6 +30,7 @@ export function PhoneLoginForm({
     useState<ConfirmationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [existingPlayer, setExistingPlayer] = useState<ExistingPlayerInfo | null>(null);
 
   useEffect(() => {
     // We must ensure Recaptcha is initialized only once and on the client side
@@ -58,6 +65,29 @@ export function PhoneLoginForm({
     e.preventDefault();
     if (!phone) return;
     setError("");
+    setExistingPlayer(null);
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/check-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (data.exists) {
+        setExistingPlayer({
+          name: data.name,
+          loginMethod: data.loginMethod,
+          maskedEmail: data.maskedEmail,
+        });
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // If check fails, proceed with OTP (don't block login on API failure)
+    }
 
     const OTP_RATE_LIMIT_KEY = "otp_rate_limit";
     let rateLimitData = { attempts: 0, firstAttemptTime: Date.now() };
@@ -78,16 +108,14 @@ export function PhoneLoginForm({
       setError(
         "Maximum retry attempts reached. Please try again after 15 minutes.",
       );
+      setLoading(false);
       return;
     }
-
-    setLoading(true);
 
     try {
       const appVerifier = (window as any).recaptchaVerifier;
       const formattedPhone = phone.startsWith("+") ? phone : `+91${phone}`;
 
-      // Update rate limit before attempting
       rateLimitData.attempts += 1;
       localStorage.setItem(OTP_RATE_LIMIT_KEY, JSON.stringify(rateLimitData));
 
@@ -98,10 +126,8 @@ export function PhoneLoginForm({
       );
       setConfirmationResult(result);
     } catch (err: any) {
-      // console.error(err); // Commenetd out so the preview wrapper doesn't report a handled error.
       let errMsg = err.message || "Failed to send OTP.";
 
-      // Specifically catch the region blocked error
       if (
         err.code === "auth/operation-not-allowed" &&
         err.message.includes("region")
@@ -113,8 +139,6 @@ export function PhoneLoginForm({
       }
 
       setError(errMsg);
-      // We do not clear and recreate RecaptchaVerifier here anymore.
-      // Re-using the same verifier solves "reCAPTCHA has already been rendered" error.
     } finally {
       setLoading(false);
     }
@@ -149,7 +173,10 @@ export function PhoneLoginForm({
             <input
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setExistingPlayer(null);
+              }}
               placeholder="9876543210"
               className="w-full px-3.5 py-2 bg-transparent text-white text-sm focus:outline-none"
               required
@@ -157,37 +184,75 @@ export function PhoneLoginForm({
           </div>
         </div>
 
+        {existingPlayer && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center gap-2 justify-center">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <span className="text-xs font-bold text-red-300">Player Already Exists</span>
+            </div>
+            <p className="text-[11px] text-white/70 leading-relaxed text-center">
+              A profile for <strong className="text-white">&quot;{existingPlayer.name}&quot;</strong> already
+              exists with this mobile number.
+            </p>
+            <div className="bg-black/30 rounded-lg px-3 py-2 space-y-1">
+              <p className="text-[11px] text-white/60">
+                <span className="text-white/40">Login using:</span>{" "}
+                <strong className="text-emerald-400">{existingPlayer.loginMethod}</strong>
+              </p>
+              {existingPlayer.maskedEmail && (
+                <p className="text-[10px] text-white/40">
+                  Email: {existingPlayer.maskedEmail}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setExistingPlayer(null);
+                onOtherOptions();
+              }}
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-black text-xs flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition"
+              style={{ backgroundColor: themeAccent, color: themeTextAccent }}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Go to Google / Email Login
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg">
             {error}
           </div>
         )}
 
-        <div className="flex gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onOtherOptions}
-            data-testid="other-auth-options"
-            className="flex-1 py-3 px-4 rounded-xl border border-white/10 text-white text-xs font-bold hover:bg-white/5 transition cursor-pointer text-center"
-          >
-            Email / Google
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 py-3 px-4 rounded-xl bg-accent text-black text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-            style={{ backgroundColor: themeAccent, color: themeTextAccent }}
-          >
-            {loading ? (
-              <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <span>Send OTP</span>
-                <ChevronRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </div>
+        {!existingPlayer && (
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onOtherOptions}
+              data-testid="other-auth-options"
+              className="flex-1 py-3 px-4 rounded-xl border border-white/10 text-white text-xs font-bold hover:bg-white/5 transition cursor-pointer text-center"
+            >
+              Email / Google
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 px-4 rounded-xl bg-accent text-black text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: themeAccent, color: themeTextAccent }}
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Send OTP</span>
+                  <ChevronRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </form>
     );
   }
