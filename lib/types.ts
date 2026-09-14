@@ -308,6 +308,8 @@ export type MatchComment = {
   createdAt?: any;
 };
 
+export type ManualPaymentMethod = "cash_collected" | "club_sponsored" | "part_of_plan" | "deposited_directly";
+
 export type MatchPayment = {
   id: string;
   matchId: string;
@@ -315,7 +317,10 @@ export type MatchPayment = {
   guestName?: string;
   status: "Paid" | "Unpaid" | "Not Playing" | "Failed";
   paymentMethod?: "razorpay" | "manual";
+  manualMethod?: ManualPaymentMethod;
   manualBy?: string;
+  feeCollectedAmount?: number;
+  feeOffsetAmount?: number;
   availability?:
     | "Yes"
     | "No"

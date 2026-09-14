@@ -1474,9 +1474,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     availability?: MatchPayment["availability"],
     paymentMethod?: "manual" | "razorpay",
     manualBy?: string,
+    manualMethod?: MatchPayment["manualMethod"],
+    feeCollectedAmount?: number,
+    feeOffsetAmount?: number,
   ) => {
     setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}) } : p)),
+      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}), ...(manualMethod ? { manualMethod } : {}), ...(feeCollectedAmount !== undefined ? { feeCollectedAmount } : {}), ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}) } : p)),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
@@ -1484,6 +1487,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (availability) updateData.availability = availability;
       if (paymentMethod) updateData.paymentMethod = paymentMethod;
       if (manualBy) updateData.manualBy = manualBy;
+      if (manualMethod) updateData.manualMethod = manualMethod;
+      if (feeCollectedAmount !== undefined) updateData.feeCollectedAmount = feeCollectedAmount;
+      if (feeOffsetAmount !== undefined) updateData.feeOffsetAmount = feeOffsetAmount;
       await updateDoc(docRef, updateData);
 
       const payment = payments.find((p) => p.id === paymentId);
@@ -1594,39 +1600,45 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const addOtherFee = async (
     playerId: string,
-    title: string,
-    amount: number,
+    titleOrObj: string | { title: string; amount: number; comment?: string; templateId?: string },
+    amount?: number,
     comment?: string,
     templateId?: string,
-  ) => {
+  ): Promise<string | undefined> => {
+    const t = typeof titleOrObj === "string" ? titleOrObj : titleOrObj.title;
+    const a = typeof titleOrObj === "string" ? (amount || 0) : titleOrObj.amount;
+    const c = typeof titleOrObj === "string" ? comment : titleOrObj.comment;
+    const tmpl = typeof titleOrObj === "string" ? templateId : titleOrObj.templateId;
     const id = crypto.randomUUID();
     const docRef = doc(db, "players", playerId, "otherFees", id);
     try {
       await setDoc(docRef, {
         id,
         playerId,
-        title,
-        amount,
-        comment: comment || "",
-        templateId: templateId || "",
+        title: t,
+        amount: a,
+        comment: c || "",
+        templateId: tmpl || "",
         status: "Unpaid",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       const p = players.find((p) => p.id === playerId);
-      logAudit({ ...getActor(), action: "created", entity: "fee", entityId: id, entityLabel: title, changes: [{ field: "amount", newValue: `₹${amount}` }], summary: `Added fee "${title}" (₹${amount}) for ${p?.name || playerId}` });
+      logAudit({ ...getActor(), action: "created", entity: "fee", entityId: id, entityLabel: t, changes: [{ field: "amount", newValue: `₹${a}` }], summary: `Added fee "${t}" (₹${a}) for ${p?.name || playerId}` });
       createNotification(
         playerId,
         "Fee Added",
-        `A new fee "${title}" of ₹${amount} was added.`,
+        `A new fee "${t}" of ₹${a} was added.`,
         "email",
       );
+      return id;
     } catch (err) {
       handleFirestoreError(
         err,
         OperationType.CREATE,
         `players/${playerId}/otherFees/${id}`,
       );
+      return undefined;
     }
   };
 

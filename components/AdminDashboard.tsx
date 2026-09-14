@@ -306,7 +306,7 @@ export function AdminDashboard({
       {isFinanceAdmin && (
         <>
           <div className="grid grid-cols-2 gap-4">
-            <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("club", "reminders")}>
+            <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("finance", "dues")}>
                 <div>
                     <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
                     <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
@@ -486,7 +486,7 @@ export function AdminDashboard({
         <div className="mt-4" data-testid="top-dues-section">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-bold text-white tracking-tight">Top Dues</h3>
-            <button onClick={() => setActiveTab("club", "reminders")} className="text-xs text-accent hover:underline">View All</button>
+            <button onClick={() => setActiveTab("finance", "dues")} className="text-xs text-accent hover:underline">View All</button>
           </div>
           <div className="glass rounded-xl border border-glass-border divide-y divide-glass-border overflow-hidden">
             {topDuePlayers.map((d, i) => (
@@ -774,10 +774,14 @@ function RecordCatchesModal({
     [store.players],
   );
 
-  const recentMatches = useMemo(
-    () => [...store.matches].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 20),
-    [store.matches],
-  );
+  const recentMatches = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const oneMonthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    return [...store.matches]
+      .filter((m) => m.date && m.date <= today && m.date >= oneMonthAgo)
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+      .slice(0, 10);
+  }, [store.matches]);
 
   const filtered = searchQ
     ? activePlayers.filter((p) => p.name.toLowerCase().includes(searchQ.toLowerCase()))

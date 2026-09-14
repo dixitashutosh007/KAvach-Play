@@ -46,8 +46,13 @@ export function ProfileTab({
       !appUser?.locality ||
       !appUser?.bloodGroup ||
       !appUser?.emergencyContact ||
-      !appUser?.mobile);
+      !appUser?.mobile ||
+      !appUser?.email ||
+      !appUser?.chestSize ||
+      !appUser?.jerseyNumber ||
+      appUser?.jerseyNumber === "10");
   const [isEditing, setIsEditing] = useState(forceEdit || hasMissingMandatory);
+  const [submitted, setSubmitted] = useState(false);
   // Email is provider-controlled ONLY if Firebase Auth gave us one (Google or
   // email/password sign-in). For phone-OTP-only users, user.email is null and
   // the field must be editable so they can supply an email during registration.
@@ -124,6 +129,7 @@ export function ProfileTab({
           name: processedForm.name || "Unknown",
           inviteStatus: "Pending",
         });
+        setSubmitted(true);
         setIsEditing(false);
         return;
       }
@@ -165,8 +171,23 @@ export function ProfileTab({
         });
       }
     }
+    setSubmitted(true);
     setIsEditing(false);
   };
+
+  if (submitted && forceEdit) {
+    return (
+      <div className="text-center py-12 space-y-4">
+        <div className="w-16 h-16 mx-auto rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center">
+          <Save className="w-7 h-7 text-accent" />
+        </div>
+        <h2 className="text-lg font-bold text-white">Profile Submitted</h2>
+        <p className="text-white/60 text-sm max-w-xs mx-auto">
+          Your profile has been submitted for admin approval. You&apos;ll get access once approved.
+        </p>
+      </div>
+    );
+  }
 
   // Look up payments for this user based on ID or mobile matching Players array
   const myPayments = linkedPlayer

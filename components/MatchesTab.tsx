@@ -971,7 +971,7 @@ export function MatchesTab({
       {subTab === "grounds" && isAdmin && (
         <GroundsTab store={store} persona={persona || "player"} />
       )}
-      {subTab === "assign" && isAdmin && <AssignFeesAdmin store={store} />}
+      {subTab === "assign" && isAdmin && <AssignFeesAdmin store={store} isSuperAdmin={isSuperAdmin} />}
       {subTab === "tournaments" && isAdmin && <TournamentsTab store={store} />}
 
       {subTab === "matches" && (

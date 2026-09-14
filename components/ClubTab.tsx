@@ -62,13 +62,12 @@ export function ClubTab({
             key={key}
             data-testid={`club-sub-tab-${key}`}
             onClick={() => setSubTab(key)}
-            className={`flex-1 min-w-0 text-[10px] font-bold uppercase py-2 px-1 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap ${
+            className={`shrink-0 text-[10px] font-bold uppercase py-2 px-3 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap ${
               subTab === key ? "bg-accent text-black" : "text-white/50 hover:text-white"
             }`}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">{label}</span>
-            <span className="sm:hidden">{label.slice(0, 4)}</span>
+            {label}
           </button>
         ))}
       </div>

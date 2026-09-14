@@ -157,6 +157,60 @@ export function validateJerseyNumber(input: string | undefined | null): string {
   return "";
 }
 
+export type LateFee = {
+  matchId: string;
+  playerId: string;
+  amount: number;
+  label: string;
+  weeks: number;
+};
+
+export function computeLateFees(
+  matchDate: string,
+  matchId: string,
+  playerId: string,
+  matchLabel: string,
+): LateFee[] {
+  if (!matchDate) return [];
+  const parts = matchDate.split("-");
+  const matchDateObj = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+  const dayOfWeek = matchDateObj.getDay();
+  if (dayOfWeek !== 0 && dayOfWeek !== 6) return [];
+
+  const daysToTuesdayEOD = dayOfWeek === 6 ? 3 : 2;
+  const deadlineDate = new Date(matchDateObj);
+  deadlineDate.setDate(deadlineDate.getDate() + daysToTuesdayEOD);
+  deadlineDate.setHours(23, 59, 59, 999);
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (today <= deadlineDate) return [];
+
+  const fees: LateFee[] = [];
+  fees.push({
+    matchId,
+    playerId,
+    amount: 150,
+    label: `Late Fee: ${matchLabel}`,
+    weeks: 0,
+  });
+
+  const wednesdayDate = new Date(deadlineDate);
+  wednesdayDate.setDate(wednesdayDate.getDate() + 1);
+  const msSinceWednesday = today.getTime() - wednesdayDate.getTime();
+  const weeksPassed = Math.floor(msSinceWednesday / (7 * 86400000));
+  for (let w = 1; w <= weeksPassed; w++) {
+    fees.push({
+      matchId,
+      playerId,
+      amount: 50,
+      label: `Late Fee (Week ${w}): ${matchLabel}`,
+      weeks: w,
+    });
+  }
+  return fees;
+}
+
 export function inputToDbDate(inputDate: string | undefined | null): string {
   if (!inputDate) return "";
   const parts = inputDate.split("/");

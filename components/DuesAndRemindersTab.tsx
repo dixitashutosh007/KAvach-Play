@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert } from "lucide-react";
+import { formatDate, computeLateFees } from "@/lib/utils";
+import type { ManualPaymentMethod } from "@/lib/types";
 
-export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isFinanceAdmin: boolean }) {
-  const [subTab, setSubTab] = useState<"dues_report" | "email_template">("dues_report");
+export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { store: any; isFinanceAdmin: boolean; isSuperAdmin?: boolean }) {
+  const [subTab, setSubTab] = useState<"dues_report" | "dues_table" | "email_template">("dues_report");
 
   // Dues Report State
-  const [dueType, setDueType] = useState<"all" | "matches" | "others">("all");
+  const [dueType, setDueType] = useState<"all" | "matches" | "others" | "latefees">("all");
   const [searchPlayer, setSearchPlayer] = useState("");
   const [filterMatchId, setFilterMatchId] = useState("");
   const [selectedDues, setSelectedDues] = useState<Set<string>>(new Set());
@@ -46,6 +47,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
       <div className="flex items-center gap-3 bg-black/20 p-1 rounded-xl border border-glass-border overflow-x-auto hide-scrollbar">
         {[
           { key: "dues_report", label: "Report" },
+          { key: "dues_table", label: "Table View" },
           { key: "email_template", label: "Email Template" },
         ].map((tab) => {
           const active = subTab === tab.key;
@@ -123,6 +125,10 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
       )}
 
 
+      {subTab === "dues_table" && (
+        <DuesTableView store={store} isSuperAdmin={isSuperAdmin} />
+      )}
+
       {subTab === "dues_report" && (() => {
          const allDues: any[] = [];
          store.players.forEach((p: any) => {
@@ -149,15 +155,44 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                    desc: f.title,
                    groupKey: `other_${f.templateId || f.title}`,
                    groupTitle: `Other Fee: ${f.title}`,
-                   player: p
+                   player: p,
+                   isLateFee: !!(f.templateId && f.templateId.startsWith("latefee_")),
                 });
             });
+
+            store.payments
+              .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid" && (pay.feeOverride === undefined || pay.feeOverride > 0))
+              .forEach((pay: any) => {
+                const m = store.matches.find((mx: any) => mx.id === pay.matchId);
+                if (!m) return;
+                const exempted = store.otherFees.some(
+                  (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
+                );
+                if (exempted) return;
+                const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
+                const fees = computeLateFees(m.date, m.id, p.id, matchLabel);
+                fees.forEach((lf: any, idx: number) => {
+                  allDues.push({
+                    uid: `latefee_${pay.id}_${idx}`,
+                    type: "other",
+                    amount: lf.amount,
+                    desc: lf.label,
+                    groupKey: `latefee_${m.id}`,
+                    groupTitle: `Late Fee: ${matchLabel}`,
+                    player: p,
+                    isLateFee: true,
+                    isVirtual: true,
+                    matchId: m.id,
+                  });
+                });
+              });
          });
 
          const filteredDues = allDues.filter(d => {
             if (d.amount <= 0) return false;
             if (dueType === "matches" && d.type !== "match") return false;
             if (dueType === "others" && d.type !== "other") return false;
+            if (dueType === "latefees" && !d.isLateFee) return false;
             if (filterMatchId && d.groupKey !== `match_${filterMatchId}`) return false;
             if (searchPlayer && !d.player.name.toLowerCase().includes(searchPlayer.toLowerCase())) return false;
             return true;
@@ -401,6 +436,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                     <option value="all">All Types of Dues</option>
                     <option value="matches">Match Fees Only</option>
                     <option value="others">Other Fees Only</option>
+                    <option value="latefees">Late Fees Only</option>
                  </select>
                  <input
                    type="text"
@@ -458,6 +494,11 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                             className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
                           />
                           <h3 className="font-bold text-white text-sm truncate">{group.title}</h3>
+                          {group.key.startsWith("latefee_") && (
+                            <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest shrink-0">
+                              Late Fee
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] font-bold uppercase tracking-widest text-white/50 shrink-0 pl-7 sm:pl-0">
                            {group.items.length} Pending (₹{groupTotal})
@@ -477,9 +518,14 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
                                     className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
                                   />
                                   <span className="font-semibold text-white/90 text-sm truncate">{item.player.name}</span>
+                                  {item.isLateFee && (
+                                    <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1 py-0.5 rounded text-[8px] uppercase font-black tracking-widest shrink-0">
+                                      Penalty
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0 pl-7 sm:pl-0">
-                                  <span className="font-mono text-red-400 text-sm mr-2">₹{item.amount}</span>
+                                  <span className={`font-mono text-sm mr-2 ${item.isLateFee ? "text-orange-400" : "text-red-400"}`}>₹{item.amount}</span>
                                   <button
                                     onClick={() => {
                                       if (!item.player.mobile) {
@@ -595,6 +641,458 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin }: { store: any; isF
         </div>
         );
       })()}
+    </div>
+  );
+}
+
+const MANUAL_METHODS: { key: ManualPaymentMethod; label: string; desc: string }[] = [
+  { key: "cash_collected", label: "Cash Collected", desc: "Counted as fee collected" },
+  { key: "deposited_directly", label: "Deposited Directly", desc: "Counted as fee collected" },
+  { key: "club_sponsored", label: "Club Sponsored", desc: "Full amount as offset (₹0 collected)" },
+  { key: "part_of_plan", label: "Part of Other Plan", desc: "Enter split: collected + offset" },
+];
+
+function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boolean }) {
+  type SortKey = "player" | "amount" | "type";
+  type SortDir = "asc" | "desc";
+  const [sortKey, setSortKey] = useState<SortKey>("player");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [searchPlayer, setSearchPlayer] = useState("");
+  const [payModal, setPayModal] = useState<{
+    uid: string;
+    type: "match" | "other";
+    playerId: string;
+    matchId?: string;
+    playerName: string;
+    amount: number;
+    desc: string;
+    isLateFee?: boolean;
+    isVirtual?: boolean;
+  } | null>(null);
+  const [exemptModal, setExemptModal] = useState<{
+    playerId: string;
+    playerName: string;
+    matchId: string;
+    matchLabel: string;
+  } | null>(null);
+
+  const allDues = useMemo(() => {
+    const dues: {
+      uid: string;
+      type: "match" | "other";
+      playerName: string;
+      playerId: string;
+      matchId?: string;
+      amount: number;
+      desc: string;
+      isLateFee?: boolean;
+      isVirtual?: boolean;
+    }[] = [];
+    store.players.forEach((p: any) => {
+      store.payments
+        .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid")
+        .forEach((pay: any) => {
+          const m = store.matches.find((mx: any) => mx.id === pay.matchId);
+          if (m) {
+            dues.push({
+              uid: pay.id,
+              type: "match",
+              playerName: p.name,
+              playerId: p.id,
+              matchId: m.id,
+              amount: pay.feeOverride !== undefined ? pay.feeOverride : m.fee,
+              desc: `vs ${m.opponent || m.title || "Match"} (${formatDate(m.date)})`,
+            });
+          }
+        });
+      store.otherFees
+        .filter((f: any) => f.playerId === p.id && f.status === "Unpaid")
+        .forEach((f: any) => {
+          dues.push({
+            uid: f.id,
+            type: "other",
+            playerName: p.name,
+            playerId: p.id,
+            amount: f.amount,
+            desc: f.title,
+            isLateFee: !!(f.templateId && f.templateId.startsWith("latefee_")),
+          });
+        });
+
+      store.payments
+        .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid" && (pay.feeOverride === undefined || pay.feeOverride > 0))
+        .forEach((pay: any) => {
+          const m = store.matches.find((mx: any) => mx.id === pay.matchId);
+          if (!m) return;
+          const exempted = store.otherFees.some(
+            (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
+          );
+          if (exempted) return;
+          const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
+          const fees = computeLateFees(m.date, m.id, p.id, matchLabel);
+          fees.forEach((lf: any, idx: number) => {
+            dues.push({
+              uid: `latefee_${pay.id}_${idx}`,
+              type: "other",
+              playerName: p.name,
+              playerId: p.id,
+              matchId: m.id,
+              amount: lf.amount,
+              desc: lf.label,
+              isLateFee: true,
+              isVirtual: true,
+            });
+          });
+        });
+    });
+    return dues;
+  }, [store.players, store.payments, store.otherFees, store.matches]);
+
+  const filtered = useMemo(() => {
+    let list = allDues.filter((d) => d.amount > 0);
+    if (searchPlayer) {
+      list = list.filter((d) =>
+        d.playerName.toLowerCase().includes(searchPlayer.toLowerCase()),
+      );
+    }
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "player") cmp = a.playerName.localeCompare(b.playerName);
+      else if (sortKey === "amount") cmp = a.amount - b.amount;
+      else cmp = a.type.localeCompare(b.type);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }, [allDues, searchPlayer, sortKey, sortDir]);
+
+  const grandTotal = filtered.reduce((s, d) => s + d.amount, 0);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortHeader = ({ label, sKey }: { label: string; sKey: SortKey }) => (
+    <button
+      onClick={() => toggleSort(sKey)}
+      className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition"
+    >
+      {label}
+      <ArrowUpDown className={`w-3 h-3 ${sortKey === sKey ? "text-accent" : "text-white/30"}`} />
+    </button>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 className="text-xl font-bold tracking-tight text-white">
+          All Dues
+          <span className="ml-2 text-sm text-rose-400 font-mono">₹{grandTotal}</span>
+        </h2>
+        <input
+          type="text"
+          placeholder="Filter by player name..."
+          value={searchPlayer}
+          onChange={(e) => setSearchPlayer(e.target.value)}
+          className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white sm:max-w-xs w-full"
+        />
+      </div>
+
+      <div className="glass rounded-xl border border-glass-border overflow-hidden">
+        <div className="grid grid-cols-[1fr_auto_1fr_auto] sm:grid-cols-[1fr_100px_1fr_auto] gap-2 px-4 py-3 bg-white/5 border-b border-glass-border items-center">
+          <SortHeader label="Player" sKey="player" />
+          <SortHeader label="Amount" sKey="amount" />
+          <SortHeader label="Description" sKey="type" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Action</span>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="text-center py-10 text-white/40 italic text-sm">
+            No dues found.
+          </div>
+        ) : (
+          <div className="divide-y divide-white/5 max-h-[60vh] overflow-y-auto">
+            {filtered.map((d) => (
+              <div
+                key={d.uid}
+                className="grid grid-cols-[1fr_auto_1fr_auto] sm:grid-cols-[1fr_100px_1fr_auto] gap-2 px-4 py-3 items-center hover:bg-white/5 transition"
+              >
+                <span className="text-sm font-semibold text-white truncate">{d.playerName}</span>
+                <span className="text-sm font-mono text-rose-400">₹{d.amount}</span>
+                <div className="min-w-0">
+                  <span className="text-sm text-white/70 truncate block">{d.desc}</span>
+                  <span className={`text-[9px] font-bold uppercase tracking-widest ${d.isLateFee ? "text-orange-400" : d.type === "match" ? "text-blue-400" : "text-amber-400"}`}>
+                    {d.isLateFee ? "Late Fee" : d.type === "match" ? "Match Fee" : "Other Fee"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {d.isLateFee && d.isVirtual && isSuperAdmin && d.matchId && (
+                    <button
+                      onClick={() => setExemptModal({ playerId: d.playerId, playerName: d.playerName, matchId: d.matchId!, matchLabel: d.desc })}
+                      className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1.5 rounded-lg transition whitespace-nowrap"
+                      title="Exempt this player from late fees for this match"
+                    >
+                      Exempt
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setPayModal(d)}
+                    className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-lg transition whitespace-nowrap"
+                  >
+                    Mark Paid
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {payModal && (
+        <MarkPaidModal
+          due={payModal}
+          store={store}
+          onClose={() => setPayModal(null)}
+        />
+      )}
+
+      {exemptModal && (
+        <ExemptLateFeeModal
+          playerId={exemptModal.playerId}
+          playerName={exemptModal.playerName}
+          matchId={exemptModal.matchId}
+          matchLabel={exemptModal.matchLabel}
+          store={store}
+          onClose={() => setExemptModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ExemptLateFeeModal({
+  playerId,
+  playerName,
+  matchId,
+  matchLabel,
+  store,
+  onClose,
+}: {
+  playerId: string;
+  playerName: string;
+  matchId: string;
+  matchLabel: string;
+  store: any;
+  onClose: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const handleExempt = async () => {
+    setSaving(true);
+    try {
+      await store.addOtherFee(playerId, {
+        title: `Late Fee Exemption:${matchId}`,
+        amount: 0,
+        comment: `Exempted from late fees for ${matchLabel}`,
+        templateId: `latefee_exempt_${matchId}`,
+      });
+      onClose();
+    } catch {
+      alert("Failed to create exemption.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-white/10 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-400" />
+            Exempt Late Fee
+          </h3>
+          <button onClick={onClose} className="text-white/40 hover:text-white p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-1">
+          <p className="text-sm font-semibold text-white">{playerName}</p>
+          <p className="text-xs text-white/60">{matchLabel}</p>
+        </div>
+
+        <p className="text-xs text-white/50">
+          This will permanently exempt this player from all late fee penalties for this match. This action can only be undone by a Super Admin.
+        </p>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 bg-white/5 hover:bg-white/10 text-white/70 font-bold text-xs uppercase tracking-widest px-4 py-2.5 rounded-lg transition border border-white/10"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleExempt}
+            disabled={saving}
+            className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-bold text-xs uppercase tracking-widest px-4 py-2.5 rounded-lg transition border border-amber-500/30 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Confirm Exemption"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarkPaidModal({
+  due,
+  store,
+  onClose,
+}: {
+  due: {
+    uid: string;
+    type: "match" | "other";
+    playerId: string;
+    matchId?: string;
+    playerName: string;
+    amount: number;
+    desc: string;
+    isLateFee?: boolean;
+    isVirtual?: boolean;
+  };
+  store: any;
+  onClose: () => void;
+}) {
+  const [selectedMethod, setSelectedMethod] = useState<ManualPaymentMethod | null>(null);
+  const [collectedAmount, setCollectedAmount] = useState(String(Math.min(350, due.amount)));
+  const [saving, setSaving] = useState(false);
+
+  const handleConfirm = async () => {
+    if (!selectedMethod) return;
+    setSaving(true);
+    try {
+      let feeCollectedAmt: number | undefined;
+      let feeOffsetAmt: number | undefined;
+
+      if (selectedMethod === "cash_collected" || selectedMethod === "deposited_directly") {
+        feeCollectedAmt = due.amount;
+        feeOffsetAmt = 0;
+      } else if (selectedMethod === "club_sponsored") {
+        feeCollectedAmt = 0;
+        feeOffsetAmt = due.amount;
+      } else if (selectedMethod === "part_of_plan") {
+        const collected = Math.max(0, Math.min(due.amount, Number(collectedAmount) || 0));
+        feeCollectedAmt = collected;
+        feeOffsetAmt = due.amount - collected;
+      }
+
+      const methodLabel = MANUAL_METHODS.find((m) => m.key === selectedMethod)?.label || selectedMethod;
+
+      if (due.isVirtual && due.isLateFee) {
+        const feeId = await store.addOtherFee(due.playerId, {
+          title: due.desc,
+          amount: due.amount,
+          comment: "Auto-levied late fee penalty (admin marked paid)",
+          templateId: `latefee_${due.matchId}`,
+        });
+        if (feeId) await store.updateOtherFeeStatus(due.playerId, feeId, "Paid", "manual");
+      } else if (due.type === "match" && due.matchId) {
+        await store.updatePaymentStatus(
+          due.uid,
+          "Paid",
+          due.matchId,
+          undefined,
+          "manual",
+          methodLabel,
+          selectedMethod,
+          feeCollectedAmt,
+          feeOffsetAmt,
+        );
+      } else {
+        await store.updateOtherFeeStatus(due.playerId, due.uid, "Paid", "manual");
+      }
+      onClose();
+    } catch {
+      alert("Failed to update payment status.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-white/10 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-white text-sm">Mark as Paid</h3>
+          <button onClick={onClose} className="text-white/40 hover:text-white p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="bg-white/5 rounded-lg p-3 space-y-1">
+          <p className="text-sm font-semibold text-white">{due.playerName}</p>
+          <p className="text-xs text-white/50">{due.desc}</p>
+          <p className="text-lg font-black text-rose-400">₹{due.amount}</p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Payment Method</p>
+          {MANUAL_METHODS.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setSelectedMethod(m.key)}
+              className={`w-full text-left p-3 rounded-lg border transition ${
+                selectedMethod === m.key
+                  ? "border-accent bg-accent/10 text-white"
+                  : "border-white/10 text-white/70 hover:bg-white/5"
+              }`}
+            >
+              <span className="text-sm font-bold">{m.label}</span>
+              <span className="block text-[10px] text-white/40 mt-0.5">{m.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {selectedMethod === "part_of_plan" && (
+          <div className="space-y-2 bg-white/5 rounded-lg p-3">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/60 block">
+              Amount to count as Fee Collected
+            </label>
+            <input
+              type="number"
+              value={collectedAmount}
+              onChange={(e) => setCollectedAmount(e.target.value)}
+              min={0}
+              max={due.amount}
+              className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            />
+            <div className="flex justify-between text-xs text-white/50">
+              <span>Collected: ₹{Math.max(0, Math.min(due.amount, Number(collectedAmount) || 0))}</span>
+              <span>Offset: ₹{Math.max(0, due.amount - Math.min(due.amount, Number(collectedAmount) || 0))}</span>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={handleConfirm}
+          disabled={!selectedMethod || saving}
+          className="w-full bg-accent text-black font-bold uppercase tracking-widest text-xs py-3 rounded-xl hover:bg-accent/90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <Check className="w-4 h-4" />
+          {saving ? "Saving..." : "Confirm Payment"}
+        </button>
+      </div>
     </div>
   );
 }

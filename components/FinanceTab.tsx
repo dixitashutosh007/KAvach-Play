@@ -24,7 +24,7 @@ import {
   Plus,
   Calendar,
 } from "lucide-react";
-import { formatDate, normalizeIndianMobile } from "@/lib/utils";
+import { formatDate, normalizeIndianMobile, computeLateFees } from "@/lib/utils";
 import WixFinanceView from "./WixFinanceView";
 import RazorReportView from "./RazorReportView";
 import { CreateFeeAdmin } from "./CreateFeeAdmin";
@@ -36,17 +36,19 @@ export function FinanceTab({
   store,
   persona,
   isFinanceAdmin,
+  isSuperAdmin,
   defaultAction,
 }: {
   store: ReturnType<typeof useStore>;
   persona: "admin" | "player";
   isFinanceAdmin?: boolean;
+  isSuperAdmin?: boolean;
   defaultAction?: string | null;
 }) {
   const { user } = useAuth();
 
   if (persona === "admin" && isFinanceAdmin !== false) {
-    return <AdminFinanceView store={store} defaultAction={defaultAction} />;
+    return <AdminFinanceView store={store} defaultAction={defaultAction} isSuperAdmin={isSuperAdmin} />;
   } else {
     return <PlayerFinanceView store={store} userId={user?.uid} />;
   }
@@ -156,6 +158,52 @@ export function PlayerFinanceView({
     });
   });
 
+  const lateFeeEntries: (UnifiedDue & { linkedMatchDueId: string })[] = [];
+  myPayments.forEach((p) => {
+    if (p.status !== "Unpaid") return;
+    if (p.feeOverride === 0) return;
+    const match = store.matches.find((m: any) => m.id === p.matchId);
+    if (!match) return;
+    const exempted = store.otherFees.some(
+      (f: any) =>
+        f.playerId === p.playerId &&
+        f.title?.startsWith("Late Fee Exemption:") &&
+        f.title?.includes(match.id) &&
+        f.status !== "Cancelled",
+    );
+    if (exempted) return;
+    const matchLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+    const fees = computeLateFees(match.date, match.id, p.playerId, matchLabel);
+    fees.forEach((lf, idx) => {
+      const dueId = `latefee_${p.id}_${idx}`;
+      lateFeeEntries.push({
+        id: dueId,
+        type: "other",
+        title: lf.label,
+        subtitle: "Auto-calculated late fee penalty",
+        amount: lf.amount,
+        rawId: `latefee_${p.matchId}_${p.playerId}_${idx}`,
+        playerId: p.playerId,
+        matchId: match.id,
+        status: "Unpaid",
+        updatedAtSeconds: 0,
+        linkedMatchDueId: `match_${p.id}`,
+      });
+      unifiedDues.push({
+        id: dueId,
+        type: "other",
+        title: lf.label,
+        subtitle: "Auto-calculated late fee penalty",
+        amount: lf.amount,
+        rawId: `latefee_${p.matchId}_${p.playerId}_${idx}`,
+        playerId: p.playerId,
+        matchId: match.id,
+        status: "Unpaid",
+        updatedAtSeconds: 0,
+      });
+    });
+  });
+
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   useEffect(() => {
@@ -177,13 +225,37 @@ export function PlayerFinanceView({
   const [selectedDues, setSelectedDues] = useState<string[]>([]);
 
   const toggleDue = (id: string) => {
-    setSelectedDues((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    const isLateFee = lateFeeEntries.some((lf) => lf.id === id);
+    const linkedMatchSelected = isLateFee && lateFeeEntries.some(
+      (lf) => lf.id === id && selectedDues.includes(lf.linkedMatchDueId),
     );
+    if (isLateFee && linkedMatchSelected) return;
+
+    setSelectedDues((prev) => {
+      if (prev.includes(id)) {
+        let next = prev.filter((x) => x !== id);
+        const linkedLateFees = lateFeeEntries
+          .filter((lf) => lf.linkedMatchDueId === id)
+          .map((lf) => lf.id);
+        if (linkedLateFees.length > 0) {
+          next = next.filter((x) => !linkedLateFees.includes(x));
+        }
+        return next;
+      } else {
+        let next = [...prev, id];
+        const linkedLateFees = lateFeeEntries
+          .filter((lf) => lf.linkedMatchDueId === id)
+          .map((lf) => lf.id);
+        linkedLateFees.forEach((lfId) => {
+          if (!next.includes(lfId)) next.push(lfId);
+        });
+        return next;
+      }
+    });
   };
 
   const selectAll = () => {
-    if (selectedDues.length === dues.length) setSelectedDues([]);
+    if (selectedDues.length >= dues.length) setSelectedDues([]);
     else setSelectedDues(dues.map((d) => d.id));
   };
 
@@ -251,7 +323,20 @@ export function PlayerFinanceView({
               const due = dues.find((d) => d.id === dueId);
               if (due) {
                 paidDuesDetails.push(`${due.title} (₹${due.amount})`);
-                if (due.type === "match" && due.matchId) {
+                const isLateFeeItem = due.rawId.startsWith("latefee_");
+                if (isLateFeeItem && mePlayer) {
+                  updates.push(
+                    (async () => {
+                      const feeId = await store.addOtherFee(mePlayer.id, {
+                        title: due.title,
+                        amount: due.amount,
+                        comment: "Auto-levied late fee penalty",
+                        templateId: `latefee_${due.matchId}`,
+                      });
+                      if (feeId) await store.updateOtherFeeStatus(mePlayer.id, feeId, "Paid", "razorpay");
+                    })(),
+                  );
+                } else if (due.type === "match" && due.matchId) {
                   updates.push(
                     store.updatePaymentStatus(due.rawId, "Paid", due.matchId, undefined, "razorpay"),
                   );
@@ -410,27 +495,35 @@ export function PlayerFinanceView({
           <div className="space-y-2">
             {dues.map((due) => {
               const isSelected = selectedDues.includes(due.id);
+              const lateFeeEntry = lateFeeEntries.find((lf) => lf.id === due.id);
+              const isLockedLateFee = lateFeeEntry && selectedDues.includes(lateFeeEntry.linkedMatchDueId);
+              const isLateFee = !!lateFeeEntry;
 
               return (
                 <div
                   onClick={() => toggleDue(due.id)}
                   key={due.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border transition cursor-pointer ${isSelected ? "bg-accent/10 border-accent/30" : "bg-white/5 border-glass-border hover:bg-white/10"}`}
+                  className={`flex items-center justify-between p-3 rounded-lg border transition ${isLockedLateFee ? "cursor-not-allowed" : "cursor-pointer"} ${isSelected ? (isLateFee ? "bg-orange-500/10 border-orange-500/30" : "bg-accent/10 border-accent/30") : "bg-white/5 border-glass-border hover:bg-white/10"}`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
-                      className={`w-5 h-5 rounded shrink-0 flex items-center justify-center border transition ${isSelected ? "bg-accent border-accent text-black" : "border-glass-border"}`}
+                      className={`w-5 h-5 rounded shrink-0 flex items-center justify-center border transition ${isSelected ? (isLateFee ? "bg-orange-500 border-orange-500 text-black" : "bg-accent border-accent text-black") : "border-glass-border"}`}
                     >
                       {isSelected && <Check className="w-3.5 h-3.5" />}
+                      {isLockedLateFee && <Shield className="w-3 h-3" />}
                     </div>
                     <div className="min-w-0 flex-1 pr-2">
                       <div className="font-bold text-sm tracking-tight leading-snug mb-1 text-white flex flex-wrap items-center gap-2">
                         <span className="break-words">{due.title}</span>
-                        {due.type === "other" && (
+                        {isLateFee ? (
+                          <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest whitespace-nowrap shrink-0">
+                            Late Fee
+                          </span>
+                        ) : due.type === "other" ? (
                           <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest whitespace-nowrap shrink-0">
                             Other Fee
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <div className="text-[10px] text-white/50 break-words">
                         {due.subtitle}
@@ -438,7 +531,7 @@ export function PlayerFinanceView({
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0 pl-2">
-                    <div className="font-mono font-bold text-red-400">
+                    <div className={`font-mono font-bold ${isLateFee ? "text-orange-400" : "text-red-400"}`}>
                       ₹{due.amount}
                     </div>
                   </div>
@@ -973,7 +1066,7 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
   );
 }
 
-function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof useStore>; defaultAction?: string | null }) {
+function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: ReturnType<typeof useStore>; defaultAction?: string | null; isSuperAdmin?: boolean }) {
   const [subTab, setSubTab] = useState<
     "matches" | "wix" | "fee" | "razor" | "dues"
   >((defaultAction as any) || "matches");
@@ -1037,7 +1130,12 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         for (const p of paymentsForMatch) {
           if (p.status !== "Paid") continue;
           const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-          if (p.sponsoredBy) {
+          if (p.feeCollectedAmount !== undefined || p.feeOffsetAmount !== undefined) {
+            feeCollected += p.feeCollectedAmount || 0;
+            feeOffset += p.feeOffsetAmount || 0;
+            if (p.feeCollectedAmount) feeCollectedCount++;
+            else feeOffsetCount++;
+          } else if (p.sponsoredBy) {
             feeOffset += match.fee;
             feeOffsetCount++;
           } else if (p.paymentMethod !== "manual") {
@@ -1045,6 +1143,14 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
             feeCollectedCount++;
             const discount = match.fee - effectiveFee;
             if (discount > 0) feeOffset += discount;
+          } else if (p.manualMethod === "cash_collected" || p.manualMethod === "deposited_directly") {
+            feeCollected += effectiveFee;
+            feeCollectedCount++;
+            const discount = match.fee - effectiveFee;
+            if (discount > 0) feeOffset += discount;
+          } else if (p.manualMethod === "club_sponsored") {
+            feeOffset += effectiveFee;
+            feeOffsetCount++;
           } else {
             feeOffset += match.fee;
             feeOffsetCount++;
@@ -1228,7 +1334,7 @@ function AdminFinanceView({ store, defaultAction }: { store: ReturnType<typeof u
         </div>
       )}
 
-      {subTab === "dues" && <DuesAndRemindersTab store={store} isFinanceAdmin={true} />}
+      {subTab === "dues" && <DuesAndRemindersTab store={store} isFinanceAdmin={true} isSuperAdmin={isSuperAdmin} />}
       {subTab === "razor" && <RazorReportView store={store} />}
       {subTab === "wix" && <WixFinanceView store={store} />}
 

@@ -6,8 +6,10 @@ import { formatDate, dbToInputDate } from "@/lib/utils";
 
 export function AssignFeesAdmin({
   store,
+  isSuperAdmin,
 }: {
   store: ReturnType<typeof useStore>;
+  isSuperAdmin?: boolean;
 }) {
   const { user } = useAuth();
   const adminName = store.appUsers.find((u) => u.id === user?.uid)?.name || "Admin";
@@ -428,12 +430,17 @@ export function AssignFeesAdmin({
                       className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-white/5 transition gap-3"
                     >
                       <div>
-                        <div className="font-bold text-sm text-white">
-                          {fee.title}{" "}
-                          <span className="text-white/40 font-normal ml-1">
+                        <div className="font-bold text-sm text-white flex items-center gap-2 flex-wrap">
+                          <span>{fee.title}</span>
+                          {fee.templateId?.startsWith("latefee_") && (
+                            <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">
+                              Late Fee
+                            </span>
+                          )}
+                          <span className="text-white/40 font-normal">
                             for
-                          </span>{" "}
-                          {p?.name || "Unknown"}
+                          </span>
+                          <span>{p?.name || "Unknown"}</span>
                         </div>
                         <div className="text-[10px] text-white/40 mt-0.5">
                           {fee.createdAt?.seconds
@@ -474,20 +481,24 @@ export function AssignFeesAdmin({
                         >
                           Mark {isPaid ? "Unpaid" : "Paid"}
                         </button>
-                        <button
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Are you sure you want to delete this fee?",
-                              )
-                            ) {
-                              store.deleteOtherFee(fee.playerId, fee.id, adminName);
-                            }
-                          }}
-                          className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition border border-red-500/20 whitespace-nowrap"
-                        >
-                          Delete
-                        </button>
+                        {(isSuperAdmin || !fee.templateId?.startsWith("latefee_")) && (
+                          <button
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  fee.templateId?.startsWith("latefee_")
+                                    ? "This is an auto-levied late fee penalty. Are you sure you want to delete it?"
+                                    : "Are you sure you want to delete this fee?",
+                                )
+                              ) {
+                                store.deleteOtherFee(fee.playerId, fee.id, adminName);
+                              }
+                            }}
+                            className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition border border-red-500/20 whitespace-nowrap"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
