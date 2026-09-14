@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { formatDate } from "@/lib/utils";
+import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { LoadingScreen } from "./LoadingScreen";
 
 export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<typeof useStore>, setPreviewTheme?: (val: string | null) => void }) {
@@ -1565,7 +1565,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               // (fresh sign-ins), then email prefix, then a UID hash.
               if (u.name) return u.name;
               const p = store.players.find(
-                (pp) => pp.id === u.id || (pp.mobile && u.mobile && pp.mobile === u.mobile),
+                (pp) => pp.id === u.id || (pp.mobile && u.mobile && normalizeIndianMobile(pp.mobile) === normalizeIndianMobile(u.mobile)),
               );
               if (p?.name) return p.name;
               if (u.email) return u.email.split("@")[0];

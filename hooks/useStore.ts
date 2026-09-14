@@ -62,6 +62,7 @@ import {
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { User } from "firebase/auth";
 import { createNotification } from "@/lib/notifications";
+import { normalizeIndianMobile } from "@/lib/utils";
 import { logAudit, diffChanges, AuditActorType } from "@/lib/auditLog";
 
 function cleanPayload<T extends object>(obj: T): Partial<T> {
@@ -1339,7 +1340,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const appUserToUpdate =
         appUsers.find((u) => u.id === playerId) ||
         appUsers.find(
-          (u) => u.mobile && playerObj && u.mobile === playerObj.mobile,
+          (u) => u.mobile && playerObj?.mobile && normalizeIndianMobile(u.mobile) === normalizeIndianMobile(playerObj.mobile),
         );
 
       if (appUserToUpdate) {

@@ -22,7 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { dbToInputDate } from "@/lib/utils";
+import { dbToInputDate, normalizeIndianMobile } from "@/lib/utils";
 
 // Make sure to add Razorpay to window type if needed
 declare global {
@@ -41,7 +41,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
   const player =
     store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
-    store.players.find((p) => p.mobile === appUser?.mobile && p.mobile);
+    store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
 
   const isStudioUser = appUser?.isStudioMember || player?.isStudioMember;
 

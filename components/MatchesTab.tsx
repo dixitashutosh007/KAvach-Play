@@ -1529,7 +1529,7 @@ export function MatchPayments({
   const mePlayer =
     store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
     (appUser?.mobile
-      ? store.players.find((p) => p.mobile === appUser.mobile)
+      ? store.players.find((p) => p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile))
       : null);
   const myPayment = mePlayer
     ? matchPayments.find((p) => p.playerId === mePlayer.id)

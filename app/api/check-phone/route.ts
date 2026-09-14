@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import firebaseConfig from "../../../firebase-applet-config.json";
+import { normalizeIndianMobile } from "@/lib/utils";
 
 function ensureAdminApp() {
   const apps = getApps();
@@ -14,15 +15,6 @@ function ensureAdminApp() {
   return initializeApp({ projectId: firebaseConfig.projectId });
 }
 
-function normalizePhone(raw: string): string {
-  let digits = raw.replace(/\D/g, "");
-  if (digits.length === 13 && digits.startsWith("091")) digits = digits.slice(3);
-  else if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
-  if (digits.length > 10) digits = digits.slice(-10);
-  return digits;
-}
-
 export async function POST(req: Request) {
   try {
     const { phone } = await req.json();
@@ -30,8 +22,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ exists: false });
     }
 
-    const digits = normalizePhone(phone);
-    if (digits.length !== 10) {
+    const normalized = normalizeIndianMobile(phone);
+    if (normalized.length < 12) {
       return NextResponse.json({ exists: false });
     }
 
@@ -51,8 +43,8 @@ export async function POST(req: Request) {
       const data = doc.data();
       if (data.disabled || data.mergedInto) continue;
 
-      const pDigits = normalizePhone(data.mobile || "");
-      if (pDigits.length === 10 && pDigits === digits) {
+      const pNormalized = normalizeIndianMobile(data.mobile || "");
+      if (pNormalized.length >= 12 && pNormalized === normalized) {
         const hasEmail = !!data.email && data.email.includes("@");
         const loginMethod = hasEmail ? "Google Sign-In" : "your existing login method";
         const maskedEmail = hasEmail

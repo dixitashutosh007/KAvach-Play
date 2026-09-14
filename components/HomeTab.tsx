@@ -9,6 +9,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Post, Player } from "@/lib/types";
+import { normalizeIndianMobile } from "@/lib/utils";
 import {
   MessageSquare,
   MapPin,
@@ -174,7 +175,7 @@ export function HomeTab({
     (p) =>
       p.id === currentUserId ||
       p.authUid === currentUserId ||
-      (appUser?.mobile && p.mobile === appUser.mobile),
+      (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
   ), [store.players, currentUserId, appUser?.mobile]);
   
   const mePlayer = myPlayers[0] || null;

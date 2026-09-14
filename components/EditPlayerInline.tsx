@@ -19,7 +19,7 @@ export function EditPlayerInline({
   const isSuperAdmin = currentAppUser?.role === "admin" || hasAdminClaim;
 
   const appUserMatch = store.appUsers.find(
-    (u) => u.id === player.id || (u.mobile && u.mobile === player.mobile),
+    (u) => u.id === player.id || (u.mobile && player.mobile && normalizeIndianMobile(u.mobile) === normalizeIndianMobile(player.mobile)),
   );
 
   const activeFeePlans = store.feePlans.filter((fp: FeePlan) => fp.isActive !== false);

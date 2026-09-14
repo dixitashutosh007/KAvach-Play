@@ -24,7 +24,7 @@ import {
   Plus,
   Calendar,
 } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import WixFinanceView from "./WixFinanceView";
 import RazorReportView from "./RazorReportView";
 import { CreateFeeAdmin } from "./CreateFeeAdmin";
@@ -67,7 +67,7 @@ export function PlayerFinanceView({
     (p) =>
       p.id === userId ||
       p.authUid === userId ||
-      (appUser?.mobile && p.mobile === appUser.mobile),
+      (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
   );
 
   const mePlayer = myPlayers[0] || null;

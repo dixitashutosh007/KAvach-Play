@@ -36,7 +36,7 @@ export function ProfileTab({
   const userPhone = user?.phoneNumber || appUser?.mobile;
   const linkedPlayer =
     store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
-    store.players.find((p) => p.mobile && userPhone && p.mobile === userPhone);
+    store.players.find((p) => p.mobile && userPhone && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(userPhone));
   const isAdmin = appUser?.role === "admin" || hasAdminClaim;
 
   const hasMissingMandatory =
@@ -102,8 +102,8 @@ export function ProfileTab({
     // Also sync to the player document auto-created on sign up
     // We locate the player document by matching the OLD mobile, or the user's ID
     const playerToUpdate =
-      store.players.find((p) => p.mobile && p.mobile === formData.mobile) ||
-      store.players.find((p) => p.mobile && p.mobile === (appUser?.mobile || linkedPlayer?.mobile)) ||
+      store.players.find((p) => p.mobile && normalizeIndianMobile(p.mobile) === processedForm.mobile) ||
+      store.players.find((p) => p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser?.mobile || linkedPlayer?.mobile)) ||
       store.players.find(
         (p) => p.id === (appUser?.id || user?.uid) || p.authUid === (appUser?.id || user?.uid),
       );
@@ -111,7 +111,7 @@ export function ProfileTab({
     if (formData.mobile && playerToUpdate) {
       // Find if another admin-created player with the NEW mobile already exists
       const duplicatePlayer = store.players.find(
-        (p) => p.mobile === formData.mobile && p.id !== playerToUpdate.id,
+        (p) => p.mobile && normalizeIndianMobile(p.mobile) === processedForm.mobile && p.id !== playerToUpdate.id,
       );
       if (duplicatePlayer) {
         // Keep the admin's record intact to preserve stats/payments

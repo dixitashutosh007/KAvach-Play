@@ -49,6 +49,7 @@ import {
   getDocFromServer,
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
+import { normalizeIndianMobile } from "@/lib/utils";
 
 import { useTheme } from "@/hooks/useTheme";
 import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
@@ -332,13 +333,13 @@ export default function Home() {
   const existingPlayerWithSamePhone =
     isMobileAuth && user?.phoneNumber
       ? store.players.find((p) => {
-          const profileMobile = (p.mobile || "").replace(/[^0-9]/g, "");
-          const authMobile = (user.phoneNumber || "").replace(/[^0-9]/g, "");
+          if (!p.mobile || p.disabled || p.mergedInto) return false;
+          const normProfile = normalizeIndianMobile(p.mobile);
+          const normAuth = normalizeIndianMobile(user.phoneNumber || "");
           return (
-            profileMobile &&
-            authMobile &&
-            (authMobile.endsWith(profileMobile) ||
-              profileMobile.endsWith(authMobile)) &&
+            normProfile.length >= 12 &&
+            normAuth.length >= 12 &&
+            normProfile === normAuth &&
             p.id !== user?.uid
           );
         })
@@ -426,7 +427,7 @@ export default function Home() {
             "",
           photoURL: user.photoURL || oldUserData.photoURL || "",
           role: oldUserData.role || "player",
-          mobile: user.phoneNumber || existingMatch.mobile || "",
+          mobile: normalizeIndianMobile(user.phoneNumber || existingMatch.mobile || ""),
           isStudioMember: existingMatch.isStudioMember || false,
         });
       } else {
@@ -505,7 +506,7 @@ export default function Home() {
   const appUser = store.appUsers.find((u) => u.id === user.uid);
   const player =
     store.players.find((p) => p.id === user.uid || p.authUid === user.uid) ||
-    store.players.find((p) => p.mobile === appUser?.mobile && p.mobile);
+    store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
 
   if (player?.disabled) {
     return (
@@ -765,7 +766,7 @@ export default function Home() {
                     (p) =>
                       p.id === appUser?.id ||
                       p.authUid === appUser?.id ||
-                      (appUser?.mobile && p.mobile === appUser.mobile),
+                      (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
                   );
                   let dueValue = 0;
                   if (myPlayers.length > 0) {
