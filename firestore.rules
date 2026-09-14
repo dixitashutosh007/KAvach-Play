@@ -535,5 +535,9 @@ service cloud.firestore {
         && incoming().updatedAt == request.time;
       allow delete: if isAnyAdmin();
     }
+
+    match /clubLeads/{leadId} {
+      allow read, write: if isAnyAdmin();
+    }
   }
 }

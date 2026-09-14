@@ -34,6 +34,11 @@ import {
   Badge,
   BadgeTypeDef,
   CatchLogEntry,
+  ClubLead,
+  LeadNote,
+  LeadStatus,
+  LeadInterest,
+  LeadSource,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -107,6 +112,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [feePlans, setFeePlans] = useState<FeePlan[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
   const [badgeTypeDefs, setBadgeTypeDefs] = useState<BadgeTypeDef[]>([]);
+  const [leads, setLeads] = useState<ClubLead[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
@@ -960,6 +966,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => handleFirestoreError(err, OperationType.LIST, "outOfPlays"),
     );
     lazySubsRef.current.set("outOfPlays", unsub);
+  }, [user]);
+
+  const ensureLeads = useCallback(() => {
+    if (!user || lazySubsRef.current.has("clubLeads")) return;
+    const unsub = onSnapshot(
+      collection(db, "clubLeads"),
+      (snapshot) => {
+        const list = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() }) as ClubLead,
+        );
+        list.sort((a, b) => {
+          const ta = a.createdAt?.seconds
+            ? a.createdAt.seconds * 1000
+            : a.createdAt
+            ? new Date(a.createdAt).getTime()
+            : 0;
+          const tb = b.createdAt?.seconds
+            ? b.createdAt.seconds * 1000
+            : b.createdAt
+            ? new Date(b.createdAt).getTime()
+            : 0;
+          return tb - ta;
+        });
+        setLeads(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "clubLeads"),
+    );
+    lazySubsRef.current.set("clubLeads", unsub);
   }, [user]);
 
   const updateAppConfig = async (config: Partial<AppConfig>) => {
@@ -2298,6 +2332,111 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const addLead = async (
+    lead: Omit<ClubLead, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = doc(collection(db, "clubLeads")).id;
+    const docRef = doc(db, "clubLeads", id);
+    try {
+      const normalizedMobile = normalizeIndianMobile(lead.mobile);
+      await setDoc(
+        docRef,
+        cleanPayload({
+          ...lead,
+          mobile: normalizedMobile,
+          notes: lead.notes || [],
+          status: lead.status || "new",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+      logAudit({
+        ...getActor(),
+        action: "created",
+        entity: "lead",
+        entityId: id,
+        entityLabel: lead.name,
+        changes: [],
+        summary: `Added new enquiry for ${lead.name} (${lead.source || "lead"})`,
+      });
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `clubLeads/${id}`);
+    }
+  };
+
+  const updateLead = async (id: string, updates: Partial<ClubLead>) => {
+    const oldLead = leads.find((l) => l.id === id);
+    const docRef = doc(db, "clubLeads", id);
+    try {
+      const payload: any = { ...updates, updatedAt: serverTimestamp() };
+      if (updates.mobile) {
+        payload.mobile = normalizeIndianMobile(updates.mobile);
+      }
+      await updateDoc(docRef, cleanPayload(payload));
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "lead",
+        entityId: id,
+        entityLabel: oldLead?.name || id,
+        changes: diffChanges(oldLead, updates),
+        summary: `Updated enquiry for ${oldLead?.name || id}`,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clubLeads/${id}`);
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    const oldLead = leads.find((l) => l.id === id);
+    try {
+      await deleteDoc(doc(db, "clubLeads", id));
+      logAudit({
+        ...getActor(),
+        action: "deleted",
+        entity: "lead",
+        entityId: id,
+        entityLabel: oldLead?.name || id,
+        changes: [],
+        summary: `Deleted enquiry for ${oldLead?.name || id}`,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `clubLeads/${id}`);
+    }
+  };
+
+  const addLeadNote = async (leadId: string, text: string) => {
+    const oldLead = leads.find((l) => l.id === leadId);
+    if (!oldLead || !text.trim()) return;
+    const actor = getActor();
+    const newNote: LeadNote = {
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      text: text.trim(),
+      adminId: actor.actorId,
+      adminName: actor.actorName,
+      createdAt: new Date().toISOString(),
+    };
+    const updatedNotes = [...(oldLead.notes || []), newNote];
+    try {
+      await updateDoc(doc(db, "clubLeads", leadId), {
+        notes: updatedNotes,
+        updatedAt: serverTimestamp(),
+      });
+      logAudit({
+        ...actor,
+        action: "updated",
+        entity: "lead",
+        entityId: leadId,
+        entityLabel: oldLead.name,
+        changes: [{ field: "notes", newValue: text.trim().slice(0, 40) }],
+        summary: `Added conversation note to ${oldLead.name}'s enquiry`,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clubLeads/${leadId}`);
+    }
+  };
+
   const filteredPayments = useMemo(() => {
     return payments.filter((pay) => players.some((pl) => pl.id === pay.playerId));
   }, [payments, players]);
@@ -2413,6 +2552,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     updateBadgeTypeDef,
     deleteBadgeTypeDef,
     recordCatch,
+    leads,
+    ensureLeads,
+    addLead,
+    updateLead,
+    deleteLead,
+    addLeadNote,
     isLoaded,
   };
 }

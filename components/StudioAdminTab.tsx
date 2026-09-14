@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { SubscriptionPlan, Player } from "@/lib/types";
 import { formatDate, inputToDbDate } from "@/lib/utils";
+import { StudioCRMView } from "@/components/studio/StudioCRMView";
 
 export function StudioAdminTab({
   store,
@@ -37,7 +38,7 @@ export function StudioAdminTab({
   defaultAction?: string | null;
   isFeatureEnabled?: (f: string) => boolean;
 }) {
-  const [mainTab, setMainTab] = useState<"management" | "pna">(
+  const [mainTab, setMainTab] = useState<"management" | "crm" | "pna">(
     "management",
   );
   const [subTab, setSubTab] = useState<"members" | "history">(
@@ -107,14 +108,21 @@ export function StudioAdminTab({
   return (
     <div className="space-y-6">
       {/* Master Tabs for Studio Section */}
-      {(!isFeatureEnabled || isFeatureEnabled("pna")) && (
-        <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border" data-testid="studio-tabs">
-          <button
-            onClick={() => setMainTab("management")}
-            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "management" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
-          >
-            <span>🎬</span> Studio
-          </button>
+      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border" data-testid="studio-tabs">
+        <button
+          onClick={() => setMainTab("management")}
+          className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "management" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
+        >
+          <span>🎬</span> Studio
+        </button>
+        <button
+          data-testid="studio-crm-tab"
+          onClick={() => setMainTab("crm")}
+          className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1.5 ${mainTab === "crm" ? "bg-accent text-black" : "text-white/50 hover:text-white"}`}
+        >
+          <span>📋</span> Enquiries / CRM
+        </button>
+        {(!isFeatureEnabled || isFeatureEnabled("pna")) && (
           <button
             data-testid="studio-pna-tab"
             onClick={() => setMainTab("pna")}
@@ -122,30 +130,33 @@ export function StudioAdminTab({
           >
             PNA
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* No Show quick-action — always visible */}
-      <button
-        data-testid="studio-no-show-button"
-        onClick={() => setIsNoShowModalOpen(true)}
-        className="w-full glass p-3 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
-      >
-        <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
-          <UserX className="w-5 h-5 group-hover:scale-110 transition" />
+      {mainTab === "crm" ? (
+        <div className="mt-4">
+          <StudioCRMView store={store} adminId={adminId} adminName={adminName} />
         </div>
-        <div className="text-left">
-          <p className="font-bold text-white text-sm">Add No Show Fee</p>
-          <p className="text-[10px] text-white/50">Fine absent studio members</p>
-        </div>
-      </button>
-
-      {mainTab === "pna" && (!isFeatureEnabled || isFeatureEnabled("pna")) ? (
+      ) : mainTab === "pna" && (!isFeatureEnabled || isFeatureEnabled("pna")) ? (
         <div className="mt-4">
           <PNAView store={store} />
         </div>
       ) : mainTab === "pna" ? null : (
         <>
+          {/* No Show quick-action — only in Studio management view */}
+          <button
+            data-testid="studio-no-show-button"
+            onClick={() => setIsNoShowModalOpen(true)}
+            className="w-full glass p-3 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
+          >
+            <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
+              <UserX className="w-5 h-5 group-hover:scale-110 transition" />
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-white text-sm">Add No Show Fee</p>
+              <p className="text-[10px] text-white/50">Fine absent studio members</p>
+            </div>
+          </button>
           <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border mt-4">
             <button
               onClick={() => setSubTab("members")}
