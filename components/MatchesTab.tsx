@@ -190,7 +190,7 @@ export function MatchesTab({
     tournamentId: "",
   });
 
-  const { user } = useAuth();
+  const { user, hasAdminClaim } = useAuth();
   const currentUserObj = store.appUsers.find(u => u.id === user?.uid);
   const currentUserName = currentUserObj?.name || "Admin";
 
@@ -306,11 +306,12 @@ export function MatchesTab({
   const userHasAdminPrivileges =
     isSuperAdmin ||
     isMatchAdmin ||
+    hasAdminClaim ||
     currentUserObj?.role === "admin" ||
     currentUserObj?.isMatchAdmin ||
     currentUserObj?.isClubAdmin;
 
-  const isAdmin = (persona === "admin" || userHasAdminPrivileges) && isMatchAdmin !== false;
+  const isAdmin = Boolean(persona === "admin" || userHasAdminPrivileges);
 
   useEffect(() => {
     if (!isAdmin && subTab !== "matches") {
@@ -2965,7 +2966,7 @@ export function MatchPayments({
                             className="text-[9px] font-bold uppercase tracking-widest bg-white/5 text-white/60 border border-white/15 px-2 py-1 rounded hover:bg-white/10 hover:text-white transition cursor-pointer [&>option]:bg-[#0f172a]"
                             defaultValue=""
                           >
-                            <option value="" disabled>+ Other Plan</option>
+                            <option value="" disabled>+ Match Fee Plan</option>
                             {otherPlans.map((op) => (
                               <option key={op.id} value={op.id}>
                                 {op.name} ({op.type})
@@ -4506,6 +4507,15 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
   onCancelDelete,
 }) => {
   const [isMounted, setIsMounted] = useState(false);
+  const { user, hasAdminClaim } = useAuth();
+  const currentUser = store.appUsers.find((u) => u.id === user?.uid);
+  const effectiveAdmin = Boolean(
+    isAdmin ||
+    hasAdminClaim ||
+    currentUser?.role === "admin" ||
+    currentUser?.isMatchAdmin ||
+    currentUser?.isClubAdmin
+  );
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -4760,6 +4770,9 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                               </div>
                               <div className="space-y-2 pt-1 flex flex-col justify-start h-full min-h-[5rem]">
                                 {day.matches.length > 0 && day.matches.map((m: Match) => {
+                                  const matchPayments = store.payments.filter(p => p.matchId === m.id && store.players.some((pl) => pl.id === p.playerId));
+                                  const paidCount = matchPayments.filter(p => p.status === "Paid").length;
+                                  const unpaidCount = matchPayments.filter(p => p.status === "Unpaid").length;
                                   return (
                                     <div
                                       key={m.id}
@@ -4780,16 +4793,100 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                           </span>
                                         )}
                                       </div>
-                                      <div className="font-bold text-sm leading-tight">
-                                        vs {m.opponent}
-                                      </div>
-                                      <div className="text-[10px] text-white/50">
-                                        {grounds.find((g) => g.id === m.groundId)?.name}
-                                      </div>
-                                      {isAdmin && m.isGroundFeePaid && (
-                                        <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
-                                          <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
+
+                                      {matchToDelete === m.id ? (
+                                        <div className="mt-1 flex items-center justify-between gap-1 bg-black/60 rounded-lg px-2 py-1 border border-red-500/50">
+                                          <span className="text-[9px] text-red-400 uppercase font-bold tracking-wider">
+                                            Sure?
+                                          </span>
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                onConfirmDelete?.(m.id);
+                                              }}
+                                              className="text-red-400 hover:bg-red-500/20 rounded p-1 transition"
+                                            >
+                                              <Check className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                onCancelDelete?.();
+                                              }}
+                                              className="text-white/60 hover:bg-white/10 rounded p-1 transition"
+                                            >
+                                              <span className="text-[10px] font-bold px-0.5">X</span>
+                                            </button>
+                                          </div>
                                         </div>
+                                      ) : (
+                                        <>
+                                          <div className="font-bold text-sm leading-tight text-white/90">
+                                            vs {m.opponent}
+                                          </div>
+                                          <div className="text-[10px] text-white/50 truncate">
+                                            {grounds.find((g) => g.id === m.groundId)?.name || "Unknown Ground"}
+                                          </div>
+                                          {effectiveAdmin && m.isGroundFeePaid && (
+                                            <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
+                                              <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
+                                            </div>
+                                          )}
+                                          {effectiveAdmin && (
+                                            <div className="mt-1 flex gap-2 text-[9px] font-bold uppercase tracking-wider">
+                                              <span className="text-emerald-400">{paidCount} Paid</span>
+                                              {unpaidCount > 0 && <span className="text-red-400">{unpaidCount} Unpaid</span>}
+                                            </div>
+                                          )}
+                                          {effectiveAdmin && (
+                                            <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
+                                              <div className="flex items-center gap-1">
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onEditMatch?.(m);
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  title="Edit Match"
+                                                >
+                                                  <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDuplicateMatch?.(m);
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  title="Duplicate Match"
+                                                >
+                                                  <Copy className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDeleteMatch?.(m);
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  title="Delete Match"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                              {m.matchUrl && (
+                                                <a
+                                                  href={m.matchUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-white transition uppercase font-bold tracking-wider"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  Share
+                                                </a>
+                                              )}
+                                            </div>
+                                          )}
+                                        </>
                                       )}
                                     </div>
                                   );
@@ -4919,20 +5016,20 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                   </div>
                                 )}
                                 
-                                {isAdmin && m.isGroundFeePaid && (
+                                {effectiveAdmin && m.isGroundFeePaid && (
                                   <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
                                     <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
                                   </div>
                                 )}
                                 
-                                {isAdmin && (
+                                {effectiveAdmin && (
                                   <div className="mt-1 flex gap-2 text-[9px] font-bold uppercase tracking-wider">
                                     <span className="text-emerald-400">{paidCount} Paid</span>
                                     {unpaidCount > 0 && <span className="text-red-400">{unpaidCount} Unpaid</span>}
                                   </div>
                                 )}
 
-                                {isAdmin && (
+                                {effectiveAdmin && (
                                   <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
                                     <div className="flex items-center gap-1">
                                       <button
@@ -4985,10 +5082,10 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                         );
                         })}
                         
-                        {(isAdmin || day.matches.length === 0) && (
+                        {(effectiveAdmin || day.matches.length === 0) && (
                           <div
-                            onClick={() => isAdmin ? onAddMatch(day.dateStr) : undefined}
-                            className={`${day.matches.length === 0 ? "flex-1 min-h-[5rem]" : "py-2 mt-1"} rounded-lg flex items-center justify-center border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 transition ${isAdmin ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50" : ""}`}
+                            onClick={() => effectiveAdmin ? onAddMatch(day.dateStr) : undefined}
+                            className={`${day.matches.length === 0 ? "flex-1 min-h-[5rem]" : "py-2 mt-1"} rounded-lg flex items-center justify-center border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 transition ${effectiveAdmin ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50" : ""}`}
                           >
                             <span className="text-emerald-400 font-bold text-[10px] uppercase tracking-wider">
                               {day.matches.length > 0 ? "+ Add" : "Open Slot"}

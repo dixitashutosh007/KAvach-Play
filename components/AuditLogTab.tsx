@@ -24,7 +24,7 @@ const ENTITY_OPTIONS: { value: AuditEntity; label: string }[] = [
   { value: "merchandise", label: "Merchandise" },
   { value: "merch_order", label: "Orders" },
   { value: "fee", label: "Fees" },
-  { value: "fee_plan", label: "Fee Plans" },
+  { value: "fee_plan", label: "Match Fee Plans" },
   { value: "settings", label: "Settings" },
   { value: "reminder", label: "Reminders" },
   { value: "poll", label: "Polls" },

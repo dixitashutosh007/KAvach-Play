@@ -24,6 +24,8 @@ import {
   Plus,
   Calendar,
   Info,
+  Edit2,
+  X,
 } from "lucide-react";
 import { formatDate, normalizeIndianMobile, computeLateFees } from "@/lib/utils";
 import WixFinanceView from "./WixFinanceView";
@@ -1053,7 +1055,7 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
             onClick={() => setFeeTab("feePlans")}
             className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "feePlans" ? "bg-amber-500/20 text-amber-400" : "text-white/50 hover:text-white"}`}
           >
-            Fee Plans
+            Match Fee Plans
           </button>
       </div>
       {feeTab === "custom" ? (
@@ -1075,6 +1077,9 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterMatchId, setFilterMatchId] = useState("");
+  const [editingMatchFeeId, setEditingMatchFeeId] = useState<string | null>(null);
+  const [editFeeVal, setEditFeeVal] = useState<string>("");
+  const [isSavingFee, setIsSavingFee] = useState(false);
 
   const filteredMatches = useMemo(() => {
     let m = store.matches;
@@ -1124,7 +1129,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
         const getFee = (p: any) => p.feeOverride !== undefined ? p.feeOverride : match.fee;
 
-        const matchFeeTotal = (match.fee || 0) * 12;
+        const matchFeeTotal = match.matchFeeBudget !== undefined ? match.matchFeeBudget : (match.fee || 0) * 12;
 
         let feeCollected = 0;
         let feeCollectedCount = 0;
@@ -1370,8 +1375,71 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                           </div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          <div className="text-white font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
-                          <div className="text-[10px] text-white/40 mt-0.5 font-mono">₹{data.match.fee} × 12 players</div>
+                          {editingMatchFeeId === data.match.id ? (
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                const val = parseFloat(editFeeVal);
+                                if (isNaN(val) || val < 0) return;
+                                setIsSavingFee(true);
+                                try {
+                                  await store.updateMatch(data.match.id, { matchFeeBudget: val });
+                                  setEditingMatchFeeId(null);
+                                } catch (err) {
+                                  console.error(err);
+                                  alert("Failed to update match fee.");
+                                } finally {
+                                  setIsSavingFee(false);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 justify-end"
+                            >
+                              <span className="text-white/50 text-xs">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editFeeVal}
+                                onChange={(e) => setEditFeeVal(e.target.value)}
+                                className="w-20 bg-black/80 border border-accent rounded px-1.5 py-0.5 text-xs text-white text-right font-mono font-bold focus:outline-none"
+                                autoFocus
+                              />
+                              <button
+                                type="submit"
+                                disabled={isSavingFee}
+                                className="p-1 hover:bg-emerald-500/20 text-emerald-400 rounded transition"
+                                title="Save"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingMatchFeeId(null)}
+                                className="p-1 hover:bg-white/10 text-white/50 hover:text-white rounded transition text-xs font-bold"
+                                title="Cancel"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5 group/fee">
+                              <div className="text-right">
+                                <div className="text-white font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
+                                <div className="text-[10px] text-white/40 mt-0.5 font-mono">
+                                  {data.match.matchFeeBudget !== undefined ? "Custom Target" : `₹${data.match.fee} × 12 players`}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setEditingMatchFeeId(data.match.id);
+                                  setEditFeeVal(String(data.matchFeeTotal));
+                                }}
+                                className="opacity-0 group-hover/fee:opacity-100 p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition cursor-pointer"
+                                title="Edit Match Fee"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
                           <div className="text-emerald-400 font-semibold font-mono">₹{data.feeCollected}</div>
