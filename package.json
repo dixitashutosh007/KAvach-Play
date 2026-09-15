@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
+    "test:functional": "node --test tests/*.test.mjs",
     "test": "npx playwright test",
     "test:ui": "npx playwright test --ui",
     "test:headed": "npx playwright test --headed",
