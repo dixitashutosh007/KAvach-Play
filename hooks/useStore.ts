@@ -39,6 +39,7 @@ import {
   LeadStatus,
   LeadInterest,
   LeadSource,
+  ManualPaymentMethod,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -1512,8 +1513,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     feeCollectedAmount?: number,
     feeOffsetAmount?: number,
   ) => {
+    const payment = payments.find((p) => p.id === paymentId);
+    const match = matches.find((m) => m.id === matchId);
+    const resolvedCollected = feeCollectedAmount !== undefined 
+      ? feeCollectedAmount 
+      : (status === "Paid" && payment?.feeOffsetAmount !== undefined 
+          ? (payment.feeOverride !== undefined ? payment.feeOverride : (match?.fee || 0)) 
+          : undefined);
+
     setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}), ...(manualMethod ? { manualMethod } : {}), ...(feeCollectedAmount !== undefined ? { feeCollectedAmount } : {}), ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}) } : p)),
+      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}), ...(manualMethod ? { manualMethod } : {}), ...(resolvedCollected !== undefined ? { feeCollectedAmount: resolvedCollected } : {}), ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}) } : p)),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
@@ -1522,13 +1531,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (paymentMethod) updateData.paymentMethod = paymentMethod;
       if (manualBy) updateData.manualBy = manualBy;
       if (manualMethod) updateData.manualMethod = manualMethod;
-      if (feeCollectedAmount !== undefined) updateData.feeCollectedAmount = feeCollectedAmount;
+      if (resolvedCollected !== undefined) updateData.feeCollectedAmount = resolvedCollected;
       if (feeOffsetAmount !== undefined) updateData.feeOffsetAmount = feeOffsetAmount;
       await updateDoc(docRef, updateData);
 
-      const payment = payments.find((p) => p.id === paymentId);
       const player = players.find((p) => p.id === payment?.playerId);
-      const match = matches.find((m) => m.id === matchId);
 
       const auditAction = status === "Paid" ? "paid" as const : "status_change" as const;
       logAudit({ ...getActor(), action: auditAction, entity: "payment", entityId: paymentId, entityLabel: `${player?.name || "Player"} - ${match?.opponent || matchId}`, changes: [{ field: "status", oldValue: payment?.status, newValue: status }, ...(availability ? [{ field: "availability", oldValue: payment?.availability, newValue: availability }] : [])], summary: `${player?.name || "Player"} ${status === "Paid" ? "paid" : `status → ${status}`} for match vs ${match?.opponent || ""}` });
@@ -1832,6 +1839,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     paymentId: string,
     feeOverride: number,
     planTag: string,
+    feeOffsetAmount?: number,
+    feeCollectedAmount?: number,
+    status?: "Paid" | "Unpaid",
+    paymentMethod?: "manual" | "razorpay",
+    manualMethod?: ManualPaymentMethod,
+    manualBy?: string,
   ) => {
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
@@ -1840,10 +1853,36 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         planTag,
         updatedAt: serverTimestamp(),
       };
-      await updateDoc(docRef, updates);
+      if (feeOffsetAmount !== undefined) updates.feeOffsetAmount = feeOffsetAmount;
+      if (feeCollectedAmount !== undefined) updates.feeCollectedAmount = feeCollectedAmount;
+      if (status) updates.status = status;
+      if (paymentMethod) updates.paymentMethod = paymentMethod;
+      if (manualMethod) updates.manualMethod = manualMethod;
+      if (manualBy) updates.manualBy = manualBy;
+
+      await updateDoc(docRef, cleanPayload(updates));
       const pmt = payments.find(p => p.id === paymentId);
       const playerName = players.find(p => p.id === pmt?.playerId)?.name || "Player";
-      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerName} fee plan`, changes: [{ field: "feeOverride", newValue: `₹${feeOverride}` }, { field: "planTag", newValue: planTag }], summary: `Applied fee plan "${planTag}" (₹${feeOverride}) to ${playerName}` });
+
+      const changes = [
+        { field: "feeOverride", newValue: `₹${feeOverride}` },
+        { field: "planTag", newValue: planTag },
+      ];
+      if (feeOffsetAmount !== undefined) changes.push({ field: "feeOffsetAmount", newValue: `₹${feeOffsetAmount}` });
+      if (feeCollectedAmount !== undefined) changes.push({ field: "feeCollectedAmount", newValue: `₹${feeCollectedAmount}` });
+      if (status) changes.push({ field: "status", newValue: status });
+      if (manualMethod) changes.push({ field: "manualMethod", newValue: manualMethod });
+
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "payment",
+        entityId: paymentId,
+        entityLabel: `${playerName} fee plan`,
+        changes,
+        summary: `Applied fee plan "${planTag}" (Fee: ₹${feeOverride}, Offset: ₹${feeOffsetAmount || 0}, Collected: ₹${feeCollectedAmount || 0}, Status: ${status || "Unpaid"}) to ${playerName}`,
+      });
+
       setPayments((prev) =>
         prev.map((p) =>
           p.id === paymentId && p.matchId === matchId
@@ -1862,13 +1901,30 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     );
     if (!payment) return;
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
-    const clearFields = {
+
+    // If marked Paid via plan or sponsorship, revert status to Unpaid
+    const shouldRevertToUnpaid =
+      payment.status === "Paid" &&
+      (payment.manualMethod === "club_sponsored" ||
+        payment.manualMethod === "part_of_plan" ||
+        !!payment.sponsoredBy);
+
+    const clearFields: any = {
       feeOverride: deleteField(),
       planTag: deleteField(),
+      feeOffsetAmount: deleteField(),
+      feeCollectedAmount: deleteField(),
       sponsoredBy: deleteField(),
       sponsoring: deleteField(),
       updatedAt: serverTimestamp(),
     };
+
+    if (shouldRevertToUnpaid) {
+      clearFields.status = "Unpaid";
+      clearFields.paymentMethod = deleteField();
+      clearFields.manualMethod = deleteField();
+      clearFields.manualBy = deleteField();
+    }
 
     if (payment.sponsoredBy) {
       const sponsorPayment = payments.find(
@@ -1877,7 +1933,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (sponsorPayment) {
         const sponsorRef = doc(db, "matches", matchId, "payments", sponsorPayment.id);
         const batch = writeBatch(db);
-        batch.update(docRef, { ...clearFields, status: "Unpaid" });
+        batch.update(docRef, clearFields);
         batch.update(sponsorRef, {
           feeOverride: deleteField(),
           sponsoring: deleteField(),
@@ -1887,7 +1943,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         setPayments((prev) =>
           prev.map((p) => {
             if (p.id === paymentId && p.matchId === matchId) {
-              const { feeOverride, planTag, sponsoredBy, sponsoring, ...rest } = p;
+              const {
+                feeOverride,
+                planTag,
+                sponsoredBy,
+                sponsoring,
+                feeOffsetAmount,
+                feeCollectedAmount,
+                paymentMethod,
+                manualMethod,
+                manualBy,
+                ...rest
+              } = p;
               return { ...rest, status: "Unpaid" as const, updatedAt: Timestamp.now() };
             }
             if (p.id === sponsorPayment.id && p.matchId === matchId) {
@@ -1903,10 +1970,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
     try {
       await updateDoc(docRef, clearFields);
+      const pmt = payments.find((p) => p.id === paymentId);
+      const playerName = players.find((p) => p.id === pmt?.playerId)?.name || "Player";
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "payment",
+        entityId: paymentId,
+        entityLabel: `${playerName} fee reset`,
+        changes: [{ field: "feeOverride", newValue: "standard" }],
+        summary: `Reset fee to standard for ${playerName}`,
+      });
+
       setPayments((prev) =>
         prev.map((p) => {
           if (p.id === paymentId && p.matchId === matchId) {
-            const { feeOverride, planTag, sponsoredBy, sponsoring, ...rest } = p;
+            const {
+              feeOverride,
+              planTag,
+              sponsoredBy,
+              sponsoring,
+              feeOffsetAmount,
+              feeCollectedAmount,
+              ...rest
+            } = p;
+            if (shouldRevertToUnpaid) {
+              const { paymentMethod, manualMethod, manualBy, ...unpaidRest } = rest;
+              return { ...unpaidRest, status: "Unpaid" as const, updatedAt: Timestamp.now() };
+            }
             return { ...rest, updatedAt: Timestamp.now() };
           }
           return p;
