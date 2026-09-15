@@ -1,0 +1,38 @@
+name: Deploy Firestore Rules
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/deploy-firestore-rules.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-rules:
+    name: Deploy Firestore Security Rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Service Account credentials
+        if: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY != '' }}"
+        run: |
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}" > "$HOME/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/gcp-key.json" >> $GITHUB_ENV
+
+      - name: Deploy Rules to Firebase
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          npx -y firebase-tools@latest deploy --only firestore:rules --project gen-lang-client-0004191483 --non-interactive
