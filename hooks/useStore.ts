@@ -1245,32 +1245,72 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
-  const updateMatch = async (match: Match) => {
-    const oldMatch = matches.find(m => m.id === match.id);
-    const docRef = doc(db, "matches", match.id);
-    const { id, createdAt, updatedAt, ...data } = match;
+  const updateMatch = async (matchOrId: Match | string, partialChanges?: Partial<Match>) => {
+    let matchId: string;
+    let dataToUpdate: any;
+    let oldMatch: Match | undefined;
+
+    if (typeof matchOrId === "string") {
+      matchId = matchOrId;
+      dataToUpdate = partialChanges || {};
+      oldMatch = matches.find((m) => m.id === matchId);
+    } else {
+      matchId = matchOrId.id;
+      const { id, createdAt, updatedAt, ...rest } = matchOrId;
+      dataToUpdate = rest;
+      oldMatch = matches.find((m) => m.id === matchId);
+    }
+
+    if (!matchId) {
+      console.error("updateMatch called without match id:", matchOrId);
+      throw new Error("Invalid match ID");
+    }
+
+    const docRef = doc(db, "matches", matchId);
     try {
       await updateDoc(
         docRef,
-        cleanPayload({ ...data, updatedAt: serverTimestamp() }),
+        cleanPayload({ ...dataToUpdate, updatedAt: serverTimestamp() }),
       );
-      logAudit({ ...getActor(), action: "updated", entity: "match", entityId: match.id, entityLabel: `vs ${match.opponent}`, changes: diffChanges(oldMatch, data), summary: `Updated match vs ${match.opponent} on ${match.date}` });
-      // Notify all players individually
-      for (const p of players) {
-        if (!p.disabled && p.inviteStatus === "Verified") {
-          createNotification(
-            p.id,
-            "Match Updated",
-            `The match against ${match.opponent} on ${match.date} has been updated.`,
-            "in_app",
-          );
+
+      // Immediately update local state
+      setMatches((prev) =>
+        prev.map((m) => (m.id === matchId ? { ...m, ...dataToUpdate } : m))
+      );
+
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "match",
+        entityId: matchId,
+        entityLabel: `vs ${oldMatch?.opponent || "Match"}`,
+        changes: diffChanges(oldMatch, dataToUpdate),
+        summary: dataToUpdate.matchFeeBudget !== undefined
+          ? `Updated match fee budget to ₹${dataToUpdate.matchFeeBudget} for match vs ${oldMatch?.opponent || matchId}`
+          : `Updated match vs ${oldMatch?.opponent || matchId} on ${oldMatch?.date || ""}`,
+      });
+
+      // Only notify players and sync calendar if this is a general match edit,
+      // not an internal financial budget-only tweak
+      const isBudgetOnly =
+        Object.keys(dataToUpdate).length === 1 && dataToUpdate.matchFeeBudget !== undefined;
+
+      if (!isBudgetOnly) {
+        for (const p of players) {
+          if (!p.disabled && p.inviteStatus === "Verified") {
+            createNotification(
+              p.id,
+              "Match Updated",
+              `The match against ${oldMatch?.opponent || "Opponent"} on ${oldMatch?.date || ""} has been updated.`,
+              "in_app",
+            );
+          }
         }
+        syncMatchToCalendar("upsert", matchId);
       }
-      // Push the edit to the public calendar (the route deletes the event
-      // itself if the match was archived).
-      syncMatchToCalendar("upsert", match.id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `matches/${match.id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `matches/${matchId}`);
+      throw err;
     }
   };
 

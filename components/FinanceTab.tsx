@@ -1464,9 +1464,9 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                 try {
                                   await store.updateMatch(data.match.id, { matchFeeBudget: val });
                                   setEditingMatchFeeId(null);
-                                } catch (err) {
-                                  console.error(err);
-                                  alert("Failed to update match fee.");
+                                } catch (err: any) {
+                                  console.error("Failed to update match fee:", err);
+                                  alert(err?.message || "Failed to update match fee.");
                                 } finally {
                                   setIsSavingFee(false);
                                 }
