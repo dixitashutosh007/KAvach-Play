@@ -1138,6 +1138,8 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
         const sponsoredDetails: { playerName: string; amount: number; reason: string }[] = [];
         const paidPlayers: string[] = [];
         const unpaidPlayers: string[] = [];
+        const paidPlayerDetails: { name: string; amount: number; method: string }[] = [];
+        const unpaidPlayerDetails: { name: string; due: number; planTag?: string }[] = [];
 
         for (const p of paymentsForMatch) {
           const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
@@ -1146,8 +1148,26 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
           if (p.status === "Paid") {
             paidPlayers.push(playerName);
+            const methodLabel =
+              p.paymentMethod === "razorpay"
+                ? "Razorpay"
+                : p.manualMethod === "club_sponsored"
+                  ? "Sponsored"
+                  : p.manualMethod === "part_of_plan"
+                    ? "Subscription"
+                    : "Cash";
+            paidPlayerDetails.push({
+              name: playerName,
+              amount: p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee,
+              method: methodLabel,
+            });
           } else {
             unpaidPlayers.push(playerName);
+            unpaidPlayerDetails.push({
+              name: playerName,
+              due: effectiveFee,
+              planTag: p.planTag,
+            });
           }
 
           // Calculate real money collected (Razorpay + Cash collected + Monthly subscription allocation)
@@ -1218,6 +1238,8 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           unpaidCount,
           paidPlayers,
           unpaidPlayers,
+          paidPlayerDetails,
+          unpaidPlayerDetails,
           razorpayPaidCount,
           manualPaidCount,
           totalCollected: paymentsForMatch.filter(p => p.status === "Paid").reduce((s, p) => s + getFee(p), 0),
@@ -1325,50 +1347,107 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                           {/* Desktop Hover Tooltip */}
                           <div
                             className={`hidden group-hover:block absolute left-1/2 -translate-x-1/2 ${
-                              rowIndex < 2 ? "top-full mt-2" : "bottom-full mb-2"
-                            } z-50 w-64 bg-[#0f172a] border border-glass-border rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-none text-left animate-in fade-in duration-150`}
+                              rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"
+                            } z-50 w-72 max-h-[380px] bg-[#0f172a]/95 border border-glass-border rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}
                           >
                             <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-white">
-                                Player Breakdown
+                                Squad Payment Status
                               </span>
-                              <span className="text-[10px] font-mono text-white/60">
+                              <span className="text-[10px] font-mono text-white/60 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">
                                 {data.paidCount + data.unpaidCount} Assigned
                               </span>
                             </div>
-                            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+
+                            <div className="space-y-3 max-h-[290px] overflow-y-auto pr-1 custom-scrollbar">
+                              {/* 1. Unpaid Players FIRST */}
                               <div>
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1">
-                                  Paid ({data.paidCount})
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                                    Unpaid ({data.unpaidCount})
+                                  </span>
+                                  {data.unpaidCount > 0 && data.totalDue > 0 && (
+                                    <span className="font-mono text-red-400/80 font-normal">
+                                      ₹{data.totalDue} due
+                                    </span>
+                                  )}
                                 </div>
-                                {data.paidPlayers.length > 0 ? (
-                                  <div className="space-y-0.5 text-xs text-white/80 pl-1">
-                                    {data.paidPlayers.map((name, i) => (
-                                      <div key={i} className="truncate flex items-center gap-1.5">
-                                        <span className="text-emerald-400 text-[10px]">✓</span>
-                                        <span className="truncate">{name}</span>
+                                {data.unpaidPlayerDetails.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {data.unpaidPlayerDetails.map((item, i) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded bg-red-500/10 border border-red-500/15"
+                                      >
+                                        <div className="truncate flex items-center gap-1.5 min-w-0">
+                                          <span className="text-red-400 text-[10px] shrink-0">✗</span>
+                                          <span className="truncate text-white/90 font-medium">{item.name}</span>
+                                        </div>
+                                        <div className="shrink-0 flex items-center gap-1 font-mono text-[10px]">
+                                          <span className="text-red-300 font-bold">₹{item.due}</span>
+                                          {item.planTag && (
+                                            <span className="text-[8px] text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded border border-amber-500/30 truncate max-w-[85px]">
+                                              {item.planTag}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="text-[10px] text-white/40 italic pl-1">None</div>
+                                  <div className="text-[10px] text-emerald-400/90 italic py-1 px-2 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1.5">
+                                    <span>✓</span> All players have paid!
+                                  </div>
                                 )}
                               </div>
+
+                              {/* Divider */}
+                              <div className="border-t border-white/10" />
+
+                              {/* 2. Paid Players SECOND */}
                               <div>
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1">
-                                  Unpaid ({data.unpaidCount})
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1.5">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    Paid ({data.paidCount})
+                                  </span>
+                                  {data.paidCount > 0 && (
+                                    <span className="font-mono text-emerald-400/80 font-normal">
+                                      {data.paidCount} cleared
+                                    </span>
+                                  )}
                                 </div>
-                                {data.unpaidPlayers.length > 0 ? (
-                                  <div className="space-y-0.5 text-xs text-white/80 pl-1">
-                                    {data.unpaidPlayers.map((name, i) => (
-                                      <div key={i} className="truncate flex items-center gap-1.5">
-                                        <span className="text-red-400 text-[10px]">✗</span>
-                                        <span className="truncate">{name}</span>
+                                {data.paidPlayerDetails.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {data.paidPlayerDetails.map((item, i) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded bg-white/5 border border-white/5 hover:bg-white/10 transition"
+                                      >
+                                        <div className="truncate flex items-center gap-1.5 min-w-0">
+                                          <span className="text-emerald-400 text-[10px] shrink-0">✓</span>
+                                          <span className="truncate text-white/80">{item.name}</span>
+                                        </div>
+                                        <div className="shrink-0 flex items-center gap-1.5 text-[9px] font-mono">
+                                          <span className="text-white/60">₹{item.amount}</span>
+                                          <span
+                                            className={`px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                                              item.method === "Razorpay"
+                                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                                                : item.method === "Sponsored"
+                                                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
+                                                  : "bg-teal-500/15 text-teal-400 border border-teal-500/25"
+                                            }`}
+                                          >
+                                            {item.method}
+                                          </span>
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="text-[10px] text-emerald-400/80 italic pl-1">All paid!</div>
+                                  <div className="text-[10px] text-white/40 italic py-1 px-2">No payments received yet</div>
                                 )}
                               </div>
                             </div>
@@ -1456,7 +1535,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
                           {/* Desktop Hover Tooltip */}
                           {data.sponsoredDetails.length > 0 && (
-                            <div className={`hidden group-hover:block absolute right-0 ${rowIndex < 2 ? "top-full mt-2" : "bottom-full mb-2"} z-50 w-64 bg-[#0f172a] border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-none text-left animate-in fade-in duration-150`}>
+                            <div className={`hidden group-hover:block absolute right-0 ${rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"} z-50 w-64 bg-[#0f172a]/95 border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}>
                               <div className="flex items-center justify-between border-b border-amber-500/20 pb-1.5 mb-2">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                                   Club Sponsored
@@ -1465,7 +1544,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                   Total: ₹{data.feeOffset}
                                 </span>
                               </div>
-                              <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
                                 {data.sponsoredDetails.map((detail, idx) => (
                                   <div key={idx} className="flex items-center justify-between text-xs py-0.5 border-b border-white/5 last:border-0">
                                     <div className="truncate pr-2">
