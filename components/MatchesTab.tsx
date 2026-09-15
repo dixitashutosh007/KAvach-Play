@@ -303,7 +303,14 @@ export function MatchesTab({
     setIsAdding(true);
   };
 
-  const isAdmin = persona === "admin" && isMatchAdmin !== false;
+  const userHasAdminPrivileges =
+    isSuperAdmin ||
+    isMatchAdmin ||
+    currentUserObj?.role === "admin" ||
+    currentUserObj?.isMatchAdmin ||
+    currentUserObj?.isClubAdmin;
+
+  const isAdmin = (persona === "admin" || userHasAdminPrivileges) && isMatchAdmin !== false;
 
   useEffect(() => {
     if (!isAdmin && subTab !== "matches") {
@@ -1243,17 +1250,19 @@ export function MatchesTab({
                           </span>
                         </div>
                         {isAdmin && (
-                          <div className="flex items-center gap-1.5 text-xs">
+                          <div className="flex items-center gap-1.5 text-xs flex-wrap">
                             {match.isGroundFeePaid && (
                                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
                                    Ground Fee Paid (₹{match.groundFeePaidAmount})
                                </div>
                             )}
-                            <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">
-                              ₹{cardPaidTotal}
+                            <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              <span>{paidCount} Paid</span>
+                              <span className="opacity-70 font-mono text-[11px]">(₹{cardPaidTotal})</span>
                             </div>
-                            <div className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold">
-                              ₹{cardUnpaidTotal}
+                            <div className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              <span>{unpaidCount} Unpaid</span>
+                              <span className="opacity-70 font-mono text-[11px]">(₹{cardUnpaidTotal})</span>
                             </div>
                           </div>
                         )}

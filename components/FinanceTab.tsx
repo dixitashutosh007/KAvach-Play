@@ -1131,11 +1131,19 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
         let feeOffset = 0;
         let feeOffsetCount = 0;
         const sponsoredDetails: { playerName: string; amount: number; reason: string }[] = [];
+        const paidPlayers: string[] = [];
+        const unpaidPlayers: string[] = [];
 
         for (const p of paymentsForMatch) {
           const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
           const player = store.players.find((x) => x.id === p.playerId);
-          const playerName = p.guestName || player?.name || "Player";
+          const playerName = p.guestName ? `${p.guestName} (Guest)` : (player?.name || "Player");
+
+          if (p.status === "Paid") {
+            paidPlayers.push(playerName);
+          } else {
+            unpaidPlayers.push(playerName);
+          }
 
           // Calculate real money collected (Razorpay + Cash collected + Monthly subscription allocation)
           if (p.status === "Paid") {
@@ -1203,6 +1211,8 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           playingCount,
           paidCount,
           unpaidCount,
+          paidPlayers,
+          unpaidPlayers,
           razorpayPaidCount,
           manualPaidCount,
           totalCollected: paymentsForMatch.filter(p => p.status === "Paid").reduce((s, p) => s + getFee(p), 0),
@@ -1269,7 +1279,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
       {subTab === "matches" && (
         <div className="space-y-4">
-          <div className="glass rounded-xl p-4 border border-glass-border overflow-hidden">
+          <div className="glass rounded-xl p-4 border border-glass-border overflow-visible">
             <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
               Match Fee Accounting
             </h3>
@@ -1281,6 +1291,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                 <thead>
                   <tr className="border-b border-glass-border text-[10px] uppercase tracking-widest text-white/50">
                     <th className="py-2 pr-3 font-bold whitespace-nowrap">Match Details</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-center">Paid / Unpaid</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Match Fee</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Collected</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Club Sponsored</th>
@@ -1288,13 +1299,75 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                   </tr>
                 </thead>
                 <tbody>
-                  {collectedMatches.map((data) => {
+                  {collectedMatches.map((data, rowIndex) => {
                     const ground = store.grounds.find((g) => g.id === data.match.groundId);
                     return (
                       <tr key={data.match.id} className="border-b border-white/5 hover:bg-white/5 transition">
                         <td className="py-2.5 pr-3">
                           <div className="text-white font-semibold text-xs">{formatDate(data.match.date)}</div>
                           <div className="text-[10px] text-white/40">{ground?.name || "—"}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap relative group">
+                          <div className="inline-flex items-center gap-1.5 cursor-help px-2 py-0.5 rounded bg-white/5 border border-glass-border hover:bg-white/10 transition">
+                            <span className="text-emerald-400 font-bold font-mono text-xs">{data.paidCount} Paid</span>
+                            <span className="text-white/30">/</span>
+                            <span className={`font-bold font-mono text-xs ${data.unpaidCount > 0 ? "text-red-400" : "text-white/40"}`}>
+                              {data.unpaidCount} Unpaid
+                            </span>
+                            <Info className="w-3 h-3 text-white/40 group-hover:text-white transition shrink-0" />
+                          </div>
+
+                          {/* Desktop Hover Tooltip */}
+                          <div
+                            className={`hidden group-hover:block absolute left-1/2 -translate-x-1/2 ${
+                              rowIndex < 2 ? "top-full mt-2" : "bottom-full mb-2"
+                            } z-50 w-64 bg-[#0f172a] border border-glass-border rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-none text-left animate-in fade-in duration-150`}
+                          >
+                            <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                                Player Breakdown
+                              </span>
+                              <span className="text-[10px] font-mono text-white/60">
+                                {data.paidCount + data.unpaidCount} Assigned
+                              </span>
+                            </div>
+                            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1">
+                                  Paid ({data.paidCount})
+                                </div>
+                                {data.paidPlayers.length > 0 ? (
+                                  <div className="space-y-0.5 text-xs text-white/80 pl-1">
+                                    {data.paidPlayers.map((name, i) => (
+                                      <div key={i} className="truncate flex items-center gap-1.5">
+                                        <span className="text-emerald-400 text-[10px]">✓</span>
+                                        <span className="truncate">{name}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-white/40 italic pl-1">None</div>
+                                )}
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1">
+                                  Unpaid ({data.unpaidCount})
+                                </div>
+                                {data.unpaidPlayers.length > 0 ? (
+                                  <div className="space-y-0.5 text-xs text-white/80 pl-1">
+                                    {data.unpaidPlayers.map((name, i) => (
+                                      <div key={i} className="truncate flex items-center gap-1.5">
+                                        <span className="text-red-400 text-[10px]">✗</span>
+                                        <span className="truncate">{name}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-emerald-400/80 italic pl-1">All paid!</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
                           <div className="text-white font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
@@ -1315,7 +1388,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
                           {/* Desktop Hover Tooltip */}
                           {data.sponsoredDetails.length > 0 && (
-                            <div className="hidden group-hover:block absolute right-0 bottom-full mb-2 z-50 w-64 bg-[#0f172a] border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-none text-left animate-in fade-in duration-150">
+                            <div className={`hidden group-hover:block absolute right-0 ${rowIndex < 2 ? "top-full mt-2" : "bottom-full mb-2"} z-50 w-64 bg-[#0f172a] border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-none text-left animate-in fade-in duration-150`}>
                               <div className="flex items-center justify-between border-b border-amber-500/20 pb-1.5 mb-2">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                                   Club Sponsored
@@ -1363,6 +1436,11 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                   <tfoot>
                     <tr className="border-t border-glass-border">
                       <td className="py-2.5 pr-3 font-bold text-white text-xs uppercase tracking-wider">Total</td>
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap font-mono text-xs">
+                        <span className="text-emerald-400 font-bold">{collectedMatches.reduce((s, d) => s + d.paidCount, 0)} Paid</span>
+                        <span className="text-white/30 mx-1">/</span>
+                        <span className="text-red-400 font-bold">{collectedMatches.reduce((s, d) => s + d.unpaidCount, 0)} Unpaid</span>
+                      </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <div className="text-white font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0)}</div>
                         <div className="text-[10px] text-white/40 font-mono">{collectedMatches.length} matches</div>
