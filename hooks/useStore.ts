@@ -992,7 +992,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         });
         setLeads(list);
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, "clubLeads"),
+      (err) => {
+        lazySubsRef.current.delete("clubLeads");
+        handleFirestoreError(err, OperationType.LIST, "clubLeads");
+      },
     );
     lazySubsRef.current.set("clubLeads", unsub);
   }, [user]);
@@ -2493,6 +2496,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `clubLeads/${id}`);
+      throw err;
     }
   };
 
@@ -2516,6 +2520,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `clubLeads/${id}`);
+      throw err;
     }
   };
 
@@ -2534,6 +2539,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `clubLeads/${id}`);
+      throw err;
     }
   };
 
@@ -2565,6 +2571,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `clubLeads/${leadId}`);
+      throw err;
     }
   };
 

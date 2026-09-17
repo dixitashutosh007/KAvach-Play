@@ -196,12 +196,20 @@ export function StudioCRMView({
   const handleAddNote = async (leadId: string) => {
     const text = (noteInputs[leadId] || "").trim();
     if (!text) return;
-    await store.addLeadNote?.(leadId, text);
-    setNoteInputs((prev) => ({ ...prev, [leadId]: "" }));
+    try {
+      await store.addLeadNote?.(leadId, text);
+      setNoteInputs((prev) => ({ ...prev, [leadId]: "" }));
+    } catch (err: any) {
+      alert(`Failed to add note: ${err?.message || "Unknown error"}`);
+    }
   };
 
   const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
-    await store.updateLead?.(leadId, { status: newStatus });
+    try {
+      await store.updateLead?.(leadId, { status: newStatus });
+    } catch (err: any) {
+      alert(`Failed to update status: ${err?.message || "Unknown error"}`);
+    }
   };
 
   const handleDeleteLead = async (lead: ClubLead) => {
@@ -210,7 +218,11 @@ export function StudioCRMView({
         `Are you sure you want to delete enquiry for "${lead.name}"? This cannot be undone.`,
       )
     ) {
-      await store.deleteLead?.(lead.id);
+      try {
+        await store.deleteLead?.(lead.id);
+      } catch (err: any) {
+        alert(`Failed to delete enquiry: ${err?.message || "Unknown error"}`);
+      }
     }
   };
 
@@ -714,7 +726,10 @@ export function StudioCRMView({
           initialData={editingLead}
           adminId={adminId}
           adminName={adminName}
-          onClose={() => setIsFormOpen(false)}
+          onClose={() => {
+            setIsFormOpen(false);
+            setEditingLead(null);
+          }}
           onSave={async (formData) => {
             if (editingLead) {
               await store.updateLead?.(editingLead.id, formData);
@@ -722,6 +737,7 @@ export function StudioCRMView({
               await store.addLead?.(formData);
             }
             setIsFormOpen(false);
+            setEditingLead(null);
           }}
         />
       )}
