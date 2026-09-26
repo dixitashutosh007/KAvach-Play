@@ -59,6 +59,12 @@ export async function POST(req: Request) {
       if (data.disabled || data.mergedInto) continue;
       const pNormalized = normalizeIndianMobile(data.mobile || "");
       if (pNormalized.length >= 12 && pNormalized === normalized) {
+        const authUid = data.authUid || doc.id;
+        const appUserDoc = await db.collection("appUsers").doc(authUid).get();
+        const appUserData = appUserDoc.exists ? appUserDoc.data() : null;
+        if (appUserData?.authProviders?.includes("phone")) {
+          return NextResponse.json({ exists: false });
+        }
         return buildExistsResponse(data);
       }
     }
