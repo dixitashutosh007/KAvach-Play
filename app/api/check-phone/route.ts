@@ -39,23 +39,46 @@ export async function POST(req: Request) {
     }
 
     const snap = await db.collection("players").get();
+
+    const buildExistsResponse = (playerData: FirebaseFirestore.DocumentData, fallbackName?: string) => {
+      const hasEmail = !!playerData.email && playerData.email.includes("@");
+      const loginMethod = hasEmail ? "Google Sign-In" : "your existing login method";
+      const maskedEmail = hasEmail
+        ? playerData.email.replace(/^(.{2})(.*)(@.*)$/, (_: string, a: string, b: string, c: string) => a + "*".repeat(b.length) + c)
+        : undefined;
+      return NextResponse.json({
+        exists: true,
+        name: playerData.name || fallbackName || "Player",
+        loginMethod,
+        maskedEmail,
+      });
+    };
+
     for (const doc of snap.docs) {
       const data = doc.data();
       if (data.disabled || data.mergedInto) continue;
-
       const pNormalized = normalizeIndianMobile(data.mobile || "");
       if (pNormalized.length >= 12 && pNormalized === normalized) {
-        const hasEmail = !!data.email && data.email.includes("@");
-        const loginMethod = hasEmail ? "Google Sign-In" : "your existing login method";
-        const maskedEmail = hasEmail
-          ? data.email.replace(/^(.{2})(.*)(@.*)$/, (_: string, a: string, b: string, c: string) => a + "*".repeat(b.length) + c)
-          : undefined;
-        return NextResponse.json({
-          exists: true,
-          name: data.name || "Player",
-          loginMethod,
-          maskedEmail,
-        });
+        return buildExistsResponse(data);
+      }
+    }
+
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      if (!data.mergedInto) continue;
+      const pNormalized = normalizeIndianMobile(data.mobile || "");
+      if (pNormalized.length >= 12 && pNormalized === normalized) {
+        let keeperId: string = data.mergedInto;
+        let keeperData = snap.docs.find(d => d.id === keeperId)?.data();
+        let depth = 0;
+        while (keeperData?.mergedInto && depth < 5) {
+          keeperId = keeperData.mergedInto;
+          keeperData = snap.docs.find(d => d.id === keeperId)?.data();
+          depth++;
+        }
+        if (keeperData && !keeperData.disabled) {
+          return buildExistsResponse(keeperData, data.name);
+        }
       }
     }
 
