@@ -332,17 +332,31 @@ export default function Home() {
   );
   const existingPlayerWithSamePhone =
     isMobileAuth && user?.phoneNumber
-      ? store.players.find((p) => {
-          if (!p.mobile || p.disabled || p.mergedInto) return false;
-          const normProfile = normalizeIndianMobile(p.mobile);
+      ? (() => {
           const normAuth = normalizeIndianMobile(user.phoneNumber || "");
-          return (
-            normProfile.length >= 12 &&
-            normAuth.length >= 12 &&
-            normProfile === normAuth &&
-            p.id !== user?.uid
-          );
-        })
+          if (normAuth.length < 12) return null;
+          const activeMatch = store.players.find((p) => {
+            if (!p.mobile || p.disabled || p.mergedInto) return false;
+            const normProfile = normalizeIndianMobile(p.mobile);
+            return normProfile.length >= 12 && normProfile === normAuth && p.id !== user?.uid;
+          });
+          if (activeMatch) return activeMatch;
+          const mergedMatch = store.players.find((p) => {
+            if (!p.mobile || !p.mergedInto) return false;
+            const normProfile = normalizeIndianMobile(p.mobile);
+            return normProfile.length >= 12 && normProfile === normAuth;
+          });
+          if (mergedMatch) {
+            let keeper = store.players.find(p => p.id === (mergedMatch as any).mergedInto);
+            let depth = 0;
+            while ((keeper as any)?.mergedInto && depth < 5) {
+              keeper = store.players.find(p => p.id === (keeper as any).mergedInto);
+              depth++;
+            }
+            if (keeper && !keeper.disabled && keeper.id !== user?.uid) return keeper;
+          }
+          return null;
+        })()
       : null;
 
   const existingPlayerWithSameEmail =
