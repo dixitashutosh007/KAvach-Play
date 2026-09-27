@@ -32,42 +32,63 @@ function buildAuditRows(players: Player[], appUsers: AppUser[]): AuditRow[] {
   const appUserMap = new Map<string, AppUser>();
   for (const u of appUsers) appUserMap.set(u.id, u);
 
-  return players
-    .filter((p) => !p.disabled && !p.mergedInto)
+  const activePlayers = players.filter((p) => !p.disabled && !p.mergedInto);
+
+  const phoneIndex = new Map<string, string[]>();
+  for (const p of activePlayers) {
+    if (!p.mobile) continue;
+    const norm = normalizeIndianMobile(p.mobile);
+    if (norm.length < 12) continue;
+    const list = phoneIndex.get(norm) || [];
+    list.push(p.id);
+    phoneIndex.set(norm, list);
+  }
+
+  const authUidIndex = new Map<string, string[]>();
+  for (const p of activePlayers) {
+    const uid = (p as any).authUid as string | undefined;
+    if (!uid) continue;
+    const list = authUidIndex.get(uid) || [];
+    list.push(p.id);
+    authUidIndex.set(uid, list);
+  }
+
+  return activePlayers
     .map((p) => {
       const flags: AuditFlag[] = [];
       const authUid = (p as any).authUid as string | undefined;
       const appUser = appUserMap.get(authUid || p.id) || appUserMap.get(p.id);
 
-      if (!authUid) {
-        flags.push({ label: "No authUid", color: "text-red-400" });
-      } else if (authUid !== p.id) {
+      if (authUid && authUid !== p.id) {
         flags.push({ label: "ID != authUid", color: "text-amber-400" });
       }
 
-      if (!appUser) {
-        flags.push({ label: "No appUser doc", color: "text-red-400" });
+      if (authUid && appUser && authUid !== p.id) {
+        const otherPlayers = authUidIndex.get(authUid)?.filter((id) => id !== p.id) || [];
+        if (otherPlayers.length > 0) {
+          flags.push({ label: "Shared authUid", color: "text-red-400" });
+        }
+      }
+
+      if (p.mobile) {
+        const norm = normalizeIndianMobile(p.mobile);
+        if (norm.length >= 12) {
+          const dupes = phoneIndex.get(norm)?.filter((id) => id !== p.id) || [];
+          if (dupes.length > 0) {
+            flags.push({ label: "Duplicate mobile", color: "text-red-400" });
+          }
+        }
       }
 
       const providers = appUser?.authProviders || [];
-      if (providers.length === 0 && appUser) {
-        flags.push({ label: "No auth providers", color: "text-amber-400" });
-      }
-
-      const hasMobile = p.mobile && normalizeIndianMobile(p.mobile).length >= 12;
       const hasPhoneAuth = providers.includes("phone");
-      const hasGoogleAuth = providers.includes("google.com");
 
-      if (hasMobile && !hasPhoneAuth && !hasGoogleAuth && appUser) {
-        flags.push({ label: "Has mobile, no auth linked", color: "text-amber-400" });
+      if (hasPhoneAuth && !p.mobile) {
+        flags.push({ label: "Phone auth, no mobile on profile", color: "text-amber-400" });
       }
 
-      if (hasPhoneAuth && !hasMobile) {
-        flags.push({ label: "Phone auth but no mobile", color: "text-amber-400" });
-      }
-
-      if (p.inviteStatus === "Pending" || p.inviteStatus === "Unverified") {
-        flags.push({ label: p.inviteStatus, color: "text-blue-400" });
+      if (p.inviteStatus === "Pending") {
+        flags.push({ label: "Pending approval", color: "text-blue-400" });
       }
 
       return { player: p, appUser, flags };
