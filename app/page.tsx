@@ -1085,7 +1085,7 @@ export default function Home() {
             )}
 
             {persona === "admin" &&
-              store.players.filter((p) => p.inviteStatus === "Pending").length >
+              store.players.filter((p) => p.inviteStatus === "Pending" || p.inviteStatus === "Unverified").filter(p => !p.disabled).length >
                 0 &&
               activeTab !== "studio" && activeTab !== "club" && (
                 <motion.div
@@ -1106,7 +1106,7 @@ export default function Home() {
                         <strong className="text-accent font-semibold">
                           {
                             store.players.filter(
-                              (p) => p.inviteStatus === "Pending",
+                              (p) => (p.inviteStatus === "Pending" || p.inviteStatus === "Unverified") && !p.disabled,
                             ).length
                           }{" "}
                           registration request(s)

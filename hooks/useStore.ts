@@ -262,7 +262,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
-          if (initialStatus === "Unverified" || initialStatus === "Pending") {
+          if (initialStatus === "Pending") {
             createNotification(
               "admin",
               "New Player Request",

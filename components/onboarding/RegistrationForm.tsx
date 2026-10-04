@@ -7,6 +7,7 @@ import { Shield, AlertTriangle, LogIn } from "lucide-react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
+import { createNotification } from "@/lib/notifications";
 
 interface FormState {
   name: string;
@@ -140,6 +141,20 @@ export function RegistrationForm({
         chestSize: form.chestSize,
         jerseyNumber: form.jerseyNumber,
       });
+      const playerName = form.name || user.displayName || "Unknown";
+      createNotification(
+        "admin",
+        "New Player Request",
+        `Player ${playerName} has submitted a join request and is awaiting approval.`,
+        "email",
+        { type: "player_request", playerId: user.uid },
+      );
+      createNotification(
+        user.uid,
+        "Welcome to the Club",
+        `Welcome ${playerName}! Your request to join is currently pending approval.`,
+        "email",
+      );
     } catch (err) {
       console.error("Registration error:", err);
       alert("Registration failed. Please try again.");

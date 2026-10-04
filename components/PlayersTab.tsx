@@ -88,8 +88,11 @@ export function PlayersTab({
   const pendingPlayers = store.players.filter(
     (p) => p.inviteStatus === "Pending" && !p.disabled,
   );
+  const unverifiedPlayers = store.players.filter(
+    (p) => p.inviteStatus === "Unverified" && !p.disabled,
+  );
   let displayPlayers = store.players.filter(
-    (p) => p.inviteStatus !== "Pending",
+    (p) => p.inviteStatus !== "Pending" && p.inviteStatus !== "Unverified",
   );
   displayPlayers = displayPlayers.filter((p) => (showDisabled ? p.disabled : !p.disabled));
   if (searchQuery.trim() !== "") {
@@ -362,6 +365,61 @@ export function PlayersTab({
                         Reject
                       </button>
                     </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isAdmin && unverifiedPlayers.length > 0 && (
+          <div className="space-y-2 mb-4">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-yellow-400/80 flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-400/60"></span>
+              </span>
+              Incomplete Registrations ({unverifiedPlayers.length})
+            </h3>
+            <p className="text-[11px] text-white/40 -mt-1">
+              These players signed in but haven&apos;t completed their profile yet.
+            </p>
+            <div className="glass rounded-xl overflow-hidden divide-y divide-glass-border border border-yellow-500/20">
+              {unverifiedPlayers.map((player) => (
+                <div
+                  key={player.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 hover:bg-white/5 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 font-bold text-yellow-400 shrink-0">
+                      {player.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-white text-[15px] truncate">
+                        {player.name}
+                      </p>
+                      <p className="text-[11px] text-white/40">Profile incomplete</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      onClick={() => {
+                        store.updatePlayer(player.id, { inviteStatus: "Verified" });
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/80 px-3 py-1.5 text-xs font-bold text-black hover:bg-emerald-400 transition cursor-pointer"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Approve Anyway
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Remove incomplete registration for ${player.name}?`)) {
+                          await store.deletePlayer(player.id);
+                        }
+                      }}
+                      className="rounded-lg bg-red-500/10 px-3 py-1.5 text-red-400 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold transition cursor-pointer"
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
               ))}

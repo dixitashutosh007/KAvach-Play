@@ -12,6 +12,7 @@ import { useAuth } from "./AuthProvider";
 import { useState } from "react";
 import { Calendar, MapPin, User, Save, CreditCard, Plus, Trash2, Edit2, PieChart, ChevronDown, ChevronRight } from "lucide-react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
+import { createNotification } from "@/lib/notifications";
 import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
@@ -136,6 +137,11 @@ export function ProfileTab({
     }
 
     if (playerToUpdate) {
+      const willTransitionToPending =
+        formData.mobile &&
+        playerToUpdate.inviteStatus !== "Verified" &&
+        playerToUpdate.inviteStatus !== "Accepted" &&
+        playerToUpdate.inviteStatus !== "Pending";
       await store.updatePlayer(playerToUpdate.id, {
         ...processedForm,
         authUid: user?.uid,
@@ -147,6 +153,22 @@ export function ProfileTab({
             ? "Pending"
             : playerToUpdate.inviteStatus || "Unverified",
       });
+      if (willTransitionToPending) {
+        const playerName = processedForm.name || "Unknown";
+        createNotification(
+          "admin",
+          "New Player Request",
+          `Player ${playerName} has submitted a join request and is awaiting approval.`,
+          "email",
+          { type: "player_request", playerId: playerToUpdate.id },
+        );
+        createNotification(
+          user?.uid || playerToUpdate.id,
+          "Profile Submitted",
+          `Your profile has been submitted for admin approval.`,
+          "email",
+        );
+      }
     } else {
       // The user has an appUser document but no player document (e.g. was deleted by admin)
       // Check for an existing player with the same mobile/email before creating
