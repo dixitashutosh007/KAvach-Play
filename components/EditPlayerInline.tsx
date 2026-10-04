@@ -471,18 +471,18 @@ export function EditPlayerInline({
         </div>
       )}
 
-      {/* Fee Plans — Super Admin only */}
+      {/* Match Fee Plans — Super Admin only */}
       {isSuperAdmin && (
         <div className="border border-amber-500/25 bg-amber-500/5 rounded-xl p-4 space-y-3">
           <h4 className="text-xs font-bold text-amber-300 uppercase tracking-widest">
-            Fee Plans
+            Match Fee Plans
           </h4>
           <p className="text-[10px] text-white/50 leading-relaxed">
-            Assign one or more fee plans to override the standard match fee for this player.
+            Assign one or more match fee plans to override the standard match fee for this player.
           </p>
           {activeFeePlans.length === 0 ? (
             <p className="text-[10px] text-white/40 italic">
-              No fee plans created yet. Create plans in Finance → Fee Plans.
+              No match fee plans created yet. Create plans in Finance → Match Fee Plans.
               {store.feePlans.length > 0 && ` (${store.feePlans.length} plan(s) exist but are inactive)`}
             </p>
           ) : (

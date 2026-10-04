@@ -34,6 +34,12 @@ import {
   Badge,
   BadgeTypeDef,
   CatchLogEntry,
+  ClubLead,
+  LeadNote,
+  LeadStatus,
+  LeadInterest,
+  LeadSource,
+  ManualPaymentMethod,
 } from "@/lib/types";
 import { db, auth } from "@/lib/firebase";
 import {
@@ -107,6 +113,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [feePlans, setFeePlans] = useState<FeePlan[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
   const [badgeTypeDefs, setBadgeTypeDefs] = useState<BadgeTypeDef[]>([]);
+  const [leads, setLeads] = useState<ClubLead[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
@@ -962,6 +969,37 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     lazySubsRef.current.set("outOfPlays", unsub);
   }, [user]);
 
+  const ensureLeads = useCallback(() => {
+    if (!user || lazySubsRef.current.has("clubLeads")) return;
+    const unsub = onSnapshot(
+      collection(db, "clubLeads"),
+      (snapshot) => {
+        const list = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() }) as ClubLead,
+        );
+        list.sort((a, b) => {
+          const ta = a.createdAt?.seconds
+            ? a.createdAt.seconds * 1000
+            : a.createdAt
+            ? new Date(a.createdAt).getTime()
+            : 0;
+          const tb = b.createdAt?.seconds
+            ? b.createdAt.seconds * 1000
+            : b.createdAt
+            ? new Date(b.createdAt).getTime()
+            : 0;
+          return tb - ta;
+        });
+        setLeads(list);
+      },
+      (err) => {
+        lazySubsRef.current.delete("clubLeads");
+        handleFirestoreError(err, OperationType.LIST, "clubLeads");
+      },
+    );
+    lazySubsRef.current.set("clubLeads", unsub);
+  }, [user]);
+
   const updateAppConfig = async (config: Partial<AppConfig>) => {
     try {
       // Defense-in-depth: strip any secret field from writes. These belong in
@@ -1210,32 +1248,72 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
-  const updateMatch = async (match: Match) => {
-    const oldMatch = matches.find(m => m.id === match.id);
-    const docRef = doc(db, "matches", match.id);
-    const { id, createdAt, updatedAt, ...data } = match;
+  const updateMatch = async (matchOrId: Match | string, partialChanges?: Partial<Match>) => {
+    let matchId: string;
+    let dataToUpdate: any;
+    let oldMatch: Match | undefined;
+
+    if (typeof matchOrId === "string") {
+      matchId = matchOrId;
+      dataToUpdate = partialChanges || {};
+      oldMatch = matches.find((m) => m.id === matchId);
+    } else {
+      matchId = matchOrId.id;
+      const { id, createdAt, updatedAt, ...rest } = matchOrId;
+      dataToUpdate = rest;
+      oldMatch = matches.find((m) => m.id === matchId);
+    }
+
+    if (!matchId) {
+      console.error("updateMatch called without match id:", matchOrId);
+      throw new Error("Invalid match ID");
+    }
+
+    const docRef = doc(db, "matches", matchId);
     try {
       await updateDoc(
         docRef,
-        cleanPayload({ ...data, updatedAt: serverTimestamp() }),
+        cleanPayload({ ...dataToUpdate, updatedAt: serverTimestamp() }),
       );
-      logAudit({ ...getActor(), action: "updated", entity: "match", entityId: match.id, entityLabel: `vs ${match.opponent}`, changes: diffChanges(oldMatch, data), summary: `Updated match vs ${match.opponent} on ${match.date}` });
-      // Notify all players individually
-      for (const p of players) {
-        if (!p.disabled && p.inviteStatus === "Verified") {
-          createNotification(
-            p.id,
-            "Match Updated",
-            `The match against ${match.opponent} on ${match.date} has been updated.`,
-            "in_app",
-          );
+
+      // Immediately update local state
+      setMatches((prev) =>
+        prev.map((m) => (m.id === matchId ? { ...m, ...dataToUpdate } : m))
+      );
+
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "match",
+        entityId: matchId,
+        entityLabel: `vs ${oldMatch?.opponent || "Match"}`,
+        changes: diffChanges(oldMatch, dataToUpdate),
+        summary: dataToUpdate.matchFeeBudget !== undefined
+          ? `Updated match fee budget to ₹${dataToUpdate.matchFeeBudget} for match vs ${oldMatch?.opponent || matchId}`
+          : `Updated match vs ${oldMatch?.opponent || matchId} on ${oldMatch?.date || ""}`,
+      });
+
+      // Only notify players and sync calendar if this is a general match edit,
+      // not an internal financial budget-only tweak
+      const isBudgetOnly =
+        Object.keys(dataToUpdate).length === 1 && dataToUpdate.matchFeeBudget !== undefined;
+
+      if (!isBudgetOnly) {
+        for (const p of players) {
+          if (!p.disabled && p.inviteStatus === "Verified") {
+            createNotification(
+              p.id,
+              "Match Updated",
+              `The match against ${oldMatch?.opponent || "Opponent"} on ${oldMatch?.date || ""} has been updated.`,
+              "in_app",
+            );
+          }
         }
+        syncMatchToCalendar("upsert", matchId);
       }
-      // Push the edit to the public calendar (the route deletes the event
-      // itself if the match was archived).
-      syncMatchToCalendar("upsert", match.id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `matches/${match.id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `matches/${matchId}`);
+      throw err;
     }
   };
 
@@ -1478,8 +1556,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     feeCollectedAmount?: number,
     feeOffsetAmount?: number,
   ) => {
+    const payment = payments.find((p) => p.id === paymentId);
+    const match = matches.find((m) => m.id === matchId);
+    const resolvedCollected = feeCollectedAmount !== undefined 
+      ? feeCollectedAmount 
+      : (status === "Paid" && payment?.feeOffsetAmount !== undefined 
+          ? (payment.feeOverride !== undefined ? payment.feeOverride : (match?.fee || 0)) 
+          : undefined);
+
     setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}), ...(manualMethod ? { manualMethod } : {}), ...(feeCollectedAmount !== undefined ? { feeCollectedAmount } : {}), ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}) } : p)),
+      prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}), ...(manualMethod ? { manualMethod } : {}), ...(resolvedCollected !== undefined ? { feeCollectedAmount: resolvedCollected } : {}), ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}) } : p)),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
@@ -1488,13 +1574,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (paymentMethod) updateData.paymentMethod = paymentMethod;
       if (manualBy) updateData.manualBy = manualBy;
       if (manualMethod) updateData.manualMethod = manualMethod;
-      if (feeCollectedAmount !== undefined) updateData.feeCollectedAmount = feeCollectedAmount;
+      if (resolvedCollected !== undefined) updateData.feeCollectedAmount = resolvedCollected;
       if (feeOffsetAmount !== undefined) updateData.feeOffsetAmount = feeOffsetAmount;
       await updateDoc(docRef, updateData);
 
-      const payment = payments.find((p) => p.id === paymentId);
       const player = players.find((p) => p.id === payment?.playerId);
-      const match = matches.find((m) => m.id === matchId);
 
       const auditAction = status === "Paid" ? "paid" as const : "status_change" as const;
       logAudit({ ...getActor(), action: auditAction, entity: "payment", entityId: paymentId, entityLabel: `${player?.name || "Player"} - ${match?.opponent || matchId}`, changes: [{ field: "status", oldValue: payment?.status, newValue: status }, ...(availability ? [{ field: "availability", oldValue: payment?.availability, newValue: availability }] : [])], summary: `${player?.name || "Player"} ${status === "Paid" ? "paid" : `status → ${status}`} for match vs ${match?.opponent || ""}` });
@@ -1798,6 +1882,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     paymentId: string,
     feeOverride: number,
     planTag: string,
+    feeOffsetAmount?: number,
+    feeCollectedAmount?: number,
+    status?: "Paid" | "Unpaid",
+    paymentMethod?: "manual" | "razorpay",
+    manualMethod?: ManualPaymentMethod,
+    manualBy?: string,
   ) => {
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
@@ -1806,10 +1896,36 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         planTag,
         updatedAt: serverTimestamp(),
       };
-      await updateDoc(docRef, updates);
+      if (feeOffsetAmount !== undefined) updates.feeOffsetAmount = feeOffsetAmount;
+      if (feeCollectedAmount !== undefined) updates.feeCollectedAmount = feeCollectedAmount;
+      if (status) updates.status = status;
+      if (paymentMethod) updates.paymentMethod = paymentMethod;
+      if (manualMethod) updates.manualMethod = manualMethod;
+      if (manualBy) updates.manualBy = manualBy;
+
+      await updateDoc(docRef, cleanPayload(updates));
       const pmt = payments.find(p => p.id === paymentId);
       const playerName = players.find(p => p.id === pmt?.playerId)?.name || "Player";
-      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerName} fee plan`, changes: [{ field: "feeOverride", newValue: `₹${feeOverride}` }, { field: "planTag", newValue: planTag }], summary: `Applied fee plan "${planTag}" (₹${feeOverride}) to ${playerName}` });
+
+      const changes = [
+        { field: "feeOverride", newValue: `₹${feeOverride}` },
+        { field: "planTag", newValue: planTag },
+      ];
+      if (feeOffsetAmount !== undefined) changes.push({ field: "feeOffsetAmount", newValue: `₹${feeOffsetAmount}` });
+      if (feeCollectedAmount !== undefined) changes.push({ field: "feeCollectedAmount", newValue: `₹${feeCollectedAmount}` });
+      if (status) changes.push({ field: "status", newValue: status });
+      if (manualMethod) changes.push({ field: "manualMethod", newValue: manualMethod });
+
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "payment",
+        entityId: paymentId,
+        entityLabel: `${playerName} fee plan`,
+        changes,
+        summary: `Applied fee plan "${planTag}" (Fee: ₹${feeOverride}, Offset: ₹${feeOffsetAmount || 0}, Collected: ₹${feeCollectedAmount || 0}, Status: ${status || "Unpaid"}) to ${playerName}`,
+      });
+
       setPayments((prev) =>
         prev.map((p) =>
           p.id === paymentId && p.matchId === matchId
@@ -1828,13 +1944,30 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     );
     if (!payment) return;
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
-    const clearFields = {
+
+    // If marked Paid via plan or sponsorship, revert status to Unpaid
+    const shouldRevertToUnpaid =
+      payment.status === "Paid" &&
+      (payment.manualMethod === "club_sponsored" ||
+        payment.manualMethod === "part_of_plan" ||
+        !!payment.sponsoredBy);
+
+    const clearFields: any = {
       feeOverride: deleteField(),
       planTag: deleteField(),
+      feeOffsetAmount: deleteField(),
+      feeCollectedAmount: deleteField(),
       sponsoredBy: deleteField(),
       sponsoring: deleteField(),
       updatedAt: serverTimestamp(),
     };
+
+    if (shouldRevertToUnpaid) {
+      clearFields.status = "Unpaid";
+      clearFields.paymentMethod = deleteField();
+      clearFields.manualMethod = deleteField();
+      clearFields.manualBy = deleteField();
+    }
 
     if (payment.sponsoredBy) {
       const sponsorPayment = payments.find(
@@ -1843,7 +1976,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (sponsorPayment) {
         const sponsorRef = doc(db, "matches", matchId, "payments", sponsorPayment.id);
         const batch = writeBatch(db);
-        batch.update(docRef, { ...clearFields, status: "Unpaid" });
+        batch.update(docRef, clearFields);
         batch.update(sponsorRef, {
           feeOverride: deleteField(),
           sponsoring: deleteField(),
@@ -1853,7 +1986,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         setPayments((prev) =>
           prev.map((p) => {
             if (p.id === paymentId && p.matchId === matchId) {
-              const { feeOverride, planTag, sponsoredBy, sponsoring, ...rest } = p;
+              const {
+                feeOverride,
+                planTag,
+                sponsoredBy,
+                sponsoring,
+                feeOffsetAmount,
+                feeCollectedAmount,
+                paymentMethod,
+                manualMethod,
+                manualBy,
+                ...rest
+              } = p;
               return { ...rest, status: "Unpaid" as const, updatedAt: Timestamp.now() };
             }
             if (p.id === sponsorPayment.id && p.matchId === matchId) {
@@ -1869,10 +2013,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
     try {
       await updateDoc(docRef, clearFields);
+      const pmt = payments.find((p) => p.id === paymentId);
+      const playerName = players.find((p) => p.id === pmt?.playerId)?.name || "Player";
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "payment",
+        entityId: paymentId,
+        entityLabel: `${playerName} fee reset`,
+        changes: [{ field: "feeOverride", newValue: "standard" }],
+        summary: `Reset fee to standard for ${playerName}`,
+      });
+
       setPayments((prev) =>
         prev.map((p) => {
           if (p.id === paymentId && p.matchId === matchId) {
-            const { feeOverride, planTag, sponsoredBy, sponsoring, ...rest } = p;
+            const {
+              feeOverride,
+              planTag,
+              sponsoredBy,
+              sponsoring,
+              feeOffsetAmount,
+              feeCollectedAmount,
+              ...rest
+            } = p;
+            if (shouldRevertToUnpaid) {
+              const { paymentMethod, manualMethod, manualBy, ...unpaidRest } = rest;
+              return { ...unpaidRest, status: "Unpaid" as const, updatedAt: Timestamp.now() };
+            }
             return { ...rest, updatedAt: Timestamp.now() };
           }
           return p;
@@ -2298,6 +2466,115 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const addLead = async (
+    lead: Omit<ClubLead, "id" | "createdAt" | "updatedAt">,
+  ) => {
+    const id = doc(collection(db, "clubLeads")).id;
+    const docRef = doc(db, "clubLeads", id);
+    try {
+      const normalizedMobile = normalizeIndianMobile(lead.mobile);
+      await setDoc(
+        docRef,
+        cleanPayload({
+          ...lead,
+          mobile: normalizedMobile,
+          notes: lead.notes || [],
+          status: lead.status || "new",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+      logAudit({
+        ...getActor(),
+        action: "created",
+        entity: "lead",
+        entityId: id,
+        entityLabel: lead.name,
+        changes: [],
+        summary: `Added new enquiry for ${lead.name} (${lead.source || "lead"})`,
+      });
+      return id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `clubLeads/${id}`);
+      throw err;
+    }
+  };
+
+  const updateLead = async (id: string, updates: Partial<ClubLead>) => {
+    const oldLead = leads.find((l) => l.id === id);
+    const docRef = doc(db, "clubLeads", id);
+    try {
+      const payload: any = { ...updates, updatedAt: serverTimestamp() };
+      if (updates.mobile) {
+        payload.mobile = normalizeIndianMobile(updates.mobile);
+      }
+      await updateDoc(docRef, cleanPayload(payload));
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "lead",
+        entityId: id,
+        entityLabel: oldLead?.name || id,
+        changes: diffChanges(oldLead, updates),
+        summary: `Updated enquiry for ${oldLead?.name || id}`,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clubLeads/${id}`);
+      throw err;
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    const oldLead = leads.find((l) => l.id === id);
+    try {
+      await deleteDoc(doc(db, "clubLeads", id));
+      logAudit({
+        ...getActor(),
+        action: "deleted",
+        entity: "lead",
+        entityId: id,
+        entityLabel: oldLead?.name || id,
+        changes: [],
+        summary: `Deleted enquiry for ${oldLead?.name || id}`,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `clubLeads/${id}`);
+      throw err;
+    }
+  };
+
+  const addLeadNote = async (leadId: string, text: string) => {
+    const oldLead = leads.find((l) => l.id === leadId);
+    if (!oldLead || !text.trim()) return;
+    const actor = getActor();
+    const newNote: LeadNote = {
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      text: text.trim(),
+      adminId: actor.actorId,
+      adminName: actor.actorName,
+      createdAt: new Date().toISOString(),
+    };
+    const updatedNotes = [...(oldLead.notes || []), newNote];
+    try {
+      await updateDoc(doc(db, "clubLeads", leadId), {
+        notes: updatedNotes,
+        updatedAt: serverTimestamp(),
+      });
+      logAudit({
+        ...actor,
+        action: "updated",
+        entity: "lead",
+        entityId: leadId,
+        entityLabel: oldLead.name,
+        changes: [{ field: "notes", newValue: text.trim().slice(0, 40) }],
+        summary: `Added conversation note to ${oldLead.name}'s enquiry`,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clubLeads/${leadId}`);
+      throw err;
+    }
+  };
+
   const filteredPayments = useMemo(() => {
     return payments.filter((pay) => players.some((pl) => pl.id === pay.playerId));
   }, [payments, players]);
@@ -2413,6 +2690,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     updateBadgeTypeDef,
     deleteBadgeTypeDef,
     recordCatch,
+    leads,
+    ensureLeads,
+    addLead,
+    updateLead,
+    deleteLead,
+    addLeadNote,
     isLoaded,
   };
 }

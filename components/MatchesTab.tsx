@@ -61,6 +61,9 @@ import {
   Download,
   RefreshCw,
   ExternalLink,
+  AlertCircle,
+  Shield,
+  Info,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, FC } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
@@ -187,7 +190,7 @@ export function MatchesTab({
     tournamentId: "",
   });
 
-  const { user } = useAuth();
+  const { user, hasAdminClaim } = useAuth();
   const currentUserObj = store.appUsers.find(u => u.id === user?.uid);
   const currentUserName = currentUserObj?.name || "Admin";
 
@@ -300,7 +303,15 @@ export function MatchesTab({
     setIsAdding(true);
   };
 
-  const isAdmin = persona === "admin" && isMatchAdmin !== false;
+  const userHasAdminPrivileges =
+    isSuperAdmin ||
+    isMatchAdmin ||
+    hasAdminClaim ||
+    currentUserObj?.role === "admin" ||
+    currentUserObj?.isMatchAdmin ||
+    currentUserObj?.isClubAdmin;
+
+  const isAdmin = Boolean(persona === "admin" || userHasAdminPrivileges);
 
   useEffect(() => {
     if (!isAdmin && subTab !== "matches") {
@@ -1240,17 +1251,19 @@ export function MatchesTab({
                           </span>
                         </div>
                         {isAdmin && (
-                          <div className="flex items-center gap-1.5 text-xs">
+                          <div className="flex items-center gap-1.5 text-xs flex-wrap">
                             {match.isGroundFeePaid && (
                                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
                                    Ground Fee Paid (₹{match.groundFeePaidAmount})
                                </div>
                             )}
-                            <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">
-                              ₹{cardPaidTotal}
+                            <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              <span>{paidCount} Paid</span>
+                              <span className="opacity-70 font-mono text-[11px]">(₹{cardPaidTotal})</span>
                             </div>
-                            <div className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold">
-                              ₹{cardUnpaidTotal}
+                            <div className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              <span>{unpaidCount} Unpaid</span>
+                              <span className="opacity-70 font-mono text-[11px]">(₹{cardUnpaidTotal})</span>
                             </div>
                           </div>
                         )}
@@ -1550,6 +1563,78 @@ export function MatchPayments({
     .filter((p) => p.status !== "Not Playing")
     .reduce((sum, p) => sum + getPlayerFee(p), 0);
 
+  // Comprehensive Financial Accountability & Bifurcation
+  const financials = useMemo(() => {
+    const playing = matchPayments.filter((p) => p.status !== "Not Playing");
+    const grossValue = playing.length * match.fee;
+
+    let directCollected = 0;
+    let directPaidCount = 0;
+    let monthlyPlanCovered = 0;
+    let monthlyPaidCount = 0;
+    let clubSponsoredTotal = 0;
+    let sponsoredCount = 0;
+    let pendingDues = 0;
+    let unpaidCount = 0;
+
+    for (const p of playing) {
+      const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+
+      if (p.status === "Paid") {
+        if (p.manualMethod === "club_sponsored") {
+          const offset = p.feeOffsetAmount !== undefined ? p.feeOffsetAmount : match.fee;
+          clubSponsoredTotal += offset;
+          sponsoredCount++;
+        } else if (p.manualMethod === "part_of_plan") {
+          const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : match.fee;
+          const offset = p.feeOffsetAmount || 0;
+          monthlyPlanCovered += collected;
+          monthlyPaidCount++;
+          if (offset > 0) {
+            clubSponsoredTotal += offset;
+            sponsoredCount++;
+          }
+        } else {
+          // Direct collection (Razorpay, cash, direct deposit)
+          const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
+          const offset = p.feeOffsetAmount !== undefined ? p.feeOffsetAmount : (match.fee > effectiveFee ? match.fee - effectiveFee : 0);
+          directCollected += collected;
+          directPaidCount++;
+          if (offset > 0) {
+            clubSponsoredTotal += offset;
+            sponsoredCount++;
+          }
+        }
+      } else if (p.status === "Unpaid") {
+        pendingDues += effectiveFee;
+        unpaidCount++;
+        const offset = p.feeOffsetAmount !== undefined ? p.feeOffsetAmount : (match.fee > effectiveFee ? match.fee - effectiveFee : 0);
+        if (offset > 0) {
+          clubSponsoredTotal += offset;
+          sponsoredCount++;
+        }
+      }
+    }
+
+    const totalAccounted = directCollected + monthlyPlanCovered + clubSponsoredTotal + pendingDues;
+    const isBalanced = totalAccounted === grossValue;
+
+    return {
+      playingCount: playing.length,
+      grossValue,
+      directCollected,
+      directPaidCount,
+      monthlyPlanCovered,
+      monthlyPaidCount,
+      clubSponsoredTotal,
+      sponsoredCount,
+      pendingDues,
+      unpaidCount,
+      totalAccounted,
+      isBalanced,
+    };
+  }, [matchPayments, match.fee]);
+
   let matchDateObj = new Date();
   const matchDateParts = dbToInputDate(match.date).split("/");
   if (matchDateParts.length === 3) {
@@ -1584,6 +1669,73 @@ export function MatchPayments({
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [feePayerPicker, setFeePayerPicker] = useState<{ paymentId: string; playerName: string; fee: number; search: string } | null>(null);
+
+  // Plan Bifurcation Modal State
+  const [bifurcationModal, setBifurcationModal] = useState<{
+    paymentId: string;
+    player: Player;
+    plan: FeePlan;
+    standardFee: number;
+    playerFeeInput: number;
+    offsetInput: number;
+    actualFeeInput: number;
+    isSubmitting: boolean;
+  } | null>(null);
+
+  const handleConfirmPlanBifurcation = async () => {
+    if (!bifurcationModal) return;
+    const { paymentId, plan, standardFee, offsetInput, actualFeeInput } = bifurcationModal;
+    setBifurcationModal((prev) => (prev ? { ...prev, isSubmitting: true } : null));
+
+    try {
+      if (plan.type === "fixed") {
+        const feeAmount = plan.feeAmount ?? standardFee;
+        const offset = Math.max(0, standardFee - feeAmount);
+        await store.applyFeePlanToPayment(
+          match.id,
+          paymentId,
+          feeAmount,
+          plan.name,
+          offset,
+          undefined,
+          "Unpaid",
+        );
+      } else if (plan.type === "monthly") {
+        const actualFee = Number(actualFeeInput) || 0;
+        const offset = Number(offsetInput) || 0;
+        await store.applyFeePlanToPayment(
+          match.id,
+          paymentId,
+          0,
+          `${plan.name} (Subscription)`,
+          offset,
+          actualFee,
+          "Paid",
+          "manual",
+          "part_of_plan",
+          appUser?.name || "Admin",
+        );
+      } else if (plan.type === "sponsored") {
+        await store.applyFeePlanToPayment(
+          match.id,
+          paymentId,
+          0,
+          plan.name,
+          standardFee,
+          0,
+          "Paid",
+          "manual",
+          "club_sponsored",
+          appUser?.name || "Admin",
+        );
+      }
+      setBifurcationModal(null);
+    } catch (err) {
+      console.error("Failed to apply plan bifurcation:", err);
+      alert("Failed to apply fee plan. Please try again.");
+      setBifurcationModal((prev) => (prev ? { ...prev, isSubmitting: false } : null));
+    }
+  };
   
   const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
   const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
@@ -2120,12 +2272,108 @@ export function MatchPayments({
         )}
 
         {isAdmin && (
-          <div className="mt-4 mb-4 text-center text-[13px] text-white/70">
-            Collected:{" "}
-            <span className="font-mono text-accent font-bold text-[15px]">
-              ₹{totalCollected}
-            </span>{" "}
-            <span className="opacity-50">/ ₹{totalExpected}</span>
+          <div className="glass rounded-xl p-4 my-4 border border-emerald-500/20 bg-gradient-to-br from-emerald-950/20 to-black/40">
+            <div className="flex items-center justify-between pb-3 border-b border-glass-border flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-white/80">
+                  Match Fee Financial Bifurcation
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/60 bg-white/5 px-2 py-0.5 rounded border border-glass-border">
+                {financials.playingCount} Playing • ₹{match.fee}/each
+              </span>
+            </div>
+
+            {/* Financial breakdown metrics grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3">
+              {/* 1. Direct Collections */}
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
+                  Direct Collected
+                </p>
+                <p className="text-lg font-mono font-bold text-emerald-400 mt-0.5">
+                  ₹{financials.directCollected}
+                </p>
+                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                  {financials.directPaidCount} player(s) paid
+                </p>
+              </div>
+
+              {/* 2. Monthly Plans */}
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400/80">
+                  Monthly Plans
+                </p>
+                <p className="text-lg font-mono font-bold text-blue-400 mt-0.5">
+                  ₹{financials.monthlyPlanCovered}
+                </p>
+                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                  {financials.monthlyPaidCount} sub allocation(s)
+                </p>
+              </div>
+
+              {/* 3. Club Sponsored / Offset */}
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80">
+                  Club Sponsored
+                </p>
+                <p className="text-lg font-mono font-bold text-amber-400 mt-0.5">
+                  ₹{financials.clubSponsoredTotal}
+                </p>
+                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                  {financials.sponsoredCount} offset(s) absorbed
+                </p>
+              </div>
+
+              {/* 4. Pending Dues */}
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">
+                  Pending Dues
+                </p>
+                <p className="text-lg font-mono font-bold text-red-400 mt-0.5">
+                  ₹{financials.pendingDues}
+                </p>
+                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                  {financials.unpaidCount} unpaid player(s)
+                </p>
+              </div>
+            </div>
+
+            {/* Bottom summary bar with full mathematical reconciliation */}
+            <div className="pt-2.5 border-t border-glass-border flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center gap-3 text-white/60 font-mono flex-wrap">
+                <span>
+                  Gross Match Value: <strong className="text-white font-mono">₹{financials.grossValue}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Total Accounted:{" "}
+                  <strong className={`font-mono ${financials.isBalanced ? "text-emerald-400" : "text-amber-400"}`}>
+                    ₹{financials.totalAccounted}
+                  </strong>
+                </span>
+                {match.matchFeeBudget ? (
+                  <>
+                    <span>•</span>
+                    <span>
+                      Budget: <strong className="text-white font-mono">₹{match.matchFeeBudget}</strong>
+                    </span>
+                  </>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold shrink-0">
+                {financials.isBalanced ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> 100% Accounted
+                  </span>
+                ) : (
+                  <span className="text-amber-400 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> ₹{Math.abs(financials.grossValue - financials.totalAccounted)} variance
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2565,6 +2813,11 @@ export function MatchPayments({
                             ₹{fee}
                           </span>
                         )}
+                        {payment.feeOffsetAmount ? (
+                          <span className="ml-2 font-mono text-[10px] text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            Offset ₹{payment.feeOffsetAmount}
+                          </span>
+                        ) : null}
                       </p>
                       {isAdmin && (
                         <p className="text-xs font-mono text-white/50 mt-0.5">
@@ -2572,8 +2825,13 @@ export function MatchPayments({
                         </p>
                       )}
                       {payment.planTag && (
-                        <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider mt-0.5">
-                          {payment.planTag}
+                        <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span>{payment.planTag}</span>
+                          {payment.manualMethod === "part_of_plan" && payment.feeCollectedAmount !== undefined && (
+                            <span className="text-blue-400 font-mono text-[9px] lowercase font-normal">
+                              (₹{payment.feeCollectedAmount} sub)
+                            </span>
+                          )}
                         </p>
                       )}
                     </div>
@@ -2634,65 +2892,89 @@ export function MatchPayments({
 
                   {/* Admin fee actions: plan quick-apply, change fee payer, undo */}
                   {isAdmin && (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
                       {/* Plan quick-apply for unpaid players without override */}
                       {payment.status === "Unpaid" && !hasOverride && playerPlans.map((plan: FeePlan) => {
-                        if (plan.type === "fixed") {
-                          return (
-                            <button
-                              key={plan.id}
-                              onClick={() =>
-                                store.applyFeePlanToPayment(
-                                  match.id,
-                                  payment.id,
-                                  plan.feeAmount ?? match.fee,
-                                  plan.name,
-                                )
-                              }
-                              className="text-[9px] font-bold uppercase tracking-widest bg-amber-500/15 text-amber-400 border border-amber-500/25 px-2 py-1 rounded hover:bg-amber-500/25 transition"
-                            >
-                              {plan.name} (₹{plan.feeAmount})
-                            </button>
-                          );
-                        }
-                        if (plan.type === "sponsored") {
-                          return (
-                            <button
-                              key={plan.id}
-                              onClick={() =>
-                                store.applyFeePlanToPayment(
-                                  match.id,
-                                  payment.id,
-                                  0,
-                                  plan.name,
-                                )
-                              }
-                              className="text-[9px] font-bold uppercase tracking-widest bg-green-500/15 text-green-400 border border-green-500/25 px-2 py-1 rounded hover:bg-green-500/25 transition"
-                            >
-                              {plan.name} (₹0)
-                            </button>
-                          );
-                        }
-                        if (plan.type === "monthly") {
-                          return (
-                            <button
-                              key={plan.id}
-                              onClick={() =>
-                                store.applyFeePlanToPayment(
-                                  match.id,
-                                  payment.id,
-                                  0,
-                                  `${plan.name} (Subscription)`,
-                                )
-                              }
-                              className="text-[9px] font-bold uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 px-2 py-1 rounded hover:bg-blue-500/25 transition"
-                            >
-                              {plan.name} (Sub ₹{plan.monthlyAmount}/mo)
-                            </button>
-                          );
-                        }
-                        return null;
+                        return (
+                          <button
+                            key={plan.id}
+                            onClick={() => {
+                              const feeAmount = plan.type === "fixed" ? (plan.feeAmount ?? match.fee) : 0;
+                              const offset = plan.type === "sponsored" 
+                                ? match.fee 
+                                : plan.type === "fixed" 
+                                  ? Math.max(0, match.fee - feeAmount) 
+                                  : 0;
+                              const actualFee = plan.type === "monthly" ? match.fee : 0;
+                              setBifurcationModal({
+                                paymentId: payment.id,
+                                player,
+                                plan,
+                                standardFee: match.fee,
+                                playerFeeInput: feeAmount,
+                                offsetInput: offset,
+                                actualFeeInput: actualFee,
+                                isSubmitting: false,
+                              });
+                            }}
+                            className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded transition border ${
+                              plan.type === "fixed"
+                                ? "bg-amber-500/15 text-amber-400 border-amber-500/25 hover:bg-amber-500/25"
+                                : plan.type === "monthly"
+                                  ? "bg-blue-500/15 text-blue-400 border-blue-500/25 hover:bg-blue-500/25"
+                                  : "bg-green-500/15 text-green-400 border-green-500/25 hover:bg-green-500/25"
+                            }`}
+                          >
+                            {plan.name} {plan.type === "fixed" ? `(₹${plan.feeAmount})` : plan.type === "sponsored" ? "(₹0)" : `(₹${plan.monthlyAmount}/mo)`}
+                          </button>
+                        );
                       })}
+
+                      {/* Dropdown for other active club plans not in playerPlans */}
+                      {payment.status === "Unpaid" && !hasOverride && (() => {
+                        const otherPlans = store.feePlans.filter(
+                          (fp: FeePlan) => fp.isActive !== false && !playerPlans.some((pp) => pp.id === fp.id)
+                        );
+                        if (otherPlans.length === 0) return null;
+                        return (
+                          <select
+                            onChange={(e) => {
+                              const selectedId = e.target.value;
+                              if (!selectedId) return;
+                              const selectedPlan = store.feePlans.find((fp: FeePlan) => fp.id === selectedId);
+                              if (selectedPlan) {
+                                const feeAmount = selectedPlan.type === "fixed" ? (selectedPlan.feeAmount ?? match.fee) : 0;
+                                const offset = selectedPlan.type === "sponsored" 
+                                  ? match.fee 
+                                  : selectedPlan.type === "fixed" 
+                                    ? Math.max(0, match.fee - feeAmount) 
+                                    : 0;
+                                const actualFee = selectedPlan.type === "monthly" ? match.fee : 0;
+                                setBifurcationModal({
+                                  paymentId: payment.id,
+                                  player,
+                                  plan: selectedPlan,
+                                  standardFee: match.fee,
+                                  playerFeeInput: feeAmount,
+                                  offsetInput: offset,
+                                  actualFeeInput: actualFee,
+                                  isSubmitting: false,
+                                });
+                              }
+                              e.target.value = "";
+                            }}
+                            className="text-[9px] font-bold uppercase tracking-widest bg-white/5 text-white/60 border border-white/15 px-2 py-1 rounded hover:bg-white/10 hover:text-white transition cursor-pointer [&>option]:bg-[#0f172a]"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>+ Match Fee Plan</option>
+                            {otherPlans.map((op) => (
+                              <option key={op.id} value={op.id}>
+                                {op.name} ({op.type})
+                              </option>
+                            ))}
+                          </select>
+                        );
+                      })()}
 
                       {/* Universal: Change Fee Payer (sponsorship) */}
                       {payment.status === "Unpaid" && !payment.sponsoredBy && (
@@ -2705,14 +2987,15 @@ export function MatchPayments({
                         </button>
                       )}
 
-                      {/* Undo fee override */}
-                      {hasOverride && (
+                      {/* Undo fee override / reset plan */}
+                      {(hasOverride || payment.feeOffsetAmount !== undefined || payment.planTag) && (
                         <button
-                          onClick={() => {
-                            if (!confirm(`Reset ${player.name}'s fee back to standard ₹${match.fee}?`)) return;
-                            store.clearFeeOverride(match.id, payment.id);
+                          onClick={async () => {
+                            if (!confirm(`Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`)) return;
+                            await store.clearFeeOverride(match.id, payment.id);
                           }}
                           className="text-[9px] font-bold uppercase tracking-widest bg-white/10 text-white/60 border border-white/15 px-2 py-1 rounded hover:bg-white/20 hover:text-white transition flex items-center gap-1"
+                          title="Reset fee to standard and clear all offsets"
                         >
                           <Undo2 className="w-3 h-3" />
                           Reset Fee
@@ -2811,6 +3094,232 @@ export function MatchPayments({
                     );
                   })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Plan Confirmation & Bifurcation Modal */}
+      {bifurcationModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => !bifurcationModal.isSubmitting && setBifurcationModal(null)}
+        >
+          <div
+            className="w-full max-w-md bg-[#0f172a] rounded-2xl border border-glass-border overflow-hidden shadow-2xl space-y-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 bg-white/5 border-b border-glass-border flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                      bifurcationModal.plan.type === "fixed"
+                        ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                        : bifurcationModal.plan.type === "monthly"
+                          ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                          : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                    }`}
+                  >
+                    {bifurcationModal.plan.type === "fixed"
+                      ? "Fixed / Flat Fee"
+                      : bifurcationModal.plan.type === "monthly"
+                        ? "Monthly Subscription"
+                        : "Club Sponsored"}
+                  </span>
+                  <span className="text-[11px] font-mono text-white/50">
+                    Match: ₹{bifurcationModal.standardFee}
+                  </span>
+                </div>
+                <h3 className="font-bold text-white text-base mt-1">
+                  Apply &ldquo;{bifurcationModal.plan.name}&rdquo;
+                </h3>
+                <p className="text-xs text-white/60">
+                  Player: <strong className="text-white">{bifurcationModal.player.name}</strong>
+                </p>
+              </div>
+              <button
+                disabled={bifurcationModal.isSubmitting}
+                onClick={() => setBifurcationModal(null)}
+                className="p-1.5 hover:bg-white/10 rounded-full transition text-white/50 hover:text-white disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-sm">
+              {/* Scenario 1: Fixed / Flat Fee */}
+              {bifurcationModal.plan.type === "fixed" && (() => {
+                const feeAmount = bifurcationModal.plan.feeAmount ?? bifurcationModal.standardFee;
+                const offset = Math.max(0, bifurcationModal.standardFee - feeAmount);
+                return (
+                  <div className="space-y-4">
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/60">Standard Match Fee</span>
+                        <span className="font-mono font-semibold text-white">₹{bifurcationModal.standardFee}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm border-t border-amber-500/20 pt-2 font-bold">
+                        <span className="text-amber-300">Player Due ({bifurcationModal.plan.name})</span>
+                        <span className="font-mono text-amber-400 text-base">₹{feeAmount}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs border-t border-amber-500/20 pt-2">
+                        <span className="text-emerald-400">Club Sponsored (Offset)</span>
+                        <span className="font-mono font-bold text-emerald-400">₹{offset}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-black/30 border border-glass-border rounded-lg p-3 text-xs text-white/70 space-y-1.5">
+                      <p className="flex items-center gap-1.5 text-white/90 font-medium">
+                        <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        Accountability Notice:
+                      </p>
+                      <p>
+                        The player will see <strong className="text-amber-300 font-mono">₹{feeAmount}</strong> due in the portal and remain marked as <span className="text-red-400 font-bold uppercase text-[10px]">Unpaid</span> until received.
+                      </p>
+                      <p>
+                        The remaining <strong className="text-emerald-400 font-mono">₹{offset}</strong> is recorded as <span className="text-emerald-400 font-bold">Club Sponsored</span> for this match.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Scenario 2: Monthly Subscription */}
+              {bifurcationModal.plan.type === "monthly" && (
+                <div className="space-y-4">
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/60">Subscription Plan</span>
+                      <span className="font-bold text-blue-300">{bifurcationModal.plan.name}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/60">Subscription Amount</span>
+                      <span className="font-mono text-white">₹{bifurcationModal.plan.monthlyAmount ?? 0}/month</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/60">Standard Match Fee</span>
+                      <span className="font-mono font-bold text-white">₹{bifurcationModal.standardFee}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 bg-black/30 border border-glass-border rounded-xl p-3.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-white/60">
+                      Fee Allocation for this Match:
+                    </p>
+                    <div>
+                      <label className="text-xs text-white/80 font-medium block mb-1">
+                        Actual Fee Covered from Subscription (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={bifurcationModal.actualFeeInput}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          const autoOffset = Math.max(0, bifurcationModal.standardFee - val);
+                          setBifurcationModal((prev) =>
+                            prev ? { ...prev, actualFeeInput: val, offsetInput: autoOffset } : null
+                          );
+                        }}
+                        className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-white/80 font-medium block mb-1">
+                        Club Sponsored / Offset Portion (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={bifurcationModal.offsetInput}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          setBifurcationModal((prev) =>
+                            prev ? { ...prev, offsetInput: val } : null
+                          );
+                        }}
+                        className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 border border-glass-border rounded-lg p-3 text-xs text-white/70 space-y-1.5">
+                    <p className="flex items-center gap-1.5 text-white/90 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      Status upon Confirmation:
+                    </p>
+                    <p>
+                      Player will be automatically marked as <span className="text-emerald-400 font-bold uppercase text-[10px]">Paid</span> (Part of Monthly Plan).
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Scenario 3: 100% Club Sponsored */}
+              {bifurcationModal.plan.type === "sponsored" && (
+                <div className="space-y-4">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-white/60">Standard Match Fee</span>
+                      <span className="font-mono font-semibold text-white">₹{bifurcationModal.standardFee}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm border-t border-emerald-500/20 pt-2 font-bold">
+                      <span className="text-emerald-400">Total Club Sponsored</span>
+                      <span className="font-mono text-emerald-400 text-base">₹{bifurcationModal.standardFee}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs border-t border-emerald-500/20 pt-2">
+                      <span className="text-white/60">Player Liability</span>
+                      <span className="font-mono font-bold text-white">₹0</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 border border-glass-border rounded-lg p-3 text-xs text-white/70 space-y-1.5">
+                    <p className="flex items-center gap-1.5 text-white/90 font-medium">
+                      <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      Confirmation Notice:
+                    </p>
+                    <p>
+                      The entire <strong className="text-emerald-400 font-mono">₹{bifurcationModal.standardFee}</strong> will be absorbed by the club.
+                    </p>
+                    <p>
+                      Player will be immediately marked as <span className="text-emerald-400 font-bold uppercase text-[10px]">Paid</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-white/5 border-t border-glass-border flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={bifurcationModal.isSubmitting}
+                onClick={() => setBifurcationModal(null)}
+                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white/60 hover:text-white hover:bg-white/10 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={bifurcationModal.isSubmitting}
+                onClick={handleConfirmPlanBifurcation}
+                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-accent text-black hover:bg-accent/90 transition shadow disabled:opacity-50 flex items-center gap-1.5 font-bold"
+              >
+                {bifurcationModal.isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Applying...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    Confirm & Apply Plan
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -3998,6 +4507,15 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
   onCancelDelete,
 }) => {
   const [isMounted, setIsMounted] = useState(false);
+  const { user, hasAdminClaim } = useAuth();
+  const currentUser = store.appUsers.find((u) => u.id === user?.uid);
+  const effectiveAdmin = Boolean(
+    isAdmin ||
+    hasAdminClaim ||
+    currentUser?.role === "admin" ||
+    currentUser?.isMatchAdmin ||
+    currentUser?.isClubAdmin
+  );
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -4252,6 +4770,9 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                               </div>
                               <div className="space-y-2 pt-1 flex flex-col justify-start h-full min-h-[5rem]">
                                 {day.matches.length > 0 && day.matches.map((m: Match) => {
+                                  const matchPayments = store.payments.filter(p => p.matchId === m.id && store.players.some((pl) => pl.id === p.playerId));
+                                  const paidCount = matchPayments.filter(p => p.status === "Paid").length;
+                                  const unpaidCount = matchPayments.filter(p => p.status === "Unpaid").length;
                                   return (
                                     <div
                                       key={m.id}
@@ -4272,16 +4793,100 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                           </span>
                                         )}
                                       </div>
-                                      <div className="font-bold text-sm leading-tight">
-                                        vs {m.opponent}
-                                      </div>
-                                      <div className="text-[10px] text-white/50">
-                                        {grounds.find((g) => g.id === m.groundId)?.name}
-                                      </div>
-                                      {isAdmin && m.isGroundFeePaid && (
-                                        <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
-                                          <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
+
+                                      {matchToDelete === m.id ? (
+                                        <div className="mt-1 flex items-center justify-between gap-1 bg-black/60 rounded-lg px-2 py-1 border border-red-500/50">
+                                          <span className="text-[9px] text-red-400 uppercase font-bold tracking-wider">
+                                            Sure?
+                                          </span>
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                onConfirmDelete?.(m.id);
+                                              }}
+                                              className="text-red-400 hover:bg-red-500/20 rounded p-1 transition"
+                                            >
+                                              <Check className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                onCancelDelete?.();
+                                              }}
+                                              className="text-white/60 hover:bg-white/10 rounded p-1 transition"
+                                            >
+                                              <span className="text-[10px] font-bold px-0.5">X</span>
+                                            </button>
+                                          </div>
                                         </div>
+                                      ) : (
+                                        <>
+                                          <div className="font-bold text-sm leading-tight text-white/90">
+                                            vs {m.opponent}
+                                          </div>
+                                          <div className="text-[10px] text-white/50 truncate">
+                                            {grounds.find((g) => g.id === m.groundId)?.name || "Unknown Ground"}
+                                          </div>
+                                          {effectiveAdmin && m.isGroundFeePaid && (
+                                            <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
+                                              <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
+                                            </div>
+                                          )}
+                                          {effectiveAdmin && (
+                                            <div className="mt-1 flex gap-2 text-[9px] font-bold uppercase tracking-wider">
+                                              <span className="text-emerald-400">{paidCount} Paid</span>
+                                              {unpaidCount > 0 && <span className="text-red-400">{unpaidCount} Unpaid</span>}
+                                            </div>
+                                          )}
+                                          {effectiveAdmin && (
+                                            <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
+                                              <div className="flex items-center gap-1">
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onEditMatch?.(m);
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  title="Edit Match"
+                                                >
+                                                  <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDuplicateMatch?.(m);
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  title="Duplicate Match"
+                                                >
+                                                  <Copy className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDeleteMatch?.(m);
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  title="Delete Match"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                              {m.matchUrl && (
+                                                <a
+                                                  href={m.matchUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-white transition uppercase font-bold tracking-wider"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  Share
+                                                </a>
+                                              )}
+                                            </div>
+                                          )}
+                                        </>
                                       )}
                                     </div>
                                   );
@@ -4411,20 +5016,20 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                   </div>
                                 )}
                                 
-                                {isAdmin && m.isGroundFeePaid && (
+                                {effectiveAdmin && m.isGroundFeePaid && (
                                   <div className="mt-1 text-[9px] uppercase tracking-widest font-bold text-emerald-400 flex items-center">
                                     <CheckCircle2 className="w-3 h-3 mr-1" /> Ground Fee Paid
                                   </div>
                                 )}
                                 
-                                {isAdmin && (
+                                {effectiveAdmin && (
                                   <div className="mt-1 flex gap-2 text-[9px] font-bold uppercase tracking-wider">
                                     <span className="text-emerald-400">{paidCount} Paid</span>
                                     {unpaidCount > 0 && <span className="text-red-400">{unpaidCount} Unpaid</span>}
                                   </div>
                                 )}
 
-                                {isAdmin && (
+                                {effectiveAdmin && (
                                   <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
                                     <div className="flex items-center gap-1">
                                       <button
@@ -4477,10 +5082,10 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                         );
                         })}
                         
-                        {(isAdmin || day.matches.length === 0) && (
+                        {(effectiveAdmin || day.matches.length === 0) && (
                           <div
-                            onClick={() => isAdmin ? onAddMatch(day.dateStr) : undefined}
-                            className={`${day.matches.length === 0 ? "flex-1 min-h-[5rem]" : "py-2 mt-1"} rounded-lg flex items-center justify-center border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 transition ${isAdmin ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50" : ""}`}
+                            onClick={() => effectiveAdmin ? onAddMatch(day.dateStr) : undefined}
+                            className={`${day.matches.length === 0 ? "flex-1 min-h-[5rem]" : "py-2 mt-1"} rounded-lg flex items-center justify-center border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 transition ${effectiveAdmin ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50" : ""}`}
                           >
                             <span className="text-emerald-400 font-bold text-[10px] uppercase tracking-wider">
                               {day.matches.length > 0 ? "+ Add" : "Open Slot"}

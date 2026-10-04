@@ -133,6 +133,7 @@ service cloud.firestore {
     function isValidMatch(data) {
       return data.keys().hasAll(['groundId', 'format', 'jerseyColor', 'opponent', 'matchType', 'fee', 'date', 'time', 'maxSquadSize', 'createdAt', 'updatedAt'])
         && (!data.keys().hasAny(['isArchived']) || data.isArchived is bool)
+        && (!data.keys().hasAny(['matchFeeBudget']) || (data.matchFeeBudget is int || data.matchFeeBudget is float))
         && data.groundId is string && data.groundId.size() <= 128
         && data.format in ['T20', 'T30', 'Other']
         && data.jerseyColor in ['Scarlet Red', 'Whites']
@@ -445,7 +446,7 @@ service cloud.firestore {
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
-      allow update: if isMatchAdmin()
+      allow update: if (isMatchAdmin() || isFinanceAdmin())
         && isValidId(matchId)
         && isValidMatch(incoming())
         && exists(/databases/$(database)/documents/grounds/$(incoming().groundId))
@@ -534,6 +535,10 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time;
       allow delete: if isAnyAdmin();
+    }
+
+    match /clubLeads/{leadId} {
+      allow read, write: if isAnyAdmin();
     }
   }
 }

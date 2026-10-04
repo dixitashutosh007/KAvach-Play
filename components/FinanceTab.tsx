@@ -23,6 +23,9 @@ import {
   ChevronUp,
   Plus,
   Calendar,
+  Info,
+  Edit2,
+  X,
 } from "lucide-react";
 import { formatDate, normalizeIndianMobile, computeLateFees } from "@/lib/utils";
 import WixFinanceView from "./WixFinanceView";
@@ -1052,7 +1055,7 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
             onClick={() => setFeeTab("feePlans")}
             className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "feePlans" ? "bg-amber-500/20 text-amber-400" : "text-white/50 hover:text-white"}`}
           >
-            Fee Plans
+            Match Fee Plans
           </button>
       </div>
       {feeTab === "custom" ? (
@@ -1074,6 +1077,9 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterMatchId, setFilterMatchId] = useState("");
+  const [editingMatchFeeId, setEditingMatchFeeId] = useState<string | null>(null);
+  const [editFeeVal, setEditFeeVal] = useState<string>("");
+  const [isSavingFee, setIsSavingFee] = useState(false);
 
   const filteredMatches = useMemo(() => {
     let m = store.matches;
@@ -1123,41 +1129,106 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
         const getFee = (p: any) => p.feeOverride !== undefined ? p.feeOverride : match.fee;
 
+        const matchFeeTotal = match.matchFeeBudget !== undefined ? match.matchFeeBudget : (match.fee || 0) * 12;
+
         let feeCollected = 0;
         let feeCollectedCount = 0;
         let feeOffset = 0;
         let feeOffsetCount = 0;
+        const sponsoredDetails: { playerName: string; amount: number; reason: string }[] = [];
+        const paidPlayers: string[] = [];
+        const unpaidPlayers: string[] = [];
+        const paidPlayerDetails: { name: string; amount: number; method: string }[] = [];
+        const unpaidPlayerDetails: { name: string; due: number; planTag?: string }[] = [];
+
         for (const p of paymentsForMatch) {
-          if (p.status !== "Paid") continue;
           const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-          if (p.feeCollectedAmount !== undefined || p.feeOffsetAmount !== undefined) {
-            feeCollected += p.feeCollectedAmount || 0;
-            feeOffset += p.feeOffsetAmount || 0;
-            if (p.feeCollectedAmount) feeCollectedCount++;
-            else feeOffsetCount++;
-          } else if (p.sponsoredBy) {
-            feeOffset += match.fee;
-            feeOffsetCount++;
-          } else if (p.paymentMethod !== "manual") {
-            feeCollected += effectiveFee;
-            feeCollectedCount++;
-            const discount = match.fee - effectiveFee;
-            if (discount > 0) feeOffset += discount;
-          } else if (p.manualMethod === "cash_collected" || p.manualMethod === "deposited_directly") {
-            feeCollected += effectiveFee;
-            feeCollectedCount++;
-            const discount = match.fee - effectiveFee;
-            if (discount > 0) feeOffset += discount;
-          } else if (p.manualMethod === "club_sponsored") {
-            feeOffset += effectiveFee;
-            feeOffsetCount++;
+          const player = store.players.find((x) => x.id === p.playerId);
+          const playerName = p.guestName ? `${p.guestName} (Guest)` : (player?.name || "Player");
+
+          if (p.status === "Paid") {
+            paidPlayers.push(playerName);
+            const methodLabel =
+              p.paymentMethod === "razorpay"
+                ? "Razorpay"
+                : p.manualMethod === "club_sponsored"
+                  ? "Sponsored"
+                  : p.manualMethod === "part_of_plan"
+                    ? "Subscription"
+                    : "Cash";
+            paidPlayerDetails.push({
+              name: playerName,
+              amount: p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee,
+              method: methodLabel,
+            });
           } else {
+            unpaidPlayers.push(playerName);
+            unpaidPlayerDetails.push({
+              name: playerName,
+              due: effectiveFee,
+              planTag: p.planTag,
+            });
+          }
+
+          // Calculate real money collected (Razorpay + Cash collected + Monthly subscription allocation)
+          if (p.status === "Paid") {
+            if (p.manualMethod === "club_sponsored") {
+              // Entirely sponsored by club; 0 direct money collected
+            } else if (p.manualMethod === "part_of_plan") {
+              // Monthly flat fee subscription allocation
+              const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : (match.fee - (p.feeOffsetAmount || 0));
+              feeCollected += collected;
+              feeCollectedCount++;
+            } else {
+              // Razorpay, cash, direct deposit, or standard manual
+              const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
+              feeCollected += collected;
+              feeCollectedCount++;
+            }
+          }
+
+          // Calculate Club Sponsored offset and breakdown for hover tooltip
+          if (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) {
+            feeOffset += p.feeOffsetAmount;
+            feeOffsetCount++;
+            sponsoredDetails.push({
+              playerName,
+              amount: p.feeOffsetAmount,
+              reason: p.planTag || (p.manualMethod === "club_sponsored" ? "Club Sponsored" : "Plan Offset"),
+            });
+          } else if (p.manualMethod === "club_sponsored") {
+            const sponsoredAmt = p.feeOverride !== undefined && p.feeOverride > 0 ? p.feeOverride : match.fee;
+            feeOffset += sponsoredAmt;
+            feeOffsetCount++;
+            sponsoredDetails.push({
+              playerName,
+              amount: sponsoredAmt,
+              reason: p.planTag || "Club Sponsored",
+            });
+          } else if (p.sponsoredBy) {
+            const sponsor = store.players.find((x) => x.id === p.sponsoredBy);
             feeOffset += match.fee;
             feeOffsetCount++;
+            sponsoredDetails.push({
+              playerName,
+              amount: match.fee,
+              reason: `Sponsored by ${sponsor?.name || "Member"}`,
+            });
+          } else if ((p.status === "Paid" || p.feeOverride !== undefined) && p.manualMethod !== "part_of_plan" && match.fee > effectiveFee) {
+            const discount = match.fee - effectiveFee;
+            if (discount > 0) {
+              feeOffset += discount;
+              feeOffsetCount++;
+              sponsoredDetails.push({
+                playerName,
+                amount: discount,
+                reason: p.planTag || "Fixed Discount",
+              });
+            }
           }
         }
-        const matchFeePaid = match.matchFeeBudget ?? 0;
-        const percentRecovered = matchFeePaid > 0 ? Math.round((feeCollected * 100) / matchFeePaid) : null;
+
+        const percentRecovered = matchFeeTotal > 0 ? Math.round((feeCollected * 100) / matchFeeTotal) : null;
 
         return {
           match,
@@ -1165,6 +1236,10 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           playingCount,
           paidCount,
           unpaidCount,
+          paidPlayers,
+          unpaidPlayers,
+          paidPlayerDetails,
+          unpaidPlayerDetails,
           razorpayPaidCount,
           manualPaidCount,
           totalCollected: paymentsForMatch.filter(p => p.status === "Paid").reduce((s, p) => s + getFee(p), 0),
@@ -1175,7 +1250,8 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           feeCollectedCount,
           feeOffset,
           feeOffsetCount,
-          matchFeePaid,
+          sponsoredDetails,
+          matchFeeTotal,
           percentRecovered,
           hasResults: playingCount > 0,
         };
@@ -1190,7 +1266,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
   const grandTotalDue = reportData.reduce((t, d) => t + d.totalDue, 0);
 
   const collectedMatches = useMemo(() => {
-    return reportData.filter((d) => d.totalCollected > 0);
+    return reportData.filter((d) => d.feeCollected > 0 || d.feeOffset > 0 || d.paidCount > 0);
   }, [reportData]);
 
 
@@ -1230,26 +1306,27 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
       {subTab === "matches" && (
         <div className="space-y-4">
-          <div className="glass rounded-xl p-4 border border-glass-border overflow-hidden">
+          <div className="glass rounded-xl p-4 border border-glass-border overflow-visible">
             <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
               Match Fee Accounting
             </h3>
             {(() => {
-              const showPct = collectedMatches.some((d) => d.matchFeePaid > 0);
+              const showPct = collectedMatches.some((d) => d.matchFeeTotal > 0);
               return (
               <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-glass-border text-[10px] uppercase tracking-widest text-white/50">
                     <th className="py-2 pr-3 font-bold whitespace-nowrap">Match Details</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-center">Paid / Unpaid</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Match Fee</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Collected</th>
-                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Offset</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Club Sponsored</th>
                     {showPct && <th className="py-2 pl-3 font-bold whitespace-nowrap text-right">% Recovered</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {collectedMatches.map((data) => {
+                  {collectedMatches.map((data, rowIndex) => {
                     const ground = store.grounds.find((g) => g.id === data.match.groundId);
                     return (
                       <tr key={data.match.id} className="border-b border-white/5 hover:bg-white/5 transition">
@@ -1257,31 +1334,238 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                           <div className="text-white font-semibold text-xs">{formatDate(data.match.date)}</div>
                           <div className="text-[10px] text-white/40">{ground?.name || "—"}</div>
                         </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          <input
-                            type="number"
-                            placeholder="Enter"
-                            defaultValue={data.match.matchFeeBudget ?? ""}
-                            onBlur={(e) => {
-                              const val = e.target.value.trim();
-                              const num = val ? parseInt(val, 10) : undefined;
-                              if (num === data.match.matchFeeBudget) return;
-                              store.updateMatch({ ...data.match, matchFeeBudget: num } as Match);
-                            }}
-                            className="w-20 bg-white/5 border border-glass-border rounded px-2 py-1 text-right text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-accent/50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                          />
-                          <div className="text-[10px] text-white/40 mt-0.5">₹{data.match.fee}/player · {data.playingCount}p</div>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap relative group">
+                          <div className="inline-flex items-center gap-1.5 cursor-help px-2 py-0.5 rounded bg-white/5 border border-glass-border hover:bg-white/10 transition">
+                            <span className="text-emerald-400 font-bold font-mono text-xs">{data.paidCount} Paid</span>
+                            <span className="text-white/30">/</span>
+                            <span className={`font-bold font-mono text-xs ${data.unpaidCount > 0 ? "text-red-400" : "text-white/40"}`}>
+                              {data.unpaidCount} Unpaid
+                            </span>
+                            <Info className="w-3 h-3 text-white/40 group-hover:text-white transition shrink-0" />
+                          </div>
+
+                          {/* Desktop Hover Tooltip */}
+                          <div
+                            className={`hidden group-hover:block absolute left-1/2 -translate-x-1/2 ${
+                              rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"
+                            } z-50 w-72 max-h-[380px] bg-[#0f172a]/95 border border-glass-border rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}
+                          >
+                            <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                                Squad Payment Status
+                              </span>
+                              <span className="text-[10px] font-mono text-white/60 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">
+                                {data.paidCount + data.unpaidCount} Assigned
+                              </span>
+                            </div>
+
+                            <div className="space-y-3 max-h-[290px] overflow-y-auto pr-1 custom-scrollbar">
+                              {/* 1. Unpaid Players FIRST */}
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                                    Unpaid ({data.unpaidCount})
+                                  </span>
+                                  {data.unpaidCount > 0 && data.totalDue > 0 && (
+                                    <span className="font-mono text-red-400/80 font-normal">
+                                      ₹{data.totalDue} due
+                                    </span>
+                                  )}
+                                </div>
+                                {data.unpaidPlayerDetails.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {data.unpaidPlayerDetails.map((item, i) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded bg-red-500/10 border border-red-500/15"
+                                      >
+                                        <div className="truncate flex items-center gap-1.5 min-w-0">
+                                          <span className="text-red-400 text-[10px] shrink-0">✗</span>
+                                          <span className="truncate text-white/90 font-medium">{item.name}</span>
+                                        </div>
+                                        <div className="shrink-0 flex items-center gap-1 font-mono text-[10px]">
+                                          <span className="text-red-300 font-bold">₹{item.due}</span>
+                                          {item.planTag && (
+                                            <span className="text-[8px] text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded border border-amber-500/30 truncate max-w-[85px]">
+                                              {item.planTag}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-emerald-400/90 italic py-1 px-2 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1.5">
+                                    <span>✓</span> All players have paid!
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Divider */}
+                              <div className="border-t border-white/10" />
+
+                              {/* 2. Paid Players SECOND */}
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1.5">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    Paid ({data.paidCount})
+                                  </span>
+                                  {data.paidCount > 0 && (
+                                    <span className="font-mono text-emerald-400/80 font-normal">
+                                      {data.paidCount} cleared
+                                    </span>
+                                  )}
+                                </div>
+                                {data.paidPlayerDetails.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {data.paidPlayerDetails.map((item, i) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded bg-white/5 border border-white/5 hover:bg-white/10 transition"
+                                      >
+                                        <div className="truncate flex items-center gap-1.5 min-w-0">
+                                          <span className="text-emerald-400 text-[10px] shrink-0">✓</span>
+                                          <span className="truncate text-white/80">{item.name}</span>
+                                        </div>
+                                        <div className="shrink-0 flex items-center gap-1.5 text-[9px] font-mono">
+                                          <span className="text-white/60">₹{item.amount}</span>
+                                          <span
+                                            className={`px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                                              item.method === "Razorpay"
+                                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                                                : item.method === "Sponsored"
+                                                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
+                                                  : "bg-teal-500/15 text-teal-400 border border-teal-500/25"
+                                            }`}
+                                          >
+                                            {item.method}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-white/40 italic py-1 px-2">No payments received yet</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          <div className="text-emerald-400 font-semibold">₹{data.feeCollected}</div>
+                          {editingMatchFeeId === data.match.id ? (
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                const val = parseFloat(editFeeVal);
+                                if (isNaN(val) || val < 0) return;
+                                setIsSavingFee(true);
+                                try {
+                                  await store.updateMatch(data.match.id, { matchFeeBudget: val });
+                                  setEditingMatchFeeId(null);
+                                } catch (err: any) {
+                                  console.error("Failed to update match fee:", err);
+                                  alert(err?.message || "Failed to update match fee.");
+                                } finally {
+                                  setIsSavingFee(false);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 justify-end"
+                            >
+                              <span className="text-white/50 text-xs">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editFeeVal}
+                                onChange={(e) => setEditFeeVal(e.target.value)}
+                                className="w-20 bg-black/80 border border-accent rounded px-1.5 py-0.5 text-xs text-white text-right font-mono font-bold focus:outline-none"
+                                autoFocus
+                              />
+                              <button
+                                type="submit"
+                                disabled={isSavingFee}
+                                className="p-1 hover:bg-emerald-500/20 text-emerald-400 rounded transition"
+                                title="Save"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingMatchFeeId(null)}
+                                className="p-1 hover:bg-white/10 text-white/50 hover:text-white rounded transition text-xs font-bold"
+                                title="Cancel"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5 group/fee">
+                              <div className="text-right">
+                                <div className="text-white font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
+                                <div className="text-[10px] text-white/40 mt-0.5 font-mono">
+                                  {data.match.matchFeeBudget !== undefined ? "Custom Target" : `₹${data.match.fee} × 12 players`}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setEditingMatchFeeId(data.match.id);
+                                  setEditFeeVal(String(data.matchFeeTotal));
+                                }}
+                                className="opacity-0 group-hover/fee:opacity-100 p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition cursor-pointer"
+                                title="Edit Match Fee"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="text-emerald-400 font-semibold font-mono">₹{data.feeCollected}</div>
                           <div className="text-[10px] text-white/40">({data.feeCollectedCount})</div>
                         </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          <div className="text-amber-400 font-semibold">₹{data.feeOffset}</div>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap relative group">
+                          <div className="text-amber-400 font-semibold font-mono inline-flex items-center gap-1 cursor-help">
+                            <span>₹{data.feeOffset}</span>
+                            {data.sponsoredDetails.length > 0 && (
+                              <Info className="w-3 h-3 text-amber-400/60 group-hover:text-amber-300 transition shrink-0" />
+                            )}
+                          </div>
                           <div className="text-[10px] text-white/40">({data.feeOffsetCount})</div>
+
+                          {/* Desktop Hover Tooltip */}
+                          {data.sponsoredDetails.length > 0 && (
+                            <div className={`hidden group-hover:block absolute right-0 ${rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"} z-50 w-64 bg-[#0f172a]/95 border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}>
+                              <div className="flex items-center justify-between border-b border-amber-500/20 pb-1.5 mb-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                                  Club Sponsored
+                                </span>
+                                <span className="text-[10px] font-mono font-bold text-white">
+                                  Total: ₹{data.feeOffset}
+                                </span>
+                              </div>
+                              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                                {data.sponsoredDetails.map((detail, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs py-0.5 border-b border-white/5 last:border-0">
+                                    <div className="truncate pr-2">
+                                      <span className="text-white font-medium block truncate">
+                                        {detail.playerName}
+                                      </span>
+                                      <span className="text-[9px] text-white/50 block truncate">
+                                        {detail.reason}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono font-bold text-amber-400 shrink-0">
+                                      ₹{detail.amount}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </td>
                         {showPct && (
-                          <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                          <td className="py-2.5 pl-3 text-right whitespace-nowrap font-mono">
                             {data.percentRecovered !== null ? (
                               <span className={`font-bold ${data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}`}>
                                 {data.percentRecovered}%
@@ -1299,21 +1583,27 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                   <tfoot>
                     <tr className="border-t border-glass-border">
                       <td className="py-2.5 pr-3 font-bold text-white text-xs uppercase tracking-wider">Total</td>
-                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div className="text-white font-bold">₹{collectedMatches.reduce((s, d) => s + d.matchFeePaid, 0)}</div>
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap font-mono text-xs">
+                        <span className="text-emerald-400 font-bold">{collectedMatches.reduce((s, d) => s + d.paidCount, 0)} Paid</span>
+                        <span className="text-white/30 mx-1">/</span>
+                        <span className="text-red-400 font-bold">{collectedMatches.reduce((s, d) => s + d.unpaidCount, 0)} Unpaid</span>
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div className="text-emerald-400 font-bold">₹{collectedMatches.reduce((s, d) => s + d.feeCollected, 0)}</div>
+                        <div className="text-white font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0)}</div>
+                        <div className="text-[10px] text-white/40 font-mono">{collectedMatches.length} matches</div>
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div className="text-amber-400 font-bold">₹{collectedMatches.reduce((s, d) => s + d.feeOffset, 0)}</div>
+                        <div className="text-emerald-400 font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.feeCollected, 0)}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="text-amber-400 font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.feeOffset, 0)}</div>
                       </td>
                       {showPct && (
-                        <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                        <td className="py-2.5 pl-3 text-right whitespace-nowrap font-mono">
                           {(() => {
-                            const totalPaid = collectedMatches.reduce((s, d) => s + d.matchFeePaid, 0);
+                            const totalMatchFee = collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0);
                             const totalCollected = collectedMatches.reduce((s, d) => s + d.feeCollected, 0);
-                            const pct = totalPaid > 0 ? Math.round((totalCollected * 100) / totalPaid) : 0;
+                            const pct = totalMatchFee > 0 ? Math.round((totalCollected * 100) / totalMatchFee) : 0;
                             return <span className={`font-bold ${pct >= 80 ? "text-emerald-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>;
                           })()}
                         </td>

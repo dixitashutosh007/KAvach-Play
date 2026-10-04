@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useStore } from "@/hooks/useStore";
 import { formatDate } from "@/lib/utils";
 
-type TxnChannel = "razorpay" | "offset" | "studio";
+type TxnChannel = "razorpay" | "cash" | "club_sponsored" | "offset" | "studio";
 
 export default function RazorReportView({
   store,
@@ -25,33 +25,76 @@ export default function RazorReportView({
 
     const list: Transaction[] = [];
 
-    store.payments
-      .filter((p) => p.status === "Paid")
-      .forEach((p) => {
-        const match = store.matches.find((m) => m.id === p.matchId);
-        const player = store.players.find((pl) => pl.id === p.playerId);
-        if (match && player) {
-          const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-          const isGateway = p.paymentMethod === "razorpay" && !p.sponsoredBy;
-          let product: string;
-          if (isGateway) {
-            product = `Match Fee: vs ${match.opponent}`;
-          } else if (p.sponsoredBy) {
-            const sponsor = store.players.find((pl) => pl.id === p.sponsoredBy);
-            product = `Sponsored by ${sponsor?.name || "Unknown"} — vs ${match.opponent}`;
-          } else {
-            product = `Player Offset${p.manualBy ? ` by ${p.manualBy}` : ""} — vs ${match.opponent}`;
-          }
+    store.payments.forEach((p) => {
+      const match = store.matches.find((m) => m.id === p.matchId);
+      const player = store.players.find((pl) => pl.id === p.playerId);
+      if (!match || !player) return;
+
+      const pmtDate = p.updatedAt?.seconds || 0;
+
+      // 1. Club Sponsored Transaction (bifurcated if plan offset, or 100% club sponsored)
+      const hasClubSponsorship =
+        (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) ||
+        p.manualMethod === "club_sponsored" ||
+        !!p.sponsoredBy;
+
+      if (hasClubSponsorship) {
+        let sponsorAmt = 0;
+        let sponsorLabel = "";
+        if (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) {
+          sponsorAmt = p.feeOffsetAmount;
+          sponsorLabel = `Club Sponsored (${p.planTag || "Match Fee Plan"})`;
+        } else if (p.manualMethod === "club_sponsored") {
+          sponsorAmt = p.feeOverride !== undefined && p.feeOverride > 0 ? p.feeOverride : match.fee;
+          sponsorLabel = `Club Sponsored (${p.planTag || "Match Fee Plan"})`;
+        } else if (p.sponsoredBy) {
+          const sponsor = store.players.find((pl) => pl.id === p.sponsoredBy);
+          sponsorAmt = match.fee;
+          sponsorLabel = `Sponsored by ${sponsor?.name || "Member"}`;
+        }
+
+        if (sponsorAmt > 0) {
           list.push({
-            id: `match_pay_${p.id}`,
-            date: p.updatedAt?.seconds || 0,
+            id: `match_sponsor_${p.id}`,
+            date: pmtDate,
             name: player.name,
-            product,
-            amount: effectiveFee,
-            channel: isGateway ? "razorpay" : "offset",
+            product: `${sponsorLabel} — vs ${match.opponent}`,
+            amount: sponsorAmt,
+            channel: "club_sponsored",
           });
         }
-      });
+      }
+
+      // 2. Collected Transaction (only if paid and money collected > 0, excluding 100% sponsored)
+      if (p.status === "Paid" && p.manualMethod !== "club_sponsored") {
+        const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+        const collectedAmt = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
+
+        if (collectedAmt > 0) {
+          // Explicit check: only mark as razorpay if truly paid via gateway
+          const isGenuineRazorpay =
+            p.paymentMethod === "razorpay" &&
+            (Boolean(p.razorpayPaymentId) || (!p.manualMethod && !p.manualBy));
+
+          let productDesc = "";
+          if (isGenuineRazorpay) {
+            productDesc = `Match Fee: vs ${match.opponent}`;
+          } else {
+            const methodLabel = p.manualMethod === "cash" ? "Cash Collected" : (p.manualMethod ? p.manualMethod.replace(/_/g, " ") : "Cash Collected");
+            productDesc = `Match Fee (${methodLabel}${p.manualBy ? ` by ${p.manualBy}` : ""}): vs ${match.opponent}`;
+          }
+
+          list.push({
+            id: `match_pay_${p.id}`,
+            date: pmtDate,
+            name: player.name,
+            product: productDesc,
+            amount: collectedAmt,
+            channel: isGenuineRazorpay ? "razorpay" : "cash",
+          });
+        }
+      }
+    });
 
     store.otherFees
       .filter((f) => f.status === "Paid" || f.status === "Cancelled")
@@ -118,8 +161,10 @@ export default function RazorReportView({
   );
 
   const gatewayTotal = transactions.filter((t) => t.channel === "razorpay").reduce((s, t) => s + t.amount, 0);
-  const offsetTotal = transactions.filter((t) => t.channel === "offset").reduce((s, t) => s + t.amount, 0);
+  const cashTotal = transactions.filter((t) => t.channel === "cash").reduce((s, t) => s + t.amount, 0);
+  const clubSponsoredTotal = transactions.filter((t) => t.channel === "club_sponsored").reduce((s, t) => s + t.amount, 0);
   const studioTotal = transactions.filter((t) => t.channel === "studio").reduce((s, t) => s + t.amount, 0);
+  const offsetTotal = transactions.filter((t) => t.channel === "offset").reduce((s, t) => s + t.amount, 0);
 
   const formatSecTime = (seconds: number) => {
     if (!seconds) return "Unknown";
@@ -130,8 +175,12 @@ export default function RazorReportView({
     switch (ch) {
       case "razorpay":
         return <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-1.5 py-0.5 rounded">Via Razorpay</span>;
+      case "cash":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-teal-400 bg-teal-500/15 border border-teal-500/25 px-1.5 py-0.5 rounded">Cash Collected</span>;
+      case "club_sponsored":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400 bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.5 rounded">Club Sponsored</span>;
       case "offset":
-        return <span className="text-[9px] font-bold uppercase tracking-widest text-red-400 bg-red-500/15 border border-red-500/25 px-1.5 py-0.5 rounded">Offset</span>;
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-rose-400 bg-rose-500/15 border border-rose-500/25 px-1.5 py-0.5 rounded">Offset</span>;
       case "studio":
         return <span className="text-[9px] font-bold uppercase tracking-widest text-blue-400 bg-blue-500/15 border border-blue-500/25 px-1.5 py-0.5 rounded">Studio</span>;
     }
@@ -140,7 +189,9 @@ export default function RazorReportView({
   const amountColor = (ch: TxnChannel) => {
     switch (ch) {
       case "razorpay": return "text-emerald-400";
-      case "offset": return "text-red-400";
+      case "cash": return "text-teal-400";
+      case "club_sponsored": return "text-amber-400";
+      case "offset": return "text-rose-400";
       case "studio": return "text-blue-400";
     }
   };
@@ -155,7 +206,17 @@ export default function RazorReportView({
           <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
             Gateway: <span className="font-mono ml-1">₹{gatewayTotal}</span>
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-red-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+          {cashTotal > 0 && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-teal-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+              Cash: <span className="font-mono ml-1">₹{cashTotal}</span>
+            </div>
+          )}
+          {clubSponsoredTotal > 0 && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+              Club Sponsored: <span className="font-mono ml-1">₹{clubSponsoredTotal}</span>
+            </div>
+          )}
+          <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
             Offset: <span className="font-mono ml-1">₹{offsetTotal}</span>
           </div>
           {studioTotal > 0 && (
@@ -166,17 +227,28 @@ export default function RazorReportView({
         </div>
       </div>
 
-      <div className="flex gap-1.5">
-        {(["all", "razorpay", "offset", "studio"] as const).map((f) => {
+      <div className="flex gap-1.5 flex-wrap">
+        {(["all", "razorpay", "cash", "club_sponsored", "offset", "studio"] as const).map((f) => {
           const active = filter === f;
-          const labels: Record<string, string> = { all: "All", razorpay: "Via Razorpay", offset: "Offset", studio: "Studio" };
+          const labels: Record<string, string> = {
+            all: "All",
+            razorpay: "Via Razorpay",
+            cash: "Cash Collected",
+            club_sponsored: "Club Sponsored",
+            offset: "Offset",
+            studio: "Studio",
+          };
           const counts: Record<string, number> = {
             all: transactions.length,
             razorpay: transactions.filter((t) => t.channel === "razorpay").length,
+            cash: transactions.filter((t) => t.channel === "cash").length,
+            club_sponsored: transactions.filter((t) => t.channel === "club_sponsored").length,
             offset: transactions.filter((t) => t.channel === "offset").length,
             studio: transactions.filter((t) => t.channel === "studio").length,
           };
           if (f === "studio" && counts.studio === 0) return null;
+          if (f === "cash" && counts.cash === 0) return null;
+          if (f === "club_sponsored" && counts.club_sponsored === 0) return null;
           return (
             <button
               key={f}

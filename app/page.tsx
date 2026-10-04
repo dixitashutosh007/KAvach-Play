@@ -1166,7 +1166,13 @@ export default function Home() {
                     />
                   )}
                   {activeTab === "matches" && (
-                    <MatchesTab store={store} persona={persona} defaultAction={tabAction} />
+                    <MatchesTab
+                      store={store}
+                      persona={persona}
+                      isMatchAdmin={isMatchAdmin || isSuperAdmin || isClubAdmin}
+                      isSuperAdmin={isSuperAdmin}
+                      defaultAction={tabAction}
+                    />
                   )}
                   {activeTab === "leaderboard" && (
                     <LeaderboardTab store={store} persona={persona} />
@@ -1252,7 +1258,7 @@ export default function Home() {
                       <MatchesTab
                         store={store}
                         persona={persona}
-                        isMatchAdmin={isMatchAdmin || isSuperAdmin}
+                        isMatchAdmin={isMatchAdmin || isSuperAdmin || isClubAdmin}
                         isSuperAdmin={isSuperAdmin}
                         defaultAction={tabAction}
                       />

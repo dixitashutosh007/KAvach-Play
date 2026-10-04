@@ -63,12 +63,12 @@ export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> })
     <div className="space-y-6">
       <div className="glass rounded-xl p-5 border border-glass-border">
         <h3 className="text-[12px] font-bold uppercase tracking-widest text-amber-400 mb-4">
-          {editingId ? "Edit Fee Plan" : "Create Fee Plan"}
+          {editingId ? "Edit Match Fee Plan" : "Create Match Fee Plan"}
         </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
-              Plan Name
+              Match Fee Plan Name
             </label>
             <input
               type="text"
@@ -139,7 +139,7 @@ export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> })
               disabled={!name}
               className="flex-1 bg-accent text-black font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm"
             >
-              {editingId ? "Update Plan" : "Create Plan"}
+              {editingId ? "Update Match Fee Plan" : "Create Match Fee Plan"}
             </button>
             {editingId && (
               <button
@@ -155,12 +155,12 @@ export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> })
 
         <div className="mt-6">
           <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2">
-            Saved Plans
+            Saved Match Fee Plans
           </h4>
           <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
             {store.feePlans.length === 0 && (
               <div className="text-xs text-white/30 italic text-center p-4">
-                No fee plans created yet
+                No match fee plans created yet
               </div>
             )}
             {store.feePlans.map((plan: FeePlan) => {

@@ -518,3 +518,33 @@ export type PollResponse = {
   createdAt?: any;
   updatedAt?: any;
 };
+
+export type LeadStatus = "new" | "contacted" | "trial" | "converted" | "closed";
+export type LeadInterest = "studio" | "matches" | "both";
+export type LeadSource = "whatsapp" | "call" | "jotform" | "email" | "walk_in" | "other";
+
+export type LeadNote = {
+  id: string;
+  text: string;
+  adminId: string;
+  adminName: string;
+  createdAt: string; // ISO timestamp
+};
+
+export type ClubLead = {
+  id: string;
+  name: string;
+  mobile: string;
+  email?: string;
+  area?: string;
+  source: LeadSource;
+  interest: LeadInterest;
+  queryText: string;
+  status: LeadStatus;
+  nextFollowUpDate?: string;
+  notes: LeadNote[];
+  convertedPlayerId?: string;
+  createdAt?: any;
+  updatedAt?: any;
+};
+

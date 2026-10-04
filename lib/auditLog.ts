@@ -39,7 +39,8 @@ export type AuditEntity =
   | "out_of_play"
   | "catch"
   | "comment"
-  | "user_role";
+  | "user_role"
+  | "lead";
 
 export type AuditActorType = "admin" | "player" | "system";
 
