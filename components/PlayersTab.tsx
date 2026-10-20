@@ -59,7 +59,7 @@ export function PlayersTab({
   const [invitePlayer, setInvitePlayer] = useState<Player | null>(null);
   const clubName = store.appConfig?.clubName || "KAvach Cricket Club";
   const getDefaultInviteMsg = (name: string) =>
-    `Welcome ${name} to ${clubName}! We are glad to have you as a Club member. Please register at https://play.kavachcricket.com. Make sure to provide all required details correctly before submitting. This app will help you pay match fees, Club Subscription, view match details and many other features.`;
+    `*Welcome to ${clubName}!* 🏏\n\nHi *${name}*, we are glad to have you as a Club member!\n\nPlease register on our *Play App* to access all club features:\n👉 https://play.kavachcricket.com\n\n*What you can do on the app:*\n✅ View & pay match fees\n✅ Club subscription management\n✅ Match schedules & details\n✅ Leaderboards & stats\n✅ Team announcements\n\n📋 _Make sure to provide all required details correctly before submitting._\n\nSee you on the field! 🙌`;
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
 
@@ -512,9 +512,9 @@ export function PlayersTab({
                             setInviteMessage(getDefaultInviteMsg(player.name));
                           }}
                           title="Send Invite to Register on Play App"
-                          className="p-1.5 rounded-md transition cursor-pointer bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                          className="flex items-center gap-1 px-2 py-1 rounded-md transition cursor-pointer bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 text-[10px] font-semibold"
                         >
-                          <UserPlus className="h-4 w-4" />
+                          <UserPlus className="h-3.5 w-3.5" /> Invite
                         </button>
                       )}
                       <button

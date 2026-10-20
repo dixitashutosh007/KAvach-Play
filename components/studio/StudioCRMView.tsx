@@ -88,7 +88,7 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
 };
 
 const DEFAULT_INVITE_MESSAGE = (name: string, clubName: string) =>
-  `Welcome ${name} to ${clubName}! We are glad to have you as a Club member. Please register at https://play.kavachcricket.com. Make sure to provide all required details correctly before submitting. This app will help you pay match fees, Club Subscription, view match details and many other features.`;
+  `*Welcome to ${clubName}!* 🏏\n\nHi *${name}*, we are glad to have you as a Club member!\n\nPlease register on our *Play App* to access all club features:\n👉 https://play.kavachcricket.com\n\n*What you can do on the app:*\n✅ View & pay match fees\n✅ Club subscription management\n✅ Match schedules & details\n✅ Leaderboards & stats\n✅ Team announcements\n\n📋 _Make sure to provide all required details correctly before submitting._\n\nSee you on the field! 🙌`;
 
 export function StudioCRMView({
   store,
