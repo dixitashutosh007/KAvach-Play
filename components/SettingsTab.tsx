@@ -79,6 +79,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     studio_expired_reminder: "studio_expired_reminder",
     studio_expires_today: "studio_expires_today",
     payment_reminder: "payment_reminder_v1",
+    club_invite: "club_invite",
   };
 
   const [whatsappTemplates, setWhatsappTemplates] = useState(
@@ -89,7 +90,8 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     studio_expiry_reminder: "daysLeft",
     studio_expired_reminder: "daysLeft",
     studio_expires_today: "",
-    payment_reminder: "playerName,amount,link"
+    payment_reminder: "playerName,amount,link",
+    club_invite: "clubName,playerName,link",
   };
 
   const [whatsappTemplateVariables, setWhatsappTemplateVariables] = useState(
@@ -1103,6 +1105,18 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       placeholder="payment_reminder_v1"
                     />
                   </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Club Invite
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplates.club_invite || ""}
+                      onChange={(e) => setWhatsappTemplates({...whatsappTemplates, club_invite: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="club_invite"
+                    />
+                  </div>
 
                   <div className="sm:col-span-2 pt-2 border-t border-glass-border mt-2">
                     <h5 className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-3">Template Variables Map (Comma separated)</h5>
@@ -1154,6 +1168,18 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, payment_reminder: e.target.value})}
                       className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
                       placeholder="e.g. playerName,amount,link"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Club Invite Variables
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsappTemplateVariables?.club_invite || ""}
+                      onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, club_invite: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      placeholder="e.g. clubName,playerName,link"
                     />
                   </div>
                 </div>
