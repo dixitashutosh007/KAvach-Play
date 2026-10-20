@@ -18,7 +18,10 @@ import {
   Calendar,
   Table2,
   X,
+  UserPlus,
+  ExternalLink,
 } from "lucide-react";
+import { authedFetch } from "@/lib/authed-fetch";
 import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
@@ -51,6 +54,14 @@ export function PlayersTab({
   const [viewMode, setViewMode] = useState<"list" | "table">("list");
 
   const [dupWarning, setDupWarning] = useState("");
+
+  // Invite modal state
+  const [invitePlayer, setInvitePlayer] = useState<Player | null>(null);
+  const clubName = store.appConfig?.clubName || "KAvach Cricket Club";
+  const getDefaultInviteMsg = (name: string) =>
+    `Welcome ${name} to ${clubName}! We are glad to have you as a Club member. Please register at https://play.kavachcricket.com. Make sure to provide all required details correctly before submitting. This app will help you pay match fees, Club Subscription, view match details and many other features.`;
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -494,6 +505,18 @@ export function PlayersTab({
                   </div>
                   {isAdmin && (
                     <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+                      {!player.disabled && (
+                        <button
+                          onClick={() => {
+                            setInvitePlayer(player);
+                            setInviteMessage(getDefaultInviteMsg(player.name));
+                          }}
+                          title="Send Invite to Register on Play App"
+                          className="p-1.5 rounded-md transition cursor-pointer bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           if (player.disabled) {
@@ -555,6 +578,83 @@ export function PlayersTab({
           onClose={() => setSelectedPlayer(null)}
           isAdmin={isAdmin}
         />
+      )}
+
+      {/* Invite Player Modal */}
+      {invitePlayer && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
+                <UserPlus className="w-5 h-5" /> Invite {invitePlayer.name}
+              </div>
+              <button
+                onClick={() => { setInvitePlayer(null); setInviteSending(false); }}
+                className="text-white/40 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-white/60">
+              Send a WhatsApp welcome message to <strong className="text-white">{invitePlayer.name}</strong> with the Play App registration link. Edit the message below before sending.
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-white/70 mb-1">
+                Message Preview
+              </label>
+              <textarea
+                rows={6}
+                value={inviteMessage}
+                onChange={(e) => setInviteMessage(e.target.value)}
+                className="w-full bg-black/40 border border-border rounded-lg p-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500 leading-relaxed"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+              <button
+                onClick={() => { setInvitePlayer(null); setInviteSending(false); }}
+                className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setInviteSending(true);
+                  try {
+                    const res = await authedFetch("/api/whatsapp/invite", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        to: invitePlayer.mobile,
+                        playerName: invitePlayer.name,
+                      }),
+                    });
+                    if (res.ok) {
+                      alert(`Invite sent to ${invitePlayer.name} via WhatsApp!`);
+                    } else {
+                      const cleanNum = invitePlayer.mobile.replace(/\D/g, "");
+                      const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(inviteMessage)}`;
+                      window.open(waUrl, "_blank");
+                      alert("WhatsApp API not available. Opened invite in personal WhatsApp instead.");
+                    }
+                  } catch {
+                    const cleanNum = invitePlayer.mobile.replace(/\D/g, "");
+                    const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(inviteMessage)}`;
+                    window.open(waUrl, "_blank");
+                  }
+                  setInvitePlayer(null);
+                  setInviteSending(false);
+                }}
+                disabled={inviteSending}
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition shadow-sm"
+              >
+                <Send className="w-3.5 h-3.5" /> {inviteSending ? "Sending..." : "Send Invite"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

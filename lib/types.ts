@@ -40,13 +40,16 @@ export type AppConfig = {
     studio_expired_reminder?: string;
     studio_expires_today?: string;
     payment_reminder?: string;
+    club_invite?: string;
   };
   whatsappTemplateVariables?: {
     studio_expiry_reminder?: string;
     studio_expired_reminder?: string;
     studio_expires_today?: string;
     payment_reminder?: string;
+    club_invite?: string;
   };
+  crmTeamPlayerIds?: string[];
   isStudioEnabled?: boolean;
   features?: {
     payments: boolean;
@@ -544,6 +547,7 @@ export type ClubLead = {
   nextFollowUpDate?: string;
   notes: LeadNote[];
   convertedPlayerId?: string;
+  assignedTo?: string[];
   createdAt?: any;
   updatedAt?: any;
 };
