@@ -55,13 +55,19 @@ export function PlayersTab({
 
   const [dupWarning, setDupWarning] = useState("");
 
-  // Invite modal state
+  // Per-player invite modal state (existing players)
   const [invitePlayer, setInvitePlayer] = useState<Player | null>(null);
   const clubName = store.appConfig?.clubName || "KAvach Cricket Club";
   const getDefaultInviteMsg = (name: string) =>
     `*Welcome to ${clubName}!* 🏏\n\nHi *${name}*, we are glad to have you as a Club member!\n\nPlease register on our *Play App* to access all club features:\n👉 https://play.kavachcricket.com\n\n*What you can do on the app:*\n✅ View & pay match fees\n✅ Club subscription management\n✅ Match schedules & details\n✅ Leaderboards & stats\n✅ Team announcements\n\n📋 _Make sure to provide all required details correctly before submitting._\n\nSee you on the field! 🙌`;
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
+
+  // Standalone Invite Player modal (invite anyone by name + phone)
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
+  const [standaloneInviteMsg, setStandaloneInviteMsg] = useState("");
+  const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,13 +191,26 @@ export function PlayersTab({
           Squad <span className="opacity-50 text-sm ml-1">({store.players.length})</span>
         </h2>
         {isAdmin && (
-          <button
-            onClick={() => setIsAdding(!isAdding)}
-            className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-black shadow hover:bg-accent/90 transition"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {isAdding ? "Cancel" : "Add Player"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setShowInviteModal(true);
+                setInviteForm({ name: "", phone: "" });
+                setStandaloneInviteMsg(getDefaultInviteMsg(""));
+              }}
+              className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Invite Player
+            </button>
+            <button
+              onClick={() => setIsAdding(!isAdding)}
+              className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-black shadow hover:bg-accent/90 transition"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {isAdding ? "Cancel" : "Add Player"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -580,7 +599,114 @@ export function PlayersTab({
         />
       )}
 
-      {/* Invite Player Modal */}
+      {/* Standalone Invite Player Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
+                <UserPlus className="w-5 h-5" /> Invite Player
+              </div>
+              <button
+                onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); }}
+                className="text-white/40 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-white/60">
+              Send a WhatsApp welcome message to invite someone to register on the Play App.
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-white/70 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={inviteForm.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setInviteForm((f) => ({ ...f, name }));
+                    setStandaloneInviteMsg(getDefaultInviteMsg(name));
+                  }}
+                  placeholder="Player name"
+                  className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-white/70 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={inviteForm.phone}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="e.g. 9876543210"
+                  className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-white/70 mb-1">
+                Message Preview <span className="text-white/40 font-normal">(editable)</span>
+              </label>
+              <textarea
+                rows={8}
+                value={standaloneInviteMsg}
+                onChange={(e) => setStandaloneInviteMsg(e.target.value)}
+                className="w-full bg-black/40 border border-border rounded-lg p-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500 leading-relaxed"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+              <button
+                onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); }}
+                className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!inviteForm.phone.trim()) { alert("Please enter a phone number."); return; }
+                  setStandaloneInviteSending(true);
+                  try {
+                    const res = await authedFetch("/api/whatsapp/invite", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        to: inviteForm.phone,
+                        playerName: inviteForm.name || "Player",
+                      }),
+                    });
+                    if (res.ok) {
+                      alert(`Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!`);
+                    } else {
+                      const cleanNum = inviteForm.phone.replace(/\D/g, "");
+                      const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
+                      const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(standaloneInviteMsg)}`;
+                      window.open(waUrl, "_blank");
+                      alert("WhatsApp API not available. Opened invite in personal WhatsApp instead.");
+                    }
+                  } catch {
+                    const cleanNum = inviteForm.phone.replace(/\D/g, "");
+                    const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
+                    const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(standaloneInviteMsg)}`;
+                    window.open(waUrl, "_blank");
+                  }
+                  setShowInviteModal(false);
+                  setStandaloneInviteSending(false);
+                }}
+                disabled={standaloneInviteSending || !inviteForm.phone.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition shadow-sm"
+              >
+                <Send className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Sending..." : "Send Invite"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Per-Player Invite Modal */}
       {invitePlayer && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
