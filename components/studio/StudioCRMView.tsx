@@ -146,6 +146,7 @@ export function StudioCRMView({
     player: Player;
   } | null>(null);
   const [notifyMessage, setNotifyMessage] = useState("");
+  const [notifyPickerLeadId, setNotifyPickerLeadId] = useState<string | null>(null);
 
   // Metrics
   const metrics = useMemo(() => {
@@ -888,6 +889,55 @@ export function StudioCRMView({
                         <ChevronDown className="w-3 h-3 text-white/40" />
                       )}
                     </button>
+
+                    {/* Notify Assignee Button */}
+                    {assignedPlayers.length > 0 && (
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            if (assignedPlayers.length === 1) {
+                              handleOpenNotify(lead, assignedPlayers[0]);
+                            } else {
+                              setNotifyPickerLeadId(
+                                notifyPickerLeadId === lead.id ? null : lead.id,
+                              );
+                            }
+                          }}
+                          className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+                          title="Notify assigned team member(s) via WhatsApp"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          Notify Assignee{assignedPlayers.length > 1 ? "s" : ""}
+                        </button>
+                        {notifyPickerLeadId === lead.id && assignedPlayers.length > 1 && (
+                          <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-white/15 rounded-lg shadow-xl py-1 min-w-[180px]">
+                            {assignedPlayers.map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => {
+                                  setNotifyPickerLeadId(null);
+                                  handleOpenNotify(lead, p);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs text-white/90 hover:bg-white/10 flex items-center gap-2 transition"
+                              >
+                                <Bell className="w-3.5 h-3.5 text-amber-400" />
+                                {p.name}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => {
+                                setNotifyPickerLeadId(null);
+                                assignedPlayers.forEach((p) => handleOpenNotify(lead, p));
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:bg-white/10 flex items-center gap-2 transition border-t border-white/10"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              Notify All ({assignedPlayers.length})
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Secondary Actions: Convert, Edit, Delete */}
