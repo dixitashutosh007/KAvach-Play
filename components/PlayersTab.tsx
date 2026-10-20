@@ -563,6 +563,11 @@ export function PlayersTab({
                 onClick={async () => {
                   if (!inviteForm.phone.trim()) { alert("Please enter a phone number."); return; }
                   setStandaloneInviteSending(true);
+                  const cleanNum = inviteForm.phone.replace(/\D/g, "");
+                  const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
+                  const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(standaloneInviteMsg)}`;
+                  // Open blank tab immediately (direct click context avoids popup blocker)
+                  const popup = window.open("", "_blank");
                   try {
                     const res = await authedFetch("/api/whatsapp/invite", {
                       method: "POST",
@@ -573,19 +578,13 @@ export function PlayersTab({
                       }),
                     });
                     if (res.ok) {
-                      alert(`Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!`);
+                      popup?.close();
+                      alert(`Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp API!`);
                     } else {
-                      const cleanNum = inviteForm.phone.replace(/\D/g, "");
-                      const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
-                      const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(standaloneInviteMsg)}`;
-                      window.open(waUrl, "_blank");
-                      alert("WhatsApp API not available. Opened invite in personal WhatsApp instead.");
+                      if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
                     }
                   } catch {
-                    const cleanNum = inviteForm.phone.replace(/\D/g, "");
-                    const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
-                    const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(standaloneInviteMsg)}`;
-                    window.open(waUrl, "_blank");
+                    if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
                   }
                   setShowInviteModal(false);
                   setStandaloneInviteSending(false);
@@ -642,6 +641,10 @@ export function PlayersTab({
               <button
                 onClick={async () => {
                   setInviteSending(true);
+                  const cleanNum = invitePlayer.mobile.replace(/\D/g, "");
+                  const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
+                  const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(inviteMessage)}`;
+                  const popup = window.open("", "_blank");
                   try {
                     const res = await authedFetch("/api/whatsapp/invite", {
                       method: "POST",
@@ -652,17 +655,13 @@ export function PlayersTab({
                       }),
                     });
                     if (res.ok) {
-                      alert(`Invite sent to ${invitePlayer.name} via WhatsApp!`);
+                      popup?.close();
+                      alert(`Invite sent to ${invitePlayer.name} via WhatsApp API!`);
                     } else {
-                      const cleanNum = invitePlayer.mobile.replace(/\D/g, "");
-                      const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(inviteMessage)}`;
-                      window.open(waUrl, "_blank");
-                      alert("WhatsApp API not available. Opened invite in personal WhatsApp instead.");
+                      if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
                     }
                   } catch {
-                    const cleanNum = invitePlayer.mobile.replace(/\D/g, "");
-                    const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(inviteMessage)}`;
-                    window.open(waUrl, "_blank");
+                    if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
                   }
                   setInvitePlayer(null);
                   setInviteSending(false);
