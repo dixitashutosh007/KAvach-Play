@@ -1364,9 +1364,26 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   ) => {
     const id = crypto.randomUUID();
     const docRef = doc(db, "players", id);
+
+    // Auto-generate KAvach ID if not provided
+    let kavachId = player.kavachId;
+    if (!kavachId) {
+      const year = new Date().getFullYear();
+      let maxSeq = 0;
+      const prefix = `K${year}`;
+      for (const p of players) {
+        if (p.kavachId?.startsWith(prefix)) {
+          const seq = parseInt(p.kavachId.slice(prefix.length), 10);
+          if (seq > maxSeq) maxSeq = seq;
+        }
+      }
+      kavachId = `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
+    }
+
     try {
       await setDoc(docRef, cleanPayload({
         ...player,
+        kavachId,
         inviteStatus: player.inviteStatus || "Unverified",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),

@@ -579,6 +579,11 @@ export function ProfileTab({
                 <p className="inline-block mt-1 px-2 py-0.5 rounded border border-accent/30 bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-widest">
                   {appUser?.role || "player"}
                 </p>
+                {linkedPlayer?.kavachId && (
+                  <p className="inline-block ml-2 mt-1 px-2 py-0.5 rounded border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 text-[10px] font-bold uppercase tracking-widest font-mono">
+                    {linkedPlayer.kavachId}
+                  </p>
+                )}
               </div>
             </div>
 

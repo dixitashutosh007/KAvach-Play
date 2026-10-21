@@ -210,6 +210,7 @@ export type Match = {
 export type Player = {
   id: string;
   name: string;
+  kavachId?: string;
   authUid?: string;
   photoURL?: string;
   email?: string;

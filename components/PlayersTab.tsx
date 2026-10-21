@@ -24,17 +24,19 @@ import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
-import { Player } from "@/lib/types";
+import { Player, MatchPayment, OtherFee } from "@/lib/types";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
 
 export function PlayersTab({
   store,
   persona,
   isStudioAdmin,
+  autoOpenInvite,
 }: {
   store: ReturnType<typeof useStore>;
   persona: string;
   isStudioAdmin?: boolean;
+  autoOpenInvite?: boolean;
 }) {
   // We allow basic admin functions (adding/editing players) if they are any kind of admin,
   // but strictly, it might just be better to let all admins do basic directory edits,
@@ -50,20 +52,16 @@ export function PlayersTab({
   const [viewMode, setViewMode] = useState<"list" | "table">("list");
 
   // Per-player invite modal state (existing players)
-  const [invitePlayer, setInvitePlayer] = useState<Player | null>(null);
   const clubName = store.appConfig?.clubName || "KAvach Cricket Club";
   const getDefaultInviteMsg = (name: string) =>
     `*Welcome to ${clubName}!* 🏏\n\nHi *${name}*, we are glad to have you as a Club member!\n\nPlease register on our *Play App* to access all club features:\n👉 https://play.kavachcricket.com\n\n*What you can do on the app:*\n✅ View & pay match fees\n✅ Club subscription management\n✅ Match schedules & details\n✅ Leaderboards & stats\n✅ Team announcements\n\n📋 _Make sure to provide all required details correctly before submitting._\n\nSee you on the field! 🙌`;
-  const [inviteMessage, setInviteMessage] = useState("");
-  const [inviteSending, setInviteSending] = useState(false);
 
   // Standalone Invite Player modal (invite anyone by name + phone)
-  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(!!autoOpenInvite);
   const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
   const [standaloneInviteMsg, setStandaloneInviteMsg] = useState("");
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [perPlayerInviteStatus, setPerPlayerInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
 
   const getTotalDue = (playerId: string) => {
@@ -378,9 +376,16 @@ export function PlayersTab({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-semibold text-white text-[15px] truncate">
-                      {player.name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-white text-[15px] truncate">
+                        {player.name}
+                      </p>
+                      {player.kavachId && (
+                        <span className="shrink-0 px-1.5 py-0.5 rounded border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 text-[9px] font-bold font-mono tracking-wider">
+                          {player.kavachId}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-white/60">
                       <span className="flex items-center gap-1">
                         <PhoneCall className="h-3 w-3 shrink-0" />
@@ -401,36 +406,27 @@ export function PlayersTab({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">
-                  <div
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border ${
-                      player.inviteStatus === "Accepted" ||
-                      player.inviteStatus === "Verified"
-                        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                        : player.inviteStatus === "Pending"
+                  {player.inviteStatus === "Accepted" || player.inviteStatus === "Verified" ? (
+                    <div className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40" title="Verified">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    </div>
+                  ) : (
+                    <div
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border ${
+                        player.inviteStatus === "Pending"
                           ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                           : player.inviteStatus === "Rejected"
                             ? "bg-red-500/20 text-red-500 border-red-500/30"
                             : "bg-white/10 text-white/70 border-glass-border"
-                    }`}
-                  >
-                    {player.inviteStatus === "Invited"
-                      ? "Unverified"
-                      : player.inviteStatus || "Unverified"}
-                  </div>
+                      }`}
+                    >
+                      {player.inviteStatus === "Invited"
+                        ? "Unverified"
+                        : player.inviteStatus || "Unverified"}
+                    </div>
+                  )}
                   {isAdmin && (
                     <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-                      {!player.disabled && (
-                        <button
-                          onClick={() => {
-                            setInvitePlayer(player);
-                            setInviteMessage(getDefaultInviteMsg(player.name));
-                          }}
-                          title="Send Invite to Register on Play App"
-                          className="flex items-center gap-1 px-2 py-1 rounded-md transition cursor-pointer bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 text-[10px] font-semibold"
-                        >
-                          <UserPlus className="h-3.5 w-3.5" /> Invite
-                        </button>
-                      )}
                       <button
                         onClick={() => {
                           if (player.disabled) {
@@ -602,85 +598,6 @@ export function PlayersTab({
         </div>
       )}
 
-      {/* Per-Player Invite Modal */}
-      {invitePlayer && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
-                <UserPlus className="w-5 h-5" /> Invite {invitePlayer.name}
-              </div>
-              <button
-                onClick={() => { setInvitePlayer(null); setInviteSending(false); }}
-                className="text-white/40 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="text-xs text-white/60">
-              Send a WhatsApp welcome message to <strong className="text-white">{invitePlayer.name}</strong> with the Play App registration link. Edit the message below before sending.
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-white/70 mb-1">
-                Message Preview
-              </label>
-              <textarea
-                rows={6}
-                value={inviteMessage}
-                onChange={(e) => setInviteMessage(e.target.value)}
-                className="w-full bg-black/40 border border-border rounded-lg p-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500 leading-relaxed"
-              />
-            </div>
-
-            {perPlayerInviteStatus && (
-              <div className={`text-xs px-3 py-2 rounded-lg font-semibold ${perPlayerInviteStatus.ok ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-red-500/15 text-red-400 border border-red-500/30"}`}>
-                {perPlayerInviteStatus.msg}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
-              <button
-                onClick={() => { setInvitePlayer(null); setInviteSending(false); setPerPlayerInviteStatus(null); }}
-                className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  setInviteSending(true);
-                  setPerPlayerInviteStatus(null);
-                  try {
-                    const res = await authedFetch("/api/whatsapp/invite", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        to: invitePlayer.mobile,
-                        playerName: invitePlayer.name,
-                      }),
-                    });
-                    if (res.ok) {
-                      setPerPlayerInviteStatus({ ok: true, msg: `Invite sent to ${invitePlayer.name} via WhatsApp! If they don't receive it, ask them to first send "Hi" to your business WhatsApp number, then resend.` });
-                      setTimeout(() => { setInvitePlayer(null); setPerPlayerInviteStatus(null); }, 8000);
-                    } else {
-                      const errData = await res.json().catch(() => ({}));
-                      setPerPlayerInviteStatus({ ok: false, msg: errData.error || "Failed to send invite. Please check WhatsApp API settings." });
-                    }
-                  } catch {
-                    setPerPlayerInviteStatus({ ok: false, msg: "Network error. Please try again." });
-                  }
-                  setInviteSending(false);
-                }}
-                disabled={inviteSending}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition shadow-sm"
-              >
-                <Send className="w-3.5 h-3.5" /> {inviteSending ? "Sending..." : "Send Invite"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -966,9 +883,14 @@ function SquadPlayerDetails({
   // Separate ledgers
   const unpaidMatchPayments = matchPayments.filter((p) => p.status === "Unpaid");
   const paidMatchPayments = matchPayments.filter((p) => p.status === "Paid");
-  
+
   const unpaidOtherFees = otherFees.filter((f) => f.status === "Unpaid");
   const paidOtherFees = otherFees.filter((f) => f.status === "Paid");
+
+  const [paidVisibleCount, setPaidVisibleCount] = useState(5);
+  const allPaidItems = [...paidMatchPayments.map(p => ({ kind: "match" as const, item: p })), ...paidOtherFees.map(f => ({ kind: "other" as const, item: f }))];
+  const visiblePaidItems = allPaidItems.slice(0, paidVisibleCount);
+  const hasMorePaid = allPaidItems.length > paidVisibleCount;
 
   let totalDue = 0;
   unpaidMatchPayments.forEach((p) => {
@@ -1060,54 +982,49 @@ function SquadPlayerDetails({
               </div>
             )}
 
-            {paidMatchPayments.length > 0 || paidOtherFees.length > 0 ? (
+            {allPaidItems.length > 0 ? (
               <div>
-                <h5 className="text-[10px] uppercase font-bold text-emerald-400 mb-2">Paid Dues</h5>
+                <h5 className="text-[10px] uppercase font-bold text-emerald-400 mb-2">Paid Dues <span className="text-white/40 font-normal">({allPaidItems.length})</span></h5>
                 <ul className="text-xs space-y-2 opacity-70">
-                  {paidMatchPayments.map((p) => {
-                    const m = store.matches.find((mx) => mx.id === p.matchId);
-                    return m ? (
-                      <li
-                        key={p.id}
-                        className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {isAdmin && (
-                            <input 
-                               type="checkbox" 
-                               checked={true} 
-                               onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)}
-                               className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
-                            />
-                          )}
-                          <span className="truncate">
-                            Match vs {m.opponent} ({formatDate(m.date)})
-                          </span>
-                        </div>
-                        <span className="font-mono text-emerald-300 line-through">₹{p.feeOverride !== undefined ? p.feeOverride : m.fee}</span>
-                      </li>
-                    ) : null;
+                  {visiblePaidItems.map((entry) => {
+                    if (entry.kind === "match") {
+                      const p = entry.item as MatchPayment;
+                      const m = store.matches.find((mx) => mx.id === p.matchId);
+                      return m ? (
+                        <li key={p.id} className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0">
+                          <div className="flex items-center gap-2 truncate">
+                            {isAdmin && (
+                              <input type="checkbox" checked={true} onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
+                            )}
+                            <span className="truncate">Match vs {m.opponent} ({formatDate(m.date)})</span>
+                          </div>
+                          <span className="font-mono text-emerald-300 line-through">₹{p.feeOverride !== undefined ? p.feeOverride : m.fee}</span>
+                        </li>
+                      ) : null;
+                    } else {
+                      const f = entry.item as OtherFee;
+                      return (
+                        <li key={f.id} className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0">
+                          <div className="flex items-center gap-2 truncate">
+                            {isAdmin && (
+                              <input type="checkbox" checked={true} onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Unpaid")} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
+                            )}
+                            <span className="truncate">{f.title}</span>
+                          </div>
+                          <span className="font-mono text-emerald-300 line-through">₹{f.amount}</span>
+                        </li>
+                      );
+                    }
                   })}
-                  {paidOtherFees.map((f) => (
-                    <li
-                      key={f.id}
-                      className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                          {isAdmin && (
-                            <input 
-                               type="checkbox" 
-                               checked={true} 
-                               onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Unpaid")}
-                               className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
-                            />
-                          )}
-                        <span className="truncate">{f.title}</span>
-                      </div>
-                      <span className="font-mono text-emerald-300 line-through">₹{f.amount}</span>
-                    </li>
-                  ))}
                 </ul>
+                {hasMorePaid && (
+                  <button
+                    onClick={() => setPaidVisibleCount((c) => c + 10)}
+                    className="mt-2 text-[10px] text-accent hover:underline font-semibold"
+                  >
+                    Load more ({allPaidItems.length - paidVisibleCount} remaining)
+                  </button>
+                )}
               </div>
             ) : null}
           </div>

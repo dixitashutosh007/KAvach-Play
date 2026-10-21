@@ -317,6 +317,19 @@ export function HomeTab({
           <IndependenceDayBanner clubName={store.appConfig?.clubName} />
         )}
 
+        {/* KAvach Identity Card */}
+        {mePlayer?.kavachId && (
+          <div className="md:col-span-12 flex items-center gap-3 glass rounded-xl px-4 py-2.5 border border-glass-border">
+            <div className="w-8 h-8 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center shrink-0">
+              <span className="text-yellow-400 font-black text-[10px]">K</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-sm truncate">{mePlayer.name}</p>
+              <p className="text-yellow-400 font-mono text-xs font-bold tracking-wider">{mePlayer.kavachId}</p>
+            </div>
+          </div>
+        )}
+
         {/* Match Day Alert (Feed Popup) - High Priority Full Width */}
         {hasAlerts && (
           <div className="md:col-span-12 flex flex-col gap-4">

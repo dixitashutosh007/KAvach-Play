@@ -38,7 +38,8 @@ export function ClubTab({
   defaultSubTab?: ClubSubTab | string | null;
 }) {
   const badgesDefaultView = defaultSubTab === "badges_grant" ? "award" : undefined;
-  const resolvedSubTab: ClubSubTab = defaultSubTab === "badges_grant" ? "badges" : (defaultSubTab as ClubSubTab) || "players";
+  const openInviteModal = defaultSubTab === "invite_player";
+  const resolvedSubTab: ClubSubTab = defaultSubTab === "badges_grant" ? "badges" : defaultSubTab === "invite_player" ? "players" : (defaultSubTab as ClubSubTab) || "players";
   const [subTab, setSubTab] = useState<ClubSubTab>(resolvedSubTab);
 
   const tabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
@@ -73,7 +74,7 @@ export function ClubTab({
       </div>
 
       {subTab === "players" && (
-        <PlayersTab store={store} persona={persona} isStudioAdmin={true} />
+        <PlayersTab store={store} persona={persona} isStudioAdmin={true} autoOpenInvite={openInviteModal} />
       )}
       {subTab === "badges" && (
         <BadgesTab
