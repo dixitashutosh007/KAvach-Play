@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     const clubName = appConfig.clubName || "Kavach Cricket Club";
     const templateName = whatsappTemplates.club_invite || "club_invite";
     const varsString =
-      whatsappTemplateVariables.club_invite || "playerName,clubName";
+      whatsappTemplateVariables.club_invite || "clubName,playerName,link";
 
     const varMap: Record<string, string> = {
       playerName: playerName || "Player",
