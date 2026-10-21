@@ -51,17 +51,13 @@ export function PlayersTab({
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "table">("list");
 
-  // Per-player invite modal state (existing players)
-  const clubName = store.appConfig?.clubName || "KAvach Cricket Club";
-  const getDefaultInviteMsg = (name: string) =>
-    `*Welcome to ${clubName}!* 🏏\n\nHi *${name}*, we are glad to have you as a Club member!\n\nPlease register on our *Play App* to access all club features:\n👉 https://play.kavachcricket.com\n\n*What you can do on the app:*\n✅ View & pay match fees\n✅ Club subscription management\n✅ Match schedules & details\n✅ Leaderboards & stats\n✅ Team announcements\n\n📋 _Make sure to provide all required details correctly before submitting._\n\nSee you on the field! 🙌`;
-
   // Standalone Invite Player modal (invite anyone by name + phone)
   const [showInviteModal, setShowInviteModal] = useState(!!autoOpenInvite);
   const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
-  const [standaloneInviteMsg, setStandaloneInviteMsg] = useState("");
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [generatingIds, setGeneratingIds] = useState(false);
+  const playersWithoutKavachId = store.players.filter((p) => !p.kavachId && !p.disabled);
 
 
   const getTotalDue = (playerId: string) => {
@@ -166,17 +162,40 @@ export function PlayersTab({
           Squad <span className="opacity-50 text-sm ml-1">({store.players.length})</span>
         </h2>
         {isAdmin && (
-          <button
-            onClick={() => {
-              setShowInviteModal(true);
-              setInviteForm({ name: "", phone: "" });
-              setStandaloneInviteMsg(getDefaultInviteMsg(""));
-            }}
-            className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-            Invite Player
-          </button>
+          <div className="flex items-center gap-2">
+            {playersWithoutKavachId.length > 0 && (
+              <button
+                onClick={async () => {
+                  setGeneratingIds(true);
+                  try {
+                    const res = await authedFetch("/api/admin/generate-kavach-ids", { method: "POST" });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                      alert(`KAvach IDs assigned to ${data.assigned} players. Reload to see changes.`);
+                      window.location.reload();
+                    } else {
+                      alert(data.error || "Failed to generate IDs.");
+                    }
+                  } catch { alert("Network error."); }
+                  setGeneratingIds(false);
+                }}
+                disabled={generatingIds}
+                className="flex items-center gap-1 rounded-full bg-yellow-600 px-3 py-1.5 text-xs font-bold text-black shadow hover:bg-yellow-500 transition disabled:opacity-50"
+              >
+                {generatingIds ? "Generating..." : `Generate IDs (${playersWithoutKavachId.length})`}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowInviteModal(true);
+                setInviteForm({ name: "", phone: "" });
+              }}
+              className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Invite Player
+            </button>
+          </div>
         )}
       </div>
 
@@ -516,11 +535,7 @@ export function PlayersTab({
                 <input
                   type="text"
                   value={inviteForm.name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setInviteForm((f) => ({ ...f, name }));
-                    setStandaloneInviteMsg(getDefaultInviteMsg(name));
-                  }}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="Player name"
                   className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500"
                 />
@@ -537,16 +552,8 @@ export function PlayersTab({
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-white/70 mb-1">
-                Message Preview <span className="text-white/40 font-normal">(editable)</span>
-              </label>
-              <textarea
-                rows={8}
-                value={standaloneInviteMsg}
-                onChange={(e) => setStandaloneInviteMsg(e.target.value)}
-                className="w-full bg-black/40 border border-border rounded-lg p-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500 leading-relaxed"
-              />
+            <div className="text-[10px] text-white/40 italic">
+              A WhatsApp template message will be sent with the club name, player name, and registration link.
             </div>
 
             {standaloneInviteStatus && (
