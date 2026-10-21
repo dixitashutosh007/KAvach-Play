@@ -42,35 +42,51 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "WhatsApp credentials not configured" }, { status: 500 });
     }
 
-    // Step 1: Get WABA ID from phone number
+    // Step 1: Get phone number details WITH embedded WABA ID
     const phoneRes = await fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier`,
+      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier,whatsapp_business_account`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     const phoneData = await phoneRes.json();
 
-    // Step 2: Get WABA ID
-    const wabaRes = await fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}/whatsapp_business_account`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-    const wabaData = await wabaRes.json();
-    const wabaId = wabaData?.id;
+    // Extract WABA ID from the embedded field
+    const wabaIdFromEmbed = phoneData?.whatsapp_business_account?.id;
 
-    // Step 3: Fetch all templates (or specific ones)
+    // Step 2: Also try the edge endpoint as fallback
+    let wabaEdgeData: any = null;
+    if (!wabaIdFromEmbed) {
+      const wabaRes = await fetch(
+        `https://graph.facebook.com/v19.0/${phoneNumberId}/whatsapp_business_account?fields=id,name,currency,timezone_id,message_template_namespace`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      wabaEdgeData = await wabaRes.json();
+    }
+    const finalWabaId = wabaIdFromEmbed || wabaEdgeData?.id;
+
+    // Step 3: Fetch all templates
     let templates: any = null;
-    if (wabaId) {
+    let templateError: string | null = null;
+    if (finalWabaId) {
       const tmplRes = await fetch(
-        `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,status,language,category,components&limit=50`,
+        `https://graph.facebook.com/v19.0/${finalWabaId}/message_templates?fields=name,status,language,category,components,quality_score&limit=100`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
       );
       templates = await tmplRes.json();
+      if (templates.error) {
+        templateError = templates.error.message;
+        templates = null;
+      }
     }
 
-    // Step 4: Find club_invite template specifically
+    // Step 4: Find specific templates
     const templateName = appConfig.whatsappTemplates?.club_invite || "club_invite";
     const clubInviteTemplates = templates?.data?.filter(
       (t: any) => t.name === templateName,
+    ) || [];
+
+    const paymentTemplateName = appConfig.whatsappTemplates?.payment_reminder || "payment_reminder_v1";
+    const paymentTemplates = templates?.data?.filter(
+      (t: any) => t.name === paymentTemplateName,
     ) || [];
 
     // Step 5: Show what we would send
@@ -101,12 +117,6 @@ export async function GET(req: Request) {
       },
     };
 
-    // Also fetch payment_reminder template for comparison
-    const paymentTemplateName = appConfig.whatsappTemplates?.payment_reminder || "payment_reminder_v1";
-    const paymentTemplates = templates?.data?.filter(
-      (t: any) => t.name === paymentTemplateName,
-    ) || [];
-
     return NextResponse.json({
       phoneNumber: {
         id: phoneNumberId,
@@ -114,18 +124,35 @@ export async function GET(req: Request) {
         verifiedName: phoneData.verified_name,
         qualityRating: phoneData.quality_rating,
         messagingTier: phoneData.messaging_limit_tier,
-        raw: phoneData,
       },
-      wabaId,
+      waba: {
+        id: finalWabaId || "NOT_FOUND",
+        source: wabaIdFromEmbed ? "embedded_in_phone_query" : (wabaEdgeData?.id ? "edge_endpoint" : "NOT_FOUND"),
+        embeddedRaw: phoneData?.whatsapp_business_account || null,
+        edgeFallbackRaw: wabaEdgeData,
+      },
+      templateError,
       clubInviteTemplate: {
         searchedName: templateName,
         found: clubInviteTemplates.length,
         templates: clubInviteTemplates,
+        diagnosis: clubInviteTemplates.length === 0
+          ? "Template not found! Check: (1) exact name on Meta Business Manager, (2) access token needs whatsapp_business_management permission to read templates, (3) template may be under different WABA"
+          : clubInviteTemplates.some((t: any) => t.category === "MARKETING")
+            ? "WARNING: This is a MARKETING template. Marketing messages are NOT delivered to users who haven't opted in or messaged the business first within 24 hours. This is likely why messages are accepted (200 OK) but never delivered!"
+            : clubInviteTemplates.every((t: any) => t.status === "APPROVED")
+              ? "Template is APPROVED and UTILITY — should deliver normally"
+              : `Template status: ${clubInviteTemplates.map((t: any) => `${t.status} (${t.language})`).join(", ")}`,
       },
       paymentReminderTemplate: {
         searchedName: paymentTemplateName,
         found: paymentTemplates.length,
         templates: paymentTemplates,
+      },
+      categoryComparison: {
+        note: "If club_invite is MARKETING and payment_reminder is UTILITY, that explains why payment works but invite doesn't deliver. MARKETING templates require user opt-in or a 24-hour messaging window.",
+        clubInviteCategory: clubInviteTemplates[0]?.category || "not_found",
+        paymentReminderCategory: paymentTemplates[0]?.category || "not_found",
       },
       appWouldSend: {
         configuredLanguage: langCode,
@@ -139,9 +166,10 @@ export async function GET(req: Request) {
         language: t.language,
         category: t.category,
       })) || [],
+      totalTemplateCount: templates?.data?.length || 0,
     });
   } catch (error: any) {
     console.error("WhatsApp debug error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message, stack: error.stack }, { status: 500 });
   }
 }
