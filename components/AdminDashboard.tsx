@@ -1,7 +1,7 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus } from "lucide-react";
+import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus, UserPlus } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
@@ -403,9 +403,9 @@ export function AdminDashboard({
         </>
       )}
 
-      {/* Badge + Catches shortcuts */}
+      {/* Badge + Catches + Invite shortcuts */}
       {(isClubAdmin || isMatchAdmin) && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <button
             onClick={() => setActiveTab("club", "badges_grant")}
             className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-yellow-500/10 transition group"
@@ -430,6 +430,18 @@ export function AdminDashboard({
               <p className="text-[10px] text-white/50">Drop / Stunning</p>
             </div>
           </button>
+          <button
+            onClick={() => setActiveTab("club", "invite_player")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
+          >
+            <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
+              <UserPlus className="w-5 h-5 group-hover:scale-110 transition" />
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-white text-sm">Invite Player</p>
+              <p className="text-[10px] text-white/50">WhatsApp invite</p>
+            </div>
+          </button>
         </div>
       )}
 
@@ -451,9 +463,9 @@ export function AdminDashboard({
         </div>
       )}
       
-      {/* Club Admin: Players + Reminders */}
+      {/* Club Admin: Players + Reminders + Invite */}
       {isClubAdmin && !isSuperAdmin && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <button
             onClick={() => setActiveTab("club", "players")}
             className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-sky-500/10 transition group"
@@ -476,6 +488,18 @@ export function AdminDashboard({
               <div className="text-left">
                   <p className="font-bold text-white text-sm">Send Reminders</p>
                   <p className="text-[10px] text-white/50">Payment notifications</p>
+              </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("club", "invite_player")}
+            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
+          >
+              <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
+                  <UserPlus className="w-5 h-5 group-hover:scale-110 transition" />
+              </div>
+              <div className="text-left">
+                  <p className="font-bold text-white text-sm">Invite Player</p>
+                  <p className="text-[10px] text-white/50">WhatsApp invite</p>
               </div>
           </button>
         </div>
@@ -761,7 +785,7 @@ function RecordCatchesModal({
   store: ReturnType<typeof useStore>;
   onClose: () => void;
 }) {
-  const [catchType, setCatchType] = useState<"dropped" | "stunning">("stunning");
+  const [catchType, setCatchType] = useState<"dropped" | "stunning">("dropped");
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
   const [matchId, setMatchId] = useState("");
