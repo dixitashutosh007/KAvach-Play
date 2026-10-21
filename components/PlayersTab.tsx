@@ -18,7 +18,6 @@ import {
   Table2,
   X,
   UserPlus,
-  ExternalLink,
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useState } from "react";
@@ -63,6 +62,8 @@ export function PlayersTab({
   const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
   const [standaloneInviteMsg, setStandaloneInviteMsg] = useState("");
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
+  const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [perPlayerInviteStatus, setPerPlayerInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
 
   const getTotalDue = (playerId: string) => {
@@ -552,9 +553,15 @@ export function PlayersTab({
               />
             </div>
 
+            {standaloneInviteStatus && (
+              <div className={`text-xs px-3 py-2 rounded-lg font-semibold ${standaloneInviteStatus.ok ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-red-500/15 text-red-400 border border-red-500/30"}`}>
+                {standaloneInviteStatus.msg}
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
               <button
-                onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); }}
+                onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); setStandaloneInviteStatus(null); }}
                 className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
               >
                 Cancel
@@ -563,11 +570,7 @@ export function PlayersTab({
                 onClick={async () => {
                   if (!inviteForm.phone.trim()) { alert("Please enter a phone number."); return; }
                   setStandaloneInviteSending(true);
-                  const cleanNum = inviteForm.phone.replace(/\D/g, "");
-                  const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
-                  const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(standaloneInviteMsg)}`;
-                  // Open blank tab immediately (direct click context avoids popup blocker)
-                  const popup = window.open("", "_blank");
+                  setStandaloneInviteStatus(null);
                   try {
                     const res = await authedFetch("/api/whatsapp/invite", {
                       method: "POST",
@@ -578,15 +581,15 @@ export function PlayersTab({
                       }),
                     });
                     if (res.ok) {
-                      popup?.close();
-                      alert(`Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp API!`);
+                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!` });
+                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 2000);
                     } else {
-                      if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
+                      const errData = await res.json().catch(() => ({}));
+                      setStandaloneInviteStatus({ ok: false, msg: errData.error || "Failed to send invite. Please check WhatsApp API settings." });
                     }
                   } catch {
-                    if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
+                    setStandaloneInviteStatus({ ok: false, msg: "Network error. Please try again." });
                   }
-                  setShowInviteModal(false);
                   setStandaloneInviteSending(false);
                 }}
                 disabled={standaloneInviteSending || !inviteForm.phone.trim()}
@@ -631,9 +634,15 @@ export function PlayersTab({
               />
             </div>
 
+            {perPlayerInviteStatus && (
+              <div className={`text-xs px-3 py-2 rounded-lg font-semibold ${perPlayerInviteStatus.ok ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-red-500/15 text-red-400 border border-red-500/30"}`}>
+                {perPlayerInviteStatus.msg}
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
               <button
-                onClick={() => { setInvitePlayer(null); setInviteSending(false); }}
+                onClick={() => { setInvitePlayer(null); setInviteSending(false); setPerPlayerInviteStatus(null); }}
                 className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
               >
                 Cancel
@@ -641,10 +650,7 @@ export function PlayersTab({
               <button
                 onClick={async () => {
                   setInviteSending(true);
-                  const cleanNum = invitePlayer.mobile.replace(/\D/g, "");
-                  const waNum = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
-                  const waUrl = `https://wa.me/${waNum}?text=${encodeURIComponent(inviteMessage)}`;
-                  const popup = window.open("", "_blank");
+                  setPerPlayerInviteStatus(null);
                   try {
                     const res = await authedFetch("/api/whatsapp/invite", {
                       method: "POST",
@@ -655,15 +661,15 @@ export function PlayersTab({
                       }),
                     });
                     if (res.ok) {
-                      popup?.close();
-                      alert(`Invite sent to ${invitePlayer.name} via WhatsApp API!`);
+                      setPerPlayerInviteStatus({ ok: true, msg: `Invite sent to ${invitePlayer.name} via WhatsApp!` });
+                      setTimeout(() => { setInvitePlayer(null); setPerPlayerInviteStatus(null); }, 2000);
                     } else {
-                      if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
+                      const errData = await res.json().catch(() => ({}));
+                      setPerPlayerInviteStatus({ ok: false, msg: errData.error || "Failed to send invite. Please check WhatsApp API settings." });
                     }
                   } catch {
-                    if (popup) popup.location.href = waUrl; else window.location.href = waUrl;
+                    setPerPlayerInviteStatus({ ok: false, msg: "Network error. Please try again." });
                   }
-                  setInvitePlayer(null);
                   setInviteSending(false);
                 }}
                 disabled={inviteSending}

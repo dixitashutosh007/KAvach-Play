@@ -40,9 +40,20 @@ export async function POST(req: Request) {
 
     const snap = await db.collection("players").get();
 
-    const buildExistsResponse = (playerData: FirebaseFirestore.DocumentData, fallbackName?: string) => {
+    const buildExistsResponse = (playerData: FirebaseFirestore.DocumentData, authProviders: string[] | null, fallbackName?: string) => {
+      const hasPhone = authProviders?.includes("phone");
+      const hasGoogle = authProviders?.includes("google.com");
       const hasEmail = !!playerData.email && playerData.email.includes("@");
-      const loginMethod = hasEmail ? "Google Sign-In" : "your existing login method";
+
+      let loginMethod = "your existing login method";
+      if (hasPhone && hasGoogle) {
+        loginMethod = "Mobile OTP or Google Sign-In";
+      } else if (hasPhone) {
+        loginMethod = "Mobile OTP";
+      } else if (hasGoogle || hasEmail) {
+        loginMethod = "Google Sign-In";
+      }
+
       const maskedEmail = hasEmail
         ? playerData.email.replace(/^(.{2})(.*)(@.*)$/, (_: string, a: string, b: string, c: string) => a + "*".repeat(b.length) + c)
         : undefined;
@@ -62,10 +73,8 @@ export async function POST(req: Request) {
         const authUid = data.authUid || doc.id;
         const appUserDoc = await db.collection("appUsers").doc(authUid).get();
         const appUserData = appUserDoc.exists ? appUserDoc.data() : null;
-        if (appUserData?.authProviders?.includes("phone")) {
-          return NextResponse.json({ exists: false });
-        }
-        return buildExistsResponse(data);
+        const providers = appUserData?.authProviders || [];
+        return buildExistsResponse(data, providers);
       }
     }
 
@@ -83,7 +92,10 @@ export async function POST(req: Request) {
           depth++;
         }
         if (keeperData && !keeperData.disabled) {
-          return buildExistsResponse(keeperData, data.name);
+          const keeperAuthUid = keeperData.authUid || keeperId;
+          const keeperAppUserDoc = await db.collection("appUsers").doc(keeperAuthUid).get();
+          const keeperProviders = keeperAppUserDoc.exists ? keeperAppUserDoc.data()?.authProviders || [] : [];
+          return buildExistsResponse(keeperData, keeperProviders, data.name);
         }
       }
     }

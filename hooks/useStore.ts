@@ -235,15 +235,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         console.error("Error creating appUser:", e);
       }
 
-      // Ensure they also exist in players collection so they show up in admin players tab
+      // Ensure demo/admin users also exist in players collection.
+      // Regular users must go through RegistrationForm — do NOT auto-create
+      // blank player profiles for them (prevents ghost "Player (xxxxx)" entries).
+      if (!isDemo && resolvedRole !== "admin") return;
+
       try {
         const pSnap = await getDoc(playerDoc);
         const initialStatus =
           resolvedRole === "admin"
             ? "Verified"
-            : isDemo
-              ? "Pending"
-              : "Unverified";
+            : "Pending";
 
         if (!pSnap.exists()) {
           await setDoc(playerDoc, {
