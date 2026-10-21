@@ -72,8 +72,8 @@ export async function POST(req: Request) {
     }
 
     const clubName = appConfig.clubName || "Kavach Cricket Club";
-    const templateName = whatsappTemplates.club_invite || "club_invite";
-    const langCode = whatsappTemplateLanguages.club_invite || "en_US";
+    const templateName = whatsappTemplates.club_invite || "welcome_invite";
+    const langCode = whatsappTemplateLanguages.club_invite || "en";
     const varsString =
       whatsappTemplateVariables.club_invite || "clubName,playerName,link";
 
