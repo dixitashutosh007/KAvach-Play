@@ -1,22 +1,28 @@
 import { NextResponse } from "next/server";
-import { initializeApp, getApps } from "firebase-admin/app";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import firebaseConfig from "@/firebase-applet-config.json";
 
+function ensureAdminApp() {
+  const apps = getApps();
+  if (apps.length) return apps[0];
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    return initializeApp({
+      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
+    });
+  }
+  return initializeApp({ projectId: firebaseConfig.projectId });
+}
+
 export async function GET(req: Request) {
   try {
-    // Auth relaxed for one-time diagnostics — endpoint only reads config,
-    // never mutates. Remove this endpoint after debugging is done.
     const url = new URL(req.url);
     const key = url.searchParams.get("key");
     if (key !== "kavach-debug-2026") {
       return NextResponse.json({ error: "Invalid debug key" }, { status: 403 });
     }
 
-    const apps = getApps();
-    const app = apps.length
-      ? apps[0]
-      : initializeApp({ projectId: firebaseConfig.projectId });
+    const app = ensureAdminApp();
     const dbId = (firebaseConfig as any).firestoreDatabaseId;
     let db;
     try {
