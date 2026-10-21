@@ -56,8 +56,6 @@ export function PlayersTab({
   const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [generatingIds, setGeneratingIds] = useState(false);
-  const playersWithoutKavachId = store.players.filter((p) => !p.kavachId && !p.disabled);
 
 
   const getTotalDue = (playerId: string) => {
@@ -162,40 +160,16 @@ export function PlayersTab({
           Squad <span className="opacity-50 text-sm ml-1">({store.players.length})</span>
         </h2>
         {isAdmin && (
-          <div className="flex items-center gap-2">
-            {playersWithoutKavachId.length > 0 && (
-              <button
-                onClick={async () => {
-                  setGeneratingIds(true);
-                  try {
-                    const res = await authedFetch("/api/admin/generate-kavach-ids", { method: "POST" });
-                    const data = await res.json().catch(() => ({}));
-                    if (res.ok) {
-                      alert(`KAvach IDs assigned to ${data.assigned} players. Reload to see changes.`);
-                      window.location.reload();
-                    } else {
-                      alert(data.error || "Failed to generate IDs.");
-                    }
-                  } catch { alert("Network error."); }
-                  setGeneratingIds(false);
-                }}
-                disabled={generatingIds}
-                className="flex items-center gap-1 rounded-full bg-yellow-600 px-3 py-1.5 text-xs font-bold text-black shadow hover:bg-yellow-500 transition disabled:opacity-50"
-              >
-                {generatingIds ? "Generating..." : `Generate IDs (${playersWithoutKavachId.length})`}
-              </button>
-            )}
-            <button
-              onClick={() => {
-                setShowInviteModal(true);
-                setInviteForm({ name: "", phone: "" });
-              }}
-              className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              Invite Player
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setShowInviteModal(true);
+              setInviteForm({ name: "", phone: "" });
+            }}
+            className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Invite Player
+          </button>
         )}
       </div>
 

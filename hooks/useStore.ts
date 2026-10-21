@@ -1425,6 +1425,23 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         }
       }
 
+      // Auto-assign KAvach ID when player gets approved and doesn't have one
+      if (
+        (updates.inviteStatus === "Accepted" || updates.inviteStatus === "Verified") &&
+        existingPlayer && !existingPlayer.kavachId && !updates.kavachId
+      ) {
+        const year = new Date().getFullYear();
+        const prefix = `K${year}`;
+        let maxSeq = 0;
+        for (const p of players) {
+          if (p.kavachId?.startsWith(prefix)) {
+            const seq = parseInt(p.kavachId.slice(prefix.length), 10);
+            if (seq > maxSeq) maxSeq = seq;
+          }
+        }
+        updates.kavachId = `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
+      }
+
       const cleanedUpdates = cleanPayload({
         ...updates,
         updatedAt: serverTimestamp(),
