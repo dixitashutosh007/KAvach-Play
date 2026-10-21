@@ -634,6 +634,30 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         </h2>
       </div>
 
+      <div className="glass rounded-xl border border-yellow-500/30 p-4 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold text-yellow-400">Generate KAvach IDs</p>
+          <p className="text-[11px] text-white/50">Bulk-assign unique KAvach IDs to all existing players based on their joining date.</p>
+        </div>
+        <button
+          onClick={async () => {
+            try {
+              const res = await authedFetch("/api/admin/generate-kavach-ids", { method: "POST" });
+              const data = await res.json();
+              if (res.ok) {
+                alert(`KAvach IDs assigned to ${data.assigned} players.\n\n${data.details?.map((d: any) => `${d.kavachId} → ${d.name}`).join("\n") || ""}`);
+                window.location.reload();
+              } else {
+                alert(data.error || "Failed.");
+              }
+            } catch { alert("Network error."); }
+          }}
+          className="shrink-0 px-4 py-2 rounded-lg bg-yellow-600 text-black font-bold text-sm hover:bg-yellow-500 transition"
+        >
+          Generate IDs
+        </button>
+      </div>
+
       <div className="glass rounded-xl overflow-hidden">
         <button
           type="button"
@@ -1457,24 +1481,6 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 {seedStatus}
               </div>
             )}
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const res = await authedFetch("/api/admin/generate-kavach-ids", { method: "POST" });
-                  const data = await res.json();
-                  if (res.ok) {
-                    alert(`KAvach IDs assigned to ${data.assigned} players.\n\n${data.details?.map((d: any) => `${d.kavachId} → ${d.name}`).join("\n") || ""}`);
-                    window.location.reload();
-                  } else {
-                    alert(data.error || "Failed.");
-                  }
-                } catch { alert("Network error."); }
-              }}
-              className="w-full rounded-lg bg-yellow-600/20 border border-yellow-500/30 py-2.5 text-sm font-bold text-yellow-400 shadow hover:bg-yellow-600/30 transition"
-            >
-              Generate KAvach IDs (Bulk)
-            </button>
           </div>
         </form>
       </div>
