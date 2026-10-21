@@ -49,6 +49,10 @@ export type AppConfig = {
     payment_reminder?: string;
     club_invite?: string;
   };
+  whatsappTemplateLanguages?: {
+    payment_reminder?: string;
+    club_invite?: string;
+  };
   crmTeamPlayerIds?: string[];
   isStudioEnabled?: boolean;
   features?: {

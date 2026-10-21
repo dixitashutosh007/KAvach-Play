@@ -580,12 +580,13 @@ export function PlayersTab({
                         playerName: inviteForm.name || "Player",
                       }),
                     });
+                    const resData = await res.json().catch(() => ({}));
                     if (res.ok) {
-                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!` });
-                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 2000);
+                      const detail = resData.messageId ? ` (ID: ${resData.messageId}, to: ${resData.sentTo}, template: ${resData.template}/${resData.language})` : "";
+                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!${detail}` });
+                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 5000);
                     } else {
-                      const errData = await res.json().catch(() => ({}));
-                      setStandaloneInviteStatus({ ok: false, msg: errData.error || "Failed to send invite. Please check WhatsApp API settings." });
+                      setStandaloneInviteStatus({ ok: false, msg: resData.error || "Failed to send invite. Please check WhatsApp API settings." });
                     }
                   } catch {
                     setStandaloneInviteStatus({ ok: false, msg: "Network error. Please try again." });

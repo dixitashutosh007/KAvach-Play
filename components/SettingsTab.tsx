@@ -98,6 +98,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     store.appConfig?.whatsappTemplateVariables || defaultWhatsappTemplateVariables
   );
 
+  const [whatsappTemplateLanguages, setWhatsappTemplateLanguages] = useState(
+    store.appConfig?.whatsappTemplateLanguages || { club_invite: "en_US" }
+  );
 
   // Preview state
   const [previewLoadingTheme, setPreviewLoadingTheme] = useState<
@@ -272,6 +275,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     setWhatsappTemplates(cfg.whatsappTemplates || defaultWhatsappTemplates);
     setWhatsappTemplateVariables(
       cfg.whatsappTemplateVariables || defaultWhatsappTemplateVariables,
+    );
+    setWhatsappTemplateLanguages(
+      cfg.whatsappTemplateLanguages || { club_invite: "en_US" },
     );
     setEmailTemplates(cfg.emailTemplates || defaultTemplates);
     setIsStudioEnabled(cfg.isStudioEnabled || false);
@@ -469,6 +475,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         whatsappPhoneNumberId,
         whatsappTemplates,
         whatsappTemplateVariables,
+        whatsappTemplateLanguages,
         isStudioEnabled,
         features,
         matchConfiguration,
@@ -1181,6 +1188,22 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
                       placeholder="e.g. clubName,playerName,link"
                     />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      Club Invite Template Language
+                    </label>
+                    <select
+                      value={whatsappTemplateLanguages?.club_invite || "en_US"}
+                      onChange={(e) => setWhatsappTemplateLanguages({...whatsappTemplateLanguages, club_invite: e.target.value})}
+                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                    >
+                      <option value="en">English (en)</option>
+                      <option value="en_US">English US (en_US)</option>
+                      <option value="en_GB">English UK (en_GB)</option>
+                      <option value="hi">Hindi (hi)</option>
+                    </select>
+                    <p className="text-[9px] text-white/40 mt-1">Must match the language selected when creating the template on Meta</p>
                   </div>
                 </div>
               )}

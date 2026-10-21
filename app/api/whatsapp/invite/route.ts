@@ -55,6 +55,7 @@ export async function POST(req: Request) {
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     const whatsappTemplates = appConfig.whatsappTemplates || {};
     const whatsappTemplateVariables = appConfig.whatsappTemplateVariables || {};
+    const whatsappTemplateLanguages = appConfig.whatsappTemplateLanguages || {};
 
     if (!phoneNumberId || !accessToken) {
       return NextResponse.json(
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
 
     const clubName = appConfig.clubName || "Kavach Cricket Club";
     const templateName = whatsappTemplates.club_invite || "club_invite";
+    const langCode = whatsappTemplateLanguages.club_invite || "en_US";
     const varsString =
       whatsappTemplateVariables.club_invite || "clubName,playerName,link";
 
@@ -95,13 +97,15 @@ export async function POST(req: Request) {
       type: "template",
       template: {
         name: templateName,
-        language: { code: "en" },
+        language: { code: langCode },
         components:
           params.length > 0
             ? [{ type: "body", parameters: params }]
             : [],
       },
     };
+
+    console.log("WhatsApp invite payload:", JSON.stringify(payload, null, 2));
 
     const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
     const response = await fetch(apiUrl, {
@@ -114,6 +118,8 @@ export async function POST(req: Request) {
     });
 
     const data = await response.json();
+    console.log("WhatsApp invite response:", JSON.stringify(data, null, 2));
+
     if (!response.ok) {
       console.error("WhatsApp invite API error:", data);
       return NextResponse.json(
@@ -125,7 +131,17 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, data });
+    const messageId = data?.messages?.[0]?.id;
+    const messageStatus = data?.messages?.[0]?.message_status;
+
+    return NextResponse.json({
+      success: true,
+      messageId,
+      messageStatus,
+      sentTo: formattedTo,
+      template: templateName,
+      language: langCode,
+    });
   } catch (error: any) {
     console.error("Error sending WhatsApp invite:", error);
     return NextResponse.json(
