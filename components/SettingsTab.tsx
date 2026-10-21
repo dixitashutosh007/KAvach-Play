@@ -1457,6 +1457,24 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 {seedStatus}
               </div>
             )}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const res = await authedFetch("/api/admin/generate-kavach-ids", { method: "POST" });
+                  const data = await res.json();
+                  if (res.ok) {
+                    alert(`KAvach IDs assigned to ${data.assigned} players.\n\n${data.details?.map((d: any) => `${d.kavachId} → ${d.name}`).join("\n") || ""}`);
+                    window.location.reload();
+                  } else {
+                    alert(data.error || "Failed.");
+                  }
+                } catch { alert("Network error."); }
+              }}
+              className="w-full rounded-lg bg-yellow-600/20 border border-yellow-500/30 py-2.5 text-sm font-bold text-yellow-400 shadow hover:bg-yellow-600/30 transition"
+            >
+              Generate KAvach IDs (Bulk)
+            </button>
           </div>
         </form>
       </div>
