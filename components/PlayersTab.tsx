@@ -582,9 +582,8 @@ export function PlayersTab({
                     });
                     const resData = await res.json().catch(() => ({}));
                     if (res.ok) {
-                      const detail = resData.messageId ? ` (ID: ${resData.messageId}, to: ${resData.sentTo}, template: ${resData.template}/${resData.language})` : "";
-                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!${detail}` });
-                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 5000);
+                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp! If they don't receive it, ask them to first send "Hi" to your business WhatsApp number, then resend the invite.` });
+                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 8000);
                     } else {
                       setStandaloneInviteStatus({ ok: false, msg: resData.error || "Failed to send invite. Please check WhatsApp API settings." });
                     }
@@ -662,8 +661,8 @@ export function PlayersTab({
                       }),
                     });
                     if (res.ok) {
-                      setPerPlayerInviteStatus({ ok: true, msg: `Invite sent to ${invitePlayer.name} via WhatsApp!` });
-                      setTimeout(() => { setInvitePlayer(null); setPerPlayerInviteStatus(null); }, 2000);
+                      setPerPlayerInviteStatus({ ok: true, msg: `Invite sent to ${invitePlayer.name} via WhatsApp! If they don't receive it, ask them to first send "Hi" to your business WhatsApp number, then resend.` });
+                      setTimeout(() => { setInvitePlayer(null); setPerPlayerInviteStatus(null); }, 8000);
                     } else {
                       const errData = await res.json().catch(() => ({}));
                       setPerPlayerInviteStatus({ ok: false, msg: errData.error || "Failed to send invite. Please check WhatsApp API settings." });

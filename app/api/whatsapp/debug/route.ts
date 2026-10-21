@@ -88,7 +88,7 @@ export async function GET(req: Request) {
     }
 
     // Step 4: Find specific templates
-    const templateName = appConfig.whatsappTemplates?.club_invite || "club_invite";
+    const templateName = appConfig.whatsappTemplates?.club_invite || "welcome_invite";
     const clubInviteTemplates = templates?.data?.filter(
       (t: any) => t.name === templateName,
     ) || [];

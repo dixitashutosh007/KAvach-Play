@@ -79,7 +79,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     studio_expired_reminder: "studio_expired_reminder",
     studio_expires_today: "studio_expires_today",
     payment_reminder: "payment_reminder_v1",
-    club_invite: "club_invite",
+    club_invite: "welcome_invite",
   };
 
   const [whatsappTemplates, setWhatsappTemplates] = useState(
@@ -99,7 +99,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   );
 
   const [whatsappTemplateLanguages, setWhatsappTemplateLanguages] = useState(
-    store.appConfig?.whatsappTemplateLanguages || { club_invite: "en_US" }
+    store.appConfig?.whatsappTemplateLanguages || { club_invite: "en" }
   );
 
   // Preview state
@@ -277,7 +277,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       cfg.whatsappTemplateVariables || defaultWhatsappTemplateVariables,
     );
     setWhatsappTemplateLanguages(
-      cfg.whatsappTemplateLanguages || { club_invite: "en_US" },
+      cfg.whatsappTemplateLanguages || { club_invite: "en" },
     );
     setEmailTemplates(cfg.emailTemplates || defaultTemplates);
     setIsStudioEnabled(cfg.isStudioEnabled || false);
@@ -1121,7 +1121,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       value={whatsappTemplates.club_invite || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, club_invite: e.target.value})}
                       className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
-                      placeholder="club_invite"
+                      placeholder="welcome_invite"
                     />
                   </div>
 
