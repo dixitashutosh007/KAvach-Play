@@ -42,26 +42,35 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "WhatsApp credentials not configured" }, { status: 500 });
     }
 
-    // Step 1: Get phone number details WITH embedded WABA ID
+    // Step 1: Get phone number details (WITHOUT whatsapp_business_account to avoid permission issues)
     const phoneRes = await fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier,whatsapp_business_account`,
+      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     const phoneData = await phoneRes.json();
 
-    // Extract WABA ID from the embedded field
-    const wabaIdFromEmbed = phoneData?.whatsapp_business_account?.id;
-
-    // Step 2: Also try the edge endpoint as fallback
+    // Step 2: Try to get WABA ID (separate call — needs whatsapp_business_management permission)
+    let wabaEmbedData: any = null;
     let wabaEdgeData: any = null;
-    if (!wabaIdFromEmbed) {
+    let finalWabaId: string | null = null;
+
+    // Method A: embedded field
+    const embedRes = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=whatsapp_business_account`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    wabaEmbedData = await embedRes.json();
+    finalWabaId = wabaEmbedData?.whatsapp_business_account?.id || null;
+
+    // Method B: edge endpoint fallback
+    if (!finalWabaId) {
       const wabaRes = await fetch(
-        `https://graph.facebook.com/v19.0/${phoneNumberId}/whatsapp_business_account?fields=id,name,currency,timezone_id,message_template_namespace`,
+        `https://graph.facebook.com/v19.0/${phoneNumberId}/whatsapp_business_account?fields=id,name`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
       );
       wabaEdgeData = await wabaRes.json();
+      finalWabaId = wabaEdgeData?.id || null;
     }
-    const finalWabaId = wabaIdFromEmbed || wabaEdgeData?.id;
 
     // Step 3: Fetch all templates
     let templates: any = null;
@@ -117,7 +126,26 @@ export async function GET(req: Request) {
       },
     };
 
+    // Build summary/action items
+    const canReadTemplates = !!finalWabaId && !templateError;
+    const summary: string[] = [];
+    if (!finalWabaId) {
+      summary.push("CANNOT read templates via API — access token lacks whatsapp_business_management permission.");
+      summary.push("ACTION: Go to Meta Business Manager > WhatsApp Manager > Message Templates and check if club_invite is MARKETING category.");
+      summary.push("If it is MARKETING, re-create it as UTILITY. Marketing templates only deliver to opted-in users.");
+    }
+    if (canReadTemplates && clubInviteTemplates.length === 0) {
+      summary.push("Template 'club_invite' NOT found on this WABA. Check the exact name on Meta.");
+    }
+    if (clubInviteTemplates.some((t: any) => t.category === "MARKETING")) {
+      summary.push("FOUND THE ISSUE: club_invite is a MARKETING template! Re-create it as UTILITY on Meta.");
+    }
+    if (phoneData.display_phone_number) {
+      summary.push(`Phone verified: ${phoneData.display_phone_number} (${phoneData.verified_name}), quality: ${phoneData.quality_rating}`);
+    }
+
     return NextResponse.json({
+      summary,
       phoneNumber: {
         id: phoneNumberId,
         displayNumber: phoneData.display_phone_number,
@@ -127,9 +155,10 @@ export async function GET(req: Request) {
       },
       waba: {
         id: finalWabaId || "NOT_FOUND",
-        source: wabaIdFromEmbed ? "embedded_in_phone_query" : (wabaEdgeData?.id ? "edge_endpoint" : "NOT_FOUND"),
-        embeddedRaw: phoneData?.whatsapp_business_account || null,
-        edgeFallbackRaw: wabaEdgeData,
+        source: finalWabaId === wabaEmbedData?.whatsapp_business_account?.id ? "embedded" : (wabaEdgeData?.id ? "edge" : "NOT_FOUND"),
+        note: !finalWabaId ? "Access token likely lacks whatsapp_business_management permission. This is OK for SENDING messages but means we cannot read templates via API. Check template category manually on Meta Business Manager." : undefined,
+        embedResponse: wabaEmbedData,
+        edgeResponse: wabaEdgeData,
       },
       templateError,
       clubInviteTemplate: {
