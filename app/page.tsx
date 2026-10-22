@@ -494,8 +494,6 @@ export default function Home() {
     }
   }
 
-  // GoogleLinkPrompt removed — phone OTP is now the universal login method,
-  // so we no longer force email/password users to link Google.
 
   const clubName = store.appConfig?.clubName || "KAVACH CRICKET CLUB";
   const logoUrl = store.appConfig?.logoUrl;
