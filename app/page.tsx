@@ -58,7 +58,6 @@ import { PendingApprovalScreen } from "@/components/onboarding/PendingApprovalSc
 import { RejectedScreen } from "@/components/onboarding/RejectedScreen";
 import { AccountDisabledScreen } from "@/components/onboarding/AccountDisabledScreen";
 import { QuotaExceededScreen } from "@/components/onboarding/QuotaExceededScreen";
-import { GoogleLinkPrompt } from "@/components/onboarding/GoogleLinkPrompt";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
@@ -86,8 +85,6 @@ export default function Home() {
     hasAdminClaim,
     signIn,
     signInDemo,
-    signInWithEmail,
-    linkGoogleAccount,
     logOut,
   } = useAuth();
   const store = useStore(user);
@@ -314,17 +311,7 @@ export default function Home() {
   // sync flow uses isRegistering at this level.
   const [isRegistering, setIsRegistering] = useState(false);
 
-  const hasPhoneAuth =
-    user &&
-    !user.isAnonymous &&
-    user.providerData?.some((p) => p.providerId === "phone");
 
-  const needsGoogleSync =
-    user &&
-    !user.isAnonymous &&
-    user.providerData &&
-    !hasPhoneAuth &&
-    !user.providerData.some((p) => p.providerId === "google.com");
 
   const isMobileAuth = !!user?.phoneNumber;
   const currentPlayerObj = store.players.find(
@@ -392,7 +379,6 @@ export default function Home() {
     return (
       <LoginScreen
         onGoogleSignIn={signIn}
-        onEmailSignIn={signInWithEmail}
         themeStyles={themeStyles}
         accentColor={currentThemeObj.accent}
         textAccentColor={currentThemeObj.textAccent}
@@ -508,11 +494,8 @@ export default function Home() {
     }
   }
 
-  if (needsGoogleSync && currentUserObj?.role !== "admin") {
-    return (
-      <GoogleLinkPrompt onLink={linkGoogleAccount} themeStyles={themeStyles} />
-    );
-  }
+  // GoogleLinkPrompt removed — phone OTP is now the universal login method,
+  // so we no longer force email/password users to link Google.
 
   const clubName = store.appConfig?.clubName || "KAVACH CRICKET CLUB";
   const logoUrl = store.appConfig?.logoUrl;
