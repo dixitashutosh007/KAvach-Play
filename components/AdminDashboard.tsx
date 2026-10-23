@@ -443,6 +443,115 @@ export function AdminDashboard({
         </h2>
       </div>
 
+      {/* Studio Subscription Alerts — Studio/Super admin */}
+      {isStudioAdmin && expiredStudioMembers.length > 0 && (
+        <div className="glass rounded-xl border border-red-500/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <h3 className="text-sm font-bold text-red-400 uppercase tracking-widest">Expired Subscriptions</h3>
+            </div>
+            <span className="bg-red-500/20 text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{expiredStudioMembers.length}</span>
+          </div>
+          <div className="space-y-2">
+            {expiredStudioMembers.map(p => {
+              const expiry = p.studioExpiryDate || p.studioEndDate;
+              const daysAgo = expiry ? Math.abs(Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))) : null;
+              return (
+                <div key={p.id} className="flex items-center justify-between bg-red-500/5 rounded-lg px-3 py-2 border border-red-500/10">
+                  <div>
+                    <p className="text-sm font-bold text-white">{p.name}</p>
+                    <p className="text-[10px] text-white/40">{expiry ? `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago` : "No expiry date"}</p>
+                  </div>
+                  <button
+                    onClick={() => handleStudioRemind(p)}
+                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
+                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Send className="w-3 h-3" />
+                    {remindingStudioId === p.id ? "Sending..." : "Notify"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {expiredStudioMembers.length > 1 && (
+            <button
+              onClick={() => handleBulkStudioRemind(expiredStudioMembers)}
+              disabled={!!remindingStudioId}
+              className="mt-3 w-full bg-red-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-400 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Notify All ({expiredStudioMembers.length})
+            </button>
+          )}
+        </div>
+      )}
+
+      {isStudioAdmin && renewalDueMembers.length > 0 && (
+        <div className="glass rounded-xl border border-amber-500/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-400" />
+              <h3 className="text-sm font-bold text-amber-400 uppercase tracking-widest">Renewal Due (7 Days)</h3>
+            </div>
+            <span className="bg-amber-500/20 text-amber-400 text-xs font-black px-2 py-0.5 rounded-full">{renewalDueMembers.length}</span>
+          </div>
+          <div className="space-y-2">
+            {renewalDueMembers.map(p => {
+              const expiry = p.studioExpiryDate || p.studioEndDate;
+              const daysLeft = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24)) : 0;
+              return (
+                <div key={p.id} className="flex items-center justify-between bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
+                  <div>
+                    <p className="text-sm font-bold text-white">{p.name}</p>
+                    <p className="text-[10px] text-white/40">{daysLeft === 0 ? "Expires today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}</p>
+                  </div>
+                  <button
+                    onClick={() => handleStudioRemind(p)}
+                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
+                    className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Send className="w-3 h-3" />
+                    {remindingStudioId === p.id ? "Sending..." : "Remind"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Match Fee Payment Compliance — Finance/Super only */}
+      {isFinanceAdmin && matchCompliance.perMatch.length > 0 && (
+        <div className="glass rounded-xl border border-glass-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-widest">Payment Compliance</h3>
+            </div>
+            <span className={`text-lg font-black ${matchCompliance.overall >= 75 ? "text-emerald-400" : matchCompliance.overall >= 50 ? "text-amber-400" : "text-red-400"}`}>
+              {matchCompliance.overall}%
+            </span>
+          </div>
+          <p className="text-[10px] text-white/40 mb-3">Paid within 4 days of match = compliant</p>
+          <div className="space-y-2">
+            {matchCompliance.perMatch.map(({ match, compliant, total, rate }) => (
+              <div key={match.id} className="flex items-center justify-between bg-black/20 rounded-lg px-3 py-2 border border-glass-border">
+                <div>
+                  <p className="text-xs font-bold text-white">vs {match.opponent}</p>
+                  <p className="text-[10px] text-white/40">{formatDate(match.date)}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`text-sm font-black ${rate >= 75 ? "text-emerald-400" : rate >= 50 ? "text-amber-400" : "text-red-400"}`}>{rate}%</span>
+                  <p className="text-[10px] text-white/30">{compliant}/{total} on time</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Finance: Total Dues + Add No Show + Send Reminders */}
       {isFinanceAdmin && (
         <>
@@ -641,115 +750,6 @@ export function AdminDashboard({
                   <p className="text-[10px] text-white/50">WhatsApp invite</p>
               </div>
           </button>
-        </div>
-      )}
-
-      {/* Studio Subscription Alerts — Studio/Super admin */}
-      {isStudioAdmin && expiredStudioMembers.length > 0 && (
-        <div className="glass rounded-xl border border-red-500/30 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <h3 className="text-sm font-bold text-red-400 uppercase tracking-widest">Expired Subscriptions</h3>
-            </div>
-            <span className="bg-red-500/20 text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{expiredStudioMembers.length}</span>
-          </div>
-          <div className="space-y-2">
-            {expiredStudioMembers.map(p => {
-              const expiry = p.studioExpiryDate || p.studioEndDate;
-              const daysAgo = expiry ? Math.abs(Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))) : null;
-              return (
-                <div key={p.id} className="flex items-center justify-between bg-red-500/5 rounded-lg px-3 py-2 border border-red-500/10">
-                  <div>
-                    <p className="text-sm font-bold text-white">{p.name}</p>
-                    <p className="text-[10px] text-white/40">{expiry ? `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago` : "No expiry date"}</p>
-                  </div>
-                  <button
-                    onClick={() => handleStudioRemind(p)}
-                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
-                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Send className="w-3 h-3" />
-                    {remindingStudioId === p.id ? "Sending..." : "Notify"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          {expiredStudioMembers.length > 1 && (
-            <button
-              onClick={() => handleBulkStudioRemind(expiredStudioMembers)}
-              disabled={!!remindingStudioId}
-              className="mt-3 w-full bg-red-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-400 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-            >
-              <Send className="w-3.5 h-3.5" />
-              Notify All ({expiredStudioMembers.length})
-            </button>
-          )}
-        </div>
-      )}
-
-      {isStudioAdmin && renewalDueMembers.length > 0 && (
-        <div className="glass rounded-xl border border-amber-500/30 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-400" />
-              <h3 className="text-sm font-bold text-amber-400 uppercase tracking-widest">Renewal Due (7 Days)</h3>
-            </div>
-            <span className="bg-amber-500/20 text-amber-400 text-xs font-black px-2 py-0.5 rounded-full">{renewalDueMembers.length}</span>
-          </div>
-          <div className="space-y-2">
-            {renewalDueMembers.map(p => {
-              const expiry = p.studioExpiryDate || p.studioEndDate;
-              const daysLeft = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24)) : 0;
-              return (
-                <div key={p.id} className="flex items-center justify-between bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
-                  <div>
-                    <p className="text-sm font-bold text-white">{p.name}</p>
-                    <p className="text-[10px] text-white/40">{daysLeft === 0 ? "Expires today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}</p>
-                  </div>
-                  <button
-                    onClick={() => handleStudioRemind(p)}
-                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
-                    className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Send className="w-3 h-3" />
-                    {remindingStudioId === p.id ? "Sending..." : "Remind"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Match Fee Payment Compliance — Finance/Super only */}
-      {isFinanceAdmin && matchCompliance.perMatch.length > 0 && (
-        <div className="glass rounded-xl border border-glass-border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-sm font-bold text-white uppercase tracking-widest">Payment Compliance</h3>
-            </div>
-            <span className={`text-lg font-black ${matchCompliance.overall >= 75 ? "text-emerald-400" : matchCompliance.overall >= 50 ? "text-amber-400" : "text-red-400"}`}>
-              {matchCompliance.overall}%
-            </span>
-          </div>
-          <p className="text-[10px] text-white/40 mb-3">Paid within 4 days of match = compliant</p>
-          <div className="space-y-2">
-            {matchCompliance.perMatch.map(({ match, compliant, total, rate }) => (
-              <div key={match.id} className="flex items-center justify-between bg-black/20 rounded-lg px-3 py-2 border border-glass-border">
-                <div>
-                  <p className="text-xs font-bold text-white">vs {match.opponent}</p>
-                  <p className="text-[10px] text-white/40">{formatDate(match.date)}</p>
-                </div>
-                <div className="text-right">
-                  <span className={`text-sm font-black ${rate >= 75 ? "text-emerald-400" : rate >= 50 ? "text-amber-400" : "text-red-400"}`}>{rate}%</span>
-                  <p className="text-[10px] text-white/30">{compliant}/{total} on time</p>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
