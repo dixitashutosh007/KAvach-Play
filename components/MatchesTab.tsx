@@ -66,7 +66,7 @@ import {
   Info,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, FC } from "react";
-import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -1786,6 +1786,30 @@ export function MatchPayments({
     setIsGroupRemindModalOpen(false);
   };
 
+  const matchLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+  const myLateFees = (() => {
+    if (!myPayment || myPayment.status !== "Unpaid") return [];
+    if (myPayment.feeOverride === 0) return [];
+    const exempted = store.otherFees.some(
+      (f: any) =>
+        f.playerId === myPayment.playerId &&
+        f.title?.startsWith("Late Fee Exemption:") &&
+        f.title?.includes(match.id) &&
+        f.status !== "Cancelled",
+    );
+    if (exempted) return [];
+    const alreadyPersisted = store.otherFees.some(
+      (f: any) =>
+        f.playerId === myPayment.playerId &&
+        f.title?.startsWith("Late Fee:") &&
+        f.title?.includes(matchLabel) &&
+        f.status === "Paid",
+    );
+    if (alreadyPersisted) return [];
+    return computeLateFees(match.date, match.id, myPayment.playerId, matchLabel);
+  })();
+  const myLateFeeTotal = myLateFees.reduce((s, f) => s + f.amount, 0);
+
   const handlePaySecure = async () => {
     if (!myPayment || !match.fee) return;
     if (store.appConfig?.features?.payments === false) {
@@ -1793,7 +1817,8 @@ export function MatchPayments({
       return;
     }
 
-    const payableFee = getPlayerFee(myPayment);
+    const baseFee = getPlayerFee(myPayment);
+    const payableFee = baseFee + myLateFeeTotal;
     if (payableFee <= 0) {
       alert("Your fee is ₹0 (sponsored). No payment needed.");
       return;
@@ -1835,11 +1860,22 @@ export function MatchPayments({
         amount: data.amount,
         currency: data.currency,
         name: "Kavach Play",
-        description: `Payment for Match Fee against ${match.opponent}`,
+        description: myLateFeeTotal > 0
+          ? `Match Fee ₹${baseFee} + Late Fee ₹${myLateFeeTotal} for ${match.opponent}`
+          : `Payment for Match Fee against ${match.opponent}`,
         order_id: data.id,
         handler: async function (response: any) {
           try {
             await store.updatePaymentStatus(myPayment.id, "Paid", match.id, undefined, "razorpay");
+            for (const lf of myLateFees) {
+              const feeId = await store.addOtherFee(myPayment.playerId, {
+                title: lf.label,
+                amount: lf.amount,
+                comment: "Auto-levied late fee penalty",
+                templateId: `latefee_${match.id}`,
+              });
+              if (feeId) await store.updateOtherFeeStatus(myPayment.playerId, feeId, "Paid", "razorpay");
+            }
             alert("Payment Successful!");
             setIsProcessingPayment(false);
             if (typeof onBack === 'function') onBack();
@@ -2407,12 +2443,32 @@ export function MatchPayments({
       {!isAdmin &&
         myPayment?.status === "Unpaid" && (() => {
           const myFee = getPlayerFee(myPayment);
+          const totalFee = myFee + myLateFeeTotal;
           return (
             <div className="glass rounded-xl p-6 text-center space-y-4">
               <h3 className="text-lg font-bold">Your Match Fee is Pending</h3>
-              <p className="text-accent text-3xl font-light font-mono">
-                ₹{myFee}
-              </p>
+              {myLateFeeTotal > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm px-4">
+                    <span className="text-white/70">Match Fee</span>
+                    <span className="font-mono text-white">₹{myFee}</span>
+                  </div>
+                  {myLateFees.map((lf, i) => (
+                    <div key={i} className="flex justify-between text-sm px-4">
+                      <span className="text-red-400">{lf.label}</span>
+                      <span className="font-mono text-red-400">₹{lf.amount}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-white/10 pt-2 flex justify-between text-sm px-4 font-bold">
+                    <span className="text-white">Total</span>
+                    <span className="text-accent text-2xl font-mono">₹{totalFee}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-accent text-3xl font-light font-mono">
+                  ₹{myFee}
+                </p>
+              )}
               {myPayment.planTag && (
                 <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest">
                   {myPayment.planTag}
@@ -2423,7 +2479,7 @@ export function MatchPayments({
                 onClick={handlePaySecure}
                 className="w-full bg-accent text-black font-bold py-3 rounded-lg hover:bg-accent/90 disabled:opacity-50 transition shadow-lg flex items-center justify-center gap-2"
               >
-                {isProcessingPayment ? "Processing..." : `Pay ₹${myFee} Securely`}
+                {isProcessingPayment ? "Processing..." : `Pay ₹${totalFee} Securely`}
               </button>
               <p className="text-[10px] text-white/50 uppercase tracking-widest">
                 Settle your dues before the match
@@ -2841,16 +2897,39 @@ export function MatchPayments({
                         <>
                           <select
                             value={payment.status}
-                            onChange={(e) =>
-                              store.updatePaymentStatus(
+                            onChange={async (e) => {
+                              const newStatus = e.target.value;
+                              await store.updatePaymentStatus(
                                 payment.id,
-                                e.target.value as any,
+                                newStatus as any,
                                 match.id,
                                 undefined,
-                                e.target.value === "Paid" ? "manual" : undefined,
-                                e.target.value === "Paid" ? (appUser?.name || "Admin") : undefined,
-                              )
-                            }
+                                newStatus === "Paid" ? "manual" : undefined,
+                                newStatus === "Paid" ? (appUser?.name || "Admin") : undefined,
+                              );
+                              if (newStatus === "Paid") {
+                                const exempted = store.otherFees.some(
+                                  (f: any) =>
+                                    f.playerId === payment.playerId &&
+                                    f.title?.startsWith("Late Fee Exemption:") &&
+                                    f.title?.includes(match.id) &&
+                                    f.status !== "Cancelled",
+                                );
+                                if (!exempted) {
+                                  const pLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+                                  const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
+                                  for (const lf of fees) {
+                                    const feeId = await store.addOtherFee(payment.playerId, {
+                                      title: lf.label,
+                                      amount: lf.amount,
+                                      comment: "Auto-levied late fee penalty (admin marked paid)",
+                                      templateId: `latefee_${match.id}`,
+                                    });
+                                    if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
+                                  }
+                                }
+                              }
+                            }}
                             className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
                               payment.status === "Paid"
                                 ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"

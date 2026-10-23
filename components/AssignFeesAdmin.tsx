@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
 import { useAuth } from "./AuthProvider";
 import { MessageSquare } from "lucide-react";
-import { formatDate, dbToInputDate } from "@/lib/utils";
+import { formatDate, dbToInputDate, computeLateFees } from "@/lib/utils";
 
 export function AssignFeesAdmin({
   store,
@@ -567,7 +567,29 @@ export function AssignFeesAdmin({
                                   Unpaid
                                 </span>
                                 <button
-                                  onClick={() => store.updatePaymentStatus(fee.id, "Paid", match.id, fee.availability || "Confirmed", "manual")}
+                                  onClick={async () => {
+                                    await store.updatePaymentStatus(fee.id, "Paid", match.id, fee.availability || "Confirmed", "manual");
+                                    const exempted = store.otherFees.some(
+                                      (f: any) =>
+                                        f.playerId === fee.playerId &&
+                                        f.title?.startsWith("Late Fee Exemption:") &&
+                                        f.title?.includes(match.id) &&
+                                        f.status !== "Cancelled",
+                                    );
+                                    if (!exempted) {
+                                      const mLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+                                      const fees = computeLateFees(match.date, match.id, fee.playerId, mLabel);
+                                      for (const lf of fees) {
+                                        const feeId = await store.addOtherFee(fee.playerId, {
+                                          title: lf.label,
+                                          amount: lf.amount,
+                                          comment: "Auto-levied late fee penalty (admin marked paid)",
+                                          templateId: `latefee_${match.id}`,
+                                        });
+                                        if (feeId) await store.updateOtherFeeStatus(fee.playerId, feeId, "Paid", "manual");
+                                      }
+                                    }
+                                  }}
                                   className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/70 transition border border-white/10 whitespace-nowrap"
                                 >
                                   Mark Paid
