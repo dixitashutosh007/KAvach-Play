@@ -1,7 +1,8 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus, UserPlus } from "lucide-react";
+import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus, UserPlus, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { authedFetch } from "@/lib/authed-fetch";
 import { format, isPast, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { db } from "@/lib/firebase";
@@ -30,6 +31,7 @@ export function AdminDashboard({
 }) {
   const { matches, payments, players, otherFees } = store;
   const [showCatchModal, setShowCatchModal] = useState(false);
+  const [remindingStudioId, setRemindingStudioId] = useState<string | null>(null);
 
   const { totalDueMatch, totalDueFee, duePlayersCount, topDuePlayers } = useMemo(() => {
     let matchDue = 0;
@@ -114,6 +116,87 @@ export function AdminDashboard({
 
     return txns.sort((a, b) => b.date - a.date).slice(0, 10);
   }, [matches, payments, players, otherFees]);
+
+  const { expiredStudioMembers, renewalDueMembers } = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const oneWeekLater = new Date(now);
+    oneWeekLater.setDate(oneWeekLater.getDate() + 7);
+
+    const expired: Player[] = [];
+    const renewalDue: Player[] = [];
+
+    players.filter(p => p.isStudioMember && !p.disabled).forEach(p => {
+      const expiryStr = p.studioExpiryDate || p.studioEndDate;
+      if (!expiryStr) {
+        expired.push(p);
+        return;
+      }
+      const expiryDate = new Date(expiryStr);
+      expiryDate.setHours(23, 59, 59, 999);
+
+      if (expiryDate < now) {
+        expired.push(p);
+      } else if (expiryDate <= oneWeekLater) {
+        renewalDue.push(p);
+      }
+    });
+
+    return { expiredStudioMembers: expired, renewalDueMembers: renewalDue };
+  }, [players]);
+
+  const matchCompliance = useMemo(() => {
+    const now = new Date();
+    const recentPastMatches = matches
+      .filter(m => {
+        const matchDate = new Date(m.date);
+        return matchDate < now && m.result !== "Abandoned";
+      })
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 10);
+
+    let totalPaid = 0;
+    let totalCompliant = 0;
+
+    const perMatch = recentPastMatches.map(m => {
+      const matchPayments = payments.filter(p => p.matchId === m.id && p.status === "Paid");
+      const matchDate = new Date(m.date);
+      const fourDaysLater = new Date(matchDate);
+      fourDaysLater.setDate(fourDaysLater.getDate() + 4);
+      fourDaysLater.setHours(23, 59, 59, 999);
+
+      let compliant = 0;
+      const total = matchPayments.length;
+
+      matchPayments.forEach(p => {
+        if (p.updatedAt) {
+          const paidDate = typeof p.updatedAt === "object" && "seconds" in p.updatedAt
+            ? new Date(p.updatedAt.seconds * 1000)
+            : new Date(p.updatedAt as any);
+          if (paidDate <= fourDaysLater) {
+            compliant++;
+          }
+        }
+      });
+
+      totalPaid += total;
+      totalCompliant += compliant;
+
+      return {
+        match: m,
+        compliant,
+        total,
+        rate: total > 0 ? Math.round((compliant / total) * 100) : 0,
+      };
+    });
+
+    return {
+      overall: totalPaid > 0 ? Math.round((totalCompliant / totalPaid) * 100) : 0,
+      totalPaid,
+      totalCompliant,
+      perMatch: perMatch.slice(0, 5),
+    };
+  }, [matches, payments]);
 
   const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
   const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
@@ -274,6 +357,64 @@ export function AdminDashboard({
 
     const encoded = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encoded}`, "_blank");
+  };
+
+  const handleStudioRemind = async (p: Player) => {
+    if (!p.mobile) {
+      alert(`${p.name} has no mobile number.`);
+      return;
+    }
+    const expiry = p.studioExpiryDate || p.studioEndDate;
+    const daysLeft = expiry
+      ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))
+      : -999;
+
+    setRemindingStudioId(p.id);
+    try {
+      const res = await authedFetch("/api/whatsapp/remind-studio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: p.mobile, daysLeft, playerName: p.name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      alert(`Reminder sent to ${p.name}!`);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setRemindingStudioId(null);
+    }
+  };
+
+  const handleBulkStudioRemind = async (membersList: Player[]) => {
+    const withMobile = membersList.filter(p => p.mobile);
+    if (withMobile.length === 0) {
+      alert("No players have mobile numbers.");
+      return;
+    }
+    if (!confirm(`Send WhatsApp reminder to ${withMobile.length} player(s)?`)) return;
+
+    setRemindingStudioId("bulk");
+    let sent = 0;
+    let failed = 0;
+    for (const p of withMobile) {
+      const expiry = p.studioExpiryDate || p.studioEndDate;
+      const daysLeft = expiry
+        ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))
+        : -999;
+      try {
+        const res = await authedFetch("/api/whatsapp/remind-studio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: p.mobile, daysLeft, playerName: p.name }),
+        });
+        if (res.ok) sent++; else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setRemindingStudioId(null);
+    alert(`Sent: ${sent}${failed > 0 ? `, Failed: ${failed}` : ""}`);
   };
 
   const totalDueAmount = totalDueMatch + totalDueFee;
@@ -447,20 +588,18 @@ export function AdminDashboard({
 
       {/* Studio: Add to Studio */}
       {isStudioAdmin && (
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setActiveTab("studio", "add_player")}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group"
-          >
-              <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
-                  <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
-              </div>
-              <div className="text-left">
-                  <p className="font-bold text-white text-sm">Add to Studio</p>
-                  <p className="text-[10px] text-white/50">Add a new member</p>
-              </div>
-          </button>
-        </div>
+        <button
+          onClick={() => setActiveTab("studio", "add_player")}
+          className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group w-full"
+        >
+            <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
+                <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
+            </div>
+            <div className="text-left">
+                <p className="font-bold text-white text-sm">Add to Studio</p>
+                <p className="text-[10px] text-white/50">Add a new member</p>
+            </div>
+        </button>
       )}
       
       {/* Club Admin: Players + Reminders + Invite */}
@@ -502,6 +641,115 @@ export function AdminDashboard({
                   <p className="text-[10px] text-white/50">WhatsApp invite</p>
               </div>
           </button>
+        </div>
+      )}
+
+      {/* Studio Subscription Alerts — Studio/Super admin */}
+      {isStudioAdmin && expiredStudioMembers.length > 0 && (
+        <div className="glass rounded-xl border border-red-500/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <h3 className="text-sm font-bold text-red-400 uppercase tracking-widest">Expired Subscriptions</h3>
+            </div>
+            <span className="bg-red-500/20 text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{expiredStudioMembers.length}</span>
+          </div>
+          <div className="space-y-2">
+            {expiredStudioMembers.map(p => {
+              const expiry = p.studioExpiryDate || p.studioEndDate;
+              const daysAgo = expiry ? Math.abs(Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))) : null;
+              return (
+                <div key={p.id} className="flex items-center justify-between bg-red-500/5 rounded-lg px-3 py-2 border border-red-500/10">
+                  <div>
+                    <p className="text-sm font-bold text-white">{p.name}</p>
+                    <p className="text-[10px] text-white/40">{expiry ? `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago` : "No expiry date"}</p>
+                  </div>
+                  <button
+                    onClick={() => handleStudioRemind(p)}
+                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
+                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Send className="w-3 h-3" />
+                    {remindingStudioId === p.id ? "Sending..." : "Notify"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {expiredStudioMembers.length > 1 && (
+            <button
+              onClick={() => handleBulkStudioRemind(expiredStudioMembers)}
+              disabled={!!remindingStudioId}
+              className="mt-3 w-full bg-red-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-400 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Notify All ({expiredStudioMembers.length})
+            </button>
+          )}
+        </div>
+      )}
+
+      {isStudioAdmin && renewalDueMembers.length > 0 && (
+        <div className="glass rounded-xl border border-amber-500/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-400" />
+              <h3 className="text-sm font-bold text-amber-400 uppercase tracking-widest">Renewal Due (7 Days)</h3>
+            </div>
+            <span className="bg-amber-500/20 text-amber-400 text-xs font-black px-2 py-0.5 rounded-full">{renewalDueMembers.length}</span>
+          </div>
+          <div className="space-y-2">
+            {renewalDueMembers.map(p => {
+              const expiry = p.studioExpiryDate || p.studioEndDate;
+              const daysLeft = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24)) : 0;
+              return (
+                <div key={p.id} className="flex items-center justify-between bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
+                  <div>
+                    <p className="text-sm font-bold text-white">{p.name}</p>
+                    <p className="text-[10px] text-white/40">{daysLeft === 0 ? "Expires today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}</p>
+                  </div>
+                  <button
+                    onClick={() => handleStudioRemind(p)}
+                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
+                    className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Send className="w-3 h-3" />
+                    {remindingStudioId === p.id ? "Sending..." : "Remind"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Match Fee Payment Compliance — Finance/Super only */}
+      {isFinanceAdmin && matchCompliance.perMatch.length > 0 && (
+        <div className="glass rounded-xl border border-glass-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-widest">Payment Compliance</h3>
+            </div>
+            <span className={`text-lg font-black ${matchCompliance.overall >= 75 ? "text-emerald-400" : matchCompliance.overall >= 50 ? "text-amber-400" : "text-red-400"}`}>
+              {matchCompliance.overall}%
+            </span>
+          </div>
+          <p className="text-[10px] text-white/40 mb-3">Paid within 4 days of match = compliant</p>
+          <div className="space-y-2">
+            {matchCompliance.perMatch.map(({ match, compliant, total, rate }) => (
+              <div key={match.id} className="flex items-center justify-between bg-black/20 rounded-lg px-3 py-2 border border-glass-border">
+                <div>
+                  <p className="text-xs font-bold text-white">vs {match.opponent}</p>
+                  <p className="text-[10px] text-white/40">{formatDate(match.date)}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`text-sm font-black ${rate >= 75 ? "text-emerald-400" : rate >= 50 ? "text-amber-400" : "text-red-400"}`}>{rate}%</span>
+                  <p className="text-[10px] text-white/30">{compliant}/{total} on time</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
