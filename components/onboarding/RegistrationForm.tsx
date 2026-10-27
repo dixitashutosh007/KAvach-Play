@@ -68,6 +68,7 @@ export function RegistrationForm({
   user,
   players,
   onLogOut,
+  onRegistered,
   themeStyles,
   accentColor,
   textAccentColor,
@@ -75,6 +76,7 @@ export function RegistrationForm({
   user: User;
   players: PlayerInfo[];
   onLogOut: () => Promise<void>;
+  onRegistered?: () => void;
   themeStyles: React.CSSProperties;
   accentColor: string;
   textAccentColor: string;
@@ -143,6 +145,7 @@ export function RegistrationForm({
         jerseyNumber: form.jerseyNumber,
       });
       await batch.commit();
+      onRegistered?.();
       const playerName = form.name || user.displayName || "Unknown";
       createNotification(
         "admin",

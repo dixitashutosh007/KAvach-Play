@@ -310,7 +310,7 @@ export default function Home() {
   // Registration form state now lives inside <RegistrationForm>. Only the
   // sync flow uses isRegistering at this level.
   const [isRegistering, setIsRegistering] = useState(false);
-
+  const [justRegistered, setJustRegistered] = useState(false);
 
 
   const isMobileAuth = !!user?.phoneNumber;
@@ -450,7 +450,38 @@ export default function Home() {
 
   // Registration submission moved into <RegistrationForm>.
 
-  if (!currentPlayerObj && !currentUserObj && !user?.isAnonymous && user) {
+  if (
+    currentPlayerObj &&
+    currentPlayerObj.inviteStatus === "Pending"
+  ) {
+    if (currentUserObj?.role !== "admin") {
+      return (
+        <PendingApprovalScreen
+          variant="pending"
+          onLogOut={logOut}
+          themeStyles={themeStyles}
+        />
+      );
+    }
+  }
+
+  // Guard: just submitted registration — player doc may still be propagating
+  // from the batch write. Show PendingApproval briefly instead of flashing
+  // the registration form again.
+  if (justRegistered && !currentPlayerObj && currentUserObj && currentUserObj.role !== "admin" && !user?.isAnonymous) {
+    return (
+      <PendingApprovalScreen
+        variant="pending"
+        onLogOut={logOut}
+        themeStyles={themeStyles}
+      />
+    );
+  }
+
+  // No player doc — show registration form. This handles both first-time
+  // registration AND the case where a previous attempt created the appUser
+  // doc but not the player doc (e.g. old non-atomic writes or a failed batch).
+  if (!currentPlayerObj && !user?.isAnonymous && user && currentUserObj?.role !== "admin") {
     const existingMatch = existingPlayerWithSamePhone || existingPlayerWithSameEmail;
     if (existingMatch) {
       return (
@@ -472,37 +503,10 @@ export default function Home() {
         user={user}
         players={store.players}
         onLogOut={logOut}
+        onRegistered={() => setJustRegistered(true)}
         themeStyles={themeStyles}
         accentColor={currentThemeObj.accent}
         textAccentColor={currentThemeObj.textAccent}
-      />
-    );
-  }
-
-  if (
-    currentPlayerObj &&
-    currentPlayerObj.inviteStatus === "Pending"
-  ) {
-    if (currentUserObj?.role !== "admin") {
-      return (
-        <PendingApprovalScreen
-          variant="pending"
-          onLogOut={logOut}
-          themeStyles={themeStyles}
-        />
-      );
-    }
-  }
-
-  // Guard: appUser doc exists but player doc hasn't arrived yet (batch write
-  // propagation or listener timing). Show PendingApproval instead of falling
-  // through to the "Complete Your Profile" screen.
-  if (currentUserObj && !currentPlayerObj && currentUserObj.role !== "admin" && !user?.isAnonymous) {
-    return (
-      <PendingApprovalScreen
-        variant="pending"
-        onLogOut={logOut}
-        themeStyles={themeStyles}
       />
     );
   }
