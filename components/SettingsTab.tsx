@@ -75,8 +75,8 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   );
 
   const defaultWhatsappTemplates = {
-    studio_expiry_reminder: "studio_expiry_reminder",
-    studio_expired_reminder: "studio_expired_reminder",
+    studio_expiry_reminder: "studio_expiring_soon",
+    studio_expired_reminder: "studio_already_expired",
     studio_expires_today: "studio_expires_today",
     payment_reminder: "payment_reminder_v1",
     club_invite: "welcome_invite",
@@ -87,9 +87,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   );
 
   const defaultWhatsappTemplateVariables = {
-    studio_expiry_reminder: "daysLeft",
-    studio_expired_reminder: "daysLeft",
-    studio_expires_today: "",
+    studio_expiry_reminder: "playerName,daysLeft",
+    studio_expired_reminder: "playerName",
+    studio_expires_today: "playerName",
     payment_reminder: "playerName,amount,link",
     club_invite: "clubName,playerName,link",
   };
@@ -1074,7 +1074,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       value={whatsappTemplates.studio_expiry_reminder || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expiry_reminder: e.target.value})}
                       className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
-                      placeholder="studio_expiry_reminder"
+                      placeholder="studio_expiring_soon"
                     />
                   </div>
                   <div>
@@ -1098,7 +1098,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       value={whatsappTemplates.studio_expired_reminder || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expired_reminder: e.target.value})}
                       className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
-                      placeholder="studio_expired_reminder"
+                      placeholder="studio_already_expired"
                     />
                   </div>
                   <div>

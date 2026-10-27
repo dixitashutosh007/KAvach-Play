@@ -55,14 +55,14 @@ export async function POST(req: Request) {
     let varsString = '';
 
     if (daysLeft < 0) {
-      templateName = whatsappTemplates.studio_expired_reminder || 'studio_expired_reminder';
-      varsString = whatsappTemplateVariables.studio_expired_reminder || 'daysLeft';
+      templateName = whatsappTemplates.studio_expired_reminder || 'studio_already_expired';
+      varsString = whatsappTemplateVariables.studio_expired_reminder || 'playerName';
     } else if (daysLeft === 0) {
       templateName = whatsappTemplates.studio_expires_today || 'studio_expires_today';
-      varsString = whatsappTemplateVariables.studio_expires_today || '';
+      varsString = whatsappTemplateVariables.studio_expires_today || 'playerName';
     } else {
-      templateName = whatsappTemplates.studio_expiry_reminder || 'studio_expiry_reminder';
-      varsString = whatsappTemplateVariables.studio_expiry_reminder || 'daysLeft';
+      templateName = whatsappTemplates.studio_expiry_reminder || 'studio_expiring_soon';
+      varsString = whatsappTemplateVariables.studio_expiry_reminder || 'playerName,daysLeft';
     }
 
     let params: any[] = [];
