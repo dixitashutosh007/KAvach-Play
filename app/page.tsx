@@ -494,6 +494,18 @@ export default function Home() {
     }
   }
 
+  // Guard: appUser doc exists but player doc hasn't arrived yet (batch write
+  // propagation or listener timing). Show PendingApproval instead of falling
+  // through to the "Complete Your Profile" screen.
+  if (currentUserObj && !currentPlayerObj && currentUserObj.role !== "admin" && !user?.isAnonymous) {
+    return (
+      <PendingApprovalScreen
+        variant="pending"
+        onLogOut={logOut}
+        themeStyles={themeStyles}
+      />
+    );
+  }
 
   const clubName = store.appConfig?.clubName || "KAVACH CRICKET CLUB";
   const logoUrl = store.appConfig?.logoUrl;

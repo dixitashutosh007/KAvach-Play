@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { User } from "firebase/auth";
 import { motion } from "motion/react";
 import { Shield, AlertTriangle, LogIn } from "lucide-react";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
 import { createNotification } from "@/lib/notifications";
@@ -107,7 +107,8 @@ export function RegistrationForm({
       const normalizedEmergency = normalizeIndianMobile(form.emergencyContact);
       const userDoc = doc(db, "appUsers", user.uid);
       const playerDoc = doc(db, "players", user.uid);
-      await setDoc(userDoc, {
+      const batch = writeBatch(db);
+      batch.set(userDoc, {
         email: form.email || user.email || "",
         name: form.name || user.displayName || "",
         photoURL: user.photoURL || "",
@@ -124,7 +125,7 @@ export function RegistrationForm({
         chestSize: form.chestSize,
         jerseyNumber: form.jerseyNumber,
       });
-      await setDoc(playerDoc, {
+      batch.set(playerDoc, {
         name: form.name || user.displayName || "",
         email: form.email || user.email || "",
         mobile: normalizedMobile,
@@ -141,6 +142,7 @@ export function RegistrationForm({
         chestSize: form.chestSize,
         jerseyNumber: form.jerseyNumber,
       });
+      await batch.commit();
       const playerName = form.name || user.displayName || "Unknown";
       createNotification(
         "admin",
