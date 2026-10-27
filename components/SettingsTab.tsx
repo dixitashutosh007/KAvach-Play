@@ -88,7 +88,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
 
   const defaultWhatsappTemplateVariables = {
     studio_expiry_reminder: "playerName,daysLeft",
-    studio_expired_reminder: "playerName",
+    studio_expired_reminder: "playerName,daysSinceExpired",
     studio_expires_today: "playerName",
     payment_reminder: "playerName,amount,link",
     club_invite: "clubName,playerName,link",

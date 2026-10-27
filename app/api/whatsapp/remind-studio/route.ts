@@ -51,32 +51,41 @@ export async function POST(req: Request) {
 
     const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
 
+    const resolveVar = (v: string) => {
+      if (v === 'playerName') return playerName || "Player";
+      if (v === 'daysLeft') return Math.abs(daysLeft).toString();
+      if (v === 'daysSinceExpired') return Math.abs(daysLeft).toString();
+      if (v === 'clubName') return appConfig.clubName || "Kavach Play";
+      return v;
+    };
+
+    const defaultVars: Record<string, string> = {
+      studio_expired_reminder: "playerName,daysSinceExpired",
+      studio_expires_today: "playerName",
+      studio_expiry_reminder: "playerName,daysLeft",
+    };
+
     let templateName = '';
-    let varsString = '';
+    let scenarioKey = '';
 
     if (daysLeft < 0) {
+      scenarioKey = 'studio_expired_reminder';
       templateName = whatsappTemplates.studio_expired_reminder || 'studio_already_expired';
-      varsString = whatsappTemplateVariables.studio_expired_reminder || 'playerName';
     } else if (daysLeft === 0) {
+      scenarioKey = 'studio_expires_today';
       templateName = whatsappTemplates.studio_expires_today || 'studio_expires_today';
-      varsString = whatsappTemplateVariables.studio_expires_today || 'playerName';
     } else {
+      scenarioKey = 'studio_expiry_reminder';
       templateName = whatsappTemplates.studio_expiry_reminder || 'studio_expiring_soon';
-      varsString = whatsappTemplateVariables.studio_expiry_reminder || 'playerName,daysLeft';
     }
 
+    const varsString = whatsappTemplateVariables[scenarioKey] || defaultVars[scenarioKey] || '';
     let params: any[] = [];
     if (varsString.trim().length > 0) {
-      const varsArray = varsString.split(',').map(v => v.trim());
-      for (const v of varsArray) {
-        let textVal = '';
-        if (v === 'playerName') textVal = playerName || "Player";
-        else if (v === 'daysLeft') textVal = Math.abs(daysLeft).toString();
-        else if (v === 'clubName') textVal = appConfig.clubName || "Kavach Play";
-        else textVal = v; // default to just passing the string if unknown
-
-        params.push({ type: "text", text: textVal });
-      }
+      params = varsString.split(',').map((v: string) => ({
+        type: "text",
+        text: resolveVar(v.trim()),
+      }));
     }
 
     const payload = {
