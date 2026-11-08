@@ -92,7 +92,7 @@ const DISPLAY_LABELS: Record<string, string> = {
   jerseyNumber: "Jersey #",
   role: "Role",
   inviteStatus: "Status",
-  disabled: "Disabled",
+  disabled: "Deactivated",
   totalRuns: "Runs",
   totalWickets: "Wickets",
   stunningCatches: "Stunning Catches",

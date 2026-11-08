@@ -13,7 +13,7 @@ import {
   Edit,
   MessageSquare,
   CheckCircle,
-  Trash2,
+  UserX,
   Calendar,
   Table2,
   X,
@@ -194,9 +194,9 @@ export function PlayersTab({
           )}
           <button
             onClick={() => setShowDisabled(!showDisabled)}
-            className={`text-xs px-3 py-2 rounded-xl font-bold border transition ${showDisabled ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-white/5 text-white/60 border-glass-border hover:bg-white/10"}`}
+            className={`text-xs px-3 py-2 rounded-xl font-bold border transition ${showDisabled ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-white/5 text-white/60 border-glass-border hover:bg-white/10"}`}
           >
-            {showDisabled ? "Viewing Trash" : "View Trash"}
+            {showDisabled ? "Viewing Deactivated" : "View Deactivated"}
           </button>
           <select
             value={sortOption}
@@ -423,7 +423,7 @@ export function PlayersTab({
                       <button
                         onClick={() => {
                           if (player.disabled) {
-                            if (window.confirm(`Are you sure you want to restore ${player.name}?`)) {
+                            if (window.confirm(`Activate ${player.name}? They will appear in match squads and fee lists again.`)) {
                               store.updatePlayer(player.id, {
                                 disabled: false,
                                 disabledAt: undefined,
@@ -432,7 +432,7 @@ export function PlayersTab({
                           } else {
                             if (
                               window.confirm(
-                                `Are you sure you want to move ${player.name} to trash? They can request a fresh signup after a 3-day cool-down.`,
+                                `Deactivate ${player.name}? They won't appear in matches, catches, or fees. They'll be automatically reactivated when they sign in again.`,
                               )
                             ) {
                               store.updatePlayer(player.id, {
@@ -442,10 +442,10 @@ export function PlayersTab({
                             }
                           }
                         }}
-                        title={player.disabled ? "Restore Player" : "Move to Trash"}
+                        title={player.disabled ? "Activate Player" : "Deactivate Player"}
                         className={`p-1.5 rounded-md transition cursor-pointer text-xs font-bold px-2 ${player.disabled ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" : "hover:bg-red-500/10 text-white/60 hover:text-red-400"}`}
                       >
-                        {player.disabled ? "Restore" : <Trash2 className="h-4 w-4" />}
+                        {player.disabled ? "Activate" : <UserX className="h-4 w-4" />}
                       </button>
                       {player.disabled && (
                         <button
@@ -818,8 +818,8 @@ function BulkEditTable({
                   </td>
                   <td className="bg-transparent text-center px-2">
                     {player.disabled ? (
-                      <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30">
-                        Disabled
+                      <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        Deactivated
                       </span>
                     ) : (
                       <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">

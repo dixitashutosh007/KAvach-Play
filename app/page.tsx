@@ -56,7 +56,7 @@ import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
 import { RegistrationForm } from "@/components/onboarding/RegistrationForm";
 import { PendingApprovalScreen } from "@/components/onboarding/PendingApprovalScreen";
 import { RejectedScreen } from "@/components/onboarding/RejectedScreen";
-import { AccountDisabledScreen } from "@/components/onboarding/AccountDisabledScreen";
+
 import { QuotaExceededScreen } from "@/components/onboarding/QuotaExceededScreen";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
@@ -520,14 +520,7 @@ export default function Home() {
     store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
 
   if (player?.disabled) {
-    return (
-      <AccountDisabledScreen
-        player={player}
-        user={user}
-        store={store}
-        now={now}
-      />
-    );
+    store.updatePlayer(player.id, { disabled: false, disabledAt: undefined });
   }
 
   const isSuperAdmin =
