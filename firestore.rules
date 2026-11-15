@@ -233,8 +233,7 @@ service cloud.firestore {
 
     match /paymentLinks/{linkId} {
       allow read: if true;
-      allow create: if isAnyAdmin();
-      allow update: if isSignedIn();
+      allow create, update, delete: if isFinanceAdmin() || isSuperAdmin();
     }
 
     match /subscriptionPlans/{planId} {
@@ -433,7 +432,7 @@ service cloud.firestore {
       match /otherFees/{feeId} {
         allow read: if isSignedIn();
         allow create, delete: if isAnyAdmin() || isSelf(playerId);
-        allow update: if isAnyAdmin() || isSelf(playerId) || (isSignedIn() && incoming().status == 'Paid');
+        allow update: if isAnyAdmin() || isSelf(playerId);
       }
     }
 
@@ -480,7 +479,7 @@ service cloud.firestore {
         // client-side writes. Duplicate-profile merges no longer touch
         // this collection from the client — /api/admin/merge-players
         // uses the admin SDK, which bypasses these rules entirely.
-        allow update: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(existing().playerId)) || (isSignedIn() && incoming().status == 'Paid'))
+        allow update: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(existing().playerId)))
           && isValidId(paymentId)
           && isValidMatchPayment(incoming())
           && incoming().matchId == existing().matchId

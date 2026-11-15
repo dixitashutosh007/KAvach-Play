@@ -8,6 +8,7 @@
  * `WixFinanceView` for potential external e-commerce hooks.
  */
 import { authedFetch } from "@/lib/authed-fetch";
+import { isMatchBillable } from "@/lib/matchBillable";
 import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Match, MatchPayment, Player, SubscriptionPlan } from "@/lib/types";
@@ -116,7 +117,7 @@ export function PlayerFinanceView({
   const unifiedDues: UnifiedDue[] = [];
   myPayments.forEach((p) => {
     const match = store.matches.find((m) => m.id === p.matchId);
-    if (match) {
+    if (match && isMatchBillable(match)) {
       const ground = store.grounds.find((g) => g.id === match.groundId);
       unifiedDues.push({
         id: `match_${p.id}`,
@@ -1259,11 +1260,12 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
       .filter((d) => !searchPlayer || d.hasResults); // If searching, hide matches with no matches
   }, [filteredMatches, store.payments, store.players, searchPlayer]);
 
-  const grandTotalCollected = reportData.reduce(
-    (t, d) => t + d.totalCollected,
-    0,
-  );
-  const grandTotalDue = reportData.reduce((t, d) => t + d.totalDue, 0);
+  const grandTotalCollected = reportData
+    .filter((d) => isMatchBillable(d.match))
+    .reduce((t, d) => t + d.feeCollected, 0);
+  const grandTotalDue = reportData
+    .filter((d) => isMatchBillable(d.match))
+    .reduce((t, d) => t + d.totalDue, 0);
 
   const collectedMatches = useMemo(() => {
     return reportData.filter((d) => d.feeCollected > 0 || d.feeOffset > 0 || d.paidCount > 0);

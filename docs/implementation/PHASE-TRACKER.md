@@ -10,7 +10,7 @@
 | Phase | Name | Status | Start Date | End Date |
 |-------|------|--------|------------|----------|
 | 0 | Discovery & Verification | **COMPLETE** | 2026-11-15 | 2026-11-15 |
-| 1 | Critical Security & Financial Fixes | NOT STARTED | — | — |
+| 1 | Critical Security & Financial Fixes | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 2 | Data Integrity & Schema Cleanup | NOT STARTED | — | — |
 | 3 | Identity Consolidation | NOT STARTED | — | — |
 | 4 | Component Decomposition | NOT STARTED | — | — |
@@ -66,20 +66,20 @@
 
 ## Phase 1 — Critical Security & Financial Fixes
 
-### Tasks (NOT STARTED — awaiting approval)
+### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
-| 1.1 | Remove CRIT-01 payment status bypass (L436) | `firestore.rules` | Low | NOT STARTED |
-| 1.2 | Remove CRIT-01 payment status bypass (L483) | `firestore.rules` | Low | NOT STARTED |
-| 1.3 | Lock down CRIT-02 paymentLinks updates (L237) | `firestore.rules` | Low | NOT STARTED |
-| 1.4 | Create `isMatchBillable()` shared helper | `lib/matchBillable.ts` | Low | NOT STARTED |
-| 1.5 | Apply abandoned match filter in FinanceTab | `components/FinanceTab.tsx` | Low | NOT STARTED |
-| 1.6 | Apply abandoned match filter in PayClient | `app/pay/[playerId]/PayClient.tsx` | Low | NOT STARTED |
-| 1.7 | Apply abandoned match filter in DuesAndRemindersTab | `components/DuesAndRemindersTab.tsx` | Low | NOT STARTED |
-| 1.8 | Fix FIN-01 grossValue calculation | `components/MatchesTab.tsx` | Low | NOT STARTED |
-| 1.9 | Fix FIN-02 grandTotalCollected inflation | `components/FinanceTab.tsx` | Low | NOT STARTED |
-| 1.10 | Write Firestore rules regression tests | `e2e/` or `tests/` | Medium | NOT STARTED |
+| 1.1 | Remove CRIT-01 payment status bypass (L436) | `firestore.rules` | Low | COMPLETE |
+| 1.2 | Remove CRIT-01 payment status bypass (L483) | `firestore.rules` | Low | COMPLETE |
+| 1.3 | Lock down CRIT-02 paymentLinks updates (L237) | `firestore.rules` | Low | COMPLETE |
+| 1.4 | Create `isMatchBillable()` shared helper | `lib/matchBillable.ts` | Low | COMPLETE |
+| 1.5 | Apply abandoned match filter in FinanceTab (player view + admin grand totals) | `components/FinanceTab.tsx` | Low | COMPLETE |
+| 1.6 | Apply abandoned match filter in PayClient | `app/pay/[playerId]/PayClient.tsx` | Low | COMPLETE |
+| 1.7 | Apply abandoned match filter in DuesAndRemindersTab (4 locations) | `components/DuesAndRemindersTab.tsx` | Low | COMPLETE |
+| 1.8 | Fix FIN-01 grossValue calculation (guest fee overrides) | `components/MatchesTab.tsx` | Low | COMPLETE |
+| 1.9 | Fix FIN-02 grandTotalCollected inflation (club-sponsored) | `components/FinanceTab.tsx` | Low | COMPLETE |
+| 1.10 | Write Firestore rules regression tests | `tests/` | Medium | DEFERRED to Phase 10 |
 
 ---
 

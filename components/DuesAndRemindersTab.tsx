@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert } from "lucide-react";
 import { formatDate, computeLateFees } from "@/lib/utils";
+import { isMatchBillable } from "@/lib/matchBillable";
 import type { ManualPaymentMethod } from "@/lib/types";
 
 export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { store: any; isFinanceAdmin: boolean; isSuperAdmin?: boolean }) {
@@ -134,7 +135,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
          store.players.forEach((p: any) => {
             store.payments.filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid").forEach((pay: any) => {
               const m = store.matches.find((mx: any) => mx.id === pay.matchId);
-              if(m) {
+              if(m && isMatchBillable(m)) {
                 allDues.push({
                    uid: pay.id,
                    type: 'match',
@@ -164,7 +165,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
               .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid" && (pay.feeOverride === undefined || pay.feeOverride > 0))
               .forEach((pay: any) => {
                 const m = store.matches.find((mx: any) => mx.id === pay.matchId);
-                if (!m) return;
+                if (!m || !isMatchBillable(m)) return;
                 const exempted = store.otherFees.some(
                   (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
                 );
@@ -693,7 +694,7 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
         .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid")
         .forEach((pay: any) => {
           const m = store.matches.find((mx: any) => mx.id === pay.matchId);
-          if (m) {
+          if (m && isMatchBillable(m)) {
             dues.push({
               uid: pay.id,
               type: "match",
@@ -723,7 +724,7 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
         .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid" && (pay.feeOverride === undefined || pay.feeOverride > 0))
         .forEach((pay: any) => {
           const m = store.matches.find((mx: any) => mx.id === pay.matchId);
-          if (!m) return;
+          if (!m || !isMatchBillable(m)) return;
           const exempted = store.otherFees.some(
             (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
           );

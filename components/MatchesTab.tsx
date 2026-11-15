@@ -1566,7 +1566,7 @@ export function MatchPayments({
   // Comprehensive Financial Accountability & Bifurcation
   const financials = useMemo(() => {
     const playing = matchPayments.filter((p) => p.status !== "Not Playing");
-    const grossValue = playing.length * match.fee;
+    const grossValue = playing.reduce((sum, p) => sum + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
 
     let directCollected = 0;
     let directPaidCount = 0;

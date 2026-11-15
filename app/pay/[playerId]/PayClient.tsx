@@ -5,6 +5,7 @@ import { useStore } from "@/hooks/useStore";
 import { PlayerFinanceView } from "@/components/FinanceTab";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
+import { isMatchBillable } from "@/lib/matchBillable";
 
 export function PayClient({ playerId }: { playerId: string }) {
   const router = useRouter();
@@ -21,7 +22,11 @@ export function PayClient({ playerId }: { playerId: string }) {
   }, [store.ensurePayments, store.ensureOtherFees]);
 
   const pendingDuesCount =
-    store.payments.filter((p) => p.playerId === playerId && p.status === "Unpaid").length +
+    store.payments.filter((p) => {
+      if (p.playerId !== playerId || p.status !== "Unpaid") return false;
+      const match = store.matches.find((m) => m.id === p.matchId);
+      return match ? isMatchBillable(match) : false;
+    }).length +
     store.otherFees.filter((f) => f.playerId === playerId && f.status === "Unpaid").length;
 
   useEffect(() => {
