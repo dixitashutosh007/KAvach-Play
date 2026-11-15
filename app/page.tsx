@@ -267,8 +267,9 @@ export default function Home() {
   const OUT_OF_PLAY_TABS = new Set(["profile", "studio"]);
   useEffect(() => {
     if (!store.isLoaded) return;
-    if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.();
-    if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.();
+    const playerScope = isAdminUser ? undefined : user?.uid;
+    if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.(playerScope);
+    if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
     if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
     if (STATS_TABS.has(activeTab)) store.ensurePlayerStats?.();
     if (MERCH_TABS.has(activeTab)) store.ensureMerchOrders?.();
@@ -283,7 +284,7 @@ export default function Home() {
     if (MERCH_CATALOG_TABS.has(activeTab)) store.ensureMerchandises?.();
     if (OUT_OF_PLAY_TABS.has(activeTab)) store.ensureOutOfPlays?.();
     if (BADGE_TABS.has(activeTab)) { store.ensureBadges?.(); store.ensureBadgeTypeDefs?.(); }
-  }, [activeTab, store.isLoaded, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs]);
+  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.

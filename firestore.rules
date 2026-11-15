@@ -272,11 +272,11 @@ service cloud.firestore {
     }
 
     match /{path=**}/payments/{paymentId} {
-      allow read: if isSignedIn();
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.playerId == request.auth.uid);
     }
 
     match /{path=**}/otherFees/{feeId} {
-      allow read: if isSignedIn();
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.playerId == request.auth.uid);
     }
 
     match /admins/{userId} {

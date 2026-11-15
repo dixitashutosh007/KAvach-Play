@@ -17,9 +17,9 @@ export function PayClient({ playerId }: { playerId: string }) {
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
-    store.ensurePayments?.();
-    store.ensureOtherFees?.();
-  }, [store.ensurePayments, store.ensureOtherFees]);
+    store.ensurePayments?.(playerId);
+    store.ensureOtherFees?.(playerId);
+  }, [playerId, store.ensurePayments, store.ensureOtherFees]);
 
   const pendingDuesCount =
     store.payments.filter((p) => {

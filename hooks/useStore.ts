@@ -54,6 +54,7 @@ import {
   getDocs,
   collectionGroup,
   query,
+  where,
   orderBy,
   limit,
   startAfter,
@@ -483,10 +484,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   // ---- Lazy subscription helpers ----
 
-  const ensurePayments = useCallback(() => {
+  const ensurePayments = useCallback((playerIdFilter?: string) => {
     if (!user || lazySubsRef.current.has("allPayments")) return;
+    const baseQuery = collectionGroup(db, "payments");
+    const q = playerIdFilter
+      ? query(baseQuery, where("playerId", "==", playerIdFilter))
+      : baseQuery;
     const unsub = onSnapshot(
-      collectionGroup(db, "payments"),
+      q,
       (snapshot) => {
         allPaymentsSnapshotRef.current = snapshot.docs.map(
           (doc) => ({ id: doc.id, ...doc.data() }) as MatchPayment,
@@ -832,10 +837,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   }, []);
 
-  const ensureOtherFees = useCallback(() => {
+  const ensureOtherFees = useCallback((playerIdFilter?: string) => {
     if (!user || lazySubsRef.current.has("allOtherFees")) return;
+    const baseQuery = collectionGroup(db, "otherFees");
+    const q = playerIdFilter
+      ? query(baseQuery, where("playerId", "==", playerIdFilter))
+      : baseQuery;
     const unsub = onSnapshot(
-      collectionGroup(db, "otherFees"),
+      q,
       (snapshot) => {
         setOtherFees(
           snapshot.docs.map(
