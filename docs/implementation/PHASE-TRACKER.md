@@ -55,11 +55,11 @@
 
 | Decision | Status | Required Before |
 |----------|--------|----------------|
-| D-01: Abandoned match billing policy | AWAITING PRODUCT OWNER | Phase 1 |
+| D-01: Abandoned match billing policy | **DECIDED** — Never bill. Revert existing charges. | Phase 1 |
 | D-02: Dual-identity consolidation strategy | AWAITING PRODUCT OWNER | Phase 3 |
 | D-03: WixFinanceView retirement | AWAITING PRODUCT OWNER | Phase 2 |
 | D-04: Admin-tools page disposition | AWAITING PRODUCT OWNER | Phase 4 |
-| D-05: paymentLinks collection future | AWAITING PRODUCT OWNER | Phase 1 |
+| D-05: paymentLinks collection future | **DECIDED** — Lock down rules, keep collection. | Phase 1 |
 | D-06: Ghost isDesigner role | AWAITING PRODUCT OWNER | Phase 3 |
 
 ---

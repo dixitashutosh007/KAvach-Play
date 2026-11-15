@@ -10,11 +10,11 @@
 
 | # | Decision | Context | Options | Phase Dependency |
 |---|----------|---------|---------|-----------------|
-| **D-01** | Abandoned match billing policy | CRIT-04: Admin dashboard excludes abandoned matches from dues, but players are billed. 4 files inconsistent. | **A**: Never bill abandoned matches (standard) **B**: Charge reduced "sunk cost" fee | Phase 1 (P0 fix) |
+| **D-01** | Abandoned match billing policy | CRIT-04: Admin dashboard excludes abandoned matches from dues, but players are billed. 4 files inconsistent. | **DECIDED: Option A** — Never bill abandoned matches. Revert/void any existing charges for abandoned matches. | Phase 1 (P0 fix) |
 | **D-02** | Dual-identity consolidation strategy | `appUsers/{uid}` + `players/{playerId}` have 21 duplicated fields. | **A**: Merge into single collection **B**: Keep both, designate one as source of truth with sync | Phase 3 |
 | **D-03** | WixFinanceView retirement timeline | 1,247-line legacy import tool. Is historical data migration complete? | **A**: Retire immediately **B**: Keep until explicit data migration sign-off | Phase 2 |
 | **D-04** | Admin Tools page disposition | `app/admin-tools/page.tsx` (454 lines) orphaned from navigation. | **A**: Absorb into AdminDashboard **B**: Delete if redundant **C**: Link from nav | Phase 4 |
-| **D-05** | `paymentLinks` collection future | CRIT-02: Rules allow any user to update, but collection is unused. | **A**: Lock down rules + keep for future use **B**: Delete collection entirely | Phase 1 |
+| **D-05** | `paymentLinks` collection future | CRIT-02: Rules allow any user to update, but collection is unused. | **DECIDED: Option A** — Lock down rules to admin-only. Keep collection for future use. | Phase 1 |
 | **D-06** | Ghost `isDesigner` role | Defined in security rules but never assigned via UI. | **A**: Remove from rules **B**: Wire up to UI | Phase 3 |
 
 ---
