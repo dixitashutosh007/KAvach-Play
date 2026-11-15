@@ -11,7 +11,7 @@
 |-------|------|--------|------------|----------|
 | 0 | Discovery & Verification | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 1 | Critical Security & Financial Fixes | **COMPLETE** | 2026-11-15 | 2026-11-15 |
-| 2 | Data Integrity & Schema Cleanup | NOT STARTED | — | — |
+| 2 | Data Integrity & Schema Cleanup | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 3 | Identity Consolidation | NOT STARTED | — | — |
 | 4 | Component Decomposition | NOT STARTED | — | — |
 | 5 | Navigation Rationalisation | NOT STARTED | — | — |
@@ -43,12 +43,12 @@
 
 | Finding | Verified | Line References Match | Current Status |
 |---------|----------|----------------------|----------------|
-| CRIT-01 | YES | `firestore.rules` L436, L483 | CONFIRMED — vulnerability present |
-| CRIT-02 | YES | `firestore.rules` L237 | CONFIRMED — vulnerability present |
-| CRIT-03 | YES | `useStore.ts` L486–499, L835–849 | CONFIRMED — data exposure present |
-| CRIT-04 | YES | `AdminDashboard.tsx` L44, `FinanceTab.tsx` L117, `PayClient.tsx` L23, `DuesAndRemindersTab.tsx` L135 | CONFIRMED — billing discrepancy present |
-| FIN-01 | YES | `MatchesTab.tsx` L1569, L1620 | CONFIRMED — false discrepancy warnings |
-| FIN-02 | YES | `FinanceTab.tsx` L1245, L1262 | CONFIRMED — inflated collections total |
+| CRIT-01 | YES | `firestore.rules` L436, L483 | **FIXED** — Phase 1 |
+| CRIT-02 | YES | `firestore.rules` L237 | **FIXED** — Phase 1 |
+| CRIT-03 | YES | `useStore.ts` L486–499, L835–849 | **FIXED** — Phase 2 (client + rules) |
+| CRIT-04 | YES | `AdminDashboard.tsx` L44, `FinanceTab.tsx` L117, `PayClient.tsx` L23, `DuesAndRemindersTab.tsx` L135 | **FIXED** — Phase 1 |
+| FIN-01 | YES | `MatchesTab.tsx` L1569, L1620 | **FIXED** — Phase 1 |
+| FIN-02 | YES | `FinanceTab.tsx` L1245, L1262 | **FIXED** — Phase 1 |
 | FIN-03 | YES | `FinanceTab.tsx` L329–341 | CONFIRMED — late fee loss on mobile |
 
 ### Open Decisions
@@ -83,9 +83,25 @@
 
 ---
 
-## Phases 2–11
+## Phase 2 — Data Integrity & Schema Cleanup
 
-Task breakdowns will be added when Phase 1 is approved and complete.
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 2.1 | Remove unused class-variance-authority dependency | `package.json` | Low | COMPLETE |
+| 2.2 | Remove unused tw-animate-css dependency | `package.json` | Low | COMPLETE |
+| 2.3 | Lock paymentLinks to admin-only | `firestore.rules` | Low | COMPLETE (done in Phase 1) |
+| 2.4 | WixFinanceView disposition (D-03) | — | — | AWAITING DECISION |
+| 2.5 | CRIT-03: Scope payment collectionGroup queries for non-admins | `hooks/useStore.ts`, `app/page.tsx` | Medium | COMPLETE |
+| 2.6 | CRIT-03: Scope otherFees collectionGroup queries for non-admins | `hooks/useStore.ts`, `app/page.tsx` | Medium | COMPLETE |
+| 2.7 | CRIT-03: Tighten collection group read rules in Firestore | `firestore.rules` | Low | COMPLETE |
+
+---
+
+## Phases 3–11
+
+Task breakdowns will be added as each phase is approved.
 
 ---
 
