@@ -51,31 +51,31 @@ const STATUS_CONFIG: Record<
   new: {
     label: "New",
     bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
+    text: "text-emerald-600",
     border: "border-emerald-500/30",
   },
   contacted: {
     label: "In Discussion",
     bg: "bg-amber-500/10",
-    text: "text-amber-400",
+    text: "text-amber-600",
     border: "border-amber-500/30",
   },
   trial: {
     label: "Trial / Visit",
     bg: "bg-blue-500/10",
-    text: "text-blue-400",
+    text: "text-blue-600",
     border: "border-blue-500/30",
   },
   converted: {
     label: "Converted",
     bg: "bg-purple-500/10",
-    text: "text-purple-400",
+    text: "text-purple-600",
     border: "border-purple-500/30",
   },
   closed: {
     label: "Closed",
     bg: "bg-gray-500/10",
-    text: "text-gray-400",
+    text: "text-gray-600",
     border: "border-gray-500/30",
   },
 };
@@ -382,10 +382,10 @@ export function StudioCRMView({
         </div>
 
         <div className="bg-surface border border-emerald-500/20 p-3.5 rounded-xl">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">
             New / Uncontacted
           </div>
-          <div className="text-2xl font-black text-emerald-300 mt-1">
+          <div className="text-2xl font-black text-emerald-600 mt-1">
             {metrics.newCount}
           </div>
         </div>
@@ -394,7 +394,7 @@ export function StudioCRMView({
           onClick={() => setDueTodayOnly(!dueTodayOnly)}
           className={`cursor-pointer border p-3.5 rounded-xl transition ${
             dueTodayOnly
-              ? "bg-amber-500/20 border-amber-400 ring-2 ring-amber-400/40"
+              ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/40"
               : "bg-surface border-amber-500/20 hover:border-amber-500/40"
           }`}
         >
@@ -721,19 +721,19 @@ export function StudioCRMView({
                       }
                       className={`text-xs font-bold px-2.5 py-1 rounded-md border appearance-none cursor-pointer focus:outline-none ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border}`}
                     >
-                      <option value="new" className="bg-surface text-emerald-400">
+                      <option value="new" className="bg-surface text-emerald-600">
                         New
                       </option>
-                      <option value="contacted" className="bg-surface text-amber-400">
+                      <option value="contacted" className="bg-surface text-amber-600">
                         In Discussion
                       </option>
-                      <option value="trial" className="bg-surface text-blue-400">
+                      <option value="trial" className="bg-surface text-blue-600">
                         Trial / Visit
                       </option>
-                      <option value="converted" className="bg-surface text-purple-400">
+                      <option value="converted" className="bg-surface text-purple-600">
                         Converted
                       </option>
-                      <option value="closed" className="bg-surface text-gray-400">
+                      <option value="closed" className="bg-surface text-gray-600">
                         Closed
                       </option>
                     </select>
@@ -922,7 +922,7 @@ export function StudioCRMView({
                                 }}
                                 className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover flex items-center gap-2 transition"
                               >
-                                <Bell className="w-3.5 h-3.5 text-amber-400" />
+                                <Bell className="w-3.5 h-3.5 text-amber-600" />
                                 {p.name}
                               </button>
                             ))}
@@ -1569,7 +1569,7 @@ function WhatsAppTemplateModal({
             >
               <div className="font-bold flex items-center justify-between">
                 <span>{tpl.title}</span>
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400">
+                <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-600">
                   {tpl.badge}
                 </span>
               </div>
