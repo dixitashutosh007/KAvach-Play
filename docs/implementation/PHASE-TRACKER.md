@@ -12,7 +12,7 @@
 | 0 | Discovery & Verification | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 1 | Critical Security & Financial Fixes | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 2 | Data Integrity & Schema Cleanup | **COMPLETE** | 2026-11-15 | 2026-11-15 |
-| 3 | Identity Consolidation | NOT STARTED | — | — |
+| 3 | Identity Consolidation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 4 | Component Decomposition | NOT STARTED | — | — |
 | 5 | Navigation Rationalisation | NOT STARTED | — | — |
 | 6 | UI/UX Redesign | NOT STARTED | — | — |
@@ -99,7 +99,29 @@
 
 ---
 
-## Phases 3–11
+## Phase 3 — Identity Consolidation
+
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 3.1 | Define shared SYNCED_PROFILE_FIELDS constant | `hooks/useStore.ts` | Low | COMPLETE |
+| 3.2 | Make updatePlayer → appUsers sync atomic (writeBatch) | `hooks/useStore.ts` | Medium | COMPLETE |
+| 3.3 | Complete sync field list (add email, photoURL, jerseyName, waistSize) | `hooks/useStore.ts` | Low | COMPLETE |
+| 3.4 | Add reverse sync: updateAppUserProfile → players (atomic) | `hooks/useStore.ts` | Medium | COMPLETE |
+| 3.5 | Replace fragile mobile-based matching with authUid lookup | `hooks/useStore.ts` | Low | COMPLETE |
+
+### Notes
+
+- Strategy (D-02): `appUsers` = auth/role source, `players` = gameplay/profile source
+- All profile field writes now use `writeBatch` for atomicity
+- Reverse sync added so edits from either ProfileTab or admin role toggles propagate consistently
+- ProfileTab still does its own dual write for domain logic (duplicate detection, invite status); the redundant sync is idempotent and harmless
+- No data migration performed — only future writes are affected
+
+---
+
+## Phases 4–11
 
 Task breakdowns will be added as each phase is approved.
 

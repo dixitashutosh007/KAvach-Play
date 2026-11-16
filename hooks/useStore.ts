@@ -72,6 +72,32 @@ import { createNotification } from "@/lib/notifications";
 import { normalizeIndianMobile } from "@/lib/utils";
 import { logAudit, diffChanges, AuditActorType } from "@/lib/auditLog";
 
+const SYNCED_PROFILE_FIELDS: (keyof Player & keyof AppUser)[] = [
+  "name",
+  "email",
+  "photoURL",
+  "mobile",
+  "dob",
+  "locality",
+  "bloodGroup",
+  "emergencyContact",
+  "battingStyle",
+  "bowlingStyle",
+  "isWicketKeeper",
+  "chestSize",
+  "jerseyNumber",
+  "jerseyName",
+  "waistSize",
+  "isStudioMember",
+  "studioStartDate",
+  "studioEndDate",
+  "studioPlan",
+  "lastPaidDate",
+  "lastPaidAmount",
+  "studioExpiryDate",
+  "kavachJoining",
+];
+
 function cleanPayload<T extends object>(obj: T): Partial<T> {
   const result: any = {};
   Object.keys(obj).forEach((key) => {
@@ -1054,7 +1080,35 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     profile: Partial<AppUser>,
   ) => {
     try {
-      await setDoc(doc(db, "appUsers", userId), cleanPayload(profile), { merge: true });
+      const cleanedProfile = cleanPayload(profile);
+
+      const linkedPlayer =
+        players.find((p) => p.id === userId) ||
+        players.find((p) => p.authUid === userId);
+
+      const playerUpdates: Partial<Player> = {};
+      if (linkedPlayer) {
+        SYNCED_PROFILE_FIELDS.forEach((field) => {
+          if (profile[field] !== undefined) {
+            (playerUpdates as any)[field] = profile[field];
+          }
+        });
+      }
+
+      const cleanedPlayerUpdates = cleanPayload(playerUpdates);
+      const hasPlayerSync = Object.keys(cleanedPlayerUpdates).length > 0 && linkedPlayer;
+
+      if (hasPlayerSync) {
+        const batch = writeBatch(db);
+        batch.set(doc(db, "appUsers", userId), cleanedProfile, { merge: true });
+        batch.update(doc(db, "players", linkedPlayer.id), {
+          ...cleanedPlayerUpdates,
+          updatedAt: serverTimestamp(),
+        });
+        await batch.commit();
+      } else {
+        await setDoc(doc(db, "appUsers", userId), cleanedProfile, { merge: true });
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `appUsers/${userId}`);
     }
@@ -1455,55 +1509,33 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         ...updates,
         updatedAt: serverTimestamp(),
       });
-      await updateDoc(doc(db, "players", playerId), cleanedUpdates);
-      logAudit({ ...getActor(), action: "updated", entity: "player", entityId: playerId, entityLabel: existingPlayer?.name || playerId, changes: diffChanges(existingPlayer, updates), summary: `Updated player "${existingPlayer?.name || playerId}"` });
 
-      // Auto-sync updates to appUsers if matching user is found
-      const playerObj = players.find((p) => p.id === playerId);
-      const appUserToUpdate =
-        appUsers.find((u) => u.id === playerId) ||
-        appUsers.find(
-          (u) => u.mobile && playerObj?.mobile && normalizeIndianMobile(u.mobile) === normalizeIndianMobile(playerObj.mobile),
-        );
+      const playerObj = existingPlayer || players.find((p) => p.id === playerId);
+      const authUid = playerObj?.authUid || playerId;
+      const appUserToUpdate = appUsers.find((u) => u.id === authUid);
 
+      const appUserUpdates: Partial<AppUser> = {};
       if (appUserToUpdate) {
-        const appUserUpdates: Partial<AppUser> = {};
-        const fieldsToSync: (keyof Player & keyof AppUser)[] = [
-          "name",
-          "mobile",
-          "dob",
-          "locality",
-          "bloodGroup",
-          "emergencyContact",
-          "battingStyle",
-          "bowlingStyle",
-          "isWicketKeeper",
-          "chestSize",
-          "jerseyNumber",
-          "isStudioMember",
-          "studioStartDate",
-          "studioEndDate",
-          "studioPlan",
-          "lastPaidDate",
-          "lastPaidAmount",
-          "studioExpiryDate",
-          "kavachJoining",
-        ];
-
-        fieldsToSync.forEach((field) => {
+        SYNCED_PROFILE_FIELDS.forEach((field) => {
           if (updates[field] !== undefined) {
             (appUserUpdates as any)[field] = updates[field];
           }
         });
-
-        const cleanedAppUserUpdates = cleanPayload(appUserUpdates);
-        if (Object.keys(cleanedAppUserUpdates).length > 0) {
-          await updateDoc(
-            doc(db, "appUsers", appUserToUpdate.id),
-            cleanedAppUserUpdates,
-          );
-        }
       }
+
+      const cleanedAppUserUpdates = cleanPayload(appUserUpdates);
+      const hasAppUserSync = Object.keys(cleanedAppUserUpdates).length > 0 && appUserToUpdate;
+
+      if (hasAppUserSync) {
+        const batch = writeBatch(db);
+        batch.update(doc(db, "players", playerId), cleanedUpdates);
+        batch.update(doc(db, "appUsers", appUserToUpdate.id), cleanedAppUserUpdates);
+        await batch.commit();
+      } else {
+        await updateDoc(doc(db, "players", playerId), cleanedUpdates);
+      }
+
+      logAudit({ ...getActor(), action: "updated", entity: "player", entityId: playerId, entityLabel: existingPlayer?.name || playerId, changes: diffChanges(existingPlayer, updates), summary: `Updated player "${existingPlayer?.name || playerId}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `players/${playerId}`);
     }
