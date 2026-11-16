@@ -15,7 +15,7 @@
 | 3 | Identity Consolidation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 4 | Component Decomposition | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 5 | Navigation Rationalisation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 6 | UI/UX Redesign | NOT STARTED | — | — |
+| 6 | UI/UX Redesign | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 7 | Financial Logic Overhaul | NOT STARTED | — | — |
 | 8 | Workflow Simplification | NOT STARTED | — | — |
 | 9 | Studio & Shop Enhancement | NOT STARTED | — | — |
@@ -173,7 +173,38 @@
 
 ---
 
-## Phases 6–11
+## Phase 6 — UI/UX Redesign
+
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 6.1 | Switch to light theme with red branding (D-08) | `lib/theme.ts`, `hooks/useTheme.ts` | Medium | COMPLETE |
+| 6.2 | Add semantic color token system to globals.css @theme | `app/globals.css` | Medium | COMPLETE |
+| 6.3 | Wire ToastProvider and ConfirmProvider into layout | `app/layout.tsx` | Low | COMPLETE |
+| 6.4 | Update loading spinner to brand colors | `app/layout.tsx` | Low | COMPLETE |
+| 6.5 | Migrate header/nav to semantic tokens | `app/page.tsx`, `components/layout/MobileBottomNav.tsx`, `components/layout/MoreDrawer.tsx` | Medium | COMPLETE |
+| 6.6 | Bulk migrate 1,800+ hardcoded colors across 50+ files | All component files | High | COMPLETE |
+| 6.7 | Create Toast notification system (ToastProvider + useToast) | `components/ui/Toast.tsx` (new) | Medium | COMPLETE |
+| 6.8 | Replace 151 browser alert() with typed toast() | 24 component files | High | COMPLETE |
+| 6.9 | Create Confirm dialog system (ConfirmProvider + useConfirm) | `components/ui/ConfirmDialog.tsx` (new) | Medium | COMPLETE |
+| 6.10 | Replace 29 browser confirm() with styled confirmAction() | 16 component files | High | COMPLETE |
+
+### Notes
+
+- Theme decision (D-08): #A30F2D brand, #D51F43 action, #F6F7F9 bg, #FFFFFF cards, #171C26 text
+- Semantic tokens: text-primary, text-secondary, text-muted, surface, surface-hover, border, text-accent
+- CSS custom properties bridge via `@theme` block for Tailwind v4 compatibility
+- Toast types: success (emerald), error (red), warning (amber), info (blue); auto-dismiss 4s
+- ConfirmDialog: destructive variant with red styling and AlertTriangle icon
+- All alert() replacements include content-based type detection (error/success/warning)
+- All confirm() replacements include async handler fixes and destructive flag detection
+- Modal overlays (bg-black/40+) intentionally left as-is for proper backdrop effect
+- Zero new TypeScript errors introduced (14 pre-existing unchanged)
+
+---
+
+## Phases 7–11
 
 Task breakdowns will be added as each phase is approved.
 
