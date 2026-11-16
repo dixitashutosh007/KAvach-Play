@@ -14,7 +14,7 @@
 | 2 | Data Integrity & Schema Cleanup | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 3 | Identity Consolidation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 4 | Component Decomposition | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 5 | Navigation Rationalisation | **IN PROGRESS** | 2026-11-16 | — |
+| 5 | Navigation Rationalisation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 6 | UI/UX Redesign | NOT STARTED | — | — |
 | 7 | Financial Logic Overhaul | NOT STARTED | — | — |
 | 8 | Workflow Simplification | NOT STARTED | — | — |
