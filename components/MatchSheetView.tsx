@@ -206,8 +206,8 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
     }
   };
 
-  const inputClass = "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-2 py-1.5 w-full";
-  const selectClass = "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-1 py-1.5 appearance-none cursor-pointer w-full [&>option]:bg-neutral-950";
+  const inputClass = "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-2 py-1.5 w-full";
+  const selectClass = "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-1 py-1.5 appearance-none cursor-pointer w-full [&>option]:bg-neutral-950";
 
   const activeTournaments = store.tournaments.filter(t => t.status === "Ongoing" || t.status === "Upcoming");
 
@@ -217,25 +217,25 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
         <select
           value={filter}
           onChange={e => setFilter(e.target.value as SheetFilter)}
-          className="rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs font-bold text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
         >
           {(Object.keys(SHEET_FILTER_LABELS) as SheetFilter[]).map(f => (
             <option key={f} value={f}>{SHEET_FILTER_LABELS[f]}</option>
           ))}
         </select>
-        <span className="text-xs text-white/40 font-bold">
+        <span className="text-xs text-text-muted font-bold">
           {filteredMatches.length} match{filteredMatches.length !== 1 ? "es" : ""}
           {sheetRows.filter(r => r.kind === "empty").length > 0 && (
-            <span className="text-white/30"> · {sheetRows.filter(r => r.kind === "empty").length} open slot{sheetRows.filter(r => r.kind === "empty").length !== 1 ? "s" : ""}</span>
+            <span className="text-text-primary/30"> · {sheetRows.filter(r => r.kind === "empty").length} open slot{sheetRows.filter(r => r.kind === "empty").length !== 1 ? "s" : ""}</span>
           )}
         </span>
       </div>
 
-      <div className="glass rounded-xl overflow-hidden border border-glass-border">
+      <div className="bg-surface rounded-xl overflow-hidden border border-border">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1500px] border-collapse">
             <thead>
-              <tr className="bg-black/60 text-white/70 text-[10px] uppercase tracking-wider">
+              <tr className="bg-black/60 text-text-secondary text-[10px] uppercase tracking-wider">
                 <th className="text-center px-2 py-2 font-bold w-8">#</th>
                 <th className="text-left px-2 py-2 font-bold">Date</th>
                 <th className="text-left px-2 py-2 font-bold">Time</th>
@@ -252,10 +252,10 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
                 <th className="text-center px-2 py-2 font-bold">Result</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-glass-border">
+            <tbody className="divide-y divide-border">
               {sheetRows.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="py-8 text-center text-sm text-white/50">
+                  <td colSpan={14} className="py-8 text-center text-sm text-text-muted">
                     No matches in this range.
                   </td>
                 </tr>
@@ -264,8 +264,8 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
                 if (row.kind === "empty") {
                   return (
                     <tr key={`empty-${row.dateStr}`} className="bg-white/[0.02]">
-                      <td className="text-center text-xs text-white/20 font-mono px-2">-</td>
-                      <td className="px-2 py-2 text-xs text-white/30 font-medium" colSpan={2}>{row.dayLabel}</td>
+                      <td className="text-center text-xs text-text-primary/20 font-mono px-2">-</td>
+                      <td className="px-2 py-2 text-xs text-text-primary/30 font-medium" colSpan={2}>{row.dayLabel}</td>
                       <td colSpan={11} className="px-2 py-2 text-xs text-emerald-400/60 italic">Open Slot</td>
                     </tr>
                   );
@@ -282,8 +282,8 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
                 const isDoubleBooked = doubleBookedDates.has(dateVal) && currentMatchType === "Tournament";
 
                 return (
-                  <tr key={match.id} className={`hover:bg-white/5 transition ${isDoubleBooked ? "bg-orange-500/10 border-l-2 border-l-orange-400" : ""}`}>
-                    <td className="text-center text-xs text-white/40 font-mono px-2">{idx + 1}</td>
+                  <tr key={match.id} className={`hover:bg-surface-hover transition ${isDoubleBooked ? "bg-orange-500/10 border-l-2 border-l-orange-400" : ""}`}>
+                    <td className="text-center text-xs text-text-muted font-mono px-2">{idx + 1}</td>
                     <td className="bg-transparent px-0">
                       <input
                         type="date"
@@ -447,11 +447,11 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
       {(dirty.size > 0 || saving || saveResult) && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1.5">
           {saveProgress && (
-            <div className="bg-black/90 border border-glass-border rounded-xl px-4 py-2 text-[11px] text-white/70 min-w-[200px]">
+            <div className="bg-black/90 border border-border rounded-xl px-4 py-2 text-[11px] text-text-secondary min-w-[200px]">
               <div className="flex justify-between mb-1">
                 <span>{saveProgress.phase === "db" ? "Saving to database…" : `Calendar ${saveProgress.current}/${saveProgress.total}`}</span>
               </div>
-              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-surface-hover rounded-full overflow-hidden">
                 <div
                   className="h-full bg-accent transition-all duration-200 rounded-full"
                   style={{
@@ -464,7 +464,7 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
             </div>
           )}
           {!saving && saveResult && (
-            <div className="bg-black/90 border border-glass-border rounded-xl px-4 py-2 text-[11px] text-emerald-300 font-bold">
+            <div className="bg-black/90 border border-border rounded-xl px-4 py-2 text-[11px] text-emerald-300 font-bold">
               {saveResult}
             </div>
           )}
@@ -472,7 +472,7 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
             <button
               onClick={handleSave}
               disabled={saving}
-              className="bg-accent text-black font-bold px-6 py-3 rounded-xl shadow-lg hover:bg-accent/90 transition disabled:opacity-50"
+              className="bg-accent text-text-accent font-bold px-6 py-3 rounded-xl shadow-lg hover:bg-accent/90 transition disabled:opacity-50"
             >
               {saving ? "Saving…" : `Save Changes (${dirty.size})`}
             </button>

@@ -199,28 +199,28 @@ export default function RazorReportView({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-bold tracking-tight text-white">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary">
           Transactions
         </h2>
         <div className="flex gap-2 flex-wrap">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
             Gateway: <span className="font-mono ml-1">₹{gatewayTotal}</span>
           </div>
           {cashTotal > 0 && (
-            <div className="text-[10px] font-bold uppercase tracking-widest text-teal-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-teal-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
               Cash: <span className="font-mono ml-1">₹{cashTotal}</span>
             </div>
           )}
           {clubSponsoredTotal > 0 && (
-            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
               Club Sponsored: <span className="font-mono ml-1">₹{clubSponsoredTotal}</span>
             </div>
           )}
-          <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
             Offset: <span className="font-mono ml-1">₹{offsetTotal}</span>
           </div>
           {studioTotal > 0 && (
-            <div className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-white/5 px-3 py-1.5 rounded-xl border border-glass-border">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
               Studio: <span className="font-mono ml-1">₹{studioTotal}</span>
             </div>
           )}
@@ -255,8 +255,8 @@ export default function RazorReportView({
               onClick={() => { setFilter(f); setPage(1); }}
               className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
                 active
-                  ? "bg-white/15 text-white border border-white/20"
-                  : "bg-white/5 text-white/50 border border-transparent hover:text-white hover:bg-white/10"
+                  ? "bg-surface-hover text-text-primary border border-border"
+                  : "bg-surface-hover text-text-muted border border-transparent hover:text-text-primary hover:bg-surface-hover"
               }`}
             >
               {labels[f]} ({counts[f]})
@@ -265,15 +265,15 @@ export default function RazorReportView({
         })}
       </div>
 
-      <div className="glass rounded-xl overflow-hidden border border-glass-border">
+      <div className="bg-surface rounded-xl overflow-hidden border border-border">
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-white/50 italic text-sm">
+          <div className="p-8 text-center text-text-muted italic text-sm">
             No transactions found.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-black/40 border-b border-glass-border text-[10px] uppercase tracking-widest text-white/60">
+              <thead className="bg-surface-hover border-b border-border text-[10px] uppercase tracking-widest text-text-secondary">
                 <tr>
                   <th className="px-4 py-3 font-bold">Date</th>
                   <th className="px-4 py-3 font-bold">Player</th>
@@ -282,20 +282,20 @@ export default function RazorReportView({
                   <th className="px-4 py-3 font-bold text-right">Amount</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-glass-border/50">
+              <tbody className="divide-y divide-border">
                 {currentTransactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-white/5 transition">
-                    <td className="px-4 py-3 text-white/70 font-mono text-xs">
+                  <tr key={t.id} className="hover:bg-surface-hover transition">
+                    <td className="px-4 py-3 text-text-secondary font-mono text-xs">
                       {formatSecTime(t.date)}
                     </td>
                     <td
-                      className="px-4 py-3 font-bold text-white max-w-[120px] truncate"
+                      className="px-4 py-3 font-bold text-text-primary max-w-[120px] truncate"
                       title={t.name}
                     >
                       {t.name}
                     </td>
                     <td
-                      className="px-4 py-3 text-white/80 max-w-[200px] truncate"
+                      className="px-4 py-3 text-text-primary max-w-[200px] truncate"
                       title={t.product}
                     >
                       {t.product}
@@ -315,22 +315,22 @@ export default function RazorReportView({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between glass p-2 rounded-xl border border-glass-border">
+        <div className="flex items-center justify-between bg-surface p-2 rounded-xl border border-border">
           <button
             disabled={page === 1}
             onClick={() => setPage(page - 1)}
-            className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5 rounded-lg text-xs font-bold transition text-white"
+            className="px-4 py-2 bg-surface-hover hover:bg-surface-hover disabled:opacity-50 disabled:hover:bg-surface-hover rounded-lg text-xs font-bold transition text-text-primary"
           >
             Previous
           </button>
-          <div className="text-xs text-white/60">
-            Page <span className="font-bold text-white">{page}</span> of{" "}
+          <div className="text-xs text-text-secondary">
+            Page <span className="font-bold text-text-primary">{page}</span> of{" "}
             {totalPages}
           </div>
           <button
             disabled={page === totalPages}
             onClick={() => setPage(page + 1)}
-            className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5 rounded-lg text-xs font-bold transition text-white"
+            className="px-4 py-2 bg-surface-hover hover:bg-surface-hover disabled:opacity-50 disabled:hover:bg-surface-hover rounded-lg text-xs font-bold transition text-text-primary"
           >
             Next
           </button>

@@ -56,6 +56,8 @@ import { useSessionState } from "@/hooks/useSessionState";
 import { MatchCalendarView } from "./MatchCalendarView";
 import { MatchToolbar } from "./MatchToolbar";
 import { MatchSheetView } from "./MatchSheetView";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function MatchesTab({
   store,
@@ -70,6 +72,8 @@ export function MatchesTab({
   isSuperAdmin?: boolean;
   defaultAction?: string | null;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign" | "tournaments">(
     defaultAction === "assign" ? "assign" : "matches"
   );
@@ -299,14 +303,14 @@ export function MatchesTab({
   const editMatchModal = isAdmin && isAdding ? (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
       <div className="relative w-full max-w-md my-8">
-        <div className="sticky top-0 bg-[#0f172a] p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-glass-border">
-          <h2 className="text-xl font-bold text-white">{editingId ? "Edit Match" : "Add Match"}</h2>
-          <button type="button" onClick={() => { setIsAdding(false); setEditingId(null); resetForm(); }} className="text-white/50 hover:text-white"><X className="w-6 h-6"/></button>
+        <div className="sticky top-0 bg-surface p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-border">
+          <h2 className="text-xl font-bold text-text-primary">{editingId ? "Edit Match" : "Add Match"}</h2>
+          <button type="button" onClick={() => { setIsAdding(false); setEditingId(null); resetForm(); }} className="text-text-muted hover:text-text-primary"><X className="w-6 h-6"/></button>
         </div>
         <form
           onSubmit={handleSubmit}
           data-testid="match-form"
-          className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
+          className="bg-surface p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Tentative block only makes sense for FUTURE matches — no
@@ -348,9 +352,9 @@ export function MatchesTab({
                 link a Practice or friendly match to a tournament for
                 reporting even if it isn't formally counted as one. */}
             <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Tournament{" "}
-                <span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">
+                <span className="text-text-muted normal-case tracking-normal font-normal text-[10px]">
                   (optional — autofills ground / jersey / fee)
                 </span>
               </label>
@@ -378,7 +382,7 @@ export function MatchesTab({
                       fee: t.perPlayerFee,
                     });
                   }}
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                 >
                   <option value="">— None (fill manually) —</option>
                   {[...store.tournaments]
@@ -401,7 +405,7 @@ export function MatchesTab({
                 </select>
             </div>
             <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Select Ground <span className="text-red-400">*</span>
               </label>
               <select
@@ -419,7 +423,7 @@ export function MatchesTab({
                   }
                   setFormData({ ...formData, groundId: newGroundId, fee: newFee });
                 }}
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
               >
                 <option value="" disabled>
                   Select a ground
@@ -432,7 +436,7 @@ export function MatchesTab({
               </select>
             </div>
             <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Opponent Team <span className="text-red-400">*</span>
               </label>
               <input
@@ -442,13 +446,13 @@ export function MatchesTab({
                 onChange={(e) =>
                   setFormData({ ...formData, opponent: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 placeholder="e.g. Royal Challengers"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Date <span className="text-red-400">*</span>
               </label>
               <input
@@ -458,11 +462,11 @@ export function MatchesTab({
                 onChange={(e) =>
                   setFormData({ ...formData, date: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Time <span className="text-red-400">*</span>
               </label>
               <div className="flex flex-col gap-2">
@@ -473,7 +477,7 @@ export function MatchesTab({
                     className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
                       formData.time === "07:00"
                         ? "bg-accent/20 border-accent/50 text-accent"
-                        : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
+                        : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     07:00 AM
@@ -484,7 +488,7 @@ export function MatchesTab({
                     className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
                       formData.time === "12:00"
                         ? "bg-accent/20 border-accent/50 text-accent"
-                        : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
+                        : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     12:00 PM
@@ -495,7 +499,7 @@ export function MatchesTab({
                     className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
                       formData.time !== "07:00" && formData.time !== "12:00"
                         ? "bg-accent/20 border-accent/50 text-accent"
-                        : "bg-white/5 border-glass-border text-white/70 hover:bg-white/10"
+                        : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     Other
@@ -509,14 +513,14 @@ export function MatchesTab({
                   onChange={(e) =>
                     setFormData({ ...formData, time: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
                 />
                 )}
               </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Max Squad Size <span className="text-red-400">*</span>
               </label>
               <input
@@ -530,13 +534,13 @@ export function MatchesTab({
                     maxSquadSize: parseInt(e.target.value) || 12,
                   })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
-                <span>Match Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
+              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                <span>Match Fee (₹)</span><span className="text-text-muted normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
               </label>
               <input
                 type="number"
@@ -548,19 +552,19 @@ export function MatchesTab({
                     fee: e.target.value === "" ? "" : parseInt(e.target.value) || 0,
                   })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
 
             <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Format <span className="text-red-400">*</span>
               </label>
               <div className="flex gap-2">
                 {["T20", "T30", "Other"].map((fmt) => (
                   <label
                     key={fmt}
-                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.format === fmt ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.format === fmt ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
                   >
                     <input
                       type="radio"
@@ -582,14 +586,14 @@ export function MatchesTab({
             </div>
 
             <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Type <span className="text-red-400">*</span>
               </label>
               <div className="flex gap-2">
                 {["Practice", "Tournament"].map((type) => (
                   <label
                     key={type}
-                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.matchType === type ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.matchType === type ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
                   >
                     <input
                       type="radio"
@@ -628,14 +632,14 @@ export function MatchesTab({
             </div>
 
             <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Jersey Color <span className="text-red-400">*</span>
               </label>
               <div className="flex gap-2">
                 {["Scarlet Red", "Whites"].map((color) => (
                   <label
                     key={color}
-                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition flex items-center justify-center gap-2 ${formData.jerseyColor === color ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition flex items-center justify-center gap-2 ${formData.jerseyColor === color ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
                   >
                     <input
                       type="radio"
@@ -660,13 +664,13 @@ export function MatchesTab({
               </div>
             </div>
 
-            <div className="col-span-2 border-t border-glass-border pt-4 mt-2">
+            <div className="col-span-2 border-t border-border pt-4 mt-2">
               <h3 className="text-sm font-bold text-accent mb-3">
                 Optional Match Info
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                     Match URL
                   </label>
                   <input
@@ -675,12 +679,12 @@ export function MatchesTab({
                     onChange={(e) =>
                       setFormData({ ...formData, matchUrl: e.target.value })
                     }
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                     placeholder="https://cricheroes.in/..."
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                     Streaming URL
                   </label>
                   <input
@@ -692,13 +696,13 @@ export function MatchesTab({
                         streamingUrl: e.target.value,
                       })
                     }
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                     placeholder="https://youtube.com/..."
                   />
                 </div>
 
                 <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                     Result
                   </label>
                   <div className="flex flex-wrap gap-2">
@@ -712,7 +716,7 @@ export function MatchesTab({
                     ].map((res) => (
                       <label
                         key={res}
-                        className={`px-3 py-1.5 border rounded-lg text-xs cursor-pointer select-none transition ${formData.result === res ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                        className={`px-3 py-1.5 border rounded-lg text-xs cursor-pointer select-none transition ${formData.result === res ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
                       >
                         <input
                           type="radio"
@@ -735,16 +739,16 @@ export function MatchesTab({
 
                 {(formData.result === "KAvach Won" ||
                   formData.result === "KAvach Lost") && (
-                  <div className="col-span-2 flex gap-4 mt-2 p-3 bg-black/20 rounded-lg border border-glass-border">
+                  <div className="col-span-2 flex gap-4 mt-2 p-3 bg-surface-hover rounded-lg border border-border">
                     <div className="flex-1">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                         Margin Type
                       </label>
                       <div className="flex gap-2">
                         {["runs", "wickets"].map((type) => (
                           <label
                             key={type}
-                            className={`flex-1 text-center py-2 border rounded-lg text-xs cursor-pointer select-none transition ${formData.resultMarginType === type ? "bg-accent text-black font-bold border-accent" : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                            className={`flex-1 text-center py-2 border rounded-lg text-xs cursor-pointer select-none transition ${formData.resultMarginType === type ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
                           >
                             <input
                               type="radio"
@@ -767,7 +771,7 @@ export function MatchesTab({
                       </div>
                     </div>
                     <div className="w-1/3">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                         Amount
                       </label>
                       <input
@@ -781,7 +785,7 @@ export function MatchesTab({
                               parseInt(e.target.value) || 0,
                           })
                         }
-                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                         placeholder="e.g. 5"
                       />
                     </div>
@@ -791,7 +795,7 @@ export function MatchesTab({
                 {formData.result === "KAvach Won" && (
                   <>
                     <div className="col-span-2">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                         Player of the Match
                       </label>
                       <div className="flex gap-2">
@@ -800,7 +804,7 @@ export function MatchesTab({
                           onChange={(e) =>
                             setFormData({ ...formData, potmId: e.target.value })
                           }
-                          className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                          className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                         >
                           <option value="">Select (Optional)</option>
                           {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map(p => (
@@ -816,20 +820,20 @@ export function MatchesTab({
                               playerOfTheMatch: e.target.value,
                             })
                           }
-                          className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                          className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                           placeholder="Or manual name"
                         />
                       </div>
                     </div>
-                    <div className="col-span-2 border border-glass-border p-3 rounded-lg bg-white/5">
-                      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <div className="col-span-2 border border-border p-3 rounded-lg bg-surface-hover">
+                      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                         Top Performers (Max 3)
                       </label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-32 pr-2 custom-scrollbar">
                         {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map((p) => {
                             const isSelected = formData.topPerformerIds?.includes(p.id);
                             return (
-                              <label key={p.id} className={`flex items-center gap-2 text-xs p-1.5 rounded cursor-pointer transition ${isSelected ? "bg-accent/20 text-accent font-bold" : "hover:bg-white/10 text-white/80"}`}>
+                              <label key={p.id} className={`flex items-center gap-2 text-xs p-1.5 rounded cursor-pointer transition ${isSelected ? "bg-accent/20 text-accent font-bold" : "hover:bg-surface-hover text-text-primary"}`}>
                                 <input
                                   type="checkbox"
                                   className="accent-accent"
@@ -840,7 +844,7 @@ export function MatchesTab({
                                       if (current.length < 3) {
                                         setFormData({ ...formData, topPerformerIds: [...current, p.id] });
                                       } else {
-                                        alert("Maximum 3 top performers allowed.");
+                                        toast("Maximum 3 top performers allowed.");
                                       }
                                     } else {
                                       setFormData({ ...formData, topPerformerIds: current.filter(id => id !== p.id) });
@@ -854,7 +858,7 @@ export function MatchesTab({
                       </div>
                     </div>
                     <div className="col-span-2 md:col-span-1">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                         Best Batsman
                       </label>
                       <input
@@ -866,12 +870,12 @@ export function MatchesTab({
                             bestBatsman: e.target.value,
                           })
                         }
-                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                         placeholder="Player Name"
                       />
                     </div>
                     <div className="col-span-2 md:col-span-1">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                         Best Bowler
                       </label>
                       <input
@@ -883,7 +887,7 @@ export function MatchesTab({
                             bestBowler: e.target.value,
                           })
                         }
-                        className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                        className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                         placeholder="Player Name"
                       />
                     </div>
@@ -925,7 +929,7 @@ export function MatchesTab({
   return (
     <div className="space-y-4">
       {isAdmin && (
-        <div className="flex gap-2 mb-4 bg-white/5 p-1.5 rounded-2xl border border-glass-border">
+        <div className="flex gap-2 mb-4 bg-surface-hover p-1.5 rounded-2xl border border-border">
           {["matches", "tournaments", "grounds", "assign"].map((tab) => {
             const active = subTab === tab;
             const labels: Record<string, string> = {
@@ -940,8 +944,8 @@ export function MatchesTab({
                 onClick={() => setSubTab(tab as any)}
                 className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 text-center cursor-pointer ${
                   active
-                    ? "bg-accent text-black font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
-                    : "text-white/60 hover:text-white hover:bg-white/5"
+                    ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
                 }`}
               >
                 {labels[tab]}
@@ -961,7 +965,7 @@ export function MatchesTab({
         <>
           <div className="flex flex-col gap-3 mb-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold tracking-tight text-white">
+              <h2 className="text-xl font-bold tracking-tight text-text-primary">
                 Match Schedule
               </h2>
               {isAdmin && (
@@ -985,11 +989,11 @@ export function MatchesTab({
             </div>
 
             {!isAdding && (
-              <div className="flex bg-white/5 p-1 rounded-xl border border-glass-border">
+              <div className="flex bg-surface-hover p-1 rounded-xl border border-border">
                 <button
                   onClick={() => setViewMode("list")}
                   className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                    viewMode === "list" ? "bg-accent text-black shadow" : "text-white/40 hover:text-white"
+                    viewMode === "list" ? "bg-accent text-text-accent shadow" : "text-text-muted hover:text-text-primary"
                   }`}
                 >
                   List
@@ -997,7 +1001,7 @@ export function MatchesTab({
                 <button
                   onClick={() => setViewMode("calendar")}
                   className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                    viewMode === "calendar" ? "bg-accent text-black shadow" : "text-white/40 hover:text-white"
+                    viewMode === "calendar" ? "bg-accent text-text-accent shadow" : "text-text-muted hover:text-text-primary"
                   }`}
                 >
                   Calendar
@@ -1006,7 +1010,7 @@ export function MatchesTab({
                   <button
                     onClick={() => setViewMode("sheet")}
                     className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                      viewMode === "sheet" ? "bg-accent text-black shadow" : "text-white/40 hover:text-white"
+                      viewMode === "sheet" ? "bg-accent text-text-accent shadow" : "text-text-muted hover:text-text-primary"
                     }`}
                   >
                     Sheet
@@ -1088,13 +1092,13 @@ export function MatchesTab({
                   <div
                     key={match.id}
                     onClick={() => openMatch(match)}
-                    className="cursor-pointer glass p-0 rounded-xl hover:-translate-y-0.5 hover:shadow-lg transition overflow-hidden"
+                    className="cursor-pointer bg-surface p-0 rounded-xl hover:-translate-y-0.5 hover:shadow-lg transition overflow-hidden"
                   >
                     <div className="p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <div className="flex gap-2 items-center mb-1 flex-wrap">
-                            <span className="bg-white/10 text-white/80 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+                            <span className="bg-surface-hover text-text-primary px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                               {match.matchType}
                             </span>
                             <span className="bg-accent/20 text-accent px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
@@ -1144,7 +1148,7 @@ export function MatchesTab({
                           ) : (
                             <h3 className="font-bold text-lg">vs {match.opponent}</h3>
                           )}
-                          <div className="text-white/60 text-sm mt-0.5">
+                          <div className="text-text-secondary text-sm mt-0.5">
                             {match.date} • {match.time}
                           </div>
                         </div>
@@ -1155,7 +1159,7 @@ export function MatchesTab({
                                 e.stopPropagation();
                                 startDuplicate(match);
                               }}
-                              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/20 transition hover:text-white"
+                              className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-surface-hover transition hover:text-text-primary"
                               title="Duplicate Match"
                             >
                               <Copy className="w-4 h-4" />
@@ -1165,13 +1169,13 @@ export function MatchesTab({
                                 e.stopPropagation();
                                 startEdit(match);
                               }}
-                              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/20 transition hover:text-white"
+                              className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-surface-hover transition hover:text-text-primary"
                               title="Edit Match"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             {matchToDelete === match.id ? (
-                              <div className="flex items-center gap-1 bg-black/40 rounded-lg px-2 border border-red-500/30">
+                              <div className="flex items-center gap-1 bg-surface-hover rounded-lg px-2 border border-red-500/30">
                                 <span className="text-[10px] text-red-400 uppercase font-bold tracking-wider">
                                   Sure?
                                 </span>
@@ -1195,7 +1199,7 @@ export function MatchesTab({
                                     e.stopPropagation();
                                     setMatchToDelete(null);
                                   }}
-                                  className="text-white/40 hover:text-white p-1 transition text-xs font-bold px-1.5"
+                                  className="text-text-muted hover:text-text-primary p-1 transition text-xs font-bold px-1.5"
                                 >
                                   X
                                 </button>
@@ -1206,7 +1210,7 @@ export function MatchesTab({
                                   e.stopPropagation();
                                   setMatchToDelete(match.id);
                                 }}
-                                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition"
+                                className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-red-500/20 text-red-400 transition"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1215,8 +1219,8 @@ export function MatchesTab({
                         )}
                       </div>
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm mt-3 pt-3 border-t border-glass-border">
-                        <div className="flex items-center text-white/70 mb-2 sm:mb-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm mt-3 pt-3 border-t border-border">
+                        <div className="flex items-center text-text-secondary mb-2 sm:mb-0">
                           <MapPin className="w-4 h-4 mr-1.5 shrink-0" />
                           <span className="truncate max-w-[150px] sm:max-w-[200px]">
                             {ground?.name || "Unknown Ground"}
@@ -1242,7 +1246,7 @@ export function MatchesTab({
                       </div>
 
                       {(match.matchUrl || match.streamingUrl) && (
-                        <div className="flex gap-4 mt-3 pt-3 border-t border-glass-border">
+                        <div className="flex gap-4 mt-3 pt-3 border-t border-border">
                           {match.matchUrl && (
                             <a
                               href={match.matchUrl}
@@ -1269,9 +1273,9 @@ export function MatchesTab({
                       )}
 
                       {match.result && match.result !== "Pending" && (
-                        <div className="mt-3 pt-3 border-t border-glass-border">
+                        <div className="mt-3 pt-3 border-t border-border">
                           <p
-                            className={`font-bold text-sm mb-1 ${match.result === "KAvach Won" ? "text-accent" : match.result === "KAvach Lost" ? "text-red-400" : "text-white/60"}`}
+                            className={`font-bold text-sm mb-1 ${match.result === "KAvach Won" ? "text-accent" : match.result === "KAvach Lost" ? "text-red-400" : "text-text-secondary"}`}
                           >
                             Result: {match.result}{" "}
                             {match.resultMarginAmount
@@ -1285,7 +1289,7 @@ export function MatchesTab({
                               <div className="grid grid-cols-2 gap-2 text-xs mt-2 relative z-10">
                                 {(match.potmId || match.playerOfTheMatch) && (
                                   <div>
-                                    <span className="text-white/40 font-mono text-[10px]">
+                                    <span className="text-text-muted font-mono text-[10px]">
                                       POTM:
                                     </span>
                                     <br />
@@ -1296,7 +1300,7 @@ export function MatchesTab({
                                 )}
                                 {match.bestBatsman && (
                                   <div>
-                                    <span className="text-white/40 font-mono text-[10px]">
+                                    <span className="text-text-muted font-mono text-[10px]">
                                       BEST BAT:
                                     </span>
                                     <br />
@@ -1307,7 +1311,7 @@ export function MatchesTab({
                                 )}
                                 {match.bestBowler && (
                                   <div>
-                                    <span className="text-white/40 font-mono text-[10px]">
+                                    <span className="text-text-muted font-mono text-[10px]">
                                       BEST BALL:
                                     </span>
                                     <br />
@@ -1318,7 +1322,7 @@ export function MatchesTab({
                                 )}
                                 {match.topPerformerIds && match.topPerformerIds.length > 0 && (
                                   <div className="col-span-2 mt-1">
-                                    <span className="text-white/40 font-mono text-[10px]">
+                                    <span className="text-text-muted font-mono text-[10px]">
                                       TOP PERFORMERS:
                                     </span>
                                     <br />
@@ -1353,7 +1357,7 @@ export function MatchesTab({
                                   if (tpStr) text += `*Top Performers:* ${tpStr}\n`;
                                 }
                                 navigator.clipboard.writeText(text);
-                                alert("WhatsApp Report Copied to Clipboard!");
+                                toast("WhatsApp Report Copied to Clipboard!", "success");
                               }}
                               className="mt-3 w-full flex justify-center items-center gap-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition border border-emerald-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg"
                             >
@@ -1363,7 +1367,7 @@ export function MatchesTab({
                         </div>
                       )}
                     </div>
-                    <div className="bg-white/5 px-4 py-3 border-t border-glass-border flex items-center justify-between text-sm">
+                    <div className="bg-surface-hover px-4 py-3 border-t border-border flex items-center justify-between text-sm">
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                           Paid: {paidCount}
@@ -1379,7 +1383,7 @@ export function MatchesTab({
 
               if (allMatches.length === 0) {
                  return (
-                   <div className="py-12 text-center text-sm text-white/50 glass border-dashed rounded-xl">
+                   <div className="py-12 text-center text-sm text-text-muted bg-surface border-dashed rounded-xl">
                      No matches found.
                    </div>
                  );
@@ -1401,16 +1405,16 @@ export function MatchesTab({
               return (
                  <div className="space-y-4">
                    {upcomingNear.length > 0 ? upcomingNear.map(renderMatchCard) : (
-                     <div className="py-12 text-center text-sm text-white/50 glass border-dashed rounded-xl">
+                     <div className="py-12 text-center text-sm text-text-muted bg-surface border-dashed rounded-xl">
                        No matches in the next 14 days.
                      </div>
                    )}
                
                    {upcomingLater.length > 0 && (
-                      <div className="glass p-4 rounded-xl mt-8">
+                      <div className="bg-surface p-4 rounded-xl mt-8">
                         <button
                           onClick={() => setIsLaterScheduledCollapsed(!isLaterScheduledCollapsed)}
-                          className="flex w-full items-center justify-between text-white/80 hover:text-white"
+                          className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
                         >
                           <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                             Scheduled Later ({upcomingLater.length})
@@ -1426,10 +1430,10 @@ export function MatchesTab({
                    )}
 
                    {pastMatches.length > 0 && (
-                      <div className="glass p-4 rounded-xl mt-8">
+                      <div className="bg-surface p-4 rounded-xl mt-8">
                         <button
                           onClick={() => setIsPastListCollapsed(!isPastListCollapsed)}
-                          className="flex w-full items-center justify-between text-white/80 hover:text-white"
+                          className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
                         >
                           <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                             <Calendar className="w-4 h-4" /> Past Matches ({pastMatches.length})
@@ -1501,6 +1505,8 @@ export function MatchPayments({
   persona?: "admin" | "player";
   isMatchAdmin?: boolean;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const matchPayments = store.payments.filter(
     (p) =>
       p.matchId === match.id &&
@@ -1704,7 +1710,7 @@ export function MatchPayments({
       setBifurcationModal(null);
     } catch (err) {
       console.error("Failed to apply plan bifurcation:", err);
-      alert("Failed to apply fee plan. Please try again.");
+      toast("Failed to apply fee plan. Please try again.", "error");
       setBifurcationModal((prev) => (prev ? { ...prev, isSubmitting: false } : null));
     }
   };
@@ -1785,14 +1791,14 @@ export function MatchPayments({
   const handlePaySecure = async () => {
     if (!myPayment || !match.fee) return;
     if (store.appConfig?.features?.payments === false) {
-      alert("This feature is currently not available. Contact Club Admin");
+      toast("This feature is currently not available. Contact Club Admin");
       return;
     }
 
     const baseFee = getPlayerFee(myPayment);
     const payableFee = baseFee + myLateFeeTotal;
     if (payableFee <= 0) {
-      alert("Your fee is ₹0 (sponsored). No payment needed.");
+      toast("Your fee is ₹0 (sponsored). No payment needed.");
       return;
     }
 
@@ -1803,7 +1809,7 @@ export function MatchPayments({
         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
       if (!rzpId) {
-        alert("Razorpay keys are missing (Settings -> Payment Gateway)");
+        toast("Razorpay keys are missing (Settings -> Payment Gateway)", "error");
         setIsProcessingPayment(false);
         return;
       }
@@ -1848,14 +1854,14 @@ export function MatchPayments({
               });
               if (feeId) await store.updateOtherFeeStatus(myPayment.playerId, feeId, "Paid", "razorpay");
             }
-            alert("Payment Successful!");
+            toast("Payment Successful!", "success");
             setIsProcessingPayment(false);
             if (typeof onBack === 'function') onBack();
           } catch (err) {
             console.error("Failed to update status", err);
-            alert(
+            toast(
               "Payment successful but status update failed. Please contact admin.",
-            );
+            "error");
             setIsProcessingPayment(false);
           }
         },
@@ -1870,7 +1876,7 @@ export function MatchPayments({
         modal: {
           ondismiss: function () {
             setIsProcessingPayment(false);
-            alert("Payment was cancelled or closed.");
+            toast("Payment was cancelled or closed.", "error");
             if (typeof onBack === 'function') onBack();
           },
         },
@@ -1879,7 +1885,7 @@ export function MatchPayments({
       const paymentObject = new (window as any).Razorpay(options);
       paymentObject.on("payment.failed", async function (response: any) {
         setIsProcessingPayment(false);
-        alert("Payment failed: " + response.error.description);
+        toast("Payment failed: " + response.error.description, "error");
         try {
           await store.updatePaymentStatus(myPayment.id, "Failed", match.id);
         } catch (e) {
@@ -1889,7 +1895,7 @@ export function MatchPayments({
       });
       paymentObject.open();
     } catch (err: any) {
-      alert("Error: " + err.message);
+      toast("Error: " + err.message, "error");
       setIsProcessingPayment(false);
     }
   };
@@ -1944,7 +1950,7 @@ export function MatchPayments({
       comments.find((c) => c.id === commentId)?.playerId !== user?.uid
     )
       return;
-    if (confirm("Delete this comment?")) {
+    if (await confirmAction({ message: "Delete this comment?", destructive: true })) {
       try {
         await deleteDoc(doc(db, "matches", match.id, "comments", commentId));
       } catch (err) {
@@ -1983,7 +1989,7 @@ export function MatchPayments({
                 "Confirmed"
               );
             } else {
-              alert("This player is already in the squad.");
+              toast("This player is already in the squad.");
             }
           } else {
             await store.addPaymentStatus(match.id, pId, "Unpaid", "Confirmed");
@@ -2043,7 +2049,7 @@ export function MatchPayments({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <button
           onClick={onBack}
-          className="text-[13px] font-bold uppercase tracking-wider text-white/50 flex items-center gap-1 hover:text-white transition"
+          className="text-[13px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1 hover:text-text-primary transition"
         >
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
@@ -2067,7 +2073,7 @@ export function MatchPayments({
         </div>
       </div>
 
-      <div className="glass rounded-xl p-4">
+      <div className="bg-surface rounded-xl p-4">
         {match.isTentative && isAdmin && (
           <div className="mb-4 bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg text-orange-400 text-sm font-bold flex items-center justify-between">
             <div className="flex items-center gap-2 animate-pulse">
@@ -2078,7 +2084,7 @@ export function MatchPayments({
             </div>
             <button
               onClick={async () => {
-                if (!confirm("Remove tentative block and make this a regular match?")) return;
+                if (!await confirmAction({ message: "Remove tentative block and make this a regular match?", destructive: true })) return;
                 try {
                   await store.updateMatch({ ...match, isTentative: false, tentativelyBlockedBy: "" });
                 } catch (err) {
@@ -2094,7 +2100,7 @@ export function MatchPayments({
         <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
           <h2 className="text-xl font-bold">vs {match.opponent}</h2>
           {isAdmin && canArchive && (
-            <label className="flex items-center gap-2 cursor-pointer bg-white/5 border border-glass-border px-3 py-1.5 rounded-lg hover:bg-white/10 transition">
+            <label className="flex items-center gap-2 cursor-pointer bg-surface-hover border border-border px-3 py-1.5 rounded-lg hover:bg-surface-hover transition">
               <input
                 type="checkbox"
                 checked={!!match.isArchived}
@@ -2107,12 +2113,12 @@ export function MatchPayments({
                 }}
                 className="accent-accent"
               />
-              <span className="text-xs font-bold uppercase tracking-wider text-white/70">Archived</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">Archived</span>
             </label>
           )}
         </div>
 
-        <div className="flex gap-3 text-sm text-white/60 mb-4 font-mono flex-wrap items-center">
+        <div className="flex gap-3 text-sm text-text-secondary mb-4 font-mono flex-wrap items-center">
           <span>{formatDate(match.date)}</span>
           <span>•</span>
           <span>
@@ -2131,9 +2137,9 @@ export function MatchPayments({
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="bg-white/5 border border-glass-border rounded-lg p-3 text-center">
+          <div className="bg-surface-hover border border-border rounded-lg p-3 text-center">
             <p className="text-3xl font-light">{played}</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-white/50 mt-1">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-text-muted mt-1">
               Playing
             </p>
           </div>
@@ -2156,8 +2162,8 @@ export function MatchPayments({
         {(match.matchUrl ||
           match.streamingUrl ||
           (match.result && match.result !== "Pending")) && (
-          <div className="bg-white/5 border border-glass-border rounded-xl p-4 mb-4">
-            <h4 className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-3">
+          <div className="bg-surface-hover border border-border rounded-xl p-4 mb-4">
+            <h4 className="text-[10px] uppercase tracking-widest text-text-muted font-bold mb-3">
               Match Details
             </h4>
 
@@ -2187,9 +2193,9 @@ export function MatchPayments({
             )}
 
             {match.result && match.result !== "Pending" && (
-              <div className="pt-3 border-t border-glass-border">
+              <div className="pt-3 border-t border-border">
                 <p
-                  className={`font-bold text-sm mb-3 ${match.result === "KAvach Won" ? "text-accent" : match.result === "KAvach Lost" ? "text-red-400" : "text-white/60"}`}
+                  className={`font-bold text-sm mb-3 ${match.result === "KAvach Won" ? "text-accent" : match.result === "KAvach Lost" ? "text-red-400" : "text-text-secondary"}`}
                 >
                   Result: {match.result}{" "}
                   {match.resultMarginAmount
@@ -2202,8 +2208,8 @@ export function MatchPayments({
                     match.bestBowler || (match.topPerformerIds && match.topPerformerIds.length > 0)) && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {(match.potmId || match.playerOfTheMatch) && (
-                        <div className="bg-black/20 p-2 rounded-lg border border-glass-border">
-                          <span className="text-white/40 font-mono text-[10px] block mb-0.5">
+                        <div className="bg-surface-hover p-2 rounded-lg border border-border">
+                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
                             POTM
                           </span>
                           <span className="font-bold text-xs">
@@ -2212,8 +2218,8 @@ export function MatchPayments({
                         </div>
                       )}
                       {match.bestBatsman && (
-                        <div className="bg-black/20 p-2 rounded-lg border border-glass-border">
-                          <span className="text-white/40 font-mono text-[10px] block mb-0.5">
+                        <div className="bg-surface-hover p-2 rounded-lg border border-border">
+                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
                             BEST BATSMAN
                           </span>
                           <span className="font-bold text-xs">
@@ -2222,8 +2228,8 @@ export function MatchPayments({
                         </div>
                       )}
                       {match.bestBowler && (
-                        <div className="bg-black/20 p-2 rounded-lg border border-glass-border">
-                          <span className="text-white/40 font-mono text-[10px] block mb-0.5">
+                        <div className="bg-surface-hover p-2 rounded-lg border border-border">
+                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
                             BEST BOWLER
                           </span>
                           <span className="font-bold text-xs">
@@ -2232,8 +2238,8 @@ export function MatchPayments({
                         </div>
                       )}
                       {match.topPerformerIds && match.topPerformerIds.length > 0 && (
-                        <div className="sm:col-span-3 bg-black/20 p-2 rounded-lg border border-glass-border">
-                          <span className="text-white/40 font-mono text-[10px] block mb-0.5">
+                        <div className="sm:col-span-3 bg-surface-hover p-2 rounded-lg border border-border">
+                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
                             TOP PERFORMERS
                           </span>
                           <span className="font-bold text-xs text-emerald-400">
@@ -2267,7 +2273,7 @@ export function MatchPayments({
                         if (tpStr) text += `*Top Performers:* ${tpStr}\n`;
                       }
                       navigator.clipboard.writeText(text);
-                      alert("WhatsApp Report Copied to Clipboard!");
+                      toast("WhatsApp Report Copied to Clipboard!", "success");
                     }}
                     className="mt-4 w-full flex justify-center items-center gap-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition border border-emerald-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-3 rounded-xl"
                   >
@@ -2280,15 +2286,15 @@ export function MatchPayments({
         )}
 
         {isAdmin && (
-          <div className="glass rounded-xl p-4 my-4 border border-emerald-500/20 bg-gradient-to-br from-emerald-950/20 to-black/40">
-            <div className="flex items-center justify-between pb-3 border-b border-glass-border flex-wrap gap-2">
+          <div className="bg-surface rounded-xl p-4 my-4 border border-emerald-500/20 bg-gradient-to-br from-emerald-950/20 to-black/40">
+            <div className="flex items-center justify-between pb-3 border-b border-border flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-bold uppercase tracking-widest text-white/80">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-text-primary">
                   Match Fee Financial Bifurcation
                 </span>
               </div>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/60 bg-white/5 px-2 py-0.5 rounded border border-glass-border">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-text-secondary bg-surface-hover px-2 py-0.5 rounded border border-border">
                 {financials.playingCount} Playing • ₹{match.fee}/each
               </span>
             </div>
@@ -2303,7 +2309,7 @@ export function MatchPayments({
                 <p className="text-lg font-mono font-bold text-emerald-400 mt-0.5">
                   ₹{financials.directCollected}
                 </p>
-                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
                   {financials.directPaidCount} player(s) paid
                 </p>
               </div>
@@ -2316,7 +2322,7 @@ export function MatchPayments({
                 <p className="text-lg font-mono font-bold text-blue-400 mt-0.5">
                   ₹{financials.monthlyPlanCovered}
                 </p>
-                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
                   {financials.monthlyPaidCount} sub allocation(s)
                 </p>
               </div>
@@ -2329,7 +2335,7 @@ export function MatchPayments({
                 <p className="text-lg font-mono font-bold text-amber-400 mt-0.5">
                   ₹{financials.clubSponsoredTotal}
                 </p>
-                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
                   {financials.sponsoredCount} offset(s) absorbed
                 </p>
               </div>
@@ -2342,17 +2348,17 @@ export function MatchPayments({
                 <p className="text-lg font-mono font-bold text-red-400 mt-0.5">
                   ₹{financials.pendingDues}
                 </p>
-                <p className="text-[9px] text-white/40 mt-0.5 font-mono">
+                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
                   {financials.unpaidCount} unpaid player(s)
                 </p>
               </div>
             </div>
 
             {/* Bottom summary bar with full mathematical reconciliation */}
-            <div className="pt-2.5 border-t border-glass-border flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
-              <div className="flex items-center gap-3 text-white/60 font-mono flex-wrap">
+            <div className="pt-2.5 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center gap-3 text-text-secondary font-mono flex-wrap">
                 <span>
-                  Gross Match Value: <strong className="text-white font-mono">₹{financials.grossValue}</strong>
+                  Gross Match Value: <strong className="text-text-primary font-mono">₹{financials.grossValue}</strong>
                 </span>
                 <span>•</span>
                 <span>
@@ -2365,7 +2371,7 @@ export function MatchPayments({
                   <>
                     <span>•</span>
                     <span>
-                      Budget: <strong className="text-white font-mono">₹{match.matchFeeBudget}</strong>
+                      Budget: <strong className="text-text-primary font-mono">₹{match.matchFeeBudget}</strong>
                     </span>
                   </>
                 ) : null}
@@ -2389,12 +2395,12 @@ export function MatchPayments({
             const ground = store.grounds.find((g) => g.id === match.groundId);
             if (!ground) return null;
             return (
-              <div className="mt-4 pt-4 border-t border-glass-border">
+              <div className="mt-4 pt-4 border-t border-border">
                 <a
                   href={ground.mapUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-white/80 hover:text-accent transition group"
+                  className="flex items-center gap-2 text-sm text-text-primary hover:text-accent transition group"
                 >
                   <MapPin className="w-4 h-4 text-accent shrink-0" />
                   <span className="group-hover:underline truncate">
@@ -2404,7 +2410,7 @@ export function MatchPayments({
                     Get Directions
                   </span>
                 </a>
-                <p className="text-[10px] text-white/40 mt-2 font-mono uppercase tracking-widest pl-6">
+                <p className="text-[10px] text-text-muted mt-2 font-mono uppercase tracking-widest pl-6">
                   Approx time to reach if you start now: 35-45 mins
                 </p>
               </div>
@@ -2417,13 +2423,13 @@ export function MatchPayments({
           const myFee = getPlayerFee(myPayment);
           const totalFee = myFee + myLateFeeTotal;
           return (
-            <div className="glass rounded-xl p-6 text-center space-y-4">
+            <div className="bg-surface rounded-xl p-6 text-center space-y-4">
               <h3 className="text-lg font-bold">Your Match Fee is Pending</h3>
               {myLateFeeTotal > 0 ? (
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm px-4">
-                    <span className="text-white/70">Match Fee</span>
-                    <span className="font-mono text-white">₹{myFee}</span>
+                    <span className="text-text-secondary">Match Fee</span>
+                    <span className="font-mono text-text-primary">₹{myFee}</span>
                   </div>
                   {myLateFees.map((lf, i) => (
                     <div key={i} className="flex justify-between text-sm px-4">
@@ -2431,8 +2437,8 @@ export function MatchPayments({
                       <span className="font-mono text-red-400">₹{lf.amount}</span>
                     </div>
                   ))}
-                  <div className="border-t border-white/10 pt-2 flex justify-between text-sm px-4 font-bold">
-                    <span className="text-white">Total</span>
+                  <div className="border-t border-border pt-2 flex justify-between text-sm px-4 font-bold">
+                    <span className="text-text-primary">Total</span>
                     <span className="text-accent text-2xl font-mono">₹{totalFee}</span>
                   </div>
                 </div>
@@ -2449,11 +2455,11 @@ export function MatchPayments({
               <button
                 disabled={isProcessingPayment}
                 onClick={handlePaySecure}
-                className="w-full bg-accent text-black font-bold py-3 rounded-lg hover:bg-accent/90 disabled:opacity-50 transition shadow-lg flex items-center justify-center gap-2"
+                className="w-full bg-accent text-text-accent font-bold py-3 rounded-lg hover:bg-accent/90 disabled:opacity-50 transition shadow-lg flex items-center justify-center gap-2"
               >
                 {isProcessingPayment ? "Processing..." : `Pay ₹${totalFee} Securely`}
               </button>
-              <p className="text-[10px] text-white/50 uppercase tracking-widest">
+              <p className="text-[10px] text-text-muted uppercase tracking-widest">
                 Settle your dues before the match
               </p>
             </div>
@@ -2461,13 +2467,13 @@ export function MatchPayments({
         })()}
 
       {!isAdmin && mePlayer && store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-        <div className="glass rounded-xl p-4 text-center mt-4">
+        <div className="bg-surface rounded-xl p-4 text-center mt-4">
           {myPayment && myPayment.status === "Not Playing" && (
-            <p className="text-white/70 text-sm mb-4">
+            <p className="text-text-secondary text-sm mb-4">
               You are not marked to play this match.
             </p>
           )}
-          <h3 className="text-[11px] font-bold uppercase tracking-widest text-white/70 mb-3">
+          <h3 className="text-[11px] font-bold uppercase tracking-widest text-text-secondary mb-3">
             {(() => {
               const matchDateParts = dbToInputDate(match.date).split("/");
               let matchDateObj = new Date();
@@ -2559,7 +2565,7 @@ export function MatchPayments({
                         );
                       }
                     }}
-                    className={`flex-1 py-2 rounded-lg font-bold text-sm border transition ${isSelected ? (avStat === "Yes" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : avStat === "No" ? "bg-red-500/20 text-red-500 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "bg-amber-500/20 text-amber-500 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]") : "bg-transparent text-white border-glass-border hover:bg-white/5"}`}
+                    className={`flex-1 py-2 rounded-lg font-bold text-sm border transition ${isSelected ? (avStat === "Yes" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : avStat === "No" ? "bg-red-500/20 text-red-500 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "bg-amber-500/20 text-amber-500 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]") : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
                   >
                     {avStat}
                   </button>
@@ -2571,8 +2577,8 @@ export function MatchPayments({
       )}
 
       {!isAdmin && !mePlayer && store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-        <div className="glass rounded-xl p-4 text-center mt-4 border border-red-500/20">
-          <p className="text-white/70 text-sm mb-2">
+        <div className="bg-surface rounded-xl p-4 text-center mt-4 border border-red-500/20">
+          <p className="text-text-secondary text-sm mb-2">
             You need to complete your player profile in the Account tab or ask
             an admin to link your profile before you can mark your availability.
           </p>
@@ -2580,8 +2586,8 @@ export function MatchPayments({
       )}
 
       {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-        <div className="glass sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4 mb-4">
-          <div className="px-4 py-3 bg-white/5 border-b border-glass-border font-bold text-[12px] uppercase tracking-widest text-white/80">
+        <div className="bg-surface sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4 mb-4">
+          <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary">
             Player Availability
           </div>
 
@@ -2613,7 +2619,7 @@ export function MatchPayments({
                   />
                   {avStat} ({paymentsInStat.length})
                 </h4>
-                <div className="flex flex-wrap gap-2 text-sm text-white/80">
+                <div className="flex flex-wrap gap-2 text-sm text-text-primary">
                   {paymentsInStat.map((payment) => {
                     const p = store.players.find(pl => pl.id === payment.playerId);
                     if (!p) return null;
@@ -2621,7 +2627,7 @@ export function MatchPayments({
                     return (
                       <span
                         key={payment.id}
-                        className={`bg-white/5 border px-2 py-1 rounded inline-flex items-center gap-1.5 max-w-[250px] ${isPaid ? "border-emerald-500/30" : "border-glass-border"}`}
+                        className={`bg-surface-hover border px-2 py-1 rounded inline-flex items-center gap-1.5 max-w-[250px] ${isPaid ? "border-emerald-500/30" : "border-border"}`}
                       >
                         <span className="truncate flex items-center gap-1">
                           {payment.guestName || p.name}
@@ -2657,7 +2663,7 @@ export function MatchPayments({
                                 );
                               }
                             }}
-                            className="text-[9px] uppercase font-bold bg-transparent text-white/50 hover:text-white border-none outline-none cursor-pointer [&>option]:bg-emerald-950 appearance-none text-right"
+                            className="text-[9px] uppercase font-bold bg-transparent text-text-muted hover:text-text-primary border-none outline-none cursor-pointer  appearance-none text-right"
                           >
                             <option value="Yes">Yes</option>
                             <option value="No">No</option>
@@ -2675,8 +2681,8 @@ export function MatchPayments({
       )}
 
       {isAdmin && (
-        <div className="glass sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))]">
-          <div className="px-4 py-3 bg-white/5 border-b border-glass-border font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center justify-between">
+        <div className="bg-surface sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))]">
+          <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center justify-between">
             <span>Squad & Payments</span>
             {isAdmin && (
               <button
@@ -2691,20 +2697,20 @@ export function MatchPayments({
           {isAdmin && addingSquad && (
             <form
               onSubmit={handleAddToSquad}
-              className="p-4 bg-white/5 border-b border-glass-border space-y-3"
+              className="p-4 bg-surface-hover border-b border-border space-y-3"
             >
-              <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border mb-3">
+              <div className="flex bg-surface-hover rounded-lg p-1 border border-border mb-3">
                 <button
                   type="button"
                   onClick={() => setAddingNew(false)}
-                  className={`flex-1 text-[11px] font-bold uppercase py-1.5 rounded-md transition ${!addingNew ? "bg-white/10 text-white" : "text-white/50"}`}
+                  className={`flex-1 text-[11px] font-bold uppercase py-1.5 rounded-md transition ${!addingNew ? "bg-surface-hover text-text-primary" : "text-text-muted"}`}
                 >
                   Existing
                 </button>
                 <button
                   type="button"
                   onClick={() => setAddingNew(true)}
-                  className={`flex-1 text-[11px] font-bold uppercase py-1.5 rounded-md transition ${addingNew ? "bg-white/10 text-white" : "text-white/50"}`}
+                  className={`flex-1 text-[11px] font-bold uppercase py-1.5 rounded-md transition ${addingNew ? "bg-surface-hover text-text-primary" : "text-text-muted"}`}
                 >
                   New
                 </button>
@@ -2713,25 +2719,25 @@ export function MatchPayments({
               {!addingNew ? (
                 <div className="space-y-2">
                   <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                     <input
                       type="text"
                       placeholder="Search players..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 rounded-md border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      className="w-full pl-9 rounded-md border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                     />
                   </div>
-                  <div className="max-h-40 overflow-y-auto space-y-1 border border-glass-border rounded-md p-1 bg-black/20 custom-scrollbar">
+                  <div className="max-h-40 overflow-y-auto space-y-1 border border-border rounded-md p-1 bg-surface-hover custom-scrollbar">
                     {filteredPlayers.length === 0 ? (
-                      <p className="text-center text-[10px] uppercase tracking-widest text-white/50 py-3">
+                      <p className="text-center text-[10px] uppercase tracking-widest text-text-muted py-3">
                         No players found
                       </p>
                     ) : (
                       filteredPlayers.map((p) => (
                         <label
                           key={p.id}
-                          className={`flex items-center gap-2 p-2 rounded cursor-pointer ${selectedPlayerIds.includes(p.id) ? "bg-accent/10 border-accent/50" : "hover:bg-white/5 border-transparent"} border transition`}
+                          className={`flex items-center gap-2 p-2 rounded cursor-pointer ${selectedPlayerIds.includes(p.id) ? "bg-accent/10 border-accent/50" : "hover:bg-surface-hover border-transparent"} border transition`}
                         >
                           <input
                             type="checkbox"
@@ -2747,7 +2753,7 @@ export function MatchPayments({
                             className="hidden"
                           />
                           <div
-                            className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border transition ${selectedPlayerIds.includes(p.id) ? "bg-accent border-accent text-black" : "border-glass-border"}`}
+                            className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border transition ${selectedPlayerIds.includes(p.id) ? "bg-accent border-accent text-black" : "border-border"}`}
                           >
                             {selectedPlayerIds.includes(p.id) && (
                               <Check className="w-3 h-3" />
@@ -2756,7 +2762,7 @@ export function MatchPayments({
                           <span className="text-sm font-medium">
                             {p.name}{" "}
                             {p.mobile && (
-                              <span className="text-[10px] text-white/50 font-mono inline-block ml-1">
+                              <span className="text-[10px] text-text-muted font-mono inline-block ml-1">
                                 ({p.mobile})
                               </span>
                             )}
@@ -2769,7 +2775,7 @@ export function MatchPayments({
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
                       Name
                     </label>
                     <input
@@ -2777,11 +2783,11 @@ export function MatchPayments({
                       type="text"
                       value={newPlayerName}
                       onChange={(e) => setNewPlayerName(e.target.value)}
-                      className="w-full rounded-md border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-md border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
                       Mobile
                     </label>
                     <input
@@ -2789,7 +2795,7 @@ export function MatchPayments({
                       type="tel"
                       value={newPlayerMobile}
                       onChange={(e) => setNewPlayerMobile(e.target.value)}
-                      className="w-full rounded-md border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-md border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                     />
                   </div>
                 </div>
@@ -2800,7 +2806,7 @@ export function MatchPayments({
                   isSubmitting || (!addingNew && selectedPlayerIds.length === 0)
                 }
                 type="submit"
-                className={`w-full ${confirmSquadDuplicates ? "bg-red-500 text-white" : "bg-accent text-black"} font-bold text-sm py-2 rounded shadow transition disabled:opacity-50`}
+                className={`w-full ${confirmSquadDuplicates ? "bg-red-500 text-white" : "bg-accent text-text-accent"} font-bold text-sm py-2 rounded shadow transition disabled:opacity-50`}
               >
                 {isSubmitting
                   ? "Adding..."
@@ -2811,7 +2817,7 @@ export function MatchPayments({
             </form>
           )}
 
-          <div className="divide-y divide-glass-border">
+          <div className="divide-y divide-border">
             {matchPayments.map((payment) => {
               const player = store.players.find(p => p.id === payment.playerId);
               if (!player || payment.status === "Not Playing") return null;
@@ -2825,11 +2831,11 @@ export function MatchPayments({
               return (
                 <div
                   key={payment.id}
-                  className="p-4 flex flex-col gap-2 hover:bg-white/5 transition"
+                  className="p-4 flex flex-col gap-2 hover:bg-surface-hover transition"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-semibold text-white truncate">
+                      <p className="font-semibold text-text-primary truncate">
                         {payment.guestName || player.name}
                         {mePlayer && player.id === mePlayer.id && !payment.guestName && (
                           <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-bold uppercase">
@@ -2848,7 +2854,7 @@ export function MatchPayments({
                         ) : null}
                       </p>
                       {isAdmin && (
-                        <p className="text-xs font-mono text-white/50 mt-0.5">
+                        <p className="text-xs font-mono text-text-muted mt-0.5">
                           {player.mobile}
                         </p>
                       )}
@@ -2907,7 +2913,7 @@ export function MatchPayments({
                                 ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                                 : payment.status === "Unpaid"
                                   ? "bg-red-500/20 text-red-400 border-red-500/30"
-                                  : "bg-white/5 text-white/70 border-glass-border [&>option]:bg-emerald-950"
+                                  : "bg-surface-hover text-text-secondary border-border "
                             }`}
                           >
                             <option value="Not Playing">Out</option>
@@ -3014,7 +3020,7 @@ export function MatchPayments({
                               }
                               e.target.value = "";
                             }}
-                            className="text-[9px] font-bold uppercase tracking-widest bg-white/5 text-white/60 border border-white/15 px-2 py-1 rounded hover:bg-white/10 hover:text-white transition cursor-pointer [&>option]:bg-[#0f172a]"
+                            className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition cursor-pointer [&>option]:bg-surface"
                             defaultValue=""
                           >
                             <option value="" disabled>+ Match Fee Plan</option>
@@ -3042,10 +3048,10 @@ export function MatchPayments({
                       {(hasOverride || payment.feeOffsetAmount !== undefined || payment.planTag) && (
                         <button
                           onClick={async () => {
-                            if (!confirm(`Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`)) return;
+                            if (!await confirmAction({ message: `Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`, destructive: true })) return;
                             await store.clearFeeOverride(match.id, payment.id);
                           }}
-                          className="text-[9px] font-bold uppercase tracking-widest bg-white/10 text-white/60 border border-white/15 px-2 py-1 rounded hover:bg-white/20 hover:text-white transition flex items-center gap-1"
+                          className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition flex items-center gap-1"
                           title="Reset fee to standard and clear all offsets"
                         >
                           <Undo2 className="w-3 h-3" />
@@ -3068,18 +3074,18 @@ export function MatchPayments({
           onClick={() => setFeePayerPicker(null)}
         >
           <div
-            className="w-full max-w-sm bg-[#0f172a] rounded-xl border border-purple-500/30 overflow-hidden"
+            className="w-full max-w-sm bg-surface rounded-xl border border-purple-500/30 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-glass-border flex items-center justify-between">
+            <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-white text-sm">Change Fee Payer</h3>
-                <p className="text-[10px] text-white/50 mt-0.5">
+                <h3 className="font-bold text-text-primary text-sm">Change Fee Payer</h3>
+                <p className="text-[10px] text-text-muted mt-0.5">
                   Who will pay <span className="text-purple-400 font-bold">{feePayerPicker.playerName}</span>&apos;s fee of ₹{feePayerPicker.fee}?
                 </p>
               </div>
-              <button onClick={() => setFeePayerPicker(null)} className="p-1.5 hover:bg-white/10 rounded-full transition">
-                <X className="w-4 h-4 text-white/50" />
+              <button onClick={() => setFeePayerPicker(null)} className="p-1.5 hover:bg-surface-hover rounded-full transition">
+                <X className="w-4 h-4 text-text-muted" />
               </button>
             </div>
             <div className="p-3">
@@ -3088,7 +3094,7 @@ export function MatchPayments({
                 placeholder="Search members..."
                 value={feePayerPicker.search}
                 onChange={(e) => setFeePayerPicker({ ...feePayerPicker, search: e.target.value })}
-                className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 mb-2"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-primary/30 focus:outline-none focus:border-purple-500/50 mb-2"
                 autoFocus
               />
               <div className="max-h-[280px] overflow-y-auto custom-scrollbar space-y-1">
@@ -3133,7 +3139,7 @@ export function MatchPayments({
                         className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-purple-500/15 transition flex items-center justify-between group"
                       >
                         <div>
-                          <span className="text-sm font-semibold text-white group-hover:text-purple-300 transition">{pl.name}</span>
+                          <span className="text-sm font-semibold text-text-primary group-hover:text-purple-300 transition">{pl.name}</span>
                           {inMatch && (
                             <span className="ml-2 text-[9px] font-bold uppercase tracking-widest text-emerald-400/70 bg-emerald-500/10 px-1.5 py-0.5 rounded">
                               In Match
@@ -3157,11 +3163,11 @@ export function MatchPayments({
           onClick={() => !bifurcationModal.isSubmitting && setBifurcationModal(null)}
         >
           <div
-            className="w-full max-w-md bg-[#0f172a] rounded-2xl border border-glass-border overflow-hidden shadow-2xl space-y-0"
+            className="w-full max-w-md bg-surface rounded-2xl border border-border overflow-hidden shadow-2xl space-y-0"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="p-4 bg-white/5 border-b border-glass-border flex items-center justify-between">
+            <div className="p-4 bg-surface-hover border-b border-border flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <span
@@ -3179,21 +3185,21 @@ export function MatchPayments({
                         ? "Monthly Subscription"
                         : "Club Sponsored"}
                   </span>
-                  <span className="text-[11px] font-mono text-white/50">
+                  <span className="text-[11px] font-mono text-text-muted">
                     Match: ₹{bifurcationModal.standardFee}
                   </span>
                 </div>
-                <h3 className="font-bold text-white text-base mt-1">
+                <h3 className="font-bold text-text-primary text-base mt-1">
                   Apply &ldquo;{bifurcationModal.plan.name}&rdquo;
                 </h3>
-                <p className="text-xs text-white/60">
-                  Player: <strong className="text-white">{bifurcationModal.player.name}</strong>
+                <p className="text-xs text-text-secondary">
+                  Player: <strong className="text-text-primary">{bifurcationModal.player.name}</strong>
                 </p>
               </div>
               <button
                 disabled={bifurcationModal.isSubmitting}
                 onClick={() => setBifurcationModal(null)}
-                className="p-1.5 hover:bg-white/10 rounded-full transition text-white/50 hover:text-white disabled:opacity-50"
+                className="p-1.5 hover:bg-surface-hover rounded-full transition text-text-muted hover:text-text-primary disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3209,8 +3215,8 @@ export function MatchPayments({
                   <div className="space-y-4">
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 space-y-2">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/60">Standard Match Fee</span>
-                        <span className="font-mono font-semibold text-white">₹{bifurcationModal.standardFee}</span>
+                        <span className="text-text-secondary">Standard Match Fee</span>
+                        <span className="font-mono font-semibold text-text-primary">₹{bifurcationModal.standardFee}</span>
                       </div>
                       <div className="flex justify-between items-center text-sm border-t border-amber-500/20 pt-2 font-bold">
                         <span className="text-amber-300">Player Due ({bifurcationModal.plan.name})</span>
@@ -3222,8 +3228,8 @@ export function MatchPayments({
                       </div>
                     </div>
 
-                    <div className="bg-black/30 border border-glass-border rounded-lg p-3 text-xs text-white/70 space-y-1.5">
-                      <p className="flex items-center gap-1.5 text-white/90 font-medium">
+                    <div className="bg-surface-hover border border-border rounded-lg p-3 text-xs text-text-secondary space-y-1.5">
+                      <p className="flex items-center gap-1.5 text-text-primary font-medium">
                         <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         Accountability Notice:
                       </p>
@@ -3243,25 +3249,25 @@ export function MatchPayments({
                 <div className="space-y-4">
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 space-y-1.5 text-xs">
                     <div className="flex justify-between items-center">
-                      <span className="text-white/60">Subscription Plan</span>
+                      <span className="text-text-secondary">Subscription Plan</span>
                       <span className="font-bold text-blue-300">{bifurcationModal.plan.name}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-white/60">Subscription Amount</span>
-                      <span className="font-mono text-white">₹{bifurcationModal.plan.monthlyAmount ?? 0}/month</span>
+                      <span className="text-text-secondary">Subscription Amount</span>
+                      <span className="font-mono text-text-primary">₹{bifurcationModal.plan.monthlyAmount ?? 0}/month</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-white/60">Standard Match Fee</span>
-                      <span className="font-mono font-bold text-white">₹{bifurcationModal.standardFee}</span>
+                      <span className="text-text-secondary">Standard Match Fee</span>
+                      <span className="font-mono font-bold text-text-primary">₹{bifurcationModal.standardFee}</span>
                     </div>
                   </div>
 
-                  <div className="space-y-3 bg-black/30 border border-glass-border rounded-xl p-3.5">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-white/60">
+                  <div className="space-y-3 bg-surface-hover border border-border rounded-xl p-3.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       Fee Allocation for this Match:
                     </p>
                     <div>
-                      <label className="text-xs text-white/80 font-medium block mb-1">
+                      <label className="text-xs text-text-primary font-medium block mb-1">
                         Actual Fee Covered from Subscription (₹)
                       </label>
                       <input
@@ -3275,11 +3281,11 @@ export function MatchPayments({
                             prev ? { ...prev, actualFeeInput: val, offsetInput: autoOffset } : null
                           );
                         }}
-                        className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-blue-500"
+                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-white/80 font-medium block mb-1">
+                      <label className="text-xs text-text-primary font-medium block mb-1">
                         Club Sponsored / Offset Portion (₹)
                       </label>
                       <input
@@ -3292,13 +3298,13 @@ export function MatchPayments({
                             prev ? { ...prev, offsetInput: val } : null
                           );
                         }}
-                        className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-blue-500"
+                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-blue-500"
                       />
                     </div>
                   </div>
 
-                  <div className="bg-black/30 border border-glass-border rounded-lg p-3 text-xs text-white/70 space-y-1.5">
-                    <p className="flex items-center gap-1.5 text-white/90 font-medium">
+                  <div className="bg-surface-hover border border-border rounded-lg p-3 text-xs text-text-secondary space-y-1.5">
+                    <p className="flex items-center gap-1.5 text-text-primary font-medium">
                       <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                       Status upon Confirmation:
                     </p>
@@ -3314,21 +3320,21 @@ export function MatchPayments({
                 <div className="space-y-4">
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 space-y-2">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-white/60">Standard Match Fee</span>
-                      <span className="font-mono font-semibold text-white">₹{bifurcationModal.standardFee}</span>
+                      <span className="text-text-secondary">Standard Match Fee</span>
+                      <span className="font-mono font-semibold text-text-primary">₹{bifurcationModal.standardFee}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm border-t border-emerald-500/20 pt-2 font-bold">
                       <span className="text-emerald-400">Total Club Sponsored</span>
                       <span className="font-mono text-emerald-400 text-base">₹{bifurcationModal.standardFee}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs border-t border-emerald-500/20 pt-2">
-                      <span className="text-white/60">Player Liability</span>
-                      <span className="font-mono font-bold text-white">₹0</span>
+                      <span className="text-text-secondary">Player Liability</span>
+                      <span className="font-mono font-bold text-text-primary">₹0</span>
                     </div>
                   </div>
 
-                  <div className="bg-black/30 border border-glass-border rounded-lg p-3 text-xs text-white/70 space-y-1.5">
-                    <p className="flex items-center gap-1.5 text-white/90 font-medium">
+                  <div className="bg-surface-hover border border-border rounded-lg p-3 text-xs text-text-secondary space-y-1.5">
+                    <p className="flex items-center gap-1.5 text-text-primary font-medium">
                       <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       Confirmation Notice:
                     </p>
@@ -3344,12 +3350,12 @@ export function MatchPayments({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-white/5 border-t border-glass-border flex items-center justify-end gap-2">
+            <div className="p-4 bg-surface-hover border-t border-border flex items-center justify-end gap-2">
               <button
                 type="button"
                 disabled={bifurcationModal.isSubmitting}
                 onClick={() => setBifurcationModal(null)}
-                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white/60 hover:text-white hover:bg-white/10 transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-text-secondary hover:text-text-primary hover:bg-surface-hover transition disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -3357,7 +3363,7 @@ export function MatchPayments({
                 type="button"
                 disabled={bifurcationModal.isSubmitting}
                 onClick={handleConfirmPlanBifurcation}
-                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-accent text-black hover:bg-accent/90 transition shadow disabled:opacity-50 flex items-center gap-1.5 font-bold"
+                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-accent text-text-accent hover:bg-accent/90 transition shadow disabled:opacity-50 flex items-center gap-1.5 font-bold"
               >
                 {bifurcationModal.isSubmitting ? (
                   <>
@@ -3377,14 +3383,14 @@ export function MatchPayments({
       )}
 
       {/* Match Comments Section */}
-      <div className="glass sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4">
-        <div className="px-4 py-3 bg-white/5 border-b border-glass-border font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2">
+      <div className="bg-surface sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4">
+        <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center gap-2">
           <MessageSquare className="w-4 h-4" /> Discussion
         </div>
 
         <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
           {comments.length === 0 ? (
-            <div className="text-center text-xs text-white/40 italic py-4">
+            <div className="text-center text-xs text-text-muted italic py-4">
               No comments yet. Start the discussion!
             </div>
           ) : (
@@ -3394,7 +3400,7 @@ export function MatchPayments({
                 className={`flex flex-col ${comment.playerId === user?.uid ? "items-end" : "items-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2 ${comment.playerId === user?.uid ? "bg-accent text-black rounded-tr-sm" : "bg-white/10 text-white rounded-tl-sm"}`}
+                  className={`max-w-[85%] rounded-2xl px-4 py-2 ${comment.playerId === user?.uid ? "bg-accent text-text-accent rounded-tr-sm" : "bg-surface-hover text-text-primary rounded-tl-sm"}`}
                 >
                   <div className="flex justify-between items-baseline gap-3 mb-1">
                     <span className="text-[10px] font-bold opacity-70 truncate">
@@ -3420,7 +3426,7 @@ export function MatchPayments({
                 {(isAdmin || comment.playerId === user?.uid) && (
                   <button
                     onClick={() => handleDeleteComment(comment.id)}
-                    className="text-[10px] text-white/40 hover:text-red-400 font-bold uppercase tracking-widest mt-1 mr-1 ml-1 transition"
+                    className="text-[10px] text-text-muted hover:text-red-400 font-bold uppercase tracking-widest mt-1 mr-1 ml-1 transition"
                   >
                     Delete
                   </button>
@@ -3432,20 +3438,20 @@ export function MatchPayments({
 
         <form
           onSubmit={handlePostComment}
-          className="p-3 bg-black/20 border-t border-glass-border flex gap-2"
+          className="p-3 bg-surface-hover border-t border-border flex gap-2"
         >
           <input
             type="text"
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Discuss logistics, rides..."
-            className="flex-1 bg-white/5 border border-glass-border rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-accent transition"
+            className="flex-1 bg-surface-hover border border-border rounded-full px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent transition"
             maxLength={1000}
           />
           <button
             type="submit"
             disabled={!newComment.trim() || isSubmittingComment}
-            className="bg-accent text-black px-4 py-2 rounded-full font-bold text-sm hover:bg-accent/90 transition disabled:opacity-50 shrink-0 flex items-center justify-center min-w-[70px]"
+            className="bg-accent text-text-accent px-4 py-2 rounded-full font-bold text-sm hover:bg-accent/90 transition disabled:opacity-50 shrink-0 flex items-center justify-center min-w-[70px]"
           >
             {isSubmittingComment ? "..." : "Send"}
           </button>
@@ -3455,28 +3461,28 @@ export function MatchPayments({
       {/* Group Remind Modal */}
       {isGroupRemindModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
+          <div className="bg-surface border border-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
             <button
               onClick={() => setIsGroupRemindModalOpen(false)}
-              className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition"
             >
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-2">
               <MessageSquare className="w-4 h-4" /> Remind Group
             </h3>
-            <p className="text-xs text-white/60 mb-4 leading-relaxed">
+            <p className="text-xs text-text-secondary mb-4 leading-relaxed">
               This will open WhatsApp with the match details and squad list. You can select your club's WhatsApp group to send the message.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
                   Optional Custom Message
                 </label>
                 <textarea
                   value={groupRemindCustomMsg}
                   onChange={(e) => setGroupRemindCustomMsg(e.target.value)}
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-white placeholder-white/30"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-text-primary placeholder-text-muted"
                   placeholder="e.g., Please reach 15 mins early!"
                   rows={3}
                 />
@@ -3568,13 +3574,13 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
   };
 
   return (
-    <div className="glass rounded-xl p-5 border border-glass-border">
+    <div className="bg-surface rounded-xl p-5 border border-border">
       <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
         Assign Players to Match Squad
       </h3>
       <form onSubmit={handleAssignMatch} className="space-y-4">
         <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
             Select Match
           </label>
           <select
@@ -3583,7 +3589,7 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
               setSelectedMatch(e.target.value);
               setConfirmDuplicates(false);
             }}
-            className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
             required
           >
             <option value="">-- Choose a Match --</option>
@@ -3602,7 +3608,7 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
 
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
               Select Players ({selectedPlayers.length} selected)
             </label>
             <button
@@ -3628,12 +3634,12 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
             placeholder="Search players to assign..."
             value={searchPlayer}
             onChange={(e) => setSearchPlayer(e.target.value)}
-            className="w-full bg-black/40 border border-glass-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white mb-0"
+            className="w-full bg-surface-hover border border-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary mb-0"
           />
 
-          <div className="h-40 overflow-y-auto border border-t-0 border-glass-border rounded-b-lg bg-black/20 p-2 gap-1 flex flex-col hide-scrollbar">
+          <div className="h-40 overflow-y-auto border border-t-0 border-border rounded-b-lg bg-surface-hover p-2 gap-1 flex flex-col hide-scrollbar">
             {filteredPlayers.length === 0 && (
-              <div className="text-xs text-white/40 italic p-2 text-center">
+              <div className="text-xs text-text-muted italic p-2 text-center">
                 No players found.
               </div>
             )}
@@ -3649,7 +3655,7 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
               return (
                 <label
                   key={p.id}
-                  className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${selectedPlayers.includes(p.id) ? "bg-accent/20 border border-accent/30 text-white" : "hover:bg-white/5 border border-transparent text-white/70"}`}
+                  className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${selectedPlayers.includes(p.id) ? "bg-accent/20 border border-accent/30 text-text-primary" : "hover:bg-surface-hover border border-transparent text-text-secondary"}`}
                 >
                   <input
                     type="checkbox"
@@ -3692,11 +3698,11 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
               const p = store.players.find(p => p.id === pid);
               return (
                 <div key={pid} className="flex items-center gap-2 mt-2">
-                  <span className="flex-shrink-0 text-white w-24 truncate">{p?.name}</span>
+                  <span className="flex-shrink-0 text-text-primary w-24 truncate">{p?.name}</span>
                   <input 
                     type="text" 
                     placeholder="Guest Name (e.g., Rajeev)"
-                    className="flex-1 bg-black/40 border border-red-500/50 rounded px-2 py-1 text-xs text-white"
+                    className="flex-1 bg-surface-hover border border-red-500/50 rounded px-2 py-1 text-xs text-text-primary"
                     value={guestNames[pid] || ""}
                     onChange={e => setGuestNames({...guestNames, [pid]: e.target.value})}
                   />
@@ -3708,7 +3714,7 @@ function AssignMatchAdmin({ store }: { store: ReturnType<typeof useStore> }) {
         <button
           type="submit"
           disabled={!selectedMatch || selectedPlayers.length === 0}
-          className={`w-full ${confirmDuplicates ? "bg-red-500 text-white" : "bg-accent text-black"} font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2`}
+          className={`w-full ${confirmDuplicates ? "bg-red-500 text-white" : "bg-accent text-text-accent"} font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2`}
         >
           {confirmDuplicates
             ? "Confirm Duplicate Assignment"

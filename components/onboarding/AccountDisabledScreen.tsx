@@ -5,6 +5,7 @@ import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, getDocFromServer } from "firebase/firestore";
 import { Player } from "@/lib/types";
 import { useStore } from "@/hooks/useStore";
+import { useToast } from "@/components/ui/Toast";
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -24,6 +25,7 @@ export function AccountDisabledScreen({
   store?: ReturnType<typeof useStore>;
   now?: number;
 }) {
+  const { toast } = useToast();
   const disabledDate = player?.disabledAt ? new Date(player.disabledAt) : null;
   const timeRemaining =
     disabledDate && now ? disabledDate.getTime() + THREE_DAYS_MS - now : 0;
@@ -40,13 +42,13 @@ export function AccountDisabledScreen({
       const serverTime = snap.data()?._ping?.toMillis();
       if (serverTime && disabledDate) {
         if (serverTime < disabledDate.getTime() + THREE_DAYS_MS) {
-          alert("Cool-down period is still active. Local system time modification detected.");
+          toast("Cool-down period is still active. Local system time modification detected.");
           return;
         }
       }
     } catch (e) {
       console.error("Cool-down validation failed:", e);
-      alert("Failed to validate server time securely. Try again.");
+      toast("Failed to validate server time securely. Try again.", "error");
       return;
     }
 
@@ -59,11 +61,11 @@ export function AccountDisabledScreen({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-black">
-      <div className="glass p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30">
-        <h2 className="font-extrabold text-xl text-white tracking-wide uppercase">
+      <div className="bg-surface p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30">
+        <h2 className="font-extrabold text-xl text-text-primary tracking-wide uppercase">
           Account In Trash
         </h2>
-        <p className="text-white/60">
+        <p className="text-text-secondary">
           Your profile has been moved to trash by the administrator.
           {disabledDate && !canRetry && (
             <>
@@ -86,7 +88,7 @@ export function AccountDisabledScreen({
         {canRetry && player && user && store && (
           <button
             onClick={handleResubmit}
-            className="px-4 py-2 bg-accent text-black font-bold uppercase tracking-widest text-xs rounded-lg"
+            className="px-4 py-2 bg-accent text-text-accent font-bold uppercase tracking-widest text-xs rounded-lg"
           >
             Request Fresh Signup
           </button>

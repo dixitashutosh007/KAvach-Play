@@ -23,6 +23,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { dbToInputDate, normalizeIndianMobile } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 // Make sure to add Razorpay to window type if needed
 declare global {
@@ -32,6 +33,7 @@ declare global {
 }
 
 export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const { toast } = useToast();
   const { user } = useAuth();
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState("");
@@ -62,7 +64,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
 
   const handlePayment = async (plan: any) => {
     if (store.appConfig?.features?.payments === false) {
-      alert("This feature is currently not available. Contact Club Admin");
+      toast("This feature is currently not available. Contact Club Admin");
       return;
     }
 
@@ -200,13 +202,13 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
                 createNotification(player.id, "Payment Successful", `Your subscription for ${plan.name} was successful.`, "in_app");
                 createNotification("admin", "Studio Subscription Purchased", `${player.name} purchased ${plan.name}.`, "in_app");
               }
-              alert("Payment Successful! Your subscription has been active.");
+              toast("Payment Successful! Your subscription has been active.", "success");
             })
             .catch((err) => {
               console.error("Failed to update profile", err);
-              alert(
+              toast(
                 "Payment successful but profile update failed. Please contact admin.",
-              );
+              "error");
             });
         },
         prefill: {
@@ -348,7 +350,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
     },
     Inactive: {
       text: "Inactive",
-      classes: "bg-white/5 text-white/50 border border-white/10",
+      classes: "bg-surface-hover text-text-muted border border-border",
     },
     Paused: {
       text: "Paused",
@@ -368,15 +370,15 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
   }, [subscriptionStatus]);
 
   const plansGrid = (
-    <div className="space-y-4 pt-4 border-t border-glass-border/40 mt-6 mt-auto">
+    <div className="space-y-4 pt-4 border-t border-border/40 mt-6 mt-auto">
       <button
         onClick={() => setPlansExpanded(!plansExpanded)}
         className="w-full flex items-center justify-between group"
       >
-        <h3 className="text-sm font-bold text-white uppercase tracking-widest text-left">
+        <h3 className="text-sm font-bold text-text-primary uppercase tracking-widest text-left">
           {showPlansAlwaysOpen ? "Renew / Buy Membership" : "Available Plans"}
         </h3>
-        <div className="p-1 rounded bg-white/5 group-hover:bg-white/10 text-white/50 transition">
+        <div className="p-1 rounded bg-surface-hover group-hover:bg-surface-hover text-text-muted transition">
           {plansExpanded ? (
             <ChevronUp className="w-4 h-4" />
           ) : (
@@ -398,14 +400,14 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
               .map((plan) => (
                 <div
                   key={plan.id}
-                  className="bg-white/5 border border-glass-border p-5 rounded-2xl flex flex-col justify-between hover:border-accent/40 transition"
+                  className="bg-surface-hover border border-border p-5 rounded-2xl flex flex-col justify-between hover:border-accent/40 transition"
                 >
                   <div className="flex justify-between gap-2">
                     <div>
-                      <h4 className="text-sm font-black text-white uppercase">
+                      <h4 className="text-sm font-black text-text-primary uppercase">
                         {plan.name}
                       </h4>
-                      <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mt-1">
+                      <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold mt-1">
                         <Calendar className="inline w-3 h-3 mr-1" />{" "}
                         {plan.durationDays} Days
                       </p>
@@ -414,13 +416,13 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
                       ₹{plan.fee}
                     </span>
                   </div>
-                  <p className="text-[10px] text-white/50 mt-3 mb-4 whitespace-pre-line">
+                  <p className="text-[10px] text-text-muted mt-3 mb-4 whitespace-pre-line">
                     {plan.benefits}
                   </p>
                   <button
                     onClick={() => handlePayment(plan)}
                     disabled={loadingPlanId !== null}
-                    className="w-full py-2.5 rounded-xl bg-accent text-black font-extrabold text-[10px] uppercase tracking-wider text-center hover:opacity-90 transition disabled:opacity-50 shadow-lg flex items-center justify-center gap-2"
+                    className="w-full py-2.5 rounded-xl bg-accent text-text-accent font-extrabold text-[10px] uppercase tracking-wider text-center hover:opacity-90 transition disabled:opacity-50 shadow-lg flex items-center justify-center gap-2"
                   >
                     <CreditCard className="w-3.5 h-3.5" />
                     {loadingPlanId === plan.id
@@ -431,7 +433,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
               ))}
             {store.subscriptionPlans.filter((p) => p.isActive !== false)
               .length === 0 && (
-              <div className="col-span-2 text-center p-4 text-xs text-white/40 italic">
+              <div className="col-span-2 text-center p-4 text-xs text-text-muted italic">
                 No plans available at this moment.
               </div>
             )}
@@ -443,16 +445,16 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
 
   if (!isStudioUser && !hasPastSubscription) {
     return (
-      <div className="glass p-6 text-center text-white/50 rounded-2xl border border-glass-border flex flex-col h-full">
+      <div className="bg-surface p-6 text-center text-text-muted rounded-2xl border border-border flex flex-col h-full">
         <div className="flex-1 flex flex-col items-center justify-center space-y-4 pt-10 pb-8">
-          <span className="p-1 px-2.5 rounded-full bg-white/5 text-[10px] uppercase font-bold tracking-widest text-white/50 border border-white/10">
+          <span className="p-1 px-2.5 rounded-full bg-surface-hover text-[10px] uppercase font-bold tracking-widest text-text-muted border border-border">
             Inactive
           </span>
           <div className="w-16 h-16 bg-accent/10 border border-accent/20 rounded-full flex items-center justify-center mx-auto mb-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
             <Sparkles className="w-8 h-8 text-accent animate-pulse" />
           </div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Unlock Kavach Studio Membership</h2>
-          <p className="text-sm max-w-lg mx-auto text-white/70 leading-relaxed mb-6">
+          <h2 className="text-2xl font-bold text-text-primary tracking-tight">Unlock Kavach Studio Membership</h2>
+          <p className="text-sm max-w-lg mx-auto text-text-secondary leading-relaxed mb-6">
             You are currently not a Kavach Studio Member. Subscribe to a plan that fits your needs and become an exclusive part of our Practice Session Club. Explore the premium benefits below:
           </p>
 
@@ -467,9 +469,9 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
               "20% Discount on Play Arena Activities*",
               "20% Discount on Play Arena Dine-In"
             ].map((benefit, i) => (
-              <div key={i} className="flex items-start gap-2 bg-white/5 p-3 rounded-xl border border-glass-border">
+              <div key={i} className="flex items-start gap-2 bg-surface-hover p-3 rounded-xl border border-border">
                 <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-                <span className="text-sm font-medium text-white/90">{benefit}</span>
+                <span className="text-sm font-medium text-text-primary">{benefit}</span>
               </div>
             ))}
           </div>
@@ -483,7 +485,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
   return (
     <div className="space-y-6">
       {/* Dynamic Membership Header Card */}
-      <div className="glass rounded-2xl border border-glass-border p-6 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-surface rounded-2xl border border-border p-6 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="absolute top-0 right-0 w-48 h-48 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="space-y-3">
@@ -510,17 +512,17 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
           </div>
 
           <div>
-            <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+            <h2 className="text-2xl font-black tracking-tight text-text-primary flex items-center gap-2">
               <Video className="w-6 h-6 text-accent shrink-0" /> Studio
             </h2>
-            <p className="text-white/60 text-xs mt-1">
+            <p className="text-text-secondary text-xs mt-1">
               Your video profile and smart cricket subscription details.
             </p>
           </div>
         </div>
 
         <div className="flex flex-col items-start md:items-end gap-1 font-mono z-10 relative">
-          <span className="text-[10px] text-white/40 uppercase font-bold tracking-wider">
+          <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">
             Status Badge
           </span>
           <span
@@ -534,32 +536,32 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
       {/* Subscription Breakdown Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Plan card info */}
-        <div className="bg-white/5 border border-glass-border rounded-2xl p-5 space-y-4">
+        <div className="bg-surface-hover border border-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center border border-accent/20">
               <Shield className="w-4.5 h-4.5 text-accent" />
             </div>
             <div>
-              <p className="text-[10px] text-white/40 uppercase font-black tracking-wider">
+              <p className="text-[10px] text-text-muted uppercase font-black tracking-wider">
                 Current Active Plan
               </p>
-              <h3 className="text-sm font-bold text-white mt-0.5">
+              <h3 className="text-sm font-bold text-text-primary mt-0.5">
                 {activePlanName}
               </h3>
             </div>
           </div>
 
-          <div className="border-t border-glass-border/40 pt-3 grid grid-cols-2 gap-4">
+          <div className="border-t border-border/40 pt-3 grid grid-cols-2 gap-4">
             <div>
-              <p className="text-[9px] text-white/40 uppercase font-bold tracking-wider">
+              <p className="text-[9px] text-text-muted uppercase font-bold tracking-wider">
                 Start Date
               </p>
-              <p className="text-xs font-semibold text-white/95 mt-1">
+              <p className="text-xs font-semibold text-text-primary/95 mt-1">
                 {startDate}
               </p>
             </div>
             <div>
-              <p className="text-[9px] text-white/40 uppercase font-bold tracking-wider">
+              <p className="text-[9px] text-text-muted uppercase font-bold tracking-wider">
                 Expiry / Renewal
               </p>
               <p
@@ -572,16 +574,16 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
 
         {/* Payment history card */}
-        <div className="bg-white/5 border border-glass-border rounded-2xl p-5 space-y-4">
+        <div className="bg-surface-hover border border-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center border border-accent/20">
               <CreditCard className="w-4.5 h-4.5 text-accent" />
             </div>
             <div>
-              <p className="text-[10px] text-white/40 uppercase font-black tracking-wider">
+              <p className="text-[10px] text-text-muted uppercase font-black tracking-wider">
                 Last Payment Contribution
               </p>
-              <h3 className="text-sm font-bold text-white mt-0.5">
+              <h3 className="text-sm font-bold text-text-primary mt-0.5">
                 {lastPaidAmount !== undefined
                   ? `₹${lastPaidAmount}`
                   : "Free Trial"}
@@ -589,20 +591,20 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
             </div>
           </div>
 
-          <div className="border-t border-glass-border/40 pt-3 grid grid-cols-2 gap-4">
+          <div className="border-t border-border/40 pt-3 grid grid-cols-2 gap-4">
             <div>
-              <p className="text-[9px] text-white/40 uppercase font-bold tracking-wider">
+              <p className="text-[9px] text-text-muted uppercase font-bold tracking-wider">
                 Paid Date
               </p>
-              <p className="text-xs font-semibold text-white/95 mt-1">
+              <p className="text-xs font-semibold text-text-primary/95 mt-1">
                 {lastPaidDate}
               </p>
             </div>
             <div>
-              <p className="text-[9px] text-white/40 uppercase font-bold tracking-wider">
+              <p className="text-[9px] text-text-muted uppercase font-bold tracking-wider">
                 Method
               </p>
-              <p className="text-xs font-semibold text-white/70 mt-1">
+              <p className="text-xs font-semibold text-text-secondary mt-1">
                 GPAY / UPI Secure
               </p>
             </div>

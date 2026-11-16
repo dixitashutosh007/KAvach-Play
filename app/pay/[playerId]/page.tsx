@@ -70,7 +70,7 @@ export default async function PayPage({
           </div>
         </div>
 
-        <div className="glass rounded-xl p-5 text-center bg-accent/5 border-accent/20">
+        <div className="bg-surface rounded-xl p-5 text-center bg-accent/5 border-accent/20">
           <div className="text-[11px] font-bold text-white/60 uppercase tracking-widest mb-1">
             Paying For
           </div>

@@ -6,6 +6,7 @@ import { doc, setDoc, serverTimestamp, getDocFromServer } from "firebase/firesto
 import { db } from "@/lib/firebase";
 import { Player } from "@/lib/types";
 import { useStore } from "@/hooks/useStore";
+import { useToast } from "@/components/ui/Toast";
 
 /**
  * Shown when the admin has rejected a player. Contains an "official email"
@@ -29,6 +30,7 @@ export function RejectedScreen({
   onLogOut: () => Promise<void>;
   themeStyles: React.CSSProperties;
 }) {
+  const { toast } = useToast();
   const rejectDate = player.rejectedAt ? new Date(player.rejectedAt) : null;
   const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
   const timeRemaining =
@@ -48,13 +50,13 @@ export function RejectedScreen({
           ? new Date(player.rejectedAt).getTime()
           : 0;
         if (serverTime < rejectedAtMs + threeDaysMs) {
-          alert("Quiet period lockout is still active. Local system time modification detected.");
+          toast("Quiet period lockout is still active. Local system time modification detected.");
           return;
         }
       }
     } catch (e) {
       console.error("Lockout validation failed:", e);
-      alert("Failed to validate server time securely. Try again.");
+      toast("Failed to validate server time securely. Try again.", "error");
       return;
     }
 
@@ -71,40 +73,40 @@ export function RejectedScreen({
       className="min-h-screen flex flex-col items-center justify-center p-4"
       style={themeStyles}
     >
-      <div className="glass p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30 shadow-[0_15px_40px_rgba(239,68,68,0.15)]">
+      <div className="bg-surface p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30 shadow-[0_15px_40px_rgba(239,68,68,0.15)]">
         <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-2 border border-red-500/30 animate-pulse">
           <X className="w-8 h-8 text-red-500" />
         </div>
 
         <div>
-          <h2 className="font-extrabold text-xl text-white tracking-wide uppercase">
+          <h2 className="font-extrabold text-xl text-text-primary tracking-wide uppercase">
             Request Declined
           </h2>
-          <p className="text-xs text-white/70 mt-2">
+          <p className="text-xs text-text-secondary mt-2">
             Your registration has been rejected by the administrator. Below is
             the official email notification sent to your registered address:
           </p>
         </div>
 
         <div className="bg-black/45 border border-red-500/20 rounded-xl p-4 text-left font-mono space-y-2 text-[11px] select-all">
-          <div className="border-b border-white/10 pb-2 mb-2 flex items-center justify-between text-white/50 text-[9px]">
+          <div className="border-b border-border pb-2 mb-2 flex items-center justify-between text-text-muted text-[9px]">
             <span>✉️ Official Email Notice</span>
             <span className="text-red-400 font-bold uppercase tracking-wider">
               Delivered
             </span>
           </div>
-          <div className="text-white/80">
-            <span className="text-white/40">From:</span> desk@{domainSuffix}.com
+          <div className="text-text-primary">
+            <span className="text-text-muted">From:</span> desk@{domainSuffix}.com
           </div>
-          <div className="text-white/80">
-            <span className="text-white/40">To:</span> {user?.email}
+          <div className="text-text-primary">
+            <span className="text-text-muted">To:</span> {user?.email}
           </div>
-          <div className="text-white/80">
-            <span className="text-white/40">Subject:</span> Request to Join {clubName} Rejected
+          <div className="text-text-primary">
+            <span className="text-text-muted">Subject:</span> Request to Join {clubName} Rejected
           </div>
-          <div className="pt-2 border-t border-dashed border-white/10 text-white/70 leading-relaxed font-sans text-xs">
+          <div className="pt-2 border-t border-dashed border-border text-text-secondary leading-relaxed font-sans text-xs">
             Dear{" "}
-            <strong className="text-white font-semibold">
+            <strong className="text-text-primary font-semibold">
               {player?.name || "Player"}
             </strong>
             ,
@@ -122,7 +124,7 @@ export function RejectedScreen({
             <br />
             Best Regards,
             <br />
-            <span className="text-white/40 text-[9px] uppercase font-bold tracking-widest block mt-2">
+            <span className="text-text-muted text-[9px] uppercase font-bold tracking-widest block mt-2">
               Kavach Admin Desk
             </span>
           </div>
@@ -136,19 +138,19 @@ export function RejectedScreen({
               </p>
               <button
                 onClick={handleResubmit}
-                className="w-full bg-accent text-black font-extrabold py-3 rounded-xl hover:opacity-90 transition cursor-pointer uppercase text-[11px] tracking-wider"
+                className="w-full bg-accent text-text-accent font-extrabold py-3 rounded-xl hover:opacity-90 transition cursor-pointer uppercase text-[11px] tracking-wider"
               >
                 Resubmit Profile & Retry
               </button>
             </div>
           ) : (
-            <div className="bg-white/5 border border-white/10 p-3 rounded-xl">
+            <div className="bg-surface-hover border border-border p-3 rounded-xl">
               <p className="text-[11px] text-orange-400 font-extrabold uppercase tracking-widest mb-1">
                 ⏰ Quiet Period Lockout Active
               </p>
-              <p className="text-xs text-white/60 leading-normal">
+              <p className="text-xs text-text-secondary leading-normal">
                 You can retry and resubmit profile in{" "}
-                <strong className="text-white font-bold">
+                <strong className="text-text-primary font-bold">
                   {hoursRemaining > 24 ? `${daysRemaining} day(s)` : `${hoursRemaining} hour(s)`}
                 </strong>
                 .
@@ -159,7 +161,7 @@ export function RejectedScreen({
 
         <button
           onClick={onLogOut}
-          className="w-full bg-white/5 text-white/60 font-bold py-2.5 rounded-xl hover:bg-white/10 hover:text-white transition uppercase text-[10px] tracking-widest border border-white/5"
+          className="w-full bg-surface-hover text-text-secondary font-bold py-2.5 rounded-xl hover:bg-surface-hover hover:text-text-primary transition uppercase text-[10px] tracking-widest border border-border"
         >
           Sign Out
         </button>

@@ -176,19 +176,19 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
           <ScrollText className="w-5 h-5 text-accent" /> Activity Log
         </h2>
         <div className="flex items-center gap-2">
           {logCount !== null && (
-            <span className="text-xs text-white/40 font-mono flex items-center gap-1">
+            <span className="text-xs text-text-muted font-mono flex items-center gap-1">
               <Database className="w-3 h-3" />
               {logCount.toLocaleString()} entries
             </span>
           )}
           <button
             onClick={() => { loadLogs(true); refreshCount(); }}
-            className="p-1.5 rounded-lg bg-white/5 border border-glass-border text-white/50 hover:text-white transition"
+            className="p-1.5 rounded-lg bg-surface-hover border border-border text-text-muted hover:text-text-primary transition"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -196,11 +196,11 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        <Filter className="w-4 h-4 text-white/40" />
+        <Filter className="w-4 h-4 text-text-muted" />
         <select
           value={entityFilter}
           onChange={e => setEntityFilter(e.target.value as AuditEntity | "")}
-          className="rounded-lg border border-glass-border bg-black/40 px-2.5 py-1.5 text-xs font-bold text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
         >
           <option value="">All Types</option>
           {ENTITY_OPTIONS.map(o => (
@@ -210,7 +210,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={actionFilter}
           onChange={e => setActionFilter(e.target.value as AuditAction | "")}
-          className="rounded-lg border border-glass-border bg-black/40 px-2.5 py-1.5 text-xs font-bold text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
         >
           <option value="">All Actions</option>
           {ACTION_OPTIONS.map(o => (
@@ -220,7 +220,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={actorTypeFilter}
           onChange={e => setActorTypeFilter(e.target.value as AuditActorType | "")}
-          className="rounded-lg border border-glass-border bg-black/40 px-2.5 py-1.5 text-xs font-bold text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
         >
           <option value="">All Actors</option>
           {ACTOR_TYPE_OPTIONS.map(o => (
@@ -229,12 +229,12 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         </select>
       </div>
 
-      <div className="glass rounded-xl border border-glass-border overflow-hidden divide-y divide-glass-border">
+      <div className="bg-surface rounded-xl border border-border overflow-hidden divide-y divide-border">
         {loading && logs.length === 0 && (
-          <div className="py-10 text-center text-sm text-white/50">Loading activity log...</div>
+          <div className="py-10 text-center text-sm text-text-muted">Loading activity log...</div>
         )}
         {!loading && logs.length === 0 && (
-          <div className="py-10 text-center text-sm text-white/50">No activity logs found.</div>
+          <div className="py-10 text-center text-sm text-text-muted">No activity logs found.</div>
         )}
 
         {logs.map(log => {
@@ -243,7 +243,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           return (
             <div key={log.id} className="group">
               <div
-                className={`flex items-start gap-3 px-4 py-3 transition cursor-pointer hover:bg-white/5 ${isExpanded ? "bg-white/5" : ""}`}
+                className={`flex items-start gap-3 px-4 py-3 transition cursor-pointer hover:bg-surface-hover ${isExpanded ? "bg-surface-hover" : ""}`}
                 onClick={() => hasChanges ? setExpandedId(isExpanded ? null : log.id) : undefined}
               >
                 <span className="text-lg mt-0.5 shrink-0">{ENTITY_EMOJI[log.entity] || "📝"}</span>
@@ -252,41 +252,41 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${ACTION_COLORS[log.action]}`}>
                       {log.action.replace("_", " ")}
                     </span>
-                    <span className="text-[10px] font-bold uppercase text-white/30 px-1.5 py-0.5 rounded bg-white/5">
+                    <span className="text-[10px] font-bold uppercase text-text-primary/30 px-1.5 py-0.5 rounded bg-surface-hover">
                       {log.entity.replace("_", " ")}
                     </span>
                   </div>
-                  <p className="text-sm text-white mt-1 leading-snug">{log.summary}</p>
+                  <p className="text-sm text-text-primary mt-1 leading-snug">{log.summary}</p>
                   <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[11px] text-white/40">
-                      by <span className="text-white/60 font-medium">{log.actorName}</span>
+                    <span className="text-[11px] text-text-muted">
+                      by <span className="text-text-secondary font-medium">{log.actorName}</span>
                     </span>
-                    <span className="text-[11px] text-white/30">{formatTimestamp(log.timestamp)}</span>
+                    <span className="text-[11px] text-text-primary/30">{formatTimestamp(log.timestamp)}</span>
                   </div>
                 </div>
                 {hasChanges && (
                   <div className="shrink-0 mt-2">
                     {isExpanded
-                      ? <ChevronDown className="w-4 h-4 text-white/30" />
-                      : <ChevronRight className="w-4 h-4 text-white/30" />}
+                      ? <ChevronDown className="w-4 h-4 text-text-primary/30" />
+                      : <ChevronRight className="w-4 h-4 text-text-primary/30" />}
                   </div>
                 )}
               </div>
               {isExpanded && hasChanges && (
                 <div className="px-4 pb-3 pl-12">
-                  <div className="rounded-lg bg-black/30 border border-glass-border overflow-hidden">
+                  <div className="rounded-lg bg-surface-hover border border-border overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-white/40 text-[10px] uppercase tracking-wider">
+                        <tr className="text-text-muted text-[10px] uppercase tracking-wider">
                           <th className="text-left px-3 py-1.5 font-bold">Field</th>
                           <th className="text-left px-3 py-1.5 font-bold">Old Value</th>
                           <th className="text-left px-3 py-1.5 font-bold">New Value</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-glass-border">
+                      <tbody className="divide-y divide-border">
                         {log.changes.map((c, i) => (
                           <tr key={i}>
-                            <td className="px-3 py-1.5 text-white/60 font-medium">{formatFieldName(c.field)}</td>
+                            <td className="px-3 py-1.5 text-text-secondary font-medium">{formatFieldName(c.field)}</td>
                             <td className="px-3 py-1.5 text-red-400/70">{c.oldValue ?? "-"}</td>
                             <td className="px-3 py-1.5 text-emerald-400/70">{c.newValue ?? "-"}</td>
                           </tr>
@@ -306,7 +306,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           <button
             onClick={() => loadLogs(false)}
             disabled={loadingMore}
-            className="px-4 py-2 rounded-lg bg-white/5 border border-glass-border text-xs font-bold text-white/60 hover:text-white transition disabled:opacity-40"
+            className="px-4 py-2 rounded-lg bg-surface-hover border border-border text-xs font-bold text-text-secondary hover:text-text-primary transition disabled:opacity-40"
           >
             {loadingMore ? "Loading..." : "Load More"}
           </button>
@@ -314,8 +314,8 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       )}
 
       {isSuperAdmin && (
-        <div className="glass rounded-xl border border-glass-border p-4 space-y-3">
-          <h3 className="text-sm font-bold text-white/70 flex items-center gap-2">
+        <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
+          <h3 className="text-sm font-bold text-text-secondary flex items-center gap-2">
             <Trash2 className="w-4 h-4" /> Truncate Old Logs
           </h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -326,7 +326,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                   truncateMonths === m
                     ? "bg-red-500/20 border-red-500/40 text-red-400"
-                    : "bg-white/5 border-glass-border text-white/50 hover:text-white"
+                    : "bg-surface-hover border-border text-text-muted hover:text-text-primary"
                 }`}
               >
                 &gt; {m} months
@@ -343,7 +343,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             )}
           </div>
           {truncateResult && (
-            <p className="text-xs text-white/50">{truncateResult}</p>
+            <p className="text-xs text-text-muted">{truncateResult}</p>
           )}
         </div>
       )}

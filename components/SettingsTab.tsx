@@ -23,8 +23,10 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
 import { LoadingScreen } from "./LoadingScreen";
+import { useToast } from "@/components/ui/Toast";
 
 export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<typeof useStore>, setPreviewTheme?: (val: string | null) => void }) {
+  const { toast } = useToast();
   const { user, hasAdminClaim } = useAuth();
 
   // Check if current user is admin
@@ -308,7 +310,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
 
     if (file.size > 5 * 1024 * 1024) {
       // 5MB limit
-      alert("Image is too large. Please select an image under 5MB.");
+      toast("Image is too large. Please select an image under 5MB.", "error");
       return;
     }
 
@@ -316,7 +318,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     const reader = new FileReader();
 
     reader.onerror = () => {
-      alert("Failed to read file.");
+      toast("Failed to read file.", "error");
       setUploadProgress(null);
     };
 
@@ -325,7 +327,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
 
       const img = new window.Image();
       img.onerror = () => {
-        alert("Invalid image file selected.");
+        toast("Invalid image file selected.", "error");
         setUploadProgress(null);
       };
       img.onload = () => {
@@ -376,20 +378,20 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      alert("Image is too large. Please select an image under 5MB.");
+      toast("Image is too large. Please select an image under 5MB.", "error");
       return;
     }
     setTransparentUploadProgress(0);
     const reader = new FileReader();
     reader.onerror = () => {
-      alert("Failed to read file.");
+      toast("Failed to read file.", "error");
       setTransparentUploadProgress(null);
     };
     reader.onload = (event) => {
       const base64String = event.target?.result as string;
       const img = new window.Image();
       img.onerror = () => {
-        alert("Invalid image file selected.");
+        toast("Invalid image file selected.", "error");
         setTransparentUploadProgress(null);
       };
       img.onload = () => {
@@ -481,19 +483,19 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         googleCalendarId: calId || undefined,
       });
       if (setPreviewTheme) setPreviewTheme(null);
-      alert("Settings saved successfully.");
+      toast("Settings saved successfully.", "success");
     } catch (err: any) {
       const code = err?.code ? ` [${err.code}]` : "";
-      alert(
+      toast(
         `Settings save failed${code}: ${err?.message || String(err)}\n\n` +
           `If this is "Missing or insufficient permissions", the Firestore rules need to be re-deployed.`,
-      );
+      "error");
     }
   };
 
   const handleTestEmail = async () => {
     if (!testTo) {
-      alert("Please enter a recipient email address in the Test Email form below.");
+      toast("Please enter a recipient email address in the Test Email form below.", "error");
       return;
     }
     setIsSendingTest(true);
@@ -525,12 +527,12 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
       });
       const data = await res.json();
       if (data.success) {
-        alert(`Test email ("${activeTemplateKey}") sent successfully! Check ${testTo}.`);
+        toast(`Test email ("${activeTemplateKey}") sent successfully! Check ${testTo}.`, "success");
       } else {
-        alert("Failed to send test email: " + (data.error || "Unknown error"));
+        toast("Failed to send test email: " + (data.error || "Unknown error"), "error");
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      toast("Error: " + err.message, "error");
     } finally {
       setIsSendingTest(false);
     }
@@ -592,9 +594,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     // Don't let user demote themselves easily if they are the only admin
     const adminCount = store.appUsers.filter((u) => u.role === "admin").length;
     if (newRole === "player" && userId === user?.uid && adminCount <= 1) {
-      alert(
+      toast(
         "You are the only admin. Promote someone else first before demoting yourself.",
-      );
+      "error");
       return;
     }
     await store.updateAppUserRole(userId, newRole);
@@ -602,9 +604,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
 
   if (!isAdmin) {
     return (
-      <div className="glass p-8 text-center text-white/50 rounded-xl space-y-3">
+      <div className="bg-surface p-8 text-center text-text-muted rounded-xl space-y-3">
         <Settings className="w-8 h-8 opacity-50 mx-auto" />
-        <h2 className="text-xl font-bold text-white">Access Denied</h2>
+        <h2 className="text-xl font-bold text-text-primary">Access Denied</h2>
         <p className="text-sm">You need admin privileges to view this page.</p>
       </div>
     );
@@ -616,7 +618,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         <LoadingScreen theme={previewLoadingTheme} />
         <button 
           onClick={() => setPreviewLoadingTheme(null)}
-          className="absolute top-6 right-6 z-[101] max-w-xs bg-black/80 border border-emerald-500/50 text-white font-medium py-2 px-4 rounded-xl shadow-lg hover:bg-black hover:scale-105 transition-all text-sm"
+          className="absolute top-6 right-6 z-[101] max-w-xs bg-black/80 border border-emerald-500/50 text-text-primary font-medium py-2 px-4 rounded-xl shadow-lg hover:bg-black hover:scale-105 transition-all text-sm"
         >
           Close Preview
         </button>
@@ -628,53 +630,53 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Settings className="w-5 h-5 text-accent" />
-        <h2 className="text-xl font-bold tracking-tight text-white">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary">
           Admin Settings
         </h2>
       </div>
 
-      <div className="glass rounded-xl overflow-hidden">
+      <div className="bg-surface rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => setIsAppConfigOpen(!isAppConfigOpen)}
-          className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between focus:outline-none"
+          className="w-full bg-surface-hover px-4 py-3 border-b border-border flex items-center justify-between focus:outline-none"
         >
-          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80">App Configuration</span>
-          {isAppConfigOpen ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
+          <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary">App Configuration</span>
+          {isAppConfigOpen ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
         </button>
         <form onSubmit={handleSaveConfig} className="p-4 space-y-4">
           {isAppConfigOpen && (
             <div className="space-y-4 mb-4">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Club Name
                 </label>
                 <input
                   type="text"
                   value={clubName}
                   onChange={(e) => setClubName(e.target.value)}
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                   placeholder="e.g. KAVACH"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Logo URL or Upload
                 </label>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex flex-1 gap-2">
-                    <span className="inline-flex items-center px-3 rounded-lg border border-glass-border bg-white/5 text-white/50">
+                    <span className="inline-flex items-center px-3 rounded-lg border border-border bg-surface-hover text-text-muted">
                       <ImageIcon className="w-4 h-4" />
                     </span>
                     <input
                       type="url"
                       value={logoUrl}
                       onChange={(e) => setLogoUrl(e.target.value)}
-                      className="flex-1 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none min-w-0"
+                      className="flex-1 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none min-w-0"
                       placeholder="https://example.com/logo.png"
                     />
                   </div>
-                  <label className="shrink-0 flex items-center justify-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 transition rounded-lg px-4 py-2 text-sm font-bold border border-glass-border">
+                  <label className="shrink-0 flex items-center justify-center gap-2 cursor-pointer bg-surface-hover hover:bg-surface-hover transition rounded-lg px-4 py-2 text-sm font-bold border border-border">
                     <Upload className="w-4 h-4" />
                     {uploadProgress !== null
                       ? `${Math.round(uploadProgress)}%`
@@ -689,23 +691,23 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Transparent Logo (for Design cards)
                 </label>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex flex-1 gap-2">
-                    <span className="inline-flex items-center px-3 rounded-lg border border-glass-border bg-white/5 text-white/50">
+                    <span className="inline-flex items-center px-3 rounded-lg border border-border bg-surface-hover text-text-muted">
                       <ImageIcon className="w-4 h-4" />
                     </span>
                     <input
                       type="url"
                       value={logoTransparentUrl}
                       onChange={(e) => setLogoTransparentUrl(e.target.value)}
-                      className="flex-1 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none min-w-0"
+                      className="flex-1 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none min-w-0"
                       placeholder="URL, or use Upload →"
                     />
                   </div>
-                  <label className="shrink-0 flex items-center justify-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 transition rounded-lg px-4 py-2 text-sm font-bold border border-glass-border">
+                  <label className="shrink-0 flex items-center justify-center gap-2 cursor-pointer bg-surface-hover hover:bg-surface-hover transition rounded-lg px-4 py-2 text-sm font-bold border border-border">
                     <Upload className="w-4 h-4" />
                     {transparentUploadProgress !== null
                       ? `${Math.round(transparentUploadProgress)}%`
@@ -720,20 +722,20 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 </div>
                 {logoTransparentUrl && (
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                       Preview:
                     </span>
                     {/* Swatch shows the logo on both a light and a dark
                         surface so you can confirm the background really
                         is transparent. */}
-                    <div className="flex items-center justify-center h-14 w-14 rounded-lg bg-white border border-glass-border">
+                    <div className="flex items-center justify-center h-14 w-14 rounded-lg bg-white border border-border">
                       <img
                         src={logoTransparentUrl}
                         alt="logo on light"
                         className="max-h-12 max-w-12 object-contain"
                       />
                     </div>
-                    <div className="flex items-center justify-center h-14 w-14 rounded-lg bg-red-800 border border-glass-border">
+                    <div className="flex items-center justify-center h-14 w-14 rounded-lg bg-red-800 border border-border">
                       <img
                         src={logoTransparentUrl}
                         alt="logo on dark"
@@ -749,7 +751,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     </button>
                   </div>
                 )}
-                <p className="mt-1 text-[10px] text-white/40">
+                <p className="mt-1 text-[10px] text-text-muted">
                   Upload a PNG with a transparent background (or paste a URL).
                   Used on Design cards where the logo sits directly on a colour or
                   photo — no white square around it. Optional; falls back to the
@@ -757,7 +759,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                 </p>
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Global App Theme
                 </label>
                 <select
@@ -766,7 +768,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     setGlobalTheme(e.target.value);
                     if (setPreviewTheme) setPreviewTheme(e.target.value);
                   }}
-                  className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                 >
                   <option value="">Let Users Choose</option>
                   <option value="emerald">Emerald Pitch</option>
@@ -780,14 +782,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               </div>
               
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Loading Screen Animation
                 </label>
                 <div className="flex flex-col gap-2">
                   <select
                     value={loadingAnimationTheme}
                     onChange={(e) => setLoadingAnimationTheme(e.target.value as any)}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                   >
                     <option value="radar">Radar Pulse (Default)</option>
                     <option value="kinetic">Kinetic Typing</option>
@@ -807,7 +809,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             </div>
           )}
           
-          <div className="border-t border-glass-border pt-4 mt-2">
+          <div className="border-t border-border pt-4 mt-2">
             <button
               type="button"
               onClick={() => setIsRazorpayOpen(!isRazorpayOpen)}
@@ -821,14 +823,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             {isRazorpayOpen && (
               <div className="space-y-4 mt-3">
                 <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                     Key ID
                   </label>
                   <input
                     type="text"
                     value={razorpayKeyId}
                     onChange={(e) => setRazorpayKeyId(e.target.value)}
-                    className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30 font-mono"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none placeholder:text-text-primary/30 font-mono"
                     placeholder="rzp_test_..."
                   />
                 </div>
@@ -836,7 +838,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             )}
           </div>
           
-          <div className="border-t border-glass-border pt-4 mt-2 space-y-4">
+          <div className="border-t border-border pt-4 mt-2 space-y-4">
             <button
               type="button"
               onClick={() => setIsNotificationHubOpen(!isNotificationHubOpen)}
@@ -850,45 +852,45 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
 
             {isNotificationHubOpen && (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-white/5 border border-glass-border animate-fade-in mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-surface-hover border border-border animate-fade-in mt-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       SMTP Host Address
                     </label>
                     <input
                       type="text"
                       value={smtpHost}
                       onChange={(e) => setSmtpHost(e.target.value)}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none placeholder:text-text-primary/30"
                       placeholder="e.g. smtp.gmail.com"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       SMTP Port
                     </label>
                     <input
                       type="text"
                       value={smtpPort}
                       onChange={(e) => setSmtpPort(e.target.value)}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30 font-mono"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none placeholder:text-text-primary/30 font-mono"
                       placeholder="587, 465, or 25"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       SMTP User / Account
                     </label>
                     <input
                       type="text"
                       value={smtpUser}
                       onChange={(e) => setSmtpUser(e.target.value)}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none placeholder:text-text-primary/30"
                       placeholder="e.g. club@gmail.com"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       SMTP Password
                     </label>
                     <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200/90 leading-snug">
@@ -896,14 +898,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       SMTP Sender Email (From)
                     </label>
                     <input
                       type="text"
                       value={smtpFrom}
                       onChange={(e) => setSmtpFrom(e.target.value)}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-white/30"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none placeholder:text-text-primary/30"
                       placeholder="e.g. Club Admin <club@gmail.com>"
                     />
                   </div>
@@ -913,22 +915,22 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       checked={smtpSecure}
                       onChange={(e) => setSmtpSecure(e.target.checked)}
                       id="checkbox-smtp-secure"
-                      className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
+                      className="w-4 h-4 rounded border-border bg-surface-hover text-accent focus:ring-accent accent-accent"
                     />
-                    <label htmlFor="checkbox-smtp-secure" className="text-[11px] font-bold uppercase tracking-wider text-white/70 cursor-pointer">
+                    <label htmlFor="checkbox-smtp-secure" className="text-[11px] font-bold uppercase tracking-wider text-text-secondary cursor-pointer">
                       Use SSL/TLS Secure Port (465)
                     </label>
                   </div>
                 </div>
 
               {/* Email Templates Editor Module */}
-              <div className="space-y-4 p-4 rounded-xl bg-white/5 border border-glass-border">
-              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-white/10 pb-2">
+              <div className="space-y-4 p-4 rounded-xl bg-surface-hover border border-border">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-border pb-2">
                 ✉️ Automated Email Templates Editor
               </h4>
 
               {/* Template Selectors */}
-              <div className="flex flex-wrap gap-1.5 bg-black/20 p-1 rounded-lg">
+              <div className="flex flex-wrap gap-1.5 bg-surface-hover p-1 rounded-lg">
                 {[
                   { key: "welcome", label: "Join verification" },
                   { key: "payment_success", label: "Receipt Confirm" },
@@ -939,8 +941,8 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     onClick={() => setActiveTemplateKey(t.key as any)}
                     className={`flex-1 min-w-[100px] py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${
                       activeTemplateKey === t.key
-                        ? "bg-white/15 text-white border border-white/10"
-                        : "text-white/40 hover:text-white/70"
+                        ? "bg-surface-hover text-text-primary border border-border"
+                        : "text-text-muted hover:text-text-secondary"
                     }`}
                   >
                     {t.label}
@@ -951,7 +953,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               {/* Template Editor Form */}
               <div className="space-y-3 pt-1">
                 <div>
-                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/60">
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                     Template Subject Line
                   </label>
                   <input
@@ -967,13 +969,13 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                         },
                       }));
                     }}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                     placeholder="Enter email subject line..."
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/60">
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                     Template Content (Supports Markdown / Plaintext / Standard Placeholders)
                   </label>
                   <textarea
@@ -989,14 +991,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                         },
                       }));
                     }}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none font-sans leading-relaxed"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none font-sans leading-relaxed"
                     placeholder="Dear {{playerName}}..."
                   />
                 </div>
 
                 {/* Variable Cheat Sheet */}
-                <div className="bg-black/30 p-2.5 rounded-lg border border-glass-border">
-                  <div className="text-[9px] uppercase font-bold text-white/40 tracking-wider mb-1">
+                <div className="bg-surface-hover p-2.5 rounded-lg border border-border">
+                  <div className="text-[9px] uppercase font-bold text-text-muted tracking-wider mb-1">
                     Available Live Placeholders:
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -1010,7 +1012,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       <span
                         key={v.code}
                         title={v.desc}
-                        className="text-[9.5px] font-mono bg-white/5 border border-white/5 text-accent px-1.5 py-0.5 rounded cursor-help"
+                        className="text-[9.5px] font-mono bg-surface-hover border border-border text-accent px-1.5 py-0.5 rounded cursor-help"
                       >
                         {v.code}
                       </span>
@@ -1021,8 +1023,8 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             </div>
 
             {/* WhatsApp Module */}
-            <div className="space-y-4 p-4 rounded-xl bg-white/5 border border-glass-border">
-              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-white/10 pb-2">
+            <div className="space-y-4 p-4 rounded-xl bg-surface-hover border border-border">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-border pb-2">
                 💬 WhatsApp Settings (Meta Graph API)
               </h4>
               <div className="flex items-center gap-3 mt-2">
@@ -1030,9 +1032,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   type="checkbox"
                   checked={whatsappProvider === "meta"}
                   onChange={(e) => setWhatsappProvider(e.target.checked ? "meta" : "none")}
-                  className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
+                  className="w-4 h-4 rounded border-border bg-surface-hover text-accent focus:ring-accent accent-accent"
                 />
-                <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Enable WhatsApp Reminders
                 </label>
               </div>
@@ -1040,19 +1042,19 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               {whatsappProvider === "meta" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       Phone Number ID
                     </label>
                     <input
                       type="text"
                       value={whatsappPhoneNumberId}
                       onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                       placeholder="e.g. 123456789012345"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       Access Token
                     </label>
                     <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200/90 leading-snug">
@@ -1060,222 +1062,222 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     </div>
                   </div>
                   
-                  <div className="sm:col-span-2 pt-2 border-t border-glass-border">
-                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-3">Approved Template Names</h5>
+                  <div className="sm:col-span-2 pt-2 border-t border-border">
+                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-3">Approved Template Names</h5>
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       General Expiry Reminder
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplates.studio_expiry_reminder || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expiry_reminder: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="studio_expiring_soon"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Expires Today
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplates.studio_expires_today || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expires_today: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="studio_expires_today"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Already Expired
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplates.studio_expired_reminder || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, studio_expired_reminder: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="studio_already_expired"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Payment Reminder
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplates.payment_reminder || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, payment_reminder: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="payment_reminder_v1"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Club Invite
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplates.club_invite || ""}
                       onChange={(e) => setWhatsappTemplates({...whatsappTemplates, club_invite: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="welcome_invite"
                     />
                   </div>
 
-                  <div className="sm:col-span-2 pt-2 border-t border-glass-border mt-2">
-                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-3">Template Variables Map (Comma separated)</h5>
-                    <p className="text-[9px] text-white/40 mb-3">Map exactly to your Meta Template {"{{1}}"}, {"{{2}}"}, etc. Available: playerName, daysLeft, amount, link, clubName, duesText</p>
+                  <div className="sm:col-span-2 pt-2 border-t border-border mt-2">
+                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-3">Template Variables Map (Comma separated)</h5>
+                    <p className="text-[9px] text-text-muted mb-3">Map exactly to your Meta Template {"{{1}}"}, {"{{2}}"}, etc. Available: playerName, daysLeft, amount, link, clubName, duesText</p>
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       General Expiry Reminder Variables
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplateVariables?.studio_expiry_reminder || ""}
                       onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, studio_expiry_reminder: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="e.g. daysLeft"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Expires Today Variables
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplateVariables?.studio_expires_today || ""}
                       onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, studio_expires_today: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="Leave empty if none"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Already Expired Variables
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplateVariables?.studio_expired_reminder || ""}
                       onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, studio_expired_reminder: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="e.g. daysLeft"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Payment Reminder Variables
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplateVariables?.payment_reminder || ""}
                       onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, payment_reminder: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="e.g. playerName,amount,link"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Club Invite Variables
                     </label>
                     <input
                       type="text"
                       value={whatsappTemplateVariables?.club_invite || ""}
                       onChange={(e) => setWhatsappTemplateVariables({...whatsappTemplateVariables, club_invite: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
                       placeholder="e.g. clubName,playerName,link"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Club Invite Template Language
                     </label>
                     <select
                       value={whatsappTemplateLanguages?.club_invite || "en_US"}
                       onChange={(e) => setWhatsappTemplateLanguages({...whatsappTemplateLanguages, club_invite: e.target.value})}
-                      className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                      className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs text-text-primary focus:border-accent focus:outline-none "
                     >
                       <option value="en">English (en)</option>
                       <option value="en_US">English US (en_US)</option>
                       <option value="en_GB">English UK (en_GB)</option>
                       <option value="hi">Hindi (hi)</option>
                     </select>
-                    <p className="text-[9px] text-white/40 mt-1">Must match the language selected when creating the template on Meta</p>
+                    <p className="text-[9px] text-text-muted mt-1">Must match the language selected when creating the template on Meta</p>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Test Email Delivery Module */}
-            <div className="space-y-3 p-4 rounded-xl bg-white/5 border border-glass-border mb-4">
-              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-white/10 pb-2">
+            <div className="space-y-3 p-4 rounded-xl bg-surface-hover border border-border mb-4">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-accent border-b border-border pb-2">
                 📬 Dynamic Live Test Email
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-text-secondary">
                     Target Recipient Address
                   </label>
                   <input
                     type="email"
                     value={testTo}
                     onChange={(e) => setTestTo(e.target.value)}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
                     placeholder="e.g. member@gmail.com"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-text-secondary">
                     Sample Player Name
                   </label>
                   <input
                     type="text"
                     value={testPlayerName}
                     onChange={(e) => setTestPlayerName(e.target.value)}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-text-secondary">
                     Sample Fee Amount
                   </label>
                   <input
                     type="text"
                     value={testAmount}
                     onChange={(e) => setTestAmount(e.target.value)}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-white/60">
+                  <label className="mb-1 block text-[9.5px] font-bold uppercase tracking-wider text-text-secondary">
                     Sample Dues Descriptor
                   </label>
                   <input
                     type="text"
                     value={testDuesText}
                     onChange={(e) => setTestDuesText(e.target.value)}
-                    className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* Collapsible live email render preview */}
-              <div className="p-3 bg-black/50 border border-glass-border rounded-xl space-y-2 mt-2">
-                <div className="text-[9px] uppercase font-bold text-white/40 tracking-widest border-b border-white/5 pb-1 flex justify-between items-center">
+              <div className="p-3 bg-surface-hover0 border border-border rounded-xl space-y-2 mt-2">
+                <div className="text-[9px] uppercase font-bold text-text-muted tracking-widest border-b border-border pb-1 flex justify-between items-center">
                   <span>Live Render Preview</span>
                   <span className="text-[10px] text-accent lowercase">Active Template: {activeTemplateKey}</span>
                 </div>
-                <div className="space-y-1.5 text-xs text-white/90">
+                <div className="space-y-1.5 text-xs text-text-primary">
                   <div>
-                    <span className="text-white/30 font-bold uppercase text-[9px] tracking-wide mr-1.5">Subject:</span>
+                    <span className="text-text-primary/30 font-bold uppercase text-[9px] tracking-wide mr-1.5">Subject:</span>
                     {renderTemplatePreview(emailTemplates[activeTemplateKey]?.subject || defaultTemplates[activeTemplateKey].subject)}
                   </div>
                   <div>
-                    <span className="text-white/30 font-bold uppercase text-[9px] tracking-wide block mb-1">Body Content:</span>
-                    <pre className="whitespace-pre-wrap bg-black/40 p-2.5 rounded border border-white/5 text-[11px] font-sans text-white/70 leading-relaxed">
+                    <span className="text-text-primary/30 font-bold uppercase text-[9px] tracking-wide block mb-1">Body Content:</span>
+                    <pre className="whitespace-pre-wrap bg-surface-hover p-2.5 rounded border border-border text-[11px] font-sans text-text-secondary leading-relaxed">
                       {renderTemplatePreview(emailTemplates[activeTemplateKey]?.body || defaultTemplates[activeTemplateKey].body)}
                     </pre>
                   </div>
@@ -1301,7 +1303,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             )}
           </div>
 
-          <div className="border-t border-glass-border pt-4 mt-2">
+          <div className="border-t border-border pt-4 mt-2">
             <button
               type="button"
               onClick={() => setIsStudioOpen(!isStudioOpen)}
@@ -1318,15 +1320,15 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                   type="checkbox"
                   checked={isStudioEnabled}
                   onChange={(e) => setIsStudioEnabled(e.target.checked)}
-                  className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent mb-1"
+                  className="w-4 h-4 rounded border-border bg-surface-hover text-accent focus:ring-accent accent-accent mb-1"
                 />
-                <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Enable Studio Membership
                 </label>
               </div>
             )}
           </div>
-          <div className="border-t border-glass-border pt-4 mt-2 mb-2">
+          <div className="border-t border-border pt-4 mt-2 mb-2">
             <button
               type="button"
               onClick={() => setIsMatchConfigOpen(!isMatchConfigOpen)}
@@ -1340,7 +1342,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             {isMatchConfigOpen && (
               <div className="space-y-4 mt-3">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
                     Get Directions Button - Show Hours Before Match
                   </label>
                   <input
@@ -1352,11 +1354,11 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                         directionsHoursBefore: Number(e.target.value),
                       }))
                     }
-                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
                     Get Directions Button - Hide Hours After Match
                   </label>
                   <input
@@ -1368,7 +1370,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                         directionsHoursAfter: Number(e.target.value),
                       }))
                     }
-                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -1381,16 +1383,16 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                         enablePlayerAvailability: e.target.checked,
                       }))
                     }
-                    className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent mb-1"
+                    className="w-4 h-4 rounded border-border bg-surface-hover text-accent focus:ring-accent accent-accent mb-1"
                   />
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                     Enable Player Availability Selection
                   </label>
                 </div>
               </div>
             )}
           </div>
-          <div className="border-t border-glass-border pt-4 mt-2 mb-2">
+          <div className="border-t border-border pt-4 mt-2 mb-2">
             <button
               type="button"
               data-testid="app-features-section"
@@ -1426,9 +1428,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                           [key]: e.target.checked,
                         }))
                       }
-                      className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent"
+                      className="w-4 h-4 rounded border-border bg-surface-hover text-accent focus:ring-accent accent-accent"
                     />
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                       {label}
                     </label>
                   </div>
@@ -1446,7 +1448,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
             <button
               type="button"
               onClick={handleSeedData}
-              className="w-full rounded-lg bg-white/10 border border-glass-border py-2.5 text-sm font-bold text-white shadow hover:bg-white/20 transition"
+              className="w-full rounded-lg bg-surface-hover border border-border py-2.5 text-sm font-bold text-text-primary shadow hover:bg-surface-hover transition"
             >
               Seed Sample Data
             </button>
@@ -1461,14 +1463,14 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
 
       {/* Google Calendar — public match schedule sync. Matches auto-push
           on create/edit/delete; this card is for one-time setup + repair. */}
-      <div className="glass rounded-xl overflow-hidden mt-6">
-        <div className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between">
-          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2">
+      <div className="bg-surface rounded-xl overflow-hidden mt-6">
+        <div className="w-full bg-surface-hover px-4 py-3 border-b border-border flex items-center justify-between">
+          <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center gap-2">
             <Calendar className="w-4 h-4" /> Public Match Calendar
           </span>
         </div>
         <div className="p-4 space-y-3">
-          <p className="text-[11px] text-white/50 leading-relaxed">
+          <p className="text-[11px] text-text-muted leading-relaxed">
             Matches sync to a public Google Calendar automatically when you
             create, edit or delete them. Paste your Google Calendar link below
             and save settings. Then share the calendar with the service-account
@@ -1476,7 +1478,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           </p>
 
           <div>
-            <label className="text-[10px] uppercase tracking-widest text-white/40 block mb-1">
+            <label className="text-[10px] uppercase tracking-widest text-text-muted block mb-1">
               Google Calendar Link / ID
             </label>
             <input
@@ -1484,9 +1486,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               value={googleCalendarId}
               onChange={(e) => setGoogleCalendarId(e.target.value)}
               placeholder="Paste Google Calendar embed URL or calendar ID"
-              className="w-full rounded-lg bg-black/40 border border-glass-border px-3 py-2 text-[11px] text-white font-mono placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full rounded-lg bg-surface-hover border border-border px-3 py-2 text-[11px] text-text-primary font-mono placeholder:text-text-primary/20 focus:outline-none focus:ring-1 focus:ring-accent"
             />
-            <p className="text-[9px] text-white/30 mt-1">
+            <p className="text-[9px] text-text-primary/30 mt-1">
               Save settings after pasting. The calendar ID is extracted automatically from the URL.
             </p>
           </div>
@@ -1496,7 +1498,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
               type="button"
               onClick={checkCalendarStatus}
               disabled={calBusy !== ""}
-              className="rounded-lg bg-white/10 hover:bg-white/20 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white transition disabled:opacity-50"
+              className="rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-2 text-xs font-bold uppercase tracking-wider text-text-primary transition disabled:opacity-50"
             >
               {calBusy === "test" ? "Testing…" : "Test Connection"}
             </button>
@@ -1513,11 +1515,11 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           {calStatus.checked && (
             <div className="space-y-2">
               {calStatus.email && (
-                <div className="bg-black/40 border border-glass-border rounded-lg p-2">
-                  <div className="text-[9px] uppercase tracking-widest text-white/40 mb-0.5">
+                <div className="bg-surface-hover border border-border rounded-lg p-2">
+                  <div className="text-[9px] uppercase tracking-widest text-text-muted mb-0.5">
                     Share the calendar with this email
                   </div>
-                  <div className="text-[11px] font-mono text-white break-all select-all">
+                  <div className="text-[11px] font-mono text-text-primary break-all select-all">
                     {calStatus.email}
                   </div>
                 </div>
@@ -1537,7 +1539,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           )}
 
           {calResyncMsg && (
-            <div className="text-[11px] text-white/70 bg-black/30 border border-glass-border rounded-lg p-2">
+            <div className="text-[11px] text-text-secondary bg-surface-hover border border-border rounded-lg p-2">
               {calResyncMsg}
             </div>
           )}
@@ -1548,12 +1550,12 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           Squad → tap the player → Edit → Privileges block. This screen
           exists so you can answer "who has Match Admin?" in one glance
           without hunting through the roster. */}
-      <div className="glass rounded-xl overflow-hidden mt-6">
-        <div className="w-full bg-white/5 px-4 py-3 border-b border-glass-border flex items-center justify-between">
-          <span className="font-bold text-[12px] uppercase tracking-widest text-white/80 flex items-center gap-2">
+      <div className="bg-surface rounded-xl overflow-hidden mt-6">
+        <div className="w-full bg-surface-hover px-4 py-3 border-b border-border flex items-center justify-between">
+          <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center gap-2">
             <Users className="w-4 h-4" /> Privileges Overview
           </span>
-          <span className="text-[10px] text-white/40 normal-case tracking-normal">
+          <span className="text-[10px] text-text-muted normal-case tracking-normal">
             edit in Squad → tap player
           </span>
         </div>
@@ -1633,7 +1635,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       <div className={`text-[11px] font-bold uppercase tracking-widest ${r.accent.split(" ")[2]}`}>
                         {r.label}
                       </div>
-                      <div className="text-[10px] text-white/50">{r.desc}</div>
+                      <div className="text-[10px] text-text-muted">{r.desc}</div>
                     </div>
                     <div
                       className={`text-lg font-black font-mono ${r.accent.split(" ")[2]}`}
@@ -1642,7 +1644,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                     </div>
                   </div>
                   {sorted.length === 0 ? (
-                    <div className="text-[10px] text-white/40 italic">
+                    <div className="text-[10px] text-text-muted italic">
                       No members
                     </div>
                   ) : (
@@ -1650,7 +1652,7 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
                       {sorted.map((u) => (
                         <span
                           key={u.id}
-                          className="bg-black/30 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white/80"
+                          className="bg-surface-hover border border-border rounded px-2 py-0.5 text-[11px] text-text-primary"
                           title={u.mobile || u.email || u.id}
                         >
                           {nameFor(u)}

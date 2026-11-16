@@ -2,8 +2,10 @@ import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
 import { SubscriptionPlan } from "@/lib/types";
 import { Calendar, Edit2, Plus, Trash2 } from "lucide-react";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
+  const { confirm: confirmAction } = useConfirm();
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [addingNew, setAddingNew] = useState(false);
 
@@ -57,9 +59,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
 
   const handleDelete = async (pid: string) => {
     if (
-      confirm(
-        "Delete this subscription plan? Unsure this won't break existing dependencies.",
-      )
+      await confirmAction({ message: "Delete this subscription plan? Unsure this won't break existing dependencies.", destructive: true })
     ) {
       await store.deleteSubscriptionPlan(pid);
     }
@@ -74,13 +74,13 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
 
   if (editingPlan || addingNew) {
     return (
-      <div className="glass p-5 rounded-2xl border border-glass-border">
-        <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">
+      <div className="bg-surface p-5 rounded-2xl border border-border">
+        <h3 className="text-sm font-bold text-text-primary mb-4 uppercase tracking-wider">
           {addingNew ? "Add New Plan" : "Edit Plan"}
         </h3>
         <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
               Plan Name
             </label>
             <input
@@ -89,13 +89,13 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. 1 Month Pass"
-              className="w-full rounded-xl border border-glass-border bg-black/40 px-3.5 py-2.5 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-xl border border-border bg-surface-hover px-3.5 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
                 Duration (Days)
               </label>
               <input
@@ -103,11 +103,11 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
                 required
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full rounded-xl border border-glass-border bg-black/40 px-3.5 py-2.5 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-xl border border-border bg-surface-hover px-3.5 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
                 Fee (₹)
               </label>
               <input
@@ -115,13 +115,13 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
                 required
                 value={fee}
                 onChange={(e) => setFee(Number(e.target.value))}
-                className="w-full rounded-xl border border-glass-border bg-black/40 px-3.5 py-2.5 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-xl border border-border bg-surface-hover px-3.5 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
               Benefits Outline
             </label>
             <textarea
@@ -130,7 +130,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
               value={benefits}
               onChange={(e) => setBenefits(e.target.value)}
               placeholder="Live match recording, Analytics..."
-              className="w-full rounded-xl border border-glass-border bg-black/40 px-3.5 py-2.5 text-sm text-white focus:border-accent focus:outline-none custom-scrollbar"
+              className="w-full rounded-xl border border-border bg-surface-hover px-3.5 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none custom-scrollbar"
             />
           </div>
 
@@ -141,20 +141,20 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
               onChange={(e) => setIsActive(e.target.checked)}
               className="accent-accent"
             />
-            <span className="text-sm text-white">Plan is Active</span>
+            <span className="text-sm text-text-primary">Plan is Active</span>
           </label>
 
           <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={resetForm}
-              className="flex-1 py-3 rounded-xl border border-white/10 text-white text-xs font-bold uppercase tracking-wider hover:bg-white/5 transition"
+              className="flex-1 py-3 rounded-xl border border-border text-text-primary text-xs font-bold uppercase tracking-wider hover:bg-surface-hover transition"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 rounded-xl bg-accent text-black text-xs font-bold uppercase tracking-wider hover:opacity-90 transition shadow-lg"
+              className="flex-1 py-3 rounded-xl bg-accent text-text-accent text-xs font-bold uppercase tracking-wider hover:opacity-90 transition shadow-lg"
             >
               Save Plan
             </button>
@@ -166,18 +166,18 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center bg-accent/5 border border-glass-border p-4 rounded-xl">
+      <div className="flex justify-between items-center bg-accent/5 border border-border p-4 rounded-xl">
         <div>
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+          <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">
             Subscription Tier Manager
           </h4>
-          <p className="text-[11px] text-white/60">
+          <p className="text-[11px] text-text-secondary">
             Configure Studio bundles for the squad.
           </p>
         </div>
         <button
           onClick={() => setAddingNew(true)}
-          className="bg-accent text-black px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider inline-flex items-center gap-2 hover:opacity-90 transition shrink-0"
+          className="bg-accent text-text-accent px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider inline-flex items-center gap-2 hover:opacity-90 transition shrink-0"
         >
           <Plus className="w-4 h-4" /> New Plan
         </button>
@@ -189,7 +189,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
           return (
             <div
               key={plan.id}
-              className={`bg-black/30 border ${planIsActive ? "border-glass-border hover:border-accent/30" : "border-red-900/30 opacity-60"} rounded-xl p-5 relative overflow-hidden flex flex-col transition`}
+              className={`bg-surface-hover border ${planIsActive ? "border-border hover:border-accent/30" : "border-red-900/30 opacity-60"} rounded-xl p-5 relative overflow-hidden flex flex-col transition`}
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
 
@@ -197,7 +197,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
                 <div>
                   <div className="flex items-center gap-2">
                     <h4
-                      className={`text-sm font-black uppercase ${planIsActive ? "text-white" : "text-white/50 line-through"}`}
+                      className={`text-sm font-black uppercase ${planIsActive ? "text-text-primary" : "text-text-muted line-through"}`}
                     >
                       {plan.name}
                     </h4>
@@ -208,7 +208,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
                     )}
                   </div>
                   <p className="text-accent font-bold mt-0.5">₹{plan.fee}</p>
-                  <p className="text-[10px] text-white/50 uppercase tracking-widest mt-1">
+                  <p className="text-[10px] text-text-muted uppercase tracking-widest mt-1">
                     <Calendar className="inline w-3 h-3 mr-1" />{" "}
                     {plan.durationDays} Days Duration
                   </p>
@@ -216,13 +216,13 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
                 <div className="flex items-start gap-1 shrink-0">
                   <button
                     onClick={() => toggleStatus(plan)}
-                    className="p-1.5 text-white/50 hover:text-white transition text-xs border border-glass-border rounded bg-white/5 mr-2"
+                    className="p-1.5 text-text-muted hover:text-text-primary transition text-xs border border-border rounded bg-surface-hover mr-2"
                   >
                     {planIsActive ? "Disable" : "Enable"}
                   </button>
                   <button
                     onClick={() => handleEdit(plan)}
-                    className="p-1.5 text-white/50 hover:text-white transition"
+                    className="p-1.5 text-text-muted hover:text-text-primary transition"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -235,7 +235,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-glass-border text-xs text-white/70">
+              <div className="mt-4 pt-3 border-t border-border text-xs text-text-secondary">
                 <p className="whitespace-pre-line">{plan.benefits}</p>
               </div>
             </div>

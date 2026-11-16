@@ -137,11 +137,11 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
   const CopyableId = ({ value, label }: { value: string; label?: string }) => (
     <button
       onClick={() => copyToClipboard(value)}
-      className="text-left font-mono text-[10px] hover:bg-white/10 px-1 py-0.5 rounded cursor-pointer transition group"
+      className="text-left font-mono text-[10px] hover:bg-surface-hover px-1 py-0.5 rounded cursor-pointer transition group"
       title={`Click to copy: ${value}`}
     >
-      <span className="text-white/40 mr-1">{label || "ID"}:</span>
-      <span className="text-white/80 group-hover:text-white">
+      <span className="text-text-muted mr-1">{label || "ID"}:</span>
+      <span className="text-text-primary group-hover:text-text-primary">
         {value.slice(0, 8)}...{value.slice(-4)}
       </span>
       {copiedId === value && (
@@ -154,7 +154,7 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Player ID Audit</h2>
-        <span className="text-xs text-white/40">
+        <span className="text-xs text-text-muted">
           {store.players.filter((p) => !p.disabled && !p.mergedInto).length} active players
           {issueCount > 0 && (
             <span className="text-amber-400 ml-2">{issueCount} with issues</span>
@@ -168,39 +168,39 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search name, ID, phone, email..."
-          className="flex-1 px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+          className="flex-1 px-3 py-1.5 rounded bg-surface-hover border border-border text-sm text-text-primary placeholder:text-text-primary/30 focus:outline-none focus:border-border"
         />
         <button
           onClick={() => setFilter("issues")}
-          className={`px-3 py-1.5 rounded text-xs font-bold transition ${filter === "issues" ? "bg-amber-600 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
+          className={`px-3 py-1.5 rounded text-xs font-bold transition ${filter === "issues" ? "bg-amber-600 text-white" : "bg-surface-hover text-text-secondary hover:bg-surface-hover"}`}
         >
           Issues Only ({issueCount})
         </button>
         <button
           onClick={() => setFilter("all")}
-          className={`px-3 py-1.5 rounded text-xs font-bold transition ${filter === "all" ? "bg-white/20 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
+          className={`px-3 py-1.5 rounded text-xs font-bold transition ${filter === "all" ? "bg-surface-hover text-text-primary" : "bg-surface-hover text-text-secondary hover:bg-surface-hover"}`}
         >
           All
         </button>
       </div>
 
-      <div className="overflow-auto max-h-[600px] rounded border border-white/10">
+      <div className="overflow-auto max-h-[600px] rounded border border-border">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-zinc-900 z-10">
-            <tr className="border-b border-white/10 text-left">
-              <th className="px-3 py-2 text-white/50 font-medium">#</th>
-              <th className="px-3 py-2 text-white/50 font-medium">Player</th>
-              <th className="px-3 py-2 text-white/50 font-medium">Doc ID / authUid</th>
-              <th className="px-3 py-2 text-white/50 font-medium">Auth</th>
-              <th className="px-3 py-2 text-white/50 font-medium">Mobile</th>
-              <th className="px-3 py-2 text-white/50 font-medium">Status</th>
-              <th className="px-3 py-2 text-white/50 font-medium">Issues</th>
+            <tr className="border-b border-border text-left">
+              <th className="px-3 py-2 text-text-muted font-medium">#</th>
+              <th className="px-3 py-2 text-text-muted font-medium">Player</th>
+              <th className="px-3 py-2 text-text-muted font-medium">Doc ID / authUid</th>
+              <th className="px-3 py-2 text-text-muted font-medium">Auth</th>
+              <th className="px-3 py-2 text-text-muted font-medium">Mobile</th>
+              <th className="px-3 py-2 text-text-muted font-medium">Status</th>
+              <th className="px-3 py-2 text-text-muted font-medium">Issues</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-white/30">
+                <td colSpan={7} className="px-3 py-8 text-center text-text-primary/30">
                   {filter === "issues" ? "No issues found" : "No players found"}
                 </td>
               </tr>
@@ -212,13 +212,13 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
               return (
                 <tr
                   key={row.player.id}
-                  className={`border-b border-white/5 ${hasIssue ? "bg-red-500/5" : "hover:bg-white/5"}`}
+                  className={`border-b border-border ${hasIssue ? "bg-red-500/5" : "hover:bg-surface-hover"}`}
                 >
-                  <td className="px-3 py-2 text-white/30">{i + 1}</td>
+                  <td className="px-3 py-2 text-text-primary/30">{i + 1}</td>
                   <td className="px-3 py-2">
-                    <div className="font-medium text-white">{row.player.name}</div>
+                    <div className="font-medium text-text-primary">{row.player.name}</div>
                     {row.player.email && (
-                      <div className="text-[10px] text-white/40">{row.player.email}</div>
+                      <div className="text-[10px] text-text-muted">{row.player.email}</div>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -246,7 +246,7 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
                                 ? "bg-blue-500/20 text-blue-300"
                                 : p === "google.com"
                                   ? "bg-emerald-500/20 text-emerald-300"
-                                  : "bg-white/10 text-white/60"
+                                  : "bg-surface-hover text-text-secondary"
                             }`}
                           >
                             {p === "google.com" ? "Google" : p}
@@ -254,11 +254,11 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
                         ))}
                       </div>
                     ) : (
-                      <span className="text-white/20">-</span>
+                      <span className="text-text-primary/20">-</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[10px] text-white/60">
-                    {row.player.mobile || <span className="text-white/20">-</span>}
+                  <td className="px-3 py-2 font-mono text-[10px] text-text-secondary">
+                    {row.player.mobile || <span className="text-text-primary/20">-</span>}
                   </td>
                   <td className="px-3 py-2">
                     <span
@@ -267,7 +267,7 @@ function PlayerIdAudit({ store }: { store: ReturnType<typeof useStore> }) {
                           ? "bg-emerald-500/20 text-emerald-300"
                           : row.player.inviteStatus === "Pending"
                             ? "bg-amber-500/20 text-amber-300"
-                            : "bg-white/10 text-white/50"
+                            : "bg-surface-hover text-text-muted"
                       }`}
                     >
                       {row.player.inviteStatus}
@@ -392,19 +392,19 @@ export default function AdminToolsPage() {
 
   if (!store.isLoaded) {
     return (
-      <div className="p-8 text-white/50 text-sm">Loading store data...</div>
+      <div className="p-8 text-text-muted text-sm">Loading store data...</div>
     );
   }
 
   return (
-    <div className="p-8 space-y-8 text-white max-w-6xl">
+    <div className="p-8 space-y-8 text-text-primary max-w-6xl">
       <h1 className="text-2xl font-bold">Admin Utility</h1>
 
       <PlayerIdAudit store={store} />
 
-      <div className="border-t border-white/10 pt-6 space-y-4 max-w-3xl">
+      <div className="border-t border-border pt-6 space-y-4 max-w-3xl">
         <h2 className="text-lg font-bold">Ghost Profile Cleanup</h2>
-        <p className="text-sm text-white/60">
+        <p className="text-sm text-text-secondary">
           Scans for ghost profiles — auto-created &quot;Player (xxxxx)&quot; entries with no
           real profile data. Skips players who are Verified/Accepted or have DOB,
           locality, blood group, or emergency contact filled in.
@@ -436,7 +436,7 @@ export default function AdminToolsPage() {
                 setGhostAppUserIds([]);
               }}
               disabled={processing}
-              className="bg-white/10 px-4 py-2 rounded font-bold disabled:opacity-50 text-sm"
+              className="bg-surface-hover px-4 py-2 rounded font-bold disabled:opacity-50 text-sm"
             >
               Reset
             </button>
@@ -444,7 +444,7 @@ export default function AdminToolsPage() {
         </div>
 
         {logs.length > 0 && (
-          <pre className="p-4 bg-black/50 rounded overflow-auto max-h-[500px] text-xs font-mono whitespace-pre-wrap">
+          <pre className="p-4 bg-surface-hover0 rounded overflow-auto max-h-[500px] text-xs font-mono whitespace-pre-wrap">
             {logs.join("\n")}
           </pre>
         )}

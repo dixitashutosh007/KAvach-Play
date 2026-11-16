@@ -33,6 +33,7 @@ import { CreateFeeAdmin } from "./CreateFeeAdmin";
 import { FeePlansAdmin } from "./FeePlansAdmin";
 import { PlansView } from "./PlansView";
 import { DuesAndRemindersTab } from "./DuesAndRemindersTab";
+import { useToast } from "@/components/ui/Toast";
 
 export function FinanceTab({
   store,
@@ -65,6 +66,7 @@ export function PlayerFinanceView({
   userId?: string;
   showOnly?: "dues" | "history";
 }) {
+  const { toast } = useToast();
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const appUser = store.appUsers.find((u) => u.id === userId);
   const myPlayers = store.players.filter(
@@ -268,7 +270,7 @@ export function PlayerFinanceView({
   const handlePay = async () => {
     if (selectedDues.length === 0) return;
     if (store.appConfig?.features?.payments === false) {
-      alert("This feature is currently not available. Contact Club Admin");
+      toast("This feature is currently not available. Contact Club Admin");
       return;
     }
 
@@ -281,7 +283,7 @@ export function PlayerFinanceView({
         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
       if (!rzpId) {
-        alert("Razorpay keys are missing (Settings -> Payment Gateway)");
+        toast("Razorpay keys are missing (Settings -> Payment Gateway)", "error");
         setIsProcessingPayment(false);
         return;
       }
@@ -355,7 +357,7 @@ export function PlayerFinanceView({
             }
             await Promise.all(updates);
             setSelectedDues([]);
-            alert("Payment Successful!");
+            toast("Payment Successful!", "success");
 
             try {
               const playerEmail = appUser?.email || mePlayer?.email;
@@ -406,9 +408,9 @@ export function PlayerFinanceView({
             }
           } catch (err) {
             console.error("Failed to update status", err);
-            alert(
+            toast(
               "Payment successful but status update failed. Please contact admin.",
-            );
+            "error");
           }
         },
         prefill: {
@@ -423,7 +425,7 @@ export function PlayerFinanceView({
 
       const paymentObject = new (window as any).Razorpay(options);
       paymentObject.on("payment.failed", async function (response: any) {
-        alert("Payment failed: " + response.error.description);
+        toast("Payment failed: " + response.error.description, "error");
         try {
           const updates = [];
           for (const dueId of selectedDues) {
@@ -451,7 +453,7 @@ export function PlayerFinanceView({
       });
       paymentObject.open();
     } catch (err: any) {
-      alert("Error: " + err.message);
+      toast("Error: " + err.message, "error");
     } finally {
       setIsProcessingPayment(false);
     }
@@ -459,7 +461,7 @@ export function PlayerFinanceView({
 
   if (!mePlayer) {
     return (
-      <div className="glass rounded-xl p-8 text-center text-white/50 border border-glass-border">
+      <div className="bg-surface rounded-xl p-8 text-center text-text-muted border border-border">
         No player profile linked. Please update your profile with your mobile
         number.
       </div>
@@ -470,15 +472,15 @@ export function PlayerFinanceView({
     <div className="space-y-6">
       {!showOnly && (
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight text-white">
+          <h2 className="text-xl font-bold tracking-tight text-text-primary">
             My Dues & Payments
           </h2>
         </div>
       )}
 
-      <div className="glass rounded-xl p-5 relative overflow-hidden">
+      <div className="bg-surface rounded-xl p-5 relative overflow-hidden">
         <div className="absolute right-0 top-0 w-32 h-32 bg-red-500 opacity-10 blur-3xl rounded-full translate-x-10 -translate-y-10" />
-        <h3 className="text-[11px] font-bold uppercase tracking-widest text-white/70 mb-4 flex items-center justify-between">
+        <h3 className="text-[11px] font-bold uppercase tracking-widest text-text-secondary mb-4 flex items-center justify-between">
           <span>Pending Dues ({dues.length})</span>
           {dues.length > 0 && (
             <button onClick={selectAll} className="text-accent hover:underline">
@@ -490,7 +492,7 @@ export function PlayerFinanceView({
         </h3>
 
         {dues.length === 0 ? (
-          <div className="text-center py-6 text-white/40 text-sm italic">
+          <div className="text-center py-6 text-text-muted text-sm italic">
             You have no pending dues. Awesome!
           </div>
         ) : (
@@ -505,17 +507,17 @@ export function PlayerFinanceView({
                 <div
                   onClick={() => toggleDue(due.id)}
                   key={due.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border transition ${isLockedLateFee ? "cursor-not-allowed" : "cursor-pointer"} ${isSelected ? (isLateFee ? "bg-orange-500/10 border-orange-500/30" : "bg-accent/10 border-accent/30") : "bg-white/5 border-glass-border hover:bg-white/10"}`}
+                  className={`flex items-center justify-between p-3 rounded-lg border transition ${isLockedLateFee ? "cursor-not-allowed" : "cursor-pointer"} ${isSelected ? (isLateFee ? "bg-orange-500/10 border-orange-500/30" : "bg-accent/10 border-accent/30") : "bg-surface-hover border-border hover:bg-surface-hover"}`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
-                      className={`w-5 h-5 rounded shrink-0 flex items-center justify-center border transition ${isSelected ? (isLateFee ? "bg-orange-500 border-orange-500 text-black" : "bg-accent border-accent text-black") : "border-glass-border"}`}
+                      className={`w-5 h-5 rounded shrink-0 flex items-center justify-center border transition ${isSelected ? (isLateFee ? "bg-orange-500 border-orange-500 text-black" : "bg-accent border-accent text-black") : "border-border"}`}
                     >
                       {isSelected && <Check className="w-3.5 h-3.5" />}
                       {isLockedLateFee && <Shield className="w-3 h-3" />}
                     </div>
                     <div className="min-w-0 flex-1 pr-2">
-                      <div className="font-bold text-sm tracking-tight leading-snug mb-1 text-white flex flex-wrap items-center gap-2">
+                      <div className="font-bold text-sm tracking-tight leading-snug mb-1 text-text-primary flex flex-wrap items-center gap-2">
                         <span className="break-words">{due.title}</span>
                         {isLateFee ? (
                           <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest whitespace-nowrap shrink-0">
@@ -527,7 +529,7 @@ export function PlayerFinanceView({
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-[10px] text-white/50 break-words">
+                      <div className="text-[10px] text-text-muted break-words">
                         {due.subtitle}
                       </div>
                     </div>
@@ -545,16 +547,16 @@ export function PlayerFinanceView({
       </div>
 
       {dues.length > 0 && (
-        <div className="glass rounded-xl p-4 sticky bottom-4 z-10 border flex items-center justify-between backdrop-blur-md transition-colors duration-300 shadow-xl mt-4 bg-[#0a0a0a]/90 border-glass-border">
+        <div className="bg-surface rounded-xl p-4 sticky bottom-4 z-10 border flex items-center justify-between backdrop-blur-md transition-colors duration-300 shadow-xl mt-4 bg-surface/90 border-border">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
               Total Selected
             </div>
             <div className="text-xl font-mono font-bold text-accent">
               ₹{totalAmountDue}
             </div>
             {selectedDues.length === 0 && (
-              <div className="text-[9px] text-white/40 mt-1 italic">
+              <div className="text-[9px] text-text-muted mt-1 italic">
                 Select your due or match to Pay
               </div>
             )}
@@ -562,7 +564,7 @@ export function PlayerFinanceView({
           <button
             disabled={isProcessingPayment || selectedDues.length === 0}
             onClick={handlePay}
-            className={`px-6 py-2.5 rounded-lg font-bold text-sm shadow-[0_4px_12px_rgba(16,185,129,0.2)] transition flex items-center gap-2 ${selectedDues.length > 0 ? "bg-accent text-black hover:bg-accent/90" : "bg-white/10 text-white/30 cursor-not-allowed"}`}
+            className={`px-6 py-2.5 rounded-lg font-bold text-sm shadow-[0_4px_12px_rgba(16,185,129,0.2)] transition flex items-center gap-2 ${selectedDues.length > 0 ? "bg-accent text-text-accent hover:bg-accent/90" : "bg-surface-hover text-text-primary/30 cursor-not-allowed"}`}
           >
             {isProcessingPayment ? "Processing..." : "Pay Now"}{" "}
             <ChevronRight className="w-4 h-4" />
@@ -573,25 +575,25 @@ export function PlayerFinanceView({
   );
 
   const historySection = (
-    <div className="glass rounded-xl p-5 border border-glass-border">
+    <div className="bg-surface rounded-xl p-5 border border-border">
       <button
         onClick={() => setHistoryExpanded(!historyExpanded)}
         className="w-full flex items-center justify-between outline-none"
       >
-        <h3 className="text-[11px] font-bold uppercase tracking-widest text-white/70">
+        <h3 className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">
           Payment History
         </h3>
         {historyExpanded ? (
-          <ChevronUp className="w-4 h-4 text-white/50" />
+          <ChevronUp className="w-4 h-4 text-text-muted" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-white/50" />
+          <ChevronDown className="w-4 h-4 text-text-muted" />
         )}
       </button>
 
       {historyExpanded && (
         <div className="mt-4">
           {paid.length === 0 ? (
-            <div className="text-center py-6 text-white/40 text-sm italic">
+            <div className="text-center py-6 text-text-muted text-sm italic">
               No payment history yet.
             </div>
           ) : (
@@ -611,7 +613,7 @@ export function PlayerFinanceView({
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-white/50">
+                      <div className="text-[10px] text-text-muted">
                         {payment.subtitle}
                       </div>
                     </div>
@@ -619,7 +621,7 @@ export function PlayerFinanceView({
                       <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20 whitespace-nowrap">
                         Paid
                       </span>
-                      <span className="font-mono text-white/70">
+                      <span className="font-mono text-text-secondary">
                         ₹{payment.amount}
                       </span>
                     </div>
@@ -642,6 +644,7 @@ export function PlayerFinanceView({
 }
 
 function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
+  const { toast } = useToast();
   const [templateName, setTemplateName] = useState("");
   const [templateAmount, setTemplateAmount] = useState("");
 
@@ -658,10 +661,10 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
       await store.addFeeTemplate(templateName, isNaN(amount) ? 0 : amount);
       setTemplateName("");
       setTemplateAmount("");
-      alert("Fee Template added successfully!");
+      toast("Fee Template added successfully!", "success");
     } catch (err) {
       console.error(err);
-      alert("Failed to create template.");
+      toast("Failed to create template.", "error");
     }
   };
 
@@ -685,7 +688,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
     setSelectedPlayers([]);
     setAssignComment("");
     setSearchPlayer("");
-    alert("Fee assigned successfully to selected players.");
+    toast("Fee assigned successfully to selected players.", "success");
   };
 
   const togglePlayer = (id: string) => {
@@ -705,13 +708,13 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Create Template */}
-        <div className="glass rounded-xl p-5 border border-glass-border">
+        <div className="bg-surface rounded-xl p-5 border border-border">
           <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
             1. Create Custom Fee
           </h3>
           <form onSubmit={handleCreateTemplate} className="space-y-4">
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
                 Fee Name
               </label>
               <input
@@ -719,12 +722,12 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                 placeholder="e.g. Club Jersey"
                 value={templateName}
                 onChange={(e) => setTemplateName(e.target.value)}
-                className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                 required
               />
             </div>
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
                 Amount (₹)
               </label>
               <input
@@ -732,7 +735,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                 placeholder="0"
                 value={templateAmount}
                 onChange={(e) => setTemplateAmount(e.target.value)}
-                className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                 required
                 min="1"
               />
@@ -740,29 +743,29 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
             <button
               type="submit"
               disabled={!templateName || !templateAmount}
-              className="w-full bg-accent text-black font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2"
+              className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2"
             >
               Save Fee Template
             </button>
           </form>
 
           <div className="mt-6">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">
               Saved Fees
             </h4>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
               {(!store.feeTemplates || store.feeTemplates.length === 0) && (
-                <div className="text-xs text-white/30 italic text-center p-4">
+                <div className="text-xs text-text-primary/30 italic text-center p-4">
                   No fees created yet
                 </div>
               )}
               {store.feeTemplates?.map((t) => (
                 <div
                   key={t.id}
-                  className="flex justify-between items-center p-2 rounded bg-black/20 border border-glass-border"
+                  className="flex justify-between items-center p-2 rounded bg-surface-hover border border-border"
                 >
                   <div>
-                    <div className="text-sm font-bold text-white">{t.name}</div>
+                    <div className="text-sm font-bold text-text-primary">{t.name}</div>
                     <div className="text-xs text-accent">₹{t.amount}</div>
                   </div>
                   <button
@@ -778,24 +781,24 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
 
         {/* Assign Fee */}
-        <div className="glass rounded-xl p-5 border border-glass-border">
+        <div className="bg-surface rounded-xl p-5 border border-border">
           <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
             2. Assign Fee to Players
           </h3>
           {store.feeTemplates?.length === 0 ? (
-            <div className="text-xs text-white/50 italic text-center p-6 border border-glass-border border-dashed rounded-xl">
+            <div className="text-xs text-text-muted italic text-center p-6 border border-border border-dashed rounded-xl">
               Create a Fee on the left first
             </div>
           ) : (
             <form onSubmit={handleAssignFee} className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
                   Select Fee Template
                 </label>
                 <select
                   value={selectedTemplate}
                   onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                   required
                 >
                   <option value="">-- Choose a Fee --</option>
@@ -808,7 +811,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
                   Optional Description / Comment
                 </label>
                 <input
@@ -816,13 +819,13 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                   placeholder="e.g. Size M, Green Color"
                   value={assignComment}
                   onChange={(e) => setAssignComment(e.target.value)}
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                     Select Players ({selectedPlayers.length} selected)
                   </label>
                   <button
@@ -848,19 +851,19 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                   placeholder="Search players to assign..."
                   value={searchPlayer}
                   onChange={(e) => setSearchPlayer(e.target.value)}
-                  className="w-full bg-black/40 border border-glass-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white mb-0"
+                  className="w-full bg-surface-hover border border-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary mb-0"
                 />
 
-                <div className="h-40 overflow-y-auto border border-t-0 border-glass-border rounded-b-lg bg-black/20 p-2 gap-1 flex flex-col hide-scrollbar">
+                <div className="h-40 overflow-y-auto border border-t-0 border-border rounded-b-lg bg-surface-hover p-2 gap-1 flex flex-col hide-scrollbar">
                   {filteredPlayers.length === 0 && (
-                    <div className="text-xs text-white/40 italic p-2 text-center">
+                    <div className="text-xs text-text-muted italic p-2 text-center">
                       No players found.
                     </div>
                   )}
                   {filteredPlayers.map((p) => (
                     <label
                       key={p.id}
-                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${selectedPlayers.includes(p.id) ? "bg-accent/20 border border-accent/30 text-white" : "hover:bg-white/5 border border-transparent text-white/70"}`}
+                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${selectedPlayers.includes(p.id) ? "bg-accent/20 border border-accent/30 text-text-primary" : "hover:bg-surface-hover border border-transparent text-text-secondary"}`}
                     >
                       <input
                         type="checkbox"
@@ -879,7 +882,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
               <button
                 type="submit"
                 disabled={!selectedTemplate || selectedPlayers.length === 0}
-                className="w-full bg-accent text-black font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2"
+                className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2"
               >
                 Assign to {selectedPlayers.length} Player(s)
               </button>
@@ -888,10 +891,10 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
       </div>
 
-      <div className="glass rounded-xl overflow-hidden border border-glass-border mt-8">
-        <div className="bg-black/40 p-4 border-b border-glass-border flex justify-between items-center flex-wrap gap-2">
+      <div className="bg-surface rounded-xl overflow-hidden border border-border mt-8">
+        <div className="bg-surface-hover p-4 border-b border-border flex justify-between items-center flex-wrap gap-2">
           <h3 className="font-bold text-sm">Assigned Fees Ledger</h3>
-          <div className="text-[10px] uppercase font-black text-white/60 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+          <div className="text-[10px] uppercase font-black text-text-secondary bg-surface-hover px-3 py-1 rounded-full border border-border">
             Total Due from Assigned Fees:{" "}
             <span className="text-red-400">
               ₹
@@ -901,9 +904,9 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
             </span>
           </div>
         </div>
-        <div className="divide-y divide-glass-border/50 max-h-96 overflow-y-auto">
+        <div className="divide-y divide-border max-h-96 overflow-y-auto">
           {(!store.otherFees || store.otherFees.length === 0) && (
-            <div className="p-6 text-center text-xs text-white/40 italic">
+            <div className="p-6 text-center text-xs text-text-muted italic">
               No custom fees have been assigned yet.
             </div>
           )}
@@ -918,24 +921,24 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
               return (
                 <div
                   key={fee.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-white/5 transition gap-3"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-surface-hover transition gap-3"
                 >
                   <div>
-                    <div className="font-bold text-sm text-white">
+                    <div className="font-bold text-sm text-text-primary">
                       {fee.title}{" "}
-                      <span className="text-white/40 font-normal ml-1">
+                      <span className="text-text-muted font-normal ml-1">
                         for
                       </span>{" "}
                       {p?.name || "Unknown"}
                     </div>
-                    <div className="text-[10px] text-white/40 mt-0.5">
+                    <div className="text-[10px] text-text-muted mt-0.5">
                       {formatDate(
                         new Date(
                           (fee.createdAt?.seconds || 0) * 1000,
                         ).toISOString(),
                       )}{" "}
                       {fee.comment && (
-                        <span className="ml-2 text-white/60">
+                        <span className="ml-2 text-text-secondary">
                           ({fee.comment})
                         </span>
                       )}
@@ -995,9 +998,9 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                               if (!data.success) {
                                 throw new Error(data.error || "Failed to send");
                               }
-                              alert("Email reminder sent successfully!");
+                              toast("Email reminder sent successfully!", "success");
                             } catch (e: any) {
-                              alert(`Failed: ${e.message || "Failed to send email reminder."}`);
+                              toast(`Failed: ${e.message || "Failed to send email reminder."}`, "error");
                             }
                           }}
                           className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
@@ -1018,7 +1021,7 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                             isPaid ? "Unpaid" : "Paid",
                           )
                         }
-                        className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/70 transition border border-white/10 whitespace-nowrap"
+                        className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-surface-hover hover:bg-surface-hover text-text-secondary transition border border-border whitespace-nowrap"
                       >
                         Mark {isPaid ? "Unpaid" : "Paid"}
                       </button>
@@ -1037,22 +1040,22 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
   const [feeTab, setFeeTab] = useState<"custom" | "plans" | "feePlans">("custom");
   return (
     <div className="space-y-4">
-      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
+      <div className="flex bg-surface-hover rounded-lg p-1 border border-border">
           <button
             onClick={() => setFeeTab("custom")}
-            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "custom" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
+            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "custom" ? "bg-surface-hover text-text-primary" : "text-text-muted hover:text-text-primary"}`}
           >
             Custom Fees
           </button>
           <button
             onClick={() => setFeeTab("plans")}
-            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "plans" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
+            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "plans" ? "bg-surface-hover text-text-primary" : "text-text-muted hover:text-text-primary"}`}
           >
             Subscriptions
           </button>
           <button
             onClick={() => setFeeTab("feePlans")}
-            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "feePlans" ? "bg-amber-500/20 text-amber-400" : "text-white/50 hover:text-white"}`}
+            className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "feePlans" ? "bg-amber-500/20 text-amber-400" : "text-text-muted hover:text-text-primary"}`}
           >
             Match Fee Plans
           </button>
@@ -1069,6 +1072,7 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
 }
 
 function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: ReturnType<typeof useStore>; defaultAction?: string | null; isSuperAdmin?: boolean }) {
+  const { toast } = useToast();
   const [subTab, setSubTab] = useState<
     "matches" | "wix" | "fee" | "razor" | "dues"
   >((defaultAction as any) || "matches");
@@ -1272,7 +1276,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
   return (
     <div className="space-y-6">
-      <div className="flex bg-white/5 p-1.5 rounded-2xl border border-glass-border mb-4 overflow-x-auto hide-scrollbar gap-2">
+      <div className="flex bg-surface-hover p-1.5 rounded-2xl border border-border mb-4 overflow-x-auto hide-scrollbar gap-2">
         {[
           "matches",
           "dues",
@@ -1293,8 +1297,8 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
               onClick={() => setSubTab(tab as any)}
               className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 text-center cursor-pointer whitespace-nowrap ${
                 active
-                  ? "bg-accent text-black font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
-                  : "text-white/60 hover:text-white hover:bg-white/5"
+                  ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
+                  : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
               }`}
             >
               {labels[tab]}
@@ -1305,7 +1309,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
       {subTab === "matches" && (
         <div className="space-y-4">
-          <div className="glass rounded-xl p-4 border border-glass-border overflow-visible">
+          <div className="bg-surface rounded-xl p-4 border border-border overflow-visible">
             <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
               Match Fee Accounting
             </h3>
@@ -1315,7 +1319,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
               <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-glass-border text-[10px] uppercase tracking-widest text-white/50">
+                  <tr className="border-b border-border text-[10px] uppercase tracking-widest text-text-muted">
                     <th className="py-2 pr-3 font-bold whitespace-nowrap">Match Details</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-center">Paid / Unpaid</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Match Fee</th>
@@ -1328,32 +1332,32 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                   {collectedMatches.map((data, rowIndex) => {
                     const ground = store.grounds.find((g) => g.id === data.match.groundId);
                     return (
-                      <tr key={data.match.id} className="border-b border-white/5 hover:bg-white/5 transition">
+                      <tr key={data.match.id} className="border-b border-border hover:bg-surface-hover transition">
                         <td className="py-2.5 pr-3">
-                          <div className="text-white font-semibold text-xs">{formatDate(data.match.date)}</div>
-                          <div className="text-[10px] text-white/40">{ground?.name || "—"}</div>
+                          <div className="text-text-primary font-semibold text-xs">{formatDate(data.match.date)}</div>
+                          <div className="text-[10px] text-text-muted">{ground?.name || "—"}</div>
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap relative group">
-                          <div className="inline-flex items-center gap-1.5 cursor-help px-2 py-0.5 rounded bg-white/5 border border-glass-border hover:bg-white/10 transition">
+                          <div className="inline-flex items-center gap-1.5 cursor-help px-2 py-0.5 rounded bg-surface-hover border border-border hover:bg-surface-hover transition">
                             <span className="text-emerald-400 font-bold font-mono text-xs">{data.paidCount} Paid</span>
-                            <span className="text-white/30">/</span>
-                            <span className={`font-bold font-mono text-xs ${data.unpaidCount > 0 ? "text-red-400" : "text-white/40"}`}>
+                            <span className="text-text-primary/30">/</span>
+                            <span className={`font-bold font-mono text-xs ${data.unpaidCount > 0 ? "text-red-400" : "text-text-muted"}`}>
                               {data.unpaidCount} Unpaid
                             </span>
-                            <Info className="w-3 h-3 text-white/40 group-hover:text-white transition shrink-0" />
+                            <Info className="w-3 h-3 text-text-muted group-hover:text-text-primary transition shrink-0" />
                           </div>
 
                           {/* Desktop Hover Tooltip */}
                           <div
                             className={`hidden group-hover:block absolute left-1/2 -translate-x-1/2 ${
                               rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"
-                            } z-50 w-72 max-h-[380px] bg-[#0f172a]/95 border border-glass-border rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}
+                            } z-50 w-72 max-h-[380px] bg-surface/95 border border-border rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}
                           >
-                            <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                            <div className="flex items-center justify-between border-b border-border pb-1.5 mb-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-text-primary">
                                 Squad Payment Status
                               </span>
-                              <span className="text-[10px] font-mono text-white/60 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">
+                              <span className="text-[10px] font-mono text-text-secondary bg-surface-hover px-1.5 py-0.5 rounded border border-border">
                                 {data.paidCount + data.unpaidCount} Assigned
                               </span>
                             </div>
@@ -1381,7 +1385,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                       >
                                         <div className="truncate flex items-center gap-1.5 min-w-0">
                                           <span className="text-red-400 text-[10px] shrink-0">✗</span>
-                                          <span className="truncate text-white/90 font-medium">{item.name}</span>
+                                          <span className="truncate text-text-primary font-medium">{item.name}</span>
                                         </div>
                                         <div className="shrink-0 flex items-center gap-1 font-mono text-[10px]">
                                           <span className="text-red-300 font-bold">₹{item.due}</span>
@@ -1402,7 +1406,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                               </div>
 
                               {/* Divider */}
-                              <div className="border-t border-white/10" />
+                              <div className="border-t border-border" />
 
                               {/* 2. Paid Players SECOND */}
                               <div>
@@ -1422,14 +1426,14 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                     {data.paidPlayerDetails.map((item, i) => (
                                       <div
                                         key={i}
-                                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded bg-white/5 border border-white/5 hover:bg-white/10 transition"
+                                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded bg-surface-hover border border-border hover:bg-surface-hover transition"
                                       >
                                         <div className="truncate flex items-center gap-1.5 min-w-0">
                                           <span className="text-emerald-400 text-[10px] shrink-0">✓</span>
-                                          <span className="truncate text-white/80">{item.name}</span>
+                                          <span className="truncate text-text-primary">{item.name}</span>
                                         </div>
                                         <div className="shrink-0 flex items-center gap-1.5 text-[9px] font-mono">
-                                          <span className="text-white/60">₹{item.amount}</span>
+                                          <span className="text-text-secondary">₹{item.amount}</span>
                                           <span
                                             className={`px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
                                               item.method === "Razorpay"
@@ -1446,7 +1450,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="text-[10px] text-white/40 italic py-1 px-2">No payments received yet</div>
+                                  <div className="text-[10px] text-text-muted italic py-1 px-2">No payments received yet</div>
                                 )}
                               </div>
                             </div>
@@ -1465,20 +1469,20 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                   setEditingMatchFeeId(null);
                                 } catch (err: any) {
                                   console.error("Failed to update match fee:", err);
-                                  alert(err?.message || "Failed to update match fee.");
+                                  toast(err?.message || "Failed to update match fee.", "error");
                                 } finally {
                                   setIsSavingFee(false);
                                 }
                               }}
                               className="inline-flex items-center gap-1 justify-end"
                             >
-                              <span className="text-white/50 text-xs">₹</span>
+                              <span className="text-text-muted text-xs">₹</span>
                               <input
                                 type="number"
                                 min="0"
                                 value={editFeeVal}
                                 onChange={(e) => setEditFeeVal(e.target.value)}
-                                className="w-20 bg-black/80 border border-accent rounded px-1.5 py-0.5 text-xs text-white text-right font-mono font-bold focus:outline-none"
+                                className="w-20 bg-black/80 border border-accent rounded px-1.5 py-0.5 text-xs text-text-primary text-right font-mono font-bold focus:outline-none"
                                 autoFocus
                               />
                               <button
@@ -1492,7 +1496,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                               <button
                                 type="button"
                                 onClick={() => setEditingMatchFeeId(null)}
-                                className="p-1 hover:bg-white/10 text-white/50 hover:text-white rounded transition text-xs font-bold"
+                                className="p-1 hover:bg-surface-hover text-text-muted hover:text-text-primary rounded transition text-xs font-bold"
                                 title="Cancel"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -1501,8 +1505,8 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                           ) : (
                             <div className="flex items-center justify-end gap-1.5 group/fee">
                               <div className="text-right">
-                                <div className="text-white font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
-                                <div className="text-[10px] text-white/40 mt-0.5 font-mono">
+                                <div className="text-text-primary font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
+                                <div className="text-[10px] text-text-muted mt-0.5 font-mono">
                                   {data.match.matchFeeBudget !== undefined ? "Custom Target" : `₹${data.match.fee} × 12 players`}
                                 </div>
                               </div>
@@ -1511,7 +1515,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                   setEditingMatchFeeId(data.match.id);
                                   setEditFeeVal(String(data.matchFeeTotal));
                                 }}
-                                className="opacity-0 group-hover/fee:opacity-100 p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition cursor-pointer"
+                                className="opacity-0 group-hover/fee:opacity-100 p-1 hover:bg-surface-hover rounded text-text-muted hover:text-text-primary transition cursor-pointer"
                                 title="Edit Match Fee"
                               >
                                 <Edit2 className="w-3 h-3" />
@@ -1521,7 +1525,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
                           <div className="text-emerald-400 font-semibold font-mono">₹{data.feeCollected}</div>
-                          <div className="text-[10px] text-white/40">({data.feeCollectedCount})</div>
+                          <div className="text-[10px] text-text-muted">({data.feeCollectedCount})</div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap relative group">
                           <div className="text-amber-400 font-semibold font-mono inline-flex items-center gap-1 cursor-help">
@@ -1530,27 +1534,27 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                               <Info className="w-3 h-3 text-amber-400/60 group-hover:text-amber-300 transition shrink-0" />
                             )}
                           </div>
-                          <div className="text-[10px] text-white/40">({data.feeOffsetCount})</div>
+                          <div className="text-[10px] text-text-muted">({data.feeOffsetCount})</div>
 
                           {/* Desktop Hover Tooltip */}
                           {data.sponsoredDetails.length > 0 && (
-                            <div className={`hidden group-hover:block absolute right-0 ${rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"} z-50 w-64 bg-[#0f172a]/95 border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}>
+                            <div className={`hidden group-hover:block absolute right-0 ${rowIndex < 2 ? "top-full mt-2 before:-top-3" : "bottom-full mb-2 before:-bottom-3"} z-50 w-64 bg-surface/95 border border-amber-500/30 rounded-xl p-3 shadow-2xl backdrop-blur-xl pointer-events-auto text-left animate-in fade-in duration-150 before:content-[''] before:absolute before:left-0 before:right-0 before:h-3`}>
                               <div className="flex items-center justify-between border-b border-amber-500/20 pb-1.5 mb-2">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                                   Club Sponsored
                                 </span>
-                                <span className="text-[10px] font-mono font-bold text-white">
+                                <span className="text-[10px] font-mono font-bold text-text-primary">
                                   Total: ₹{data.feeOffset}
                                 </span>
                               </div>
                               <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
                                 {data.sponsoredDetails.map((detail, idx) => (
-                                  <div key={idx} className="flex items-center justify-between text-xs py-0.5 border-b border-white/5 last:border-0">
+                                  <div key={idx} className="flex items-center justify-between text-xs py-0.5 border-b border-border last:border-0">
                                     <div className="truncate pr-2">
-                                      <span className="text-white font-medium block truncate">
+                                      <span className="text-text-primary font-medium block truncate">
                                         {detail.playerName}
                                       </span>
-                                      <span className="text-[9px] text-white/50 block truncate">
+                                      <span className="text-[9px] text-text-muted block truncate">
                                         {detail.reason}
                                       </span>
                                     </div>
@@ -1570,7 +1574,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                                 {data.percentRecovered}%
                               </span>
                             ) : (
-                              <span className="text-white/30">—</span>
+                              <span className="text-text-primary/30">—</span>
                             )}
                           </td>
                         )}
@@ -1580,16 +1584,16 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                 </tbody>
                 {collectedMatches.length > 0 && (
                   <tfoot>
-                    <tr className="border-t border-glass-border">
-                      <td className="py-2.5 pr-3 font-bold text-white text-xs uppercase tracking-wider">Total</td>
+                    <tr className="border-t border-border">
+                      <td className="py-2.5 pr-3 font-bold text-text-primary text-xs uppercase tracking-wider">Total</td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap font-mono text-xs">
                         <span className="text-emerald-400 font-bold">{collectedMatches.reduce((s, d) => s + d.paidCount, 0)} Paid</span>
-                        <span className="text-white/30 mx-1">/</span>
+                        <span className="text-text-primary/30 mx-1">/</span>
                         <span className="text-red-400 font-bold">{collectedMatches.reduce((s, d) => s + d.unpaidCount, 0)} Unpaid</span>
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div className="text-white font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0)}</div>
-                        <div className="text-[10px] text-white/40 font-mono">{collectedMatches.length} matches</div>
+                        <div className="text-text-primary font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0)}</div>
+                        <div className="text-[10px] text-text-muted font-mono">{collectedMatches.length} matches</div>
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <div className="text-emerald-400 font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.feeCollected, 0)}</div>
@@ -1612,7 +1616,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                 )}
               </table>
               {collectedMatches.length === 0 && (
-                <div className="text-center text-white/50 text-sm py-4">
+                <div className="text-center text-text-muted text-sm py-4">
                   No match collections found.
                 </div>
               )}

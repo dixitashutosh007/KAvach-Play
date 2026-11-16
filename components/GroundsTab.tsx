@@ -1,6 +1,7 @@
 import { useStore } from "@/hooks/useStore";
 import { Copy, MapPin, Plus, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import { useState } from "react";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function GroundsTab({
   store,
@@ -9,6 +10,7 @@ export function GroundsTab({
   store: ReturnType<typeof useStore>;
   persona: string;
 }) {
+  const { confirm: confirmAction } = useConfirm();
   const isAdmin = persona === "admin";
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -62,8 +64,8 @@ export function GroundsTab({
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("Are you sure you want to remove this ground?")) {
+  const handleDelete = async (id: string) => {
+    if (await confirmAction({ message: "Are you sure you want to remove this ground?", destructive: true })) {
       store.deleteGround(id);
     }
   };
@@ -71,7 +73,7 @@ export function GroundsTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary">
           Grounds Network
         </h2>
         {isAdmin && (
@@ -105,13 +107,13 @@ export function GroundsTab({
       {isAdding && (
         <form
           onSubmit={handleCreateOrUpdate}
-          className="glass p-4 space-y-3 rounded-xl border border-accent/20 relative"
+          className="bg-surface p-4 space-y-3 rounded-xl border border-accent/20 relative"
         >
           <h3 className="text-sm font-bold text-accent mb-2 uppercase tracking-wide">
             {editingId ? "Edit Ground" : "New Ground"}
           </h3>
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Ground Name
             </label>
             <input
@@ -121,12 +123,12 @@ export function GroundsTab({
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
               }
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               placeholder="e.g. Lords Cricket Ground"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Google Map URL
             </label>
             <input
@@ -136,13 +138,13 @@ export function GroundsTab({
               onChange={(e) =>
                 setFormData({ ...formData, mapUrl: e.target.value })
               }
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               placeholder="https://maps.app.goo.gl/..."
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Organiser Name
               </label>
               <input
@@ -152,12 +154,12 @@ export function GroundsTab({
                 onChange={(e) =>
                   setFormData({ ...formData, organiserName: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 placeholder="e.g. Rajesh"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Organiser Phone
               </label>
               <input
@@ -166,13 +168,13 @@ export function GroundsTab({
                 onChange={(e) =>
                   setFormData({ ...formData, organiserPhone: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
                 placeholder="+91 XXXXXXXXXX"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               GPay Number
             </label>
             <input
@@ -182,14 +184,14 @@ export function GroundsTab({
               onChange={(e) =>
                 setFormData({ ...formData, gpayNumber: e.target.value })
               }
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
               placeholder="e.g. 9876543210"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
-                <span>Practice Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
+              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                <span>Practice Fee (₹)</span><span className="text-text-muted normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
               </label>
               <input
                 type="number"
@@ -201,12 +203,12 @@ export function GroundsTab({
                     practiceFee: e.target.value === "" ? 0 : parseInt(e.target.value) || 0,
                   })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
             <div>
-              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-white/70">
-                <span>Tournament Fee (₹)</span><span className="text-white/40 normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
+              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                <span>Tournament Fee (₹)</span><span className="text-text-muted normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
               </label>
               <input
                 type="number"
@@ -218,7 +220,7 @@ export function GroundsTab({
                     tournamentFee: e.target.value === "" ? 0 : parseInt(e.target.value) || 0,
                   })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
           </div>
@@ -238,7 +240,7 @@ export function GroundsTab({
                   tournamentFee: 0,
                 });
               }}
-              className="flex-1 rounded-lg bg-white/5 py-2.5 text-sm font-bold text-white hover:bg-white/10 transition"
+              className="flex-1 rounded-lg bg-surface-hover py-2.5 text-sm font-bold text-text-primary hover:bg-surface-hover transition"
             >
               Cancel
             </button>
@@ -257,11 +259,11 @@ export function GroundsTab({
           <div
             key={ground.id}
             data-testid="ground-card"
-            className="glass rounded-xl p-4 flex flex-col justify-between group relative overflow-hidden"
+            className="bg-surface rounded-xl p-4 flex flex-col justify-between group relative overflow-hidden"
           >
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="text-[14px] font-semibold text-white">
+                <h3 className="text-[14px] font-semibold text-text-primary">
                   {ground.name}
                 </h3>
                 <a
@@ -279,21 +281,21 @@ export function GroundsTab({
                   <>
                     <button
                       onClick={() => handleEdit(ground)}
-                      className="p-1.5 rounded-md bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition"
+                      className="p-1.5 rounded-md bg-surface-hover text-text-secondary hover:text-text-primary hover:bg-surface-hover transition"
                       title="Edit"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleDuplicate(ground)}
-                      className="p-1.5 rounded-md bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition"
+                      className="p-1.5 rounded-md bg-surface-hover text-text-secondary hover:text-text-primary hover:bg-surface-hover transition"
                       title="Duplicate"
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleDelete(ground.id)}
-                      className="p-1.5 rounded-md bg-white/5 text-rose-500/60 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                      className="p-1.5 rounded-md bg-surface-hover text-rose-500/60 hover:text-rose-500 hover:bg-rose-500/10 transition"
                       title="Remove"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -302,40 +304,40 @@ export function GroundsTab({
                 )}
               </div>
             </div>
-            <div className="mt-4 flex items-center justify-between text-sm text-white/60 border-t border-glass-border pt-3">
+            <div className="mt-4 flex items-center justify-between text-sm text-text-secondary border-t border-border pt-3">
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-white/40">
+                <p className="text-[11px] uppercase tracking-wider text-text-muted">
                   Organiser
                 </p>
-                <p className="font-medium text-white">{ground.organiserName}</p>
+                <p className="font-medium text-text-primary">{ground.organiserName}</p>
               </div>
               <div className="text-right">
-                <p className="text-[11px] uppercase tracking-wider text-white/40">
+                <p className="text-[11px] uppercase tracking-wider text-text-muted">
                   GPay / UPI
                 </p>
-                <div className="flex items-center justify-end gap-1 font-mono text-white text-[13px]">
+                <div className="flex items-center justify-end gap-1 font-mono text-text-primary text-[13px]">
                   {ground.gpayNumber}
                   <Copy
                     onClick={() =>
                       navigator.clipboard.writeText(ground.gpayNumber)
                     }
-                    className="h-3 w-3 text-white/40 cursor-pointer hover:text-white"
+                    className="h-3 w-3 text-text-muted cursor-pointer hover:text-text-primary"
                   />
                 </div>
               </div>
             </div>
             {(ground.practiceFee || ground.tournamentFee) ? (
-              <div className="mt-3 flex items-center justify-between text-sm text-white/60 border-t border-glass-border pt-3">
+              <div className="mt-3 flex items-center justify-between text-sm text-text-secondary border-t border-border pt-3">
                 {ground.practiceFee ? (
                    <div>
-                     <p className="text-[11px] uppercase tracking-wider text-white/40">Practice</p>
-                     <p className="font-mono text-white font-medium text-[13px]">₹{ground.practiceFee}</p>
+                     <p className="text-[11px] uppercase tracking-wider text-text-muted">Practice</p>
+                     <p className="font-mono text-text-primary font-medium text-[13px]">₹{ground.practiceFee}</p>
                    </div>
                 ) : <div />}
                 {ground.tournamentFee ? (
                    <div className="text-right">
-                     <p className="text-[11px] uppercase tracking-wider text-white/40">Tournament</p>
-                     <p className="font-mono text-white font-medium text-[13px]">₹{ground.tournamentFee}</p>
+                     <p className="text-[11px] uppercase tracking-wider text-text-muted">Tournament</p>
+                     <p className="font-mono text-text-primary font-medium text-[13px]">₹{ground.tournamentFee}</p>
                    </div>
                 ) : <div />}
               </div>
@@ -358,7 +360,7 @@ export function GroundsTab({
           </div>
         ))}
         {store.grounds.length === 0 && (
-          <div className="col-span-full py-12 text-center text-sm text-white/50 glass border-dashed">
+          <div className="col-span-full py-12 text-center text-sm text-text-muted bg-surface border-dashed">
             No grounds added yet.
           </div>
         )}

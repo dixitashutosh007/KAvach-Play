@@ -2,14 +2,14 @@ import React from "react";
 
 export default function LegalPage() {
   return (
-    <div className="min-h-screen bg-black text-white p-6 md:p-12 overflow-y-auto">
+    <div className="min-h-screen bg-black text-text-primary p-6 md:p-12 overflow-y-auto">
       <div className="max-w-4xl mx-auto space-y-12">
         <h1 className="text-3xl font-bold text-accent mb-8">
           Legal & Policies
         </h1>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-semibold border-b border-white/20 pb-2">
+          <h2 className="text-2xl font-semibold border-b border-border pb-2">
             Privacy Policy
           </h2>
           <p className="text-sm text-gray-400">Effective Date: June 19, 2026</p>
@@ -80,7 +80,7 @@ export default function LegalPage() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-semibold border-b border-white/20 pb-2">
+          <h2 className="text-2xl font-semibold border-b border-border pb-2">
             Terms and Conditions
           </h2>
           <p className="text-sm text-gray-400">Effective Date: June 19, 2026</p>

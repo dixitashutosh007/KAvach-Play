@@ -33,12 +33,12 @@ const PROVIDER_META: Record<
   anonymous: {
     label: "Guest",
     Icon: Ghost,
-    cls: "bg-white/10 text-white/50 border-white/10",
+    cls: "bg-surface-hover text-text-muted border-border",
   },
   "apple.com": {
     label: "Apple",
     Icon: Shield,
-    cls: "bg-white/15 text-white/70 border-white/20",
+    cls: "bg-surface-hover text-text-secondary border-border",
   },
 };
 
@@ -69,7 +69,7 @@ export function AuthProviderBadges({
   const list = (providers || []).filter(Boolean);
   if (list.length === 0) {
     return (
-      <span className="text-[10px] text-white/40 italic">{emptyLabel}</span>
+      <span className="text-[10px] text-text-muted italic">{emptyLabel}</span>
     );
   }
   const iconCls = size === "xs" ? "w-3 h-3" : "w-3.5 h-3.5";
@@ -87,7 +87,7 @@ export function AuthProviderBadges({
             ({
               label: id,
               Icon: Shield,
-              cls: "bg-white/10 text-white/60 border-white/10",
+              cls: "bg-surface-hover text-text-secondary border-border",
             } as const);
           const { Icon } = meta;
           return (
@@ -103,14 +103,14 @@ export function AuthProviderBadges({
       </div>
 
       {showTimestamps && (firstLinkedAt || lastLoginAt) && (
-        <div className="space-y-0.5 text-[10px] text-white/40 leading-tight">
+        <div className="space-y-0.5 text-[10px] text-text-muted leading-tight">
           {list.map((id) => {
             const label = PROVIDER_META[id]?.label || id;
             const rel = timeAgo(firstLinkedAt?.[id]);
             if (!rel) return null;
             return (
               <div key={`ts-${id}`} className="flex items-center gap-1">
-                <span className="text-white/50">{label}:</span>
+                <span className="text-text-muted">{label}:</span>
                 <span>linked {rel}</span>
               </div>
             );

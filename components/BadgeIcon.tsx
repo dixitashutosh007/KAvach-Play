@@ -1,5 +1,6 @@
 import { BadgeType, BadgeTier, Badge, BadgeTypeDef } from "@/lib/types";
 import { useState } from "react";
+import { useToast } from "@/components/ui/Toast";
 
 export type BadgeMeta = { label: string; short: string; tier: BadgeTier; emoji: string; stackable: boolean };
 
@@ -37,6 +38,7 @@ export const TIER_COLORS: Record<BadgeTier, { bg: string; border: string; text: 
 export function buildBadgeMetaMap(customDefs: BadgeTypeDef[]): Record<string, BadgeMeta> {
   const map: Record<string, BadgeMeta> = { ...DEFAULT_BADGE_DEFS };
   for (const def of customDefs) {
+  const { toast } = useToast();
     map[def.id] = { label: def.label, short: def.short, tier: def.tier, emoji: def.emoji, stackable: def.stackable };
   }
   return map;
@@ -189,7 +191,7 @@ export function BadgeCard({
     >
       <BadgeIcon badgeType={badgeType} size={40} count={count} customDefs={customDefs} />
       {showLabel && (
-        <span className="text-[9px] font-bold text-white/70 text-center leading-tight">
+        <span className="text-[9px] font-bold text-text-secondary text-center leading-tight">
           {meta.short}
         </span>
       )}
@@ -417,6 +419,7 @@ export function BadgeShowcase({
   customDefs?: BadgeTypeDef[];
   onClose: () => void;
 }) {
+  const { toast } = useToast();
   const [isSharing, setIsSharing] = useState(false);
   const meta = getBadgeMeta(badge.badgeType, customDefs);
   const colors = TIER_COLORS[meta.tier];
@@ -435,7 +438,7 @@ export function BadgeShowcase({
       } else {
         const caption2 = `${badge.playerName} earned the "${meta.label}" badge at KAvach Play!\n\n#KAvachPlay #CricketBadge #Cricket`;
         await navigator.clipboard?.writeText(caption2);
-        alert("Badge info copied to clipboard!");
+        toast("Badge info copied to clipboard!", "success");
       }
     } catch {
       // user cancelled
@@ -495,26 +498,26 @@ export function BadgeShowcase({
           </div>
 
           {/* Badge name */}
-          <h2 className="text-white font-bold text-2xl text-center mb-1">
+          <h2 className="text-text-primary font-bold text-2xl text-center mb-1">
             {meta.label}
           </h2>
 
           {/* Divider */}
-          <div className="w-32 h-px bg-white/10 mb-6" />
+          <div className="w-32 h-px bg-surface-hover mb-6" />
 
           {/* Player name */}
-          <p className="text-white font-bold text-lg mb-1">
+          <p className="text-text-primary font-bold text-lg mb-1">
             {badge.playerName}
           </p>
 
           {/* Award date */}
-          <p className="text-white/40 text-sm mb-1">
+          <p className="text-text-muted text-sm mb-1">
             Awarded on {dateStr}
           </p>
 
           {/* Note */}
           {badge.note && (
-            <p className="text-white/30 text-xs italic mt-1 mb-2 text-center">
+            <p className="text-text-primary/30 text-xs italic mt-1 mb-2 text-center">
               &ldquo;{badge.note}&rdquo;
             </p>
           )}
@@ -537,7 +540,7 @@ export function BadgeShowcase({
           <button
             onClick={handleShare}
             disabled={isSharing}
-            className="mt-6 flex items-center gap-2.5 bg-accent text-black font-bold py-3 px-8 rounded-full hover:brightness-110 transition disabled:opacity-50 text-sm"
+            className="mt-6 flex items-center gap-2.5 bg-accent text-text-accent font-bold py-3 px-8 rounded-full hover:brightness-110 transition disabled:opacity-50 text-sm"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
@@ -549,7 +552,7 @@ export function BadgeShowcase({
           {/* Close */}
           <button
             onClick={onClose}
-            className="mt-4 text-white/30 text-xs hover:text-white/60 transition"
+            className="mt-4 text-text-primary/30 text-xs hover:text-text-secondary transition"
           >
             Tap anywhere to close
           </button>

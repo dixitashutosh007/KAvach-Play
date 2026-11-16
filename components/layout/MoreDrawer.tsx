@@ -86,15 +86,15 @@ export function MoreDrawer({
       />
       <div
         ref={sheetRef}
-        className="absolute bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-glass-border rounded-t-2xl pb-safe animate-slide-up"
+        className="absolute bottom-0 left-0 right-0 bg-surface border-t border-border rounded-t-2xl pb-safe animate-slide-up"
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white/60">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary">
             More
           </h3>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white"
+            className="p-1.5 rounded-lg hover:bg-surface-hover transition text-text-muted hover:text-text-primary"
           >
             <X className="w-4 h-4" />
           </button>
@@ -112,8 +112,8 @@ export function MoreDrawer({
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition cursor-pointer ${
                   isActive
-                    ? "bg-accent text-black"
-                    : "text-white/70 hover:bg-white/5"
+                    ? "bg-accent text-text-accent"
+                    : "text-text-secondary hover:bg-surface-hover"
                 }`}
               >
                 <Icon className="w-5 h-5 shrink-0" />

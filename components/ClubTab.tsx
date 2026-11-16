@@ -57,14 +57,14 @@ export function ClubTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border overflow-x-auto no-scrollbar" data-testid="club-sub-tabs">
+      <div className="flex bg-surface-hover rounded-lg p-1 border border-border overflow-x-auto no-scrollbar" data-testid="club-sub-tabs">
         {visibleTabs.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             data-testid={`club-sub-tab-${key}`}
             onClick={() => setSubTab(key)}
             className={`shrink-0 text-[10px] font-bold uppercase py-2 px-3 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap ${
-              subTab === key ? "bg-accent text-black" : "text-white/50 hover:text-white"
+              subTab === key ? "bg-accent text-text-accent" : "text-text-muted hover:text-text-primary"
             }`}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />

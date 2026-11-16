@@ -230,7 +230,7 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
         <button
           onClick={handleCheckSync}
           disabled={busy || statusLoading}
-          className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-text-primary transition disabled:opacity-50"
         >
           <Search className="w-3.5 h-3.5" />
           {statusLoading ? "Checking…" : "Check Sync"}
@@ -248,7 +248,7 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
             href={calendarUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
+            className="flex items-center gap-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-text-primary transition"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             View Calendar
@@ -256,7 +256,7 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
         )}
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition"
+          className="flex items-center gap-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-text-primary transition"
         >
           <Download className="w-3.5 h-3.5" />
           Export Schedule
@@ -276,14 +276,14 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
             <button
               onClick={handlePurge}
               disabled={purging}
-              className="rounded-lg bg-red-500 hover:bg-red-600 px-3 py-1.5 text-[11px] font-bold uppercase text-white transition disabled:opacity-50"
+              className="rounded-lg bg-red-500 hover:bg-red-600 px-3 py-1.5 text-[11px] font-bold uppercase text-text-primary transition disabled:opacity-50"
             >
               {purging ? "Deleting…" : "Yes, Reset"}
             </button>
             <button
               onClick={() => setPurgeConfirm(false)}
               disabled={purging}
-              className="rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-[11px] font-bold uppercase text-white transition"
+              className="rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase text-text-primary transition"
             >
               Cancel
             </button>
@@ -307,7 +307,7 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
 
       {progress && progress.phase !== "done" && (
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] text-white/60">
+          <div className="flex items-center justify-between text-[11px] text-text-secondary">
             <span>
               {progress.phase === "checking"
                 ? "Loading calendar events…"
@@ -320,7 +320,7 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
             </span>
           </div>
           {progress.total > 0 && (
-            <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+            <div className="h-1.5 w-full bg-surface-hover rounded-full overflow-hidden">
               <div
                 className="h-full bg-accent transition-all duration-200 rounded-full"
                 style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
@@ -331,7 +331,7 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
       )}
 
       {syncMsg && (
-        <div className="text-[11px] text-white/60 bg-black/30 border border-glass-border rounded-lg p-2">
+        <div className="text-[11px] text-text-secondary bg-surface-hover border border-border rounded-lg p-2">
           {syncMsg}
         </div>
       )}

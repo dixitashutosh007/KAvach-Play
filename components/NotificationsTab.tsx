@@ -57,11 +57,11 @@ export function NotificationsTab({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-white tracking-tight uppercase flex items-center gap-2">
+          <h2 className="text-xl font-black text-text-primary tracking-tight uppercase flex items-center gap-2">
             <Bell className="w-5 h-5 text-accent" />
             Notification Hub
           </h2>
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-text-muted">
             {myNotifications.length} alerts ({unreadCount} unread)
           </p>
         </div>
@@ -69,7 +69,7 @@ export function NotificationsTab({
         {unreadCount > 0 && (
           <button
             onClick={markAllAsRead}
-            className="text-[10px] uppercase font-bold tracking-widest text-accent hover:text-white border border-accent/30 hover:border-white/30 px-3 py-1.5 rounded-lg transition"
+            className="text-[10px] uppercase font-bold tracking-widest text-accent hover:text-text-primary border border-accent/30 hover:border-border px-3 py-1.5 rounded-lg transition"
           >
             Mark All Read
           </button>
@@ -78,10 +78,10 @@ export function NotificationsTab({
 
       <div className="space-y-3">
         {myNotifications.length === 0 ? (
-          <div className="glass p-12 text-center rounded-2xl border border-glass-border">
-            <Bell className="w-10 h-10 text-white/20 mx-auto mb-4" />
-            <h3 className="text-white font-bold mb-1">All Caught Up!</h3>
-            <p className="text-white/50 text-sm">
+          <div className="bg-surface p-12 text-center rounded-2xl border border-border">
+            <Bell className="w-10 h-10 text-text-primary/20 mx-auto mb-4" />
+            <h3 className="text-text-primary font-bold mb-1">All Caught Up!</h3>
+            <p className="text-text-muted text-sm">
               You have no pending notifications right now.
             </p>
           </div>
@@ -90,11 +90,11 @@ export function NotificationsTab({
           {myNotifications.map((notif) => (
             <div
               key={notif.id}
-              className={`glass p-4 rounded-xl border transition ${notif.isRead ? "border-glass-border opacity-70" : "border-accent/40 bg-accent/5"}`}
+              className={`bg-surface p-4 rounded-xl border transition ${notif.isRead ? "border-border opacity-70" : "border-accent/40 bg-accent/5"}`}
             >
               <div className="flex gap-4 items-start">
                 <div
-                  className={`mt-1 p-2 rounded-full shrink-0 ${notif.type === "email" || notif.type === "both" ? "bg-blue-500/20 text-blue-400" : "bg-white/10 text-white/70"}`}
+                  className={`mt-1 p-2 rounded-full shrink-0 ${notif.type === "email" || notif.type === "both" ? "bg-blue-500/20 text-blue-400" : "bg-surface-hover text-text-secondary"}`}
                 >
                   {notif.type === "email" || notif.type === "both" ? (
                     <Mail className="w-4 h-4" />
@@ -105,11 +105,11 @@ export function NotificationsTab({
                 <div className="flex-1">
                   <div className="flex justify-between items-start gap-2">
                     <h4
-                      className={`text-sm font-bold ${notif.isRead ? "text-white/80" : "text-accent"}`}
+                      className={`text-sm font-bold ${notif.isRead ? "text-text-primary" : "text-accent"}`}
                     >
                       {notif.title}
                     </h4>
-                    <span className="text-[9px] text-white/40 whitespace-nowrap">
+                    <span className="text-[9px] text-text-muted whitespace-nowrap">
                       {notif.createdAt?.seconds
                         ? new Date(
                             notif.createdAt.seconds * 1000,
@@ -117,7 +117,7 @@ export function NotificationsTab({
                         : "Just now"}
                     </span>
                   </div>
-                  <p className="text-sm text-white/60 mt-1 leading-relaxed break-words">
+                  <p className="text-sm text-text-secondary mt-1 leading-relaxed break-words">
                     {notif.message}
                   </p>
 
@@ -136,14 +136,14 @@ export function NotificationsTab({
                     {!notif.isRead && (
                       <button
                         onClick={() => markAsRead(notif.id)}
-                        className="text-[10px] text-white/70 hover:text-white font-bold uppercase tracking-widest flex items-center gap-1 transition"
+                        className="text-[10px] text-text-secondary hover:text-text-primary font-bold uppercase tracking-widest flex items-center gap-1 transition"
                       >
                         <Check className="w-3.5 h-3.5" /> Mark Read
                       </button>
                     )}
                     <button
                       onClick={() => deleteNotification(notif.id)}
-                      className="text-[10px] text-white/30 hover:text-red-400 font-bold uppercase tracking-widest flex items-center gap-1 transition"
+                      className="text-[10px] text-text-primary/30 hover:text-red-400 font-bold uppercase tracking-widest flex items-center gap-1 transition"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Dismiss
                     </button>
@@ -157,7 +157,7 @@ export function NotificationsTab({
               <button
                 onClick={() => loadMoreNotifications?.()}
                 disabled={notificationsLoadingMore}
-                className="text-[10px] uppercase font-bold tracking-widest text-white/60 hover:text-white border border-white/10 hover:border-white/30 px-4 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-[10px] uppercase font-bold tracking-widest text-text-secondary hover:text-text-primary border border-border hover:border-border px-4 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {notificationsLoadingMore ? "Loading..." : "Load Older Notifications"}
               </button>

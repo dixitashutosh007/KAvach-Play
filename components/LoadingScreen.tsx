@@ -75,7 +75,7 @@ export function LoadingScreen({
                 ease: "backOut"
               }}
               className={`text-2xl font-black tracking-widest ${
-                i < 6 ? "text-white" : "text-emerald-400"
+                i < 6 ? "text-text-primary" : "text-emerald-400"
               }`}
               style={{ marginRight: char === ' ' ? '0.5rem' : '0' }}
             >
@@ -111,7 +111,7 @@ export function LoadingScreen({
           <motion.div
              animate={{ opacity: [0.5, 1, 0.5] }}
              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-             className="text-2xl font-black text-white tracking-[0.3em] uppercase flex gap-3 relative z-10"
+             className="text-2xl font-black text-text-primary tracking-[0.3em] uppercase flex gap-3 relative z-10"
           >
             <span>KAvach</span>
             <span className="text-emerald-400 font-light">Play</span>
@@ -239,7 +239,7 @@ export function LoadingScreen({
               repeat: Infinity,
               ease: "easeInOut",
             }}
-            className="bg-black/30 backdrop-blur-sm p-5 rounded-full border border-emerald-500/20 shadow-[0_0_30px_rgba(52,211,153,0.2)]"
+            className="bg-surface-hover backdrop-blur-sm p-5 rounded-full border border-emerald-500/20 shadow-[0_0_30px_rgba(52,211,153,0.2)]"
           >
             <Shield className="w-10 h-10 text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]" strokeWidth={1.5} />
           </motion.div>
@@ -256,7 +256,7 @@ export function LoadingScreen({
               initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.6, duration: 0.6, ease: "easeOut" }}
-              className="text-3xl font-black text-white tracking-[0.2em]"
+              className="text-3xl font-black text-text-primary tracking-[0.2em]"
             >
               KAvach
             </motion.span>

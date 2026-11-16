@@ -33,13 +33,15 @@ import {
 import { useStore } from "@/hooks/useStore";
 import type { Match, Tournament } from "@/lib/types";
 import { inputToDbDate } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 type Status = Tournament["status"];
 const STATUS_LABELS: Status[] = ["Upcoming", "Ongoing", "Ended", "Disabled"];
 const STATUS_STYLES: Record<Status, string> = {
   Upcoming: "bg-sky-500/20 text-sky-300 border-sky-500/40",
   Ongoing: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-  Ended: "bg-white/10 text-white/50 border-white/20",
+  Ended: "bg-surface-hover text-text-muted border-border",
   Disabled: "bg-red-500/20 text-red-300 border-red-500/40",
 };
 
@@ -59,6 +61,8 @@ export function TournamentsTab({
 }: {
   store: ReturnType<typeof useStore>;
 }) {
+  const { confirm: confirmAction } = useConfirm();
+  const { toast } = useToast();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -106,7 +110,7 @@ export function TournamentsTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
           <Trophy className="w-5 h-5 text-accent" /> Tournaments
         </h2>
         <button
@@ -118,7 +122,7 @@ export function TournamentsTab({
       </div>
 
       {sortedTournaments.length === 0 ? (
-        <div className="glass rounded-xl border border-glass-border p-6 text-center text-white/50 text-sm">
+        <div className="bg-surface rounded-xl border border-border p-6 text-center text-text-muted text-sm">
           No tournaments yet. Click{" "}
           <span className="text-accent font-bold">+ Add Tournament</span> to
           create one.
@@ -135,7 +139,7 @@ export function TournamentsTab({
             return (
               <div
                 key={t.id}
-                className="glass rounded-xl border border-glass-border p-3 hover:border-accent/40 transition cursor-pointer"
+                className="bg-surface rounded-xl border border-border p-3 hover:border-accent/40 transition cursor-pointer"
                 onClick={() => setDetailId(t.id)}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -146,30 +150,30 @@ export function TournamentsTab({
                       >
                         {t.status}
                       </span>
-                      <span className="text-[10px] text-white/50 font-mono">
+                      <span className="text-[10px] text-text-muted font-mono">
                         ₹{t.perPlayerFee}/player
                       </span>
-                      <span className="text-[10px] text-white/50">
+                      <span className="text-[10px] text-text-muted">
                         · {linkedMatches.length} match
                         {linkedMatches.length !== 1 ? "es" : ""}
                         {upcoming.length > 0 ? ` (${upcoming.length} upcoming)` : ""}
                       </span>
                     </div>
-                    <h3 className="font-bold text-white truncate">{t.name}</h3>
-                    <div className="text-[11px] text-white/50 mt-0.5 truncate">
+                    <h3 className="font-bold text-text-primary truncate">{t.name}</h3>
+                    <div className="text-[11px] text-text-muted mt-0.5 truncate">
                       {ground?.name || "Unknown ground"} · {t.organiserName}
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => setEditingId(t.id)}
-                      className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/20 hover:text-white transition"
+                      className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-surface-hover hover:text-text-primary transition"
                       title="Edit"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     {deleteConfirmId === t.id ? (
-                      <div className="flex items-center gap-1 bg-black/40 rounded-lg px-2 border border-red-500/30">
+                      <div className="flex items-center gap-1 bg-surface-hover rounded-lg px-2 border border-red-500/30">
                         <span className="text-[10px] text-red-400 uppercase font-bold tracking-wider">
                           Sure?
                         </span>
@@ -184,7 +188,7 @@ export function TournamentsTab({
                         </button>
                         <button
                           onClick={() => setDeleteConfirmId(null)}
-                          className="text-white/60 hover:bg-white/10 rounded p-1 transition"
+                          className="text-text-secondary hover:bg-surface-hover rounded p-1 transition"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -193,17 +197,17 @@ export function TournamentsTab({
                       <button
                         onClick={() => {
                           if (!canDelete) {
-                            alert(
+                            toast(
                               `Can't delete: ${upcoming.length} upcoming match${upcoming.length !== 1 ? "es are" : " is"} still linked to this tournament. End or delete those matches first.`,
-                            );
+                            "success");
                             return;
                           }
                           setDeleteConfirmId(t.id);
                         }}
                         className={`w-8 h-8 rounded-full flex items-center justify-center transition ${
                           canDelete
-                            ? "bg-white/5 hover:bg-red-500/30 hover:text-red-400"
-                            : "bg-white/5 opacity-30 cursor-not-allowed"
+                            ? "bg-surface-hover hover:bg-red-500/30 hover:text-red-400"
+                            : "bg-surface-hover opacity-30 cursor-not-allowed"
                         }`}
                         title={
                           canDelete
@@ -326,24 +330,24 @@ function TournamentFormModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
       <div className="relative w-full max-w-md my-8">
-        <div className="sticky top-0 bg-[#0f172a] p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-glass-border">
-          <h2 className="text-xl font-bold text-white">
+        <div className="sticky top-0 bg-surface p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-border">
+          <h2 className="text-xl font-bold text-text-primary">
             {isEdit ? "Edit Tournament" : "Add Tournament"}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-white/50 hover:text-white"
+            className="text-text-muted hover:text-text-primary"
           >
             <X className="w-6 h-6" />
           </button>
         </div>
         <form
           onSubmit={handleSubmit}
-          className="bg-[#0f172a] p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
+          className="bg-surface p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
         >
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Name <span className="text-red-400">*</span>
             </label>
             <input
@@ -351,12 +355,12 @@ function TournamentFormModal({
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Corporate Cup 2026"
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Ground <span className="text-red-400">*</span>
             </label>
             <select
@@ -379,14 +383,14 @@ function TournamentFormModal({
                   gpayNumber: form.gpayNumber || g.gpayNumber || "",
                 });
               }}
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
             >
               <option value="" disabled>Select a ground</option>
               {store.grounds.map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </select>
-            <div className="text-[10px] text-white/40 mt-0.5">
+            <div className="text-[10px] text-text-muted mt-0.5">
               Organiser Name, Phone and GPay auto-fill from the ground —
               edit if this tournament uses a different contact.
             </div>
@@ -394,7 +398,7 @@ function TournamentFormModal({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Organiser
               </label>
               <input
@@ -402,12 +406,12 @@ function TournamentFormModal({
                 onChange={(e) =>
                   setForm({ ...form, organiserName: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 placeholder="Name"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Phone
               </label>
               <input
@@ -415,26 +419,26 @@ function TournamentFormModal({
                 onChange={(e) =>
                   setForm({ ...form, organiserPhone: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
                 placeholder="+91 XXXXXXXXXX"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               GPay Number
             </label>
             <input
               value={form.gpayNumber}
               onChange={(e) => setForm({ ...form, gpayNumber: e.target.value })}
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
               placeholder="+91 XXXXXXXXXX"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Jersey Colour
             </label>
             <div className="flex gap-2">
@@ -443,8 +447,8 @@ function TournamentFormModal({
                   key={c}
                   className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition flex items-center justify-center gap-2 ${
                     form.jerseyColor === c
-                      ? "bg-accent text-black font-bold border-accent"
-                      : "bg-transparent text-white border-glass-border hover:bg-white/5"
+                      ? "bg-accent text-text-accent font-bold border-accent"
+                      : "bg-transparent text-text-primary border-border hover:bg-surface-hover"
                   }`}
                 >
                   <input
@@ -464,7 +468,7 @@ function TournamentFormModal({
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Format
             </label>
             <div className="flex gap-2">
@@ -473,8 +477,8 @@ function TournamentFormModal({
                   key={f}
                   className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${
                     (form.format || "T30") === f
-                      ? "bg-accent text-black font-bold border-accent"
-                      : "bg-transparent text-white border-glass-border hover:bg-white/5"
+                      ? "bg-accent text-text-accent font-bold border-accent"
+                      : "bg-transparent text-text-primary border-border hover:bg-surface-hover"
                   }`}
                 >
                   <input
@@ -492,7 +496,7 @@ function TournamentFormModal({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Amount / Match (₹)
               </label>
               <input
@@ -500,12 +504,12 @@ function TournamentFormModal({
                 min="0"
                 value={form.amountPerMatch || ""}
                 onChange={(e) => setAmount(parseInt(e.target.value) || 0)}
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
                 placeholder="e.g. 4800"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Per Player Fee (₹)
               </label>
               <input
@@ -516,11 +520,11 @@ function TournamentFormModal({
                   setFeeManuallyEdited(true);
                   setForm({ ...form, perPlayerFee: parseInt(e.target.value) || 0 });
                 }}
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
                 placeholder="auto"
               />
               {!feeManuallyEdited && (
-                <div className="text-[10px] text-white/40 mt-0.5">
+                <div className="text-[10px] text-text-muted mt-0.5">
                   auto = amount ÷ 12 × 1.05
                 </div>
               )}
@@ -528,7 +532,7 @@ function TournamentFormModal({
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Status
             </label>
             <select
@@ -536,26 +540,26 @@ function TournamentFormModal({
               onChange={(e) =>
                 setForm({ ...form, status: e.target.value as Status })
               }
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
             >
               {STATUS_LABELS.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            <div className="text-[10px] text-white/40 mt-0.5">
+            <div className="text-[10px] text-text-muted mt-0.5">
               Ended and Disabled tournaments don't appear in the match form dropdown.
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
               Notes (opt.)
             </label>
             <textarea
               value={form.notes || ""}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
             />
           </div>
 
@@ -615,12 +619,12 @@ function TournamentDetail({
     <div className="space-y-4">
       <button
         onClick={onBack}
-        className="flex items-center gap-2 text-white/70 hover:text-white text-sm font-bold uppercase tracking-widest"
+        className="flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm font-bold uppercase tracking-widest"
       >
         <ArrowLeft className="w-4 h-4" /> Back to Tournaments
       </button>
 
-      <div className="glass rounded-xl border border-glass-border p-4">
+      <div className="bg-surface rounded-xl border border-border p-4">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -631,39 +635,39 @@ function TournamentDetail({
                 {tournament.status}
               </span>
             </div>
-            <h2 className="text-xl font-bold text-white">{tournament.name}</h2>
-            <div className="text-[11px] text-white/60 mt-1">
+            <h2 className="text-xl font-bold text-text-primary">{tournament.name}</h2>
+            <div className="text-[11px] text-text-secondary mt-1">
               {ground?.name || "Unknown ground"} · {tournament.organiserName}
               {tournament.organiserPhone ? ` · ${tournament.organiserPhone}` : ""}
             </div>
           </div>
           <button
             onClick={onEdit}
-            className="flex items-center gap-1 rounded-full bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-bold text-white transition"
+            className="flex items-center gap-1 rounded-full bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-xs font-bold text-text-primary transition"
           >
             <Edit2 className="w-3.5 h-3.5" /> Edit
           </button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-          <div className="bg-black/30 rounded-lg p-2">
-            <div className="text-[10px] uppercase text-white/40 tracking-widest">Amount/Match</div>
-            <div className="text-lg font-bold text-white font-mono">₹{tournament.amountPerMatch}</div>
+          <div className="bg-surface-hover rounded-lg p-2">
+            <div className="text-[10px] uppercase text-text-muted tracking-widest">Amount/Match</div>
+            <div className="text-lg font-bold text-text-primary font-mono">₹{tournament.amountPerMatch}</div>
           </div>
-          <div className="bg-black/30 rounded-lg p-2">
-            <div className="text-[10px] uppercase text-white/40 tracking-widest">Per Player</div>
+          <div className="bg-surface-hover rounded-lg p-2">
+            <div className="text-[10px] uppercase text-text-muted tracking-widest">Per Player</div>
             <div className="text-lg font-bold text-accent font-mono">₹{tournament.perPlayerFee}</div>
           </div>
-          <div className="bg-black/30 rounded-lg p-2">
-            <div className="text-[10px] uppercase text-white/40 tracking-widest">Jersey</div>
-            <div className="text-sm font-bold text-white">{tournament.jerseyColor}</div>
+          <div className="bg-surface-hover rounded-lg p-2">
+            <div className="text-[10px] uppercase text-text-muted tracking-widest">Jersey</div>
+            <div className="text-sm font-bold text-text-primary">{tournament.jerseyColor}</div>
           </div>
-          <div className="bg-black/30 rounded-lg p-2">
-            <div className="text-[10px] uppercase text-white/40 tracking-widest">GPay</div>
-            <div className="text-xs font-mono text-white truncate">{tournament.gpayNumber || "—"}</div>
+          <div className="bg-surface-hover rounded-lg p-2">
+            <div className="text-[10px] uppercase text-text-muted tracking-widest">GPay</div>
+            <div className="text-xs font-mono text-text-primary truncate">{tournament.gpayNumber || "—"}</div>
           </div>
         </div>
         {tournament.notes && (
-          <div className="mt-3 text-[11px] text-white/60 border-t border-glass-border pt-2">
+          <div className="mt-3 text-[11px] text-text-secondary border-t border-border pt-2">
             {tournament.notes}
           </div>
         )}
@@ -671,9 +675,9 @@ function TournamentDetail({
 
       <BulkAddSection tournament={tournament} store={store} />
 
-      <div className="glass rounded-xl border border-glass-border p-4">
+      <div className="bg-surface rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-white">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-text-primary">
             Linked Matches ({linkedMatches.length})
             {upcomingCount > 0 && (
               <span className="ml-2 text-emerald-400 normal-case tracking-normal font-normal text-xs">
@@ -683,7 +687,7 @@ function TournamentDetail({
           </h3>
         </div>
         {linkedMatches.length === 0 ? (
-          <div className="text-[11px] text-white/40 text-center py-4">
+          <div className="text-[11px] text-text-muted text-center py-4">
             No matches linked yet. Use Bulk Add above or the regular
             Match form (pick this tournament from the dropdown).
           </div>
@@ -694,11 +698,11 @@ function TournamentDetail({
               return (
                 <div
                   key={m.id}
-                  className={`flex items-center justify-between p-2 rounded-lg text-xs ${past ? "bg-white/5 text-white/50" : "bg-emerald-500/10 text-white"}`}
+                  className={`flex items-center justify-between p-2 rounded-lg text-xs ${past ? "bg-surface-hover text-text-muted" : "bg-emerald-500/10 text-emerald-600"}`}
                 >
                   <div>
                     <span className="font-mono">{m.date}</span>{" "}
-                    <span className="font-mono text-white/50">{m.time}</span>
+                    <span className="font-mono text-text-muted">{m.time}</span>
                     <span className="ml-2">vs {m.opponent}</span>
                   </div>
                   <span className="text-[10px] uppercase tracking-widest">
@@ -727,6 +731,8 @@ function BulkAddSection({
   tournament: Tournament;
   store: ReturnType<typeof useStore>;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const [slots, setSlots] = useState<Slot[]>([]);
   const [defaultOpponent, setDefaultOpponent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -761,16 +767,14 @@ function BulkAddSection({
   const runBulkAdd = async () => {
     const valid = slots.filter((s) => s.date && s.time);
     if (valid.length === 0) {
-      alert("Add at least one date + time slot first.");
+      toast("Add at least one date + time slot first.", "error");
       return;
     }
     const conflicts = conflictsPerSlot.filter(Boolean);
     if (conflicts.length > 0) {
-      const proceed = window.confirm(
-        `${conflicts.length} of these slot${conflicts.length > 1 ? "s" : ""} already has a match booked on this ground at that time.\n\n` +
+      const proceed = await confirmAction({ message: `${conflicts.length} of these slot${conflicts.length > 1 ? "s" : ""} already has a match booked on this ground at that time.\n\n` +
           `OK  → skip conflicting slots and create the rest.\n` +
-          `Cancel → do nothing.`,
-      );
+          `Cancel → do nothing.`, destructive: true });
       if (!proceed) return;
     }
 
@@ -797,19 +801,19 @@ function BulkAddSection({
         } as any);
         created++;
       }
-      alert(`Created ${created} match${created !== 1 ? "es" : ""}.`);
+      toast(`Created ${created} match${created !== 1 ? "es" : ""}.`, "success");
       setSlots([]);
     } catch (err: any) {
-      alert(`Bulk add failed: ${err?.message || String(err)}`);
+      toast(`Bulk add failed: ${err?.message || String(err)}`, "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="glass rounded-xl border border-glass-border p-4">
+    <div className="bg-surface rounded-xl border border-border p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold uppercase tracking-widest text-white flex items-center gap-2">
+        <h3 className="text-sm font-bold uppercase tracking-widest text-text-primary flex items-center gap-2">
           <Calendar className="w-4 h-4 text-accent" /> Bulk-add Matches
         </h3>
         <button
@@ -819,7 +823,7 @@ function BulkAddSection({
           <Plus className="w-3 h-3" /> Add Slot
         </button>
       </div>
-      <p className="text-[11px] text-white/50 mb-2 leading-tight">
+      <p className="text-[11px] text-text-muted mb-2 leading-tight">
         Each slot creates one match with the tournament's ground, jersey,
         format ({tournament.format || "T30"}) and per-player fee
         (₹{tournament.perPlayerFee}). Conflict check is per ground per
@@ -827,9 +831,9 @@ function BulkAddSection({
         has a match on this ground.
       </p>
       <div className="mb-3">
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/50">
+        <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-text-muted">
           Default opponent{" "}
-          <span className="text-white/40 normal-case tracking-normal font-normal text-[9px]">
+          <span className="text-text-muted normal-case tracking-normal font-normal text-[9px]">
             (used when a slot's opponent is blank — else "TBD")
           </span>
         </label>
@@ -838,11 +842,11 @@ function BulkAddSection({
           value={defaultOpponent}
           onChange={(e) => setDefaultOpponent(e.target.value)}
           placeholder='e.g. "TBD" or a common opponent name'
-          className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
         />
       </div>
       {slots.length === 0 && (
-        <div className="text-[11px] text-white/40 text-center py-4">
+        <div className="text-[11px] text-text-muted text-center py-4">
           No slots yet.
         </div>
       )}
@@ -857,7 +861,7 @@ function BulkAddSection({
                 const v = e.target.value;
                 setSlots((arr) => arr.map((r) => (r.id === s.id ? { ...r, date: v } : r)));
               }}
-              className="rounded-lg border border-glass-border bg-white/5 px-2 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+              className="rounded-lg border border-border bg-surface-hover px-2 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
             />
             <input
               type="time"
@@ -866,7 +870,7 @@ function BulkAddSection({
                 const v = e.target.value;
                 setSlots((arr) => arr.map((r) => (r.id === s.id ? { ...r, time: v } : r)));
               }}
-              className="rounded-lg border border-glass-border bg-white/5 px-2 py-1.5 text-xs text-white focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
+              className="rounded-lg border border-border bg-surface-hover px-2 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
             />
             <input
               type="text"
@@ -876,7 +880,7 @@ function BulkAddSection({
                 const v = e.target.value;
                 setSlots((arr) => arr.map((r) => (r.id === s.id ? { ...r, opponent: v } : r)));
               }}
-              className="rounded-lg border border-glass-border bg-white/5 px-2 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
+              className="rounded-lg border border-border bg-surface-hover px-2 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
             />
             <button
               onClick={() => removeSlot(s.id)}

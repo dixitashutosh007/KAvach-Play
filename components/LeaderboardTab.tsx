@@ -84,20 +84,20 @@ export function LeaderboardTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
           <Trophy className="w-5 h-5 text-accent" /> Leaderboard
         </h2>
       </div>
 
-      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border overflow-x-auto no-scrollbar">
+      <div className="flex bg-surface-hover rounded-lg p-1 border border-border overflow-x-auto no-scrollbar">
         {availableCategories.map(cat => (
           <button
             key={cat}
             onClick={() => { setCategory(cat); setPage(0); }}
             className={`flex-1 min-w-0 text-[10px] font-bold uppercase py-2 px-1 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap ${
               category === cat
-                ? cat === "dropped" ? "bg-red-500/20 text-red-400" : "bg-accent text-black"
-                : "text-white/50 hover:text-white"
+                ? cat === "dropped" ? "bg-red-500/20 text-red-400" : "bg-accent text-text-accent"
+                : "text-text-muted hover:text-text-primary"
             }`}
           >
             <span>{CATEGORY_CONFIG[cat].emoji}</span>
@@ -107,15 +107,15 @@ export function LeaderboardTab({
         ))}
       </div>
 
-      <div className={`glass rounded-xl overflow-hidden divide-y divide-glass-border ${isDropped ? "border border-red-500/20" : ""}`}>
-        <div className={`flex items-center px-4 py-3 font-bold text-[10px] uppercase tracking-widest ${isDropped ? "bg-red-500/5 text-red-300/70" : "bg-white/5 text-white/70"}`}>
+      <div className={`bg-surface rounded-xl overflow-hidden divide-y divide-border ${isDropped ? "border border-red-500/20" : ""}`}>
+        <div className={`flex items-center px-4 py-3 font-bold text-[10px] uppercase tracking-widest ${isDropped ? "bg-red-500/5 text-red-300/70" : "bg-surface-hover text-text-secondary"}`}>
           <div className="w-8 text-center">#</div>
           <div className="flex-1">Player</div>
           <div className="w-20 text-right">{cfg.unit}</div>
         </div>
 
         {pageItems.length === 0 && (
-          <div className="py-8 text-center text-sm text-white/50">
+          <div className="py-8 text-center text-sm text-text-muted">
             No data yet. Update player stats from Club &gt; Squad &gt; Table View.
           </div>
         )}
@@ -127,9 +127,9 @@ export function LeaderboardTab({
             <div
               key={entry.player.id}
               onClick={isBadgeCategory ? () => setSelectedPlayerId(entry.player.id) : undefined}
-              className={`flex items-center px-4 py-3 group transition ${isBadgeCategory ? "cursor-pointer" : ""} ${isDropped ? "hover:bg-red-500/5" : "hover:bg-white/5"}`}
+              className={`flex items-center px-4 py-3 group transition ${isBadgeCategory ? "cursor-pointer" : ""} ${isDropped ? "hover:bg-red-500/5" : "hover:bg-surface-hover"}`}
             >
-              <div className="w-8 text-center text-[12px] font-bold text-white/40 group-hover:text-white/80 transition">
+              <div className="w-8 text-center text-[12px] font-bold text-text-muted group-hover:text-text-primary transition">
                 {rank === 1 ? (
                   <Medal className={`w-4 h-4 mx-auto ${isDropped ? "text-red-400" : "text-yellow-400"}`} />
                 ) : rank === 2 ? (
@@ -140,14 +140,14 @@ export function LeaderboardTab({
                   rank
                 )}
               </div>
-              <div className="flex-1 font-semibold text-white ml-2 text-[14px] truncate">
+              <div className="flex-1 font-semibold text-text-primary ml-2 text-[14px] truncate">
                 {entry.player.name}
               </div>
               <div className={`w-20 text-right font-mono font-bold text-[16px] ${cfg.valueColor}`}>
                 {entry.value.toLocaleString()}
               </div>
               {isBadgeCategory && (
-                <ChevronRight className="w-4 h-4 text-white/30 group-hover:text-white/60 ml-1 transition" />
+                <ChevronRight className="w-4 h-4 text-text-primary/30 group-hover:text-text-secondary ml-1 transition" />
               )}
             </div>
           );
@@ -159,17 +159,17 @@ export function LeaderboardTab({
           <button
             onClick={() => setPage(p => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="p-1.5 rounded-lg bg-white/5 border border-glass-border text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+            className="p-1.5 rounded-lg bg-surface-hover border border-border text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-xs text-white/50 font-bold">
+          <span className="text-xs text-text-muted font-bold">
             {page + 1} / {totalPages}
           </span>
           <button
             onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
             disabled={page >= totalPages - 1}
-            className="p-1.5 rounded-lg bg-white/5 border border-glass-border text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+            className="p-1.5 rounded-lg bg-surface-hover border border-border text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -218,24 +218,24 @@ function PlayerBadgesModal({
       onClick={onClose}
     >
       <div
-        className="glass rounded-2xl border border-glass-border w-full max-w-md max-h-[80vh] overflow-y-auto"
+        className="bg-surface rounded-2xl border border-border w-full max-w-md max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-glass-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h3 className="font-bold text-white text-lg">{playerName}</h3>
-            <p className="text-xs text-white/50">{playerBadges.length} badge{playerBadges.length !== 1 ? "s" : ""} earned</p>
+            <h3 className="font-bold text-text-primary text-lg">{playerName}</h3>
+            <p className="text-xs text-text-muted">{playerBadges.length} badge{playerBadges.length !== 1 ? "s" : ""} earned</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition"
+            className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-hover transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {playerBadges.length === 0 ? (
-          <div className="py-10 text-center text-sm text-white/40">
+          <div className="py-10 text-center text-sm text-text-muted">
             No badges yet.
           </div>
         ) : (
@@ -248,7 +248,7 @@ function PlayerBadgesModal({
                 return (
                   <div
                     key={badgeType}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-black/20 min-w-[80px]"
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border bg-surface-hover min-w-[80px]"
                   >
                     <div className="relative">
                       <BadgeIcon badgeType={badgeType} size={48} customDefs={badgeTypeDefs} />
@@ -261,7 +261,7 @@ function PlayerBadgesModal({
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-white/70 text-center leading-tight font-medium">
+                    <span className="text-[10px] text-text-secondary text-center leading-tight font-medium">
                       {meta.short}
                     </span>
                   </div>

@@ -36,6 +36,7 @@ import {
   RectangleVertical,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { useToast } from "@/components/ui/Toast";
 
 // -------- Sizes --------
 type SizeKey = "square" | "portrait45" | "portrait";
@@ -1613,6 +1614,7 @@ function WeeklySummaryTemplate({
 // =====================================================================
 
 export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const { toast } = useToast();
   // Some workspaces have stored a stub like "Play" (app-name leftover)
   // in appConfig.clubName — that's not the team name anyone wants to
   // see printed across a post. Fall back to "KAvach" whenever the
@@ -1855,7 +1857,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         };
       });
     if (rows.length === 0) {
-      alert("No matches found in the last 7 days.");
+      toast("No matches found in the last 7 days.");
       return;
     }
     setWkRows(rows);
@@ -2017,9 +2019,9 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        alert(
+        toast(
           "Your browser doesn't expose native sharing. Card downloaded — open WhatsApp or Instagram and attach.",
-        );
+        "error");
       }
     } catch (err: any) {
       if (err?.name !== "AbortError") {
@@ -2107,13 +2109,13 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
   return (
     <div className="space-y-4 pb-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
           <Palette className="w-5 h-5 text-accent" /> KAvach Design
         </h2>
       </div>
 
       {/* Template picker */}
-      <div className="glass rounded-xl border border-glass-border p-1 flex gap-1">
+      <div className="bg-surface rounded-xl border border-border p-1 flex gap-1">
         {(
           [
             { id: "scorecard", label: "Match / POTM" },
@@ -2127,8 +2129,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             onClick={() => setKind(opt.id)}
             className={`flex-1 px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
               kind === opt.id
-                ? "bg-accent text-black shadow"
-                : "text-white/60 hover:text-white"
+                ? "bg-accent text-text-accent shadow"
+                : "text-text-secondary hover:text-text-primary"
             }`}
           >
             {opt.label}
@@ -2137,8 +2139,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
       </div>
 
       {/* Size picker */}
-      <div className="glass rounded-xl border border-glass-border p-3">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2">
+      <div className="bg-surface rounded-xl border border-border p-3">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">
           Canvas Size
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -2149,10 +2151,10 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
               className={`rounded-lg p-2.5 text-left border transition ${
                 sizeKey === k
                   ? "border-accent bg-accent/10"
-                  : "border-glass-border bg-black/20 hover:border-white/30"
+                  : "border-border bg-surface-hover hover:border-border"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-white font-bold text-[11px]">
+              <div className="flex items-center gap-1.5 text-text-primary font-bold text-[11px]">
                 {k === "square" ? (
                   <Square className="w-3.5 h-3.5" />
                 ) : (
@@ -2160,7 +2162,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                 )}
                 {SIZES[k].label}
               </div>
-              <div className="text-[9px] text-white/50 mt-1 leading-tight">
+              <div className="text-[9px] text-text-muted mt-1 leading-tight">
                 {SIZES[k].platforms}
               </div>
             </button>
@@ -2169,8 +2171,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
       </div>
 
       {/* Colour scheme */}
-      <div className="glass rounded-xl border border-glass-border p-3">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2">
+      <div className="bg-surface rounded-xl border border-border p-3">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">
           Colour Scheme
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -2178,7 +2180,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             <button
               key={s.id}
               onClick={() => setSchemeId(s.id)}
-              className={`rounded-lg p-3 text-[11px] font-bold uppercase tracking-wider text-white transition border ${
+              className={`rounded-lg p-3 text-[11px] font-bold uppercase tracking-wider text-text-primary transition border ${
                 schemeId === s.id ? "border-white" : "border-transparent"
               }`}
               style={{ background: `linear-gradient(135deg, ${s.bgFrom}, ${s.bgTo})` }}
@@ -2194,9 +2196,9 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
       </div>
 
       {/* Photo */}
-      <div className="glass rounded-xl border border-glass-border p-3">
+      <div className="bg-surface rounded-xl border border-border p-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/50 flex items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted flex items-center gap-1.5">
             <ImagePlus className="w-3 h-3" /> Hero Photo
           </span>
           {photoDataUrl && (
@@ -2216,9 +2218,9 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           type="file"
           accept="image/*"
           onChange={onPickPhoto}
-          className="w-full text-xs text-white/70 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-accent file:text-black hover:file:opacity-90"
+          className="w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-accent file:text-black hover:file:opacity-90"
         />
-        <p className="text-[10px] text-white/40 mt-1.5 leading-tight">
+        <p className="text-[10px] text-text-muted mt-1.5 leading-tight">
           Upload a portrait photo of the player (POTM card) or a group shot (milestone).
           Drag the preview below to reframe; use zoom to punch in on the face.
         </p>
@@ -2227,7 +2229,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           <>
             {/* Filter presets */}
             <div className="mt-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1">
                 Photo Look
               </div>
               <div className="flex flex-wrap gap-1">
@@ -2237,8 +2239,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                     onClick={() => setPhotoFilter(f.id)}
                     className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
                       photoFilter === f.id
-                        ? "bg-accent text-black"
-                        : "bg-black/40 text-white/60 hover:text-white"
+                        ? "bg-accent text-text-accent"
+                        : "bg-surface-hover text-text-secondary hover:text-text-primary"
                     }`}
                   >
                     {f.label}
@@ -2248,8 +2250,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             </div>
             {/* Zoom + pan sliders */}
             <div className="mt-3 grid grid-cols-3 gap-2">
-              <label className="text-[10px] text-white/60">
-                <div className="mb-1 font-bold uppercase tracking-widest text-white/50">Zoom</div>
+              <label className="text-[10px] text-text-secondary">
+                <div className="mb-1 font-bold uppercase tracking-widest text-text-muted">Zoom</div>
                 <input
                   type="range"
                   min="1"
@@ -2259,10 +2261,10 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   onChange={(e) => setPhotoZoom(parseFloat(e.target.value))}
                   className="w-full accent-accent"
                 />
-                <div className="text-[10px] font-mono text-white/40">{photoZoom.toFixed(2)}×</div>
+                <div className="text-[10px] font-mono text-text-muted">{photoZoom.toFixed(2)}×</div>
               </label>
-              <label className="text-[10px] text-white/60">
-                <div className="mb-1 font-bold uppercase tracking-widest text-white/50">Pan X</div>
+              <label className="text-[10px] text-text-secondary">
+                <div className="mb-1 font-bold uppercase tracking-widest text-text-muted">Pan X</div>
                 <input
                   type="range"
                   min="0"
@@ -2274,10 +2276,10 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   }
                   className="w-full accent-accent"
                 />
-                <div className="text-[10px] font-mono text-white/40">{photoPan.x}%</div>
+                <div className="text-[10px] font-mono text-text-muted">{photoPan.x}%</div>
               </label>
-              <label className="text-[10px] text-white/60">
-                <div className="mb-1 font-bold uppercase tracking-widest text-white/50">Pan Y</div>
+              <label className="text-[10px] text-text-secondary">
+                <div className="mb-1 font-bold uppercase tracking-widest text-text-muted">Pan Y</div>
                 <input
                   type="range"
                   min="0"
@@ -2289,7 +2291,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   }
                   className="w-full accent-accent"
                 />
-                <div className="text-[10px] font-mono text-white/40">{photoPan.y}%</div>
+                <div className="text-[10px] font-mono text-text-muted">{photoPan.y}%</div>
               </label>
             </div>
           </>
@@ -2298,15 +2300,15 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
 
       {/* Kind-specific form */}
       {kind === "scorecard" && (
-        <div className="glass rounded-xl border border-glass-border p-3 space-y-3">
+        <div className="bg-surface rounded-xl border border-border p-3 space-y-3">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Pick a match to auto-fill (recent 3 wks past / 1 wk future first)
             </label>
             <select
               value={scMatchId}
               onChange={(e) => setScMatchId(e.target.value)}
-              className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
             >
               <option value="">— none —</option>
               {sortedMatches.map((m) => (
@@ -2318,7 +2320,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           </div>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Player of the Match
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -2329,7 +2331,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   const p = store.players.find((pp) => pp.id === e.target.value);
                   if (p) setScPotmNameOverride(p.name);
                 }}
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
               >
                 <option value="">— pick player —</option>
                 {rosterOptions.map((p) => (
@@ -2342,7 +2344,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                 value={scPotmNameOverride}
                 onChange={(e) => setScPotmNameOverride(e.target.value)}
                 placeholder="Or type name / short tag"
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
               />
             </div>
           </div>
@@ -2352,43 +2354,43 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
               value={scTeamNameOverride}
               onChange={(e) => setScTeamNameOverride(e.target.value)}
               placeholder={`Our team (default ${clubName})`}
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={scOpponent}
               onChange={(e) => setScOpponent(e.target.value)}
               placeholder="Opponent"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={scTeamScore}
               onChange={(e) => setScTeamScore(e.target.value)}
               placeholder="Our score e.g. 240/9"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={scTeamOvers}
               onChange={(e) => setScTeamOvers(e.target.value)}
               placeholder="Our overs e.g. 30"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={scOppScore}
               onChange={(e) => setScOppScore(e.target.value)}
               placeholder="Their score e.g. 213/10"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={scOppOvers}
               onChange={(e) => setScOppOvers(e.target.value)}
               placeholder="Their overs e.g. 26.1"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
           </div>
 
           {/* Card variant */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Card Type
             </label>
             <div className="flex gap-1">
@@ -2402,8 +2404,8 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   onClick={() => setCardType(v.id)}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
                     cardType === v.id
-                      ? "bg-accent text-black"
-                      : "bg-black/40 text-white/60 hover:text-white"
+                      ? "bg-accent text-text-accent"
+                      : "bg-surface-hover text-text-secondary hover:text-text-primary"
                   }`}
                 >
                   {v.label}
@@ -2416,7 +2418,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           {(cardType === "potm" || cardType === "best_batsman") && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
                   Batting
                 </label>
                 <label className="flex items-center gap-1.5 cursor-pointer">
@@ -2426,7 +2428,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                     onChange={(e) => setBatIsNotOut(e.target.checked)}
                     className="accent-accent"
                   />
-                  <span className="text-[10px] font-bold uppercase text-white/70">Not Out</span>
+                  <span className="text-[10px] font-bold uppercase text-text-secondary">Not Out</span>
                 </label>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -2435,18 +2437,18 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   onChange={(e) => setBatRuns(e.target.value)}
                   placeholder="Runs e.g. 39"
                   inputMode="numeric"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
                 <input
                   value={batBalls}
                   onChange={(e) => setBatBalls(e.target.value)}
                   placeholder="Balls e.g. 22"
                   inputMode="numeric"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
               </div>
               {batRuns && batBalls && (
-                <div className="mt-1 text-[10px] text-white/40 font-mono uppercase tracking-widest">
+                <div className="mt-1 text-[10px] text-text-muted font-mono uppercase tracking-widest">
                   SR: {calcStrikeRate(batRuns, batBalls) || "—"}
                 </div>
               )}
@@ -2456,7 +2458,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           {/* Bowling stats (POTM + Best Bowler) */}
           {(cardType === "potm" || cardType === "best_bowler") && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
                 Bowling
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -2465,25 +2467,25 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   onChange={(e) => setBowlWickets(e.target.value)}
                   placeholder="Wkts"
                   inputMode="numeric"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
                 <input
                   value={bowlRuns}
                   onChange={(e) => setBowlRuns(e.target.value)}
                   placeholder="Runs"
                   inputMode="numeric"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
                 <input
                   value={bowlOvers}
                   onChange={(e) => setBowlOvers(e.target.value)}
                   placeholder="Overs e.g. 4.3"
                   inputMode="decimal"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
               </div>
               {bowlRuns && bowlOvers && (
-                <div className="mt-1 text-[10px] text-white/40 font-mono uppercase tracking-widest">
+                <div className="mt-1 text-[10px] text-text-muted font-mono uppercase tracking-widest">
                   ECO: {calcEconomy(bowlRuns, bowlOvers) || "—"}
                 </div>
               )}
@@ -2492,14 +2494,14 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
 
           {/* Result dropdown */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Result
             </label>
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={resultId}
                 onChange={(e) => setResultId(e.target.value)}
-                className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
               >
                 {resultTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -2513,22 +2515,22 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   value={resultNumber}
                   onChange={(e) => setResultNumber(e.target.value)}
                   placeholder={currentResultTpl.unit === "wickets" ? "e.g. 6" : "e.g. 47"}
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
               ) : resultId === "custom" ? (
                 <input
                   value={resultCustom}
                   onChange={(e) => setResultCustom(e.target.value)}
                   placeholder="Custom result text"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
                 />
               ) : (
-                <div className="text-xs text-white/40 self-center pl-2">
+                <div className="text-xs text-text-muted self-center pl-2">
                   No number needed.
                 </div>
               )}
             </div>
-            <div className="mt-2 text-[10px] text-white/40 font-mono uppercase tracking-widest">
+            <div className="mt-2 text-[10px] text-text-muted font-mono uppercase tracking-widest">
               Preview: {resultText || "—"}
             </div>
           </div>
@@ -2539,39 +2541,39 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
               value={scWebsite}
               onChange={(e) => setScWebsite(e.target.value)}
               placeholder="Website footer"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={scCta}
               onChange={(e) => setScCta(e.target.value)}
               placeholder="Call-to-action"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-accent"
             />
           </div>
         </div>
       )}
 
       {kind === "milestone" && (
-        <div className="glass rounded-xl border border-glass-border p-3 space-y-3">
+        <div className="bg-surface rounded-xl border border-border p-3 space-y-3">
           <input
             value={mHeadline}
             onChange={(e) => setMHeadline(e.target.value)}
             placeholder="Headline e.g. 500 NOT OUT"
-            className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-3 text-lg text-white font-black focus:outline-none focus:border-accent"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-3 text-lg text-text-primary font-black focus:outline-none focus:border-accent"
           />
           <input
             value={mSubhead}
             onChange={(e) => setMSubhead(e.target.value)}
             placeholder={`Sub-headline e.g. ${clubName}`}
-            className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           />
           <input
             value={mCaption}
             onChange={(e) => setMCaption(e.target.value)}
             placeholder="Bottom caption e.g. WINS 345 (70%)"
-            className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           />
-          <p className="text-[10px] text-white/40 leading-tight">
+          <p className="text-[10px] text-text-muted leading-tight">
             The uploaded photo appears framed in the middle of the card. Best for team
             group photos.
           </p>
@@ -2579,15 +2581,15 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
       )}
 
       {kind === "achievement" && (
-        <div className="glass rounded-xl border border-glass-border p-3 space-y-3">
+        <div className="bg-surface rounded-xl border border-border p-3 space-y-3">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Player
             </label>
             <select
               value={aPlayerId}
               onChange={(e) => setAPlayerId(e.target.value)}
-              className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
             >
               {rosterOptions.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -2600,16 +2602,16 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             value={aPlayerName}
             onChange={(e) => setAPlayerName(e.target.value)}
             placeholder="Player display name"
-            className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           />
           <input
             value={aCountry}
             onChange={(e) => setACountry(e.target.value)}
             placeholder={`Team / role tag e.g. ${clubName}`}
-            className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           />
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Stat rows (up to 5 shown)
             </label>
             {aRows.map((r, i) => (
@@ -2622,7 +2624,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                     setARows(c);
                   }}
                   placeholder="Label"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
                 />
                 <input
                   value={r.value}
@@ -2632,7 +2634,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                     setARows(c);
                   }}
                   placeholder="Value"
-                  className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                  className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                 />
                 <button
                   onClick={() => setARows(aRows.filter((_, ix) => ix !== i))}
@@ -2655,19 +2657,19 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
       )}
 
       {kind === "weekly" && (
-        <div className="glass rounded-xl border border-glass-border p-3 space-y-3">
+        <div className="bg-surface rounded-xl border border-border p-3 space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input
               value={wkHeadline}
               onChange={(e) => setWkHeadline(e.target.value)}
               placeholder="Headline e.g. WEEK IN REVIEW"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             />
             <input
               value={wkLabel}
               onChange={(e) => setWkLabel(e.target.value)}
               placeholder="Week label e.g. WEEK 12"
-              className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-bold uppercase"
+              className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-bold uppercase"
             />
           </div>
 
@@ -2679,14 +2681,14 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           </button>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 block mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-1">
               Matches ({wkRows.length}) · W {wkWins} · L {wkLosses} · T {wkTies}
               {wkNRs > 0 ? ` · NR ${wkNRs}` : ""}
             </label>
             {wkRows.map((r, i) => (
               <div
                 key={i}
-                className="mb-2 p-2 bg-black/30 border border-glass-border rounded-lg space-y-2"
+                className="mb-2 p-2 bg-surface-hover border border-border rounded-lg space-y-2"
               >
                 <div className="grid grid-cols-[1fr,auto] gap-2">
                   <input
@@ -2697,7 +2699,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                       setWkRows(c);
                     }}
                     placeholder="Opponent"
-                    className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                    className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
                   />
                   <button
                     onClick={() => setWkRows(wkRows.filter((_, ix) => ix !== i))}
@@ -2715,7 +2717,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                       setWkRows(c);
                     }}
                     placeholder="Our score"
-                    className="bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent font-mono"
+                    className="bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent font-mono"
                   />
                   <input
                     value={r.theirScore}
@@ -2725,7 +2727,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                       setWkRows(c);
                     }}
                     placeholder="Their score"
-                    className="bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent font-mono"
+                    className="bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent font-mono"
                   />
                   <select
                     value={r.outcome}
@@ -2734,7 +2736,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                       c[i] = { ...c[i], outcome: e.target.value as WeekOutcome };
                       setWkRows(c);
                     }}
-                    className="bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                    className="bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
                   >
                     <option value="W">Win</option>
                     <option value="L">Loss</option>
@@ -2750,7 +2752,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                     setWkRows(c);
                   }}
                   placeholder="Optional note e.g. POTM: Zuhayr Khan"
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
                 />
               </div>
             ))}
@@ -2765,7 +2767,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             >
               + Add Match Row
             </button>
-            <p className="text-[10px] text-white/40 mt-2 leading-tight">
+            <p className="text-[10px] text-text-muted mt-2 leading-tight">
               Card shows the top {sizeKey === "portrait" ? 6 : sizeKey === "portrait45" ? 5 : 4} rows for the {SIZES[sizeKey].label} format; extras get a "+N more" note. The photo section is ignored for this template.
             </p>
           </div>
@@ -2773,12 +2775,12 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
       )}
 
       {/* Preview */}
-      <div className="glass rounded-xl border border-glass-border p-3">
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/50 flex items-center justify-between">
+      <div className="bg-surface rounded-xl border border-border p-3">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-text-muted flex items-center justify-between">
           <span>
             Live Preview · {SIZES[sizeKey].w} × {SIZES[sizeKey].h}
           </span>
-          <span className="text-white/40">{SIZES[sizeKey].ratio}</span>
+          <span className="text-text-muted">{SIZES[sizeKey].ratio}</span>
         </div>
         <div
           id="kavach-design-preview"
@@ -2846,7 +2848,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         <button
           onClick={handleDownload}
           disabled={isExporting}
-          className="rounded-lg bg-white/10 hover:bg-white/20 text-white py-3 text-sm font-bold uppercase tracking-widest transition flex items-center justify-center gap-2 disabled:opacity-60"
+          className="rounded-lg bg-surface-hover hover:bg-surface-hover text-text-primary py-3 text-sm font-bold uppercase tracking-widest transition flex items-center justify-center gap-2 disabled:opacity-60"
         >
           <Download className="w-4 h-4" />
           {isExporting ? "..." : "Download PNG"}
@@ -2854,7 +2856,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
         <button
           onClick={handleShare}
           disabled={isExporting}
-          className="rounded-lg bg-accent text-black py-3 text-sm font-black uppercase tracking-widest transition flex items-center justify-center gap-2 disabled:opacity-60 shadow"
+          className="rounded-lg bg-accent text-text-accent py-3 text-sm font-black uppercase tracking-widest transition flex items-center justify-center gap-2 disabled:opacity-60 shadow"
         >
           <Share2 className="w-4 h-4" />
           {isExporting ? "..." : "Share"}

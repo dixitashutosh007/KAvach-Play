@@ -3,6 +3,7 @@ import { useStore } from "@/hooks/useStore";
 import { useAuth } from "./AuthProvider";
 import { MessageSquare } from "lucide-react";
 import { formatDate, dbToInputDate, computeLateFees } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function AssignFeesAdmin({
   store,
@@ -11,6 +12,7 @@ export function AssignFeesAdmin({
   store: ReturnType<typeof useStore>;
   isSuperAdmin?: boolean;
 }) {
+  const { confirm: confirmAction } = useConfirm();
   const { user } = useAuth();
   const adminName = store.appUsers.find((u) => u.id === user?.uid)?.name || "Admin";
   const [feeType, setFeeType] = useState<"match" | "other">("match");
@@ -199,7 +201,7 @@ export function AssignFeesAdmin({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="glass rounded-xl p-5 border border-glass-border">
+        <div className="bg-surface rounded-xl p-5 border border-border">
           <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
             Assign Fee to Players
           </h3>
@@ -209,14 +211,14 @@ export function AssignFeesAdmin({
               <button
                 type="button"
                 onClick={() => setFeeType("other")}
-                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase transition ${feeType === "other" ? "bg-accent/20 text-accent border border-accent/50" : "bg-white/5 text-white/50 hover:bg-white/10"}`}
+                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase transition ${feeType === "other" ? "bg-accent/20 text-accent border border-accent/50" : "bg-surface-hover text-text-muted hover:bg-surface-hover"}`}
               >
                 Other Fee
               </button>
               <button
                 type="button"
                 onClick={() => setFeeType("match")}
-                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase transition ${feeType === "match" ? "bg-accent/20 text-accent border border-accent/50" : "bg-white/5 text-white/50 hover:bg-white/10"}`}
+                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase transition ${feeType === "match" ? "bg-accent/20 text-accent border border-accent/50" : "bg-surface-hover text-text-muted hover:bg-surface-hover"}`}
               >
                 Match Fee
               </button>
@@ -225,18 +227,18 @@ export function AssignFeesAdmin({
             {feeType === "other" && (
               <>
                 {!store.feeTemplates || store.feeTemplates.length === 0 ? (
-                  <div className="text-xs text-white/50 italic text-center p-6 border border-glass-border border-dashed rounded-xl">
+                  <div className="text-xs text-text-muted italic text-center p-6 border border-border border-dashed rounded-xl">
                     Create a Custom Fee on the "Create Fee" tab first
                   </div>
                 ) : (
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
                       Select Fee Template
                     </label>
                     <select
                       value={selectedTemplate}
                       onChange={(e) => setSelectedTemplate(e.target.value)}
-                      className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-emerald-950"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary "
                       required={feeType === "other"}
                     >
                       <option value="">-- Choose a Fee --</option>
@@ -249,7 +251,7 @@ export function AssignFeesAdmin({
                   </div>
                 )}
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
                     Optional Description / Comment
                   </label>
                   <input
@@ -257,7 +259,7 @@ export function AssignFeesAdmin({
                     placeholder="e.g. Size M, Green Color"
                     value={assignComment}
                     onChange={(e) => setAssignComment(e.target.value)}
-                    className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                   />
                 </div>
               </>
@@ -265,13 +267,13 @@ export function AssignFeesAdmin({
 
             {feeType === "match" && (
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 flex justify-between items-center">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 flex justify-between items-center">
                   <span>Select Match</span>
                 </label>
                 <select
                   value={selectedMatch}
                   onChange={(e) => setSelectedMatch(e.target.value)}
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-emerald-950 [&>optgroup]:bg-emerald-900"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary  [&>optgroup]:bg-emerald-900"
                   required={feeType === "match"}
                 >
                   <option value="">-- Choose a Match --</option>
@@ -317,7 +319,7 @@ export function AssignFeesAdmin({
               <>
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                       Select Players ({selectedPlayers.length} selected)
                     </label>
                     <button
@@ -343,19 +345,19 @@ export function AssignFeesAdmin({
                     placeholder="Search players to assign..."
                     value={searchPlayer}
                     onChange={(e) => setSearchPlayer(e.target.value)}
-                    className="w-full bg-black/40 border border-glass-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white mb-0"
+                    className="w-full bg-surface-hover border border-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary mb-0"
                   />
 
-                  <div className="h-40 overflow-y-auto border border-t-0 border-glass-border rounded-b-lg bg-black/20 p-2 gap-1 flex flex-col hide-scrollbar">
+                  <div className="h-40 overflow-y-auto border border-t-0 border-border rounded-b-lg bg-surface-hover p-2 gap-1 flex flex-col hide-scrollbar">
                     {filteredPlayers.length === 0 && (
-                      <div className="text-xs text-white/40 italic p-2 text-center">
+                      <div className="text-xs text-text-muted italic p-2 text-center">
                         No players found.
                       </div>
                     )}
                     {filteredPlayers.map((p) => (
                       <label
                         key={p.id}
-                        className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${selectedPlayers.includes(p.id) ? "bg-accent/20 border border-accent/30 text-white" : "hover:bg-white/5 border border-transparent text-white/70"}`}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${selectedPlayers.includes(p.id) ? "bg-accent/20 border border-accent/30 text-text-primary" : "hover:bg-surface-hover border border-transparent text-text-secondary"}`}
                       >
                         <input
                           type="checkbox"
@@ -384,7 +386,7 @@ export function AssignFeesAdmin({
                     (feeType === "match" && !selectedMatch) ||
                     selectedPlayers.length === 0
                   }
-                  className={`w-full ${confirmDuplicates ? "bg-red-500 text-white" : "bg-accent text-black"} font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2`}
+                  className={`w-full ${confirmDuplicates ? "bg-red-500 text-white" : "bg-accent text-text-accent"} font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2`}
                 >
                   {confirmDuplicates ? "Confirm Duplicate Assignment" : `Assign to ${selectedPlayers.length} Player(s)`}
                 </button>
@@ -395,12 +397,12 @@ export function AssignFeesAdmin({
 
         {/* Assigned Fees Ledger (only show for Other Fees) */}
         {feeType === "other" && (
-          <div className="glass rounded-xl overflow-hidden border border-glass-border flex flex-col max-h-[600px]">
-            <div className="bg-black/40 p-4 border-b border-glass-border flex justify-between items-center flex-wrap gap-2">
+          <div className="bg-surface rounded-xl overflow-hidden border border-border flex flex-col max-h-[600px]">
+            <div className="bg-surface-hover p-4 border-b border-border flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-bold text-[12px] uppercase tracking-widest text-accent">
                 Assigned Fees Ledger
               </h3>
-              <div className="text-[10px] uppercase font-black text-white/60 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+              <div className="text-[10px] uppercase font-black text-text-secondary bg-surface-hover px-3 py-1 rounded-full border border-border">
                 Due:{" "}
                 <span className="text-red-400">
                   ₹
@@ -410,9 +412,9 @@ export function AssignFeesAdmin({
                 </span>
               </div>
             </div>
-            <div className="divide-y divide-glass-border/50 overflow-y-auto">
+            <div className="divide-y divide-border overflow-y-auto">
               {(!store.otherFees || store.otherFees.length === 0) && (
-                <div className="p-6 text-center text-xs text-white/40 italic">
+                <div className="p-6 text-center text-xs text-text-muted italic">
                   No custom fees have been assigned yet.
                 </div>
               )}
@@ -427,22 +429,22 @@ export function AssignFeesAdmin({
                   return (
                     <div
                       key={fee.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-white/5 transition gap-3"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-surface-hover transition gap-3"
                     >
                       <div>
-                        <div className="font-bold text-sm text-white flex items-center gap-2 flex-wrap">
+                        <div className="font-bold text-sm text-text-primary flex items-center gap-2 flex-wrap">
                           <span>{fee.title}</span>
                           {fee.templateId?.startsWith("latefee_") && (
                             <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">
                               Late Fee
                             </span>
                           )}
-                          <span className="text-white/40 font-normal">
+                          <span className="text-text-muted font-normal">
                             for
                           </span>
                           <span>{p?.name || "Unknown"}</span>
                         </div>
-                        <div className="text-[10px] text-white/40 mt-0.5">
+                        <div className="text-[10px] text-text-muted mt-0.5">
                           {fee.createdAt?.seconds
                             ? formatDate(
                                 new Date(
@@ -451,7 +453,7 @@ export function AssignFeesAdmin({
                               )
                             : ""}{" "}
                           {fee.comment && (
-                            <span className="ml-2 text-white/60">
+                            <span className="ml-2 text-text-secondary">
                               ({fee.comment})
                             </span>
                           )}
@@ -477,19 +479,17 @@ export function AssignFeesAdmin({
                               isPaid ? "Unpaid" : "Paid",
                             )
                           }
-                          className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/70 transition border border-white/10 whitespace-nowrap"
+                          className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-surface-hover hover:bg-surface-hover text-text-secondary transition border border-border whitespace-nowrap"
                         >
                           Mark {isPaid ? "Unpaid" : "Paid"}
                         </button>
                         {(isSuperAdmin || !fee.templateId?.startsWith("latefee_")) && (
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (
-                                window.confirm(
-                                  fee.templateId?.startsWith("latefee_")
+                                await confirmAction({ message: fee.templateId?.startsWith("latefee_")
                                     ? "This is an auto-levied late fee penalty. Are you sure you want to delete it?"
-                                    : "Are you sure you want to delete this fee?",
-                                )
+                                    : "Are you sure you want to delete this fee?", destructive: true })
                               ) {
                                 store.deleteOtherFee(fee.playerId, fee.id, adminName);
                               }
@@ -508,12 +508,12 @@ export function AssignFeesAdmin({
         )}
 
         {feeType === "match" && (
-          <div className="glass rounded-xl overflow-hidden border border-glass-border flex flex-col max-h-[600px]">
-            <div className="bg-black/40 p-4 border-b border-glass-border flex justify-between items-center flex-wrap gap-2">
+          <div className="bg-surface rounded-xl overflow-hidden border border-border flex flex-col max-h-[600px]">
+            <div className="bg-surface-hover p-4 border-b border-border flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-bold text-[12px] uppercase tracking-widest text-accent">
                 {selectedMatch ? "Match Fees Ledger" : "All Unpaid Match Fees"}
               </h3>
-              <div className="text-[10px] uppercase font-black text-white/60 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+              <div className="text-[10px] uppercase font-black text-text-secondary bg-surface-hover px-3 py-1 rounded-full border border-border">
                 Due:{" "}
                 <span className="text-red-400">
                   ₹
@@ -524,12 +524,12 @@ export function AssignFeesAdmin({
                 </span>
               </div>
             </div>
-            <div className="divide-y divide-glass-border/50 overflow-y-auto">
+            <div className="divide-y divide-border overflow-y-auto">
               {(() => {
                 const unpaid = store.payments.filter(p => p.status === "Unpaid" && (selectedMatch ? p.matchId === selectedMatch : true));
                 if (unpaid.length === 0) {
                   return (
-                    <div className="p-6 text-center text-xs text-white/40 italic">
+                    <div className="p-6 text-center text-xs text-text-muted italic">
                       No unpaid match fees found.
                     </div>
                   );
@@ -546,7 +546,7 @@ export function AssignFeesAdmin({
                   const match = store.matches.find(m => m.id === matchId);
                   if (!match) return null;
                   return (
-                    <div key={matchId} className="p-4 bg-white/5/30">
+                    <div key={matchId} className="p-4 bg-surface-hover/30">
                       <div className="font-bold text-[11px] uppercase tracking-wider text-accent mb-2">
                         {match.opponent} ({formatDate(match.date)}) - Fee: ₹{match.fee}
                       </div>
@@ -554,9 +554,9 @@ export function AssignFeesAdmin({
                         {payments.map(fee => {
                           const p = store.players.find((x) => x.id === fee.playerId);
                           return (
-                            <div key={fee.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded hover:bg-white/5 transition border border-transparent hover:border-glass-border gap-2">
+                            <div key={fee.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded hover:bg-surface-hover transition border border-transparent hover:border-border gap-2">
                               <div>
-                                <div className="font-medium text-sm text-white">
+                                <div className="font-medium text-sm text-text-primary">
                                   {fee.guestName || p?.name || "Unknown"}
                                 </div>
                               </div>
@@ -590,7 +590,7 @@ export function AssignFeesAdmin({
                                       }
                                     }
                                   }}
-                                  className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/70 transition border border-white/10 whitespace-nowrap"
+                                  className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-surface-hover hover:bg-surface-hover text-text-secondary transition border border-border whitespace-nowrap"
                                 >
                                   Mark Paid
                                 </button>

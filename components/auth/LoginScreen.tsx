@@ -80,7 +80,7 @@ export function LoginScreen({
         initial={{ opacity: 0, y: 40, scale: 0.93 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: "spring", stiffness: 90, damping: 15, mass: 0.9, delay: 0.05 }}
-        className="glass relative p-8 sm:p-10 rounded-2xl max-w-sm w-full text-center border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl z-10"
+        className="bg-surface relative p-8 sm:p-10 rounded-2xl max-w-sm w-full text-center border border-border shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl z-10"
       >
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
 
@@ -98,13 +98,13 @@ export function LoginScreen({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35 }}
           >
-            <h1 className="font-extrabold text-4xl tracking-tight text-white mb-1.5">
+            <h1 className="font-extrabold text-4xl tracking-tight text-text-primary mb-1.5">
               Kavach Play
             </h1>
             <span className="text-accent/80 text-[10px] font-bold uppercase tracking-[0.3em] block mb-3">
               Sports Management Portal
             </span>
-            <p className="text-white/60 text-xs leading-relaxed max-w-[280px] mx-auto">
+            <p className="text-text-secondary text-xs leading-relaxed max-w-[280px] mx-auto">
               Kavach Play provides a comprehensive suite of tools to manage your
               cricket club. Track player records, manage finances, monitor match
               statistics via leaderboards, and schedule match fixtures with ease.
@@ -157,7 +157,7 @@ export function LoginScreen({
             >
               <button
                 onClick={() => setAuthMethod("phone")}
-                className="font-medium text-white/60 hover:text-white text-xs transition underline-offset-4 cursor-pointer focus:outline-none"
+                className="font-medium text-text-secondary hover:text-text-primary text-xs transition underline-offset-4 cursor-pointer focus:outline-none"
               >
                 &larr; Back to Mobile Login
               </button>
@@ -168,13 +168,13 @@ export function LoginScreen({
 
       {/* Footer with Privacy Policy */}
       <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center justify-center gap-2 z-10">
-        <p className="text-white/30 text-[10px]">
+        <p className="text-text-primary/30 text-[10px]">
           &copy; {new Date().getFullYear()} Kavach Play. All rights reserved.
         </p>
         <div className="flex gap-4">
           <Link
             href="/policy"
-            className="text-white/50 hover:text-white text-[10px] tracking-wide transition underline-offset-4 hover:underline"
+            className="text-text-muted hover:text-text-primary text-[10px] tracking-wide transition underline-offset-4 hover:underline"
           >
             Privacy Policy
           </Link>

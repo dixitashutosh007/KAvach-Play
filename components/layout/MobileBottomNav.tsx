@@ -58,7 +58,7 @@ export function MobileBottomNav({
     `flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
       isActive
         ? "text-accent font-extrabold scale-105"
-        : "text-white/40 hover:text-white/80"
+        : "text-text-muted hover:text-text-primary"
     }`;
   const labelCls = "text-[9px] font-bold uppercase tracking-wider";
 
@@ -72,7 +72,7 @@ export function MobileBottomNav({
         isFeatureEnabled={isFeatureEnabled}
         canDesign={canDesign ?? false}
       />
-      <nav className="fixed bottom-0 left-0 right-0 w-full glass !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-2xl justify-around bg-black/85 backdrop-blur-2xl px-1">
+      <nav className="fixed bottom-0 left-0 right-0 w-full bg-surface !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-sm justify-around bg-surface/95 backdrop-blur-2xl border-t border-border px-1">
         <button onClick={() => onSelectTab("home")} className={btnCls(activeTab === "home")}>
           <HomeIcon className="w-5 h-5" />
           <span className={labelCls}>Home</span>
@@ -87,7 +87,7 @@ export function MobileBottomNav({
             className="flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer text-accent hover:text-accent/80 transition"
           >
             <span className="w-10 h-10 rounded-full bg-accent flex items-center justify-center shadow-lg shadow-accent/30 -mt-4">
-              <CreditCard className="w-5 h-5 text-black" />
+              <CreditCard className="w-5 h-5 text-text-accent" />
             </span>
             <span className={`${labelCls} text-accent`}>Pay</span>
           </a>

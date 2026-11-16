@@ -37,15 +37,15 @@ export function PhoneSyncPrompt({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass max-w-sm w-full p-8 rounded-2xl border border-white/10 shadow-xl text-left my-8"
+        className="bg-surface max-w-sm w-full p-8 rounded-2xl border border-border shadow-xl text-left my-8"
       >
         <div className="mb-6 mt-2 text-center text-accent flex justify-center">
           <Shield className="w-10 h-10" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-2 text-center">
+        <h2 className="text-xl font-bold text-text-primary mb-2 text-center">
           Welcome back, {existingPlayer.name}!
         </h2>
-        <p className="text-sm text-white/70 mb-6 text-center leading-relaxed">
+        <p className="text-sm text-text-secondary mb-6 text-center leading-relaxed">
           We found your existing player profile for{" "}
           <b className="font-mono text-emerald-400">{user.phoneNumber}</b>.
           Sync your profile to log in automatically without admin approval.
@@ -60,7 +60,7 @@ export function PhoneSyncPrompt({
         </button>
         <button
           onClick={onLogOut}
-          className="w-full py-3 px-4 rounded-xl font-bold mt-3 border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-all text-sm flex items-center justify-center cursor-pointer"
+          className="w-full py-3 px-4 rounded-xl font-bold mt-3 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-all text-sm flex items-center justify-center cursor-pointer"
         >
           Sign Out
         </button>

@@ -25,6 +25,7 @@ const ICON_LIBRARY: { cat: string; icons: string[] }[] = [
 ];
 import { serverTimestamp } from "firebase/firestore";
 import dynamic from "next/dynamic";
+import { useToast } from "@/components/ui/Toast";
 const TenureBadgeEvaluator = dynamic(() => import("./TenureBadgeEvaluator"), { ssr: false });
 const StatsBadgeEvaluator = dynamic(() => import("./StatsBadgeEvaluator"), { ssr: false });
 
@@ -41,6 +42,7 @@ export function BadgesTab({
   currentUserName: string;
   defaultView?: "gallery" | "award" | "hall" | "manage";
 }) {
+  const { toast } = useToast();
   const [view, setView] = useState<"gallery" | "award" | "hall" | "manage">(defaultView || "gallery");
   const [search, setSearch] = useState("");
   const [awardPlayers, setAwardPlayers] = useState<string[]>([]);
@@ -166,7 +168,7 @@ export function BadgesTab({
         await navigator.share({ text: caption });
       } else {
         await navigator.clipboard?.writeText(caption);
-        alert("Badge info copied to clipboard!");
+        toast("Badge info copied to clipboard!", "success");
       }
     } catch {
       // user cancelled
@@ -271,7 +273,7 @@ export function BadgesTab({
   return (
     <div className="space-y-4">
       {/* View Switcher */}
-      <div className="flex bg-black/40 rounded-lg p-1 border border-glass-border">
+      <div className="flex bg-surface-hover rounded-lg p-1 border border-border">
         {(
           [
             { key: "gallery" as const, label: "Badges", icon: Award },
@@ -286,7 +288,7 @@ export function BadgesTab({
             key={key}
             onClick={() => setView(key)}
             className={`flex-1 text-[10px] font-bold uppercase py-2 rounded-md transition flex items-center justify-center gap-1 ${
-              view === key ? "bg-accent text-black" : "text-white/50 hover:text-white"
+              view === key ? "bg-accent text-text-accent" : "text-text-muted hover:text-text-primary"
             }`}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -300,13 +302,13 @@ export function BadgesTab({
       {view === "gallery" && (
         <div className="space-y-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-primary/30" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search players..."
-              className="w-full bg-black/30 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-white/30"
+              className="w-full bg-surface-hover border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-text-primary/30"
             />
           </div>
 
@@ -322,8 +324,8 @@ export function BadgesTab({
             });
 
             return (
-              <div key={player.id} className="glass rounded-xl p-3 border border-glass-border">
-                <h3 className="font-bold text-white text-sm mb-2">{player.name}</h3>
+              <div key={player.id} className="bg-surface rounded-xl p-3 border border-border">
+                <h3 className="font-bold text-text-primary text-sm mb-2">{player.name}</h3>
                 <div className="flex flex-wrap gap-2">
                   {Array.from(grouped.entries()).map(([badgeType, bList]) => (
                     <div
@@ -338,7 +340,7 @@ export function BadgesTab({
                       />
                       <button
                         onClick={(e) => { e.stopPropagation(); handleShare(bList[0]); }}
-                        className="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 bg-accent text-black rounded-full p-1 transition"
+                        className="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 bg-accent text-text-accent rounded-full p-1 transition"
                         title="Share badge"
                       >
                         <Share2 className="w-3 h-3" />
@@ -360,7 +362,7 @@ export function BadgesTab({
           })}
 
           {filteredPlayers.every((p) => !(badgesByPlayer.get(p.id)?.length)) && (
-            <div className="text-center py-8 text-white/40">
+            <div className="text-center py-8 text-text-muted">
               <Award className="w-10 h-10 mx-auto mb-2 opacity-40" />
               <p className="text-sm">No badges awarded yet</p>
             </div>
@@ -379,13 +381,13 @@ export function BadgesTab({
             return (
               <div
                 key={bt}
-                className="glass rounded-xl p-3 border border-glass-border flex items-center gap-3"
+                className="bg-surface rounded-xl p-3 border border-border flex items-center gap-3"
                 style={{ borderColor: colors.border + "30" }}
               >
                 <BadgeIcon badgeType={bt} size={44} customDefs={customDefs} />
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white text-sm">{meta.label}</p>
-                  <p className="text-[11px] text-white/50 truncate">
+                  <p className="font-bold text-text-primary text-sm">{meta.label}</p>
+                  <p className="text-[11px] text-text-muted truncate">
                     {info.players.slice(0, 5).join(", ")}
                     {info.players.length > 5 && ` +${info.players.length - 5} more`}
                   </p>
@@ -401,7 +403,7 @@ export function BadgesTab({
           })}
 
           {badges.length === 0 && (
-            <div className="text-center py-8 text-white/40">
+            <div className="text-center py-8 text-text-muted">
               <Trophy className="w-10 h-10 mx-auto mb-2 opacity-40" />
               <p className="text-sm">No badges in the Hall of Fame yet</p>
             </div>
@@ -411,23 +413,23 @@ export function BadgesTab({
 
       {/* Award View */}
       {view === "award" && isClubAdmin && (
-        <div className="glass rounded-xl p-4 border border-glass-border space-y-4">
+        <div className="bg-surface rounded-xl p-4 border border-border space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-white flex items-center gap-2">
+            <h3 className="font-bold text-text-primary flex items-center gap-2">
               <Award className="w-5 h-5 text-accent" />
               Grant a Badge
             </h3>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowTenureEval(true)}
-                className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-glass-border text-white/70 hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                className="text-[10px] font-bold uppercase tracking-wider bg-surface-hover border border-border text-text-secondary hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
               >
                 <Award className="w-3.5 h-3.5" />
                 Tenure
               </button>
               <button
                 onClick={() => setShowStatsEval(true)}
-                className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-glass-border text-white/70 hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                className="text-[10px] font-bold uppercase tracking-wider bg-surface-hover border border-border text-text-secondary hover:text-accent hover:border-accent/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
               >
                 <Trophy className="w-3.5 h-3.5" />
                 Stats
@@ -436,7 +438,7 @@ export function BadgesTab({
           </div>
 
           <div>
-            <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">
+            <label className="text-xs text-text-muted uppercase tracking-widest mb-1 block">
               Players {awardPlayers.length > 0 && <span className="text-accent">({awardPlayers.length} selected)</span>}
             </label>
 
@@ -447,7 +449,7 @@ export function BadgesTab({
                   return (
                     <span key={pid} className="inline-flex items-center gap-1 bg-accent/15 border border-accent/30 text-accent text-xs font-bold px-2 py-0.5 rounded-full">
                       {p?.name || pid}
-                      <button onClick={() => setAwardPlayers(prev => prev.filter(id => id !== pid))} className="hover:text-white transition">
+                      <button onClick={() => setAwardPlayers(prev => prev.filter(id => id !== pid))} className="hover:text-text-primary transition">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -455,7 +457,7 @@ export function BadgesTab({
                 })}
                 <button
                   onClick={() => setAwardPlayers([])}
-                  className="text-[10px] text-white/40 hover:text-white/70 transition px-1"
+                  className="text-[10px] text-text-muted hover:text-text-secondary transition px-1"
                 >
                   Clear all
                 </button>
@@ -463,17 +465,17 @@ export function BadgesTab({
             )}
 
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-primary/30" />
               <input
                 type="text"
                 value={awardSearch}
                 onChange={(e) => setAwardSearch(e.target.value)}
                 placeholder="Search players..."
-                className="w-full bg-black/30 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-white/30"
+                className="w-full bg-surface-hover border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-text-primary/30"
               />
             </div>
 
-            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-black/20 divide-y divide-white/5">
+            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-border bg-surface-hover divide-y divide-white/5">
               {(awardSearch
                 ? activePlayers.filter(p => p.name.toLowerCase().includes(awardSearch.toLowerCase()))
                 : activePlayers
@@ -488,11 +490,11 @@ export function BadgesTab({
                       );
                     }}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition ${
-                      selected ? "bg-accent/10 text-accent" : "text-white/80 hover:bg-white/5"
+                      selected ? "bg-accent/10 text-accent" : "text-text-primary hover:bg-surface-hover"
                     }`}
                   >
                     <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                      selected ? "border-accent bg-accent" : "border-white/20"
+                      selected ? "border-accent bg-accent" : "border-border"
                     }`}>
                       {selected && <Check className="w-3 h-3 text-black" />}
                     </div>
@@ -501,14 +503,14 @@ export function BadgesTab({
                 );
               })}
               {awardSearch && activePlayers.filter(p => p.name.toLowerCase().includes(awardSearch.toLowerCase())).length === 0 && (
-                <p className="text-xs text-white/30 text-center py-3">No players match "{awardSearch}"</p>
+                <p className="text-xs text-text-primary/30 text-center py-3">No players match "{awardSearch}"</p>
               )}
             </div>
           </div>
 
           {awardPlayers.length > 0 && (
             <div>
-              <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">Badge</label>
+              <label className="text-xs text-text-muted uppercase tracking-widest mb-1 block">Badge</label>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                 {availableBadgesForPlayers(awardPlayers).map((bt) => {
                   const meta = getBadgeMeta(bt, customDefs);
@@ -519,11 +521,11 @@ export function BadgesTab({
                       className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition ${
                         awardBadge === bt
                           ? "border-accent bg-accent/10"
-                          : "border-white/10 hover:border-white/30"
+                          : "border-border hover:border-border"
                       }`}
                     >
                       <BadgeIcon badgeType={bt} size={32} customDefs={customDefs} />
-                      <span className="text-[8px] text-white/60 text-center leading-tight">{meta.short}</span>
+                      <span className="text-[8px] text-text-secondary text-center leading-tight">{meta.short}</span>
                     </button>
                   );
                 })}
@@ -535,11 +537,11 @@ export function BadgesTab({
             <>
               {stackableSet.has(awardBadge) && (
                 <div>
-                  <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">Match (optional)</label>
+                  <label className="text-xs text-text-muted uppercase tracking-widest mb-1 block">Match (optional)</label>
                   <select
                     value={awardMatchId}
                     onChange={(e) => setAwardMatchId(e.target.value)}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary"
                   >
                     <option value="">No specific match</option>
                     {matches
@@ -553,20 +555,20 @@ export function BadgesTab({
               )}
 
               <div>
-                <label className="text-xs text-white/50 uppercase tracking-widest mb-1 block">Note (optional)</label>
+                <label className="text-xs text-text-muted uppercase tracking-widest mb-1 block">Note (optional)</label>
                 <input
                   type="text"
                   value={awardNote}
                   onChange={(e) => setAwardNote(e.target.value)}
                   placeholder="e.g. 105 not out vs Titans"
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-primary/30"
                 />
               </div>
 
               <button
                 onClick={handleAward}
                 disabled={isAwarding || !awardPlayers.length}
-                className="w-full bg-accent text-black font-bold py-2.5 rounded-lg hover:brightness-110 transition disabled:opacity-50"
+                className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-lg hover:brightness-110 transition disabled:opacity-50"
               >
                 {isAwarding
                   ? "Awarding..."
@@ -580,9 +582,9 @@ export function BadgesTab({
       {/* Manage Badge Types View */}
       {view === "manage" && isClubAdmin && (
         <div className="space-y-4">
-          <div className="glass rounded-xl p-4 border border-glass-border space-y-4">
+          <div className="bg-surface rounded-xl p-4 border border-border space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-white flex items-center gap-2">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
                 <Settings className="w-5 h-5 text-accent" />
                 Manage Badge Types
               </h3>
@@ -591,34 +593,34 @@ export function BadgesTab({
                   <button
                     onClick={handleSeedDefaults}
                     disabled={isSeedingDefaults}
-                    className="bg-white/5 text-white/70 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-white/10 border border-white/10 transition disabled:opacity-50"
+                    className="bg-surface-hover text-text-secondary text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-hover border border-border transition disabled:opacity-50"
                   >
                     <Upload className="w-3.5 h-3.5" /> {isSeedingDefaults ? "Importing..." : "Import Defaults"}
                   </button>
                 )}
                 <button
                   onClick={openNewDefForm}
-                  className="bg-accent text-black text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:brightness-110 transition"
+                  className="bg-accent text-text-accent text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:brightness-110 transition"
                 >
                   <Plus className="w-3.5 h-3.5" /> New Badge
                 </button>
               </div>
             </div>
 
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-text-muted">
               Default badges are always available. Custom badges you create here can be edited or removed.
             </p>
 
             {/* Badge Type Form */}
             {showDefForm && (
-              <div className="bg-black/30 rounded-lg p-3 border border-white/10 space-y-3">
-                <h4 className="text-sm font-bold text-white">
+              <div className="bg-surface-hover rounded-lg p-3 border border-border space-y-3">
+                <h4 className="text-sm font-bold text-text-primary">
                   {editingDef ? `Edit: ${editingDef.label}` : "Create New Badge Type"}
                 </h4>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Label</label>
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Label</label>
                     <input
                       type="text"
                       value={defForm.label}
@@ -631,17 +633,17 @@ export function BadgesTab({
                         }));
                       }}
                       placeholder="KAvach MVP"
-                      className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white placeholder:text-white/30"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary placeholder:text-text-primary/30"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Short Name</label>
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Short Name</label>
                     <input
                       type="text"
                       value={defForm.short}
                       onChange={(e) => setDefForm(f => ({ ...f, short: e.target.value }))}
                       placeholder="MVP"
-                      className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white placeholder:text-white/30"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary placeholder:text-text-primary/30"
                     />
                   </div>
                 </div>
@@ -649,18 +651,18 @@ export function BadgesTab({
                 <div className="grid grid-cols-3 gap-3">
                   {!editingDef && (
                     <div>
-                      <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Key (slug)</label>
+                      <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Key (slug)</label>
                       <input
                         type="text"
                         value={defForm.id}
                         onChange={(e) => setDefForm(f => ({ ...f, id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") }))}
                         placeholder="mvp"
-                        className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white font-mono placeholder:text-white/30"
+                        className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary font-mono placeholder:text-text-primary/30"
                       />
                     </div>
                   )}
                   <div>
-                    <label className="text-[10px] text-white/50 uppercase tracking-widest mb-0.5 block">Badge Face Text</label>
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Badge Face Text</label>
                     <div className="flex gap-1">
                       <input
                         type="text"
@@ -668,12 +670,12 @@ export function BadgesTab({
                         onChange={(e) => setDefForm(f => ({ ...f, emoji: e.target.value }))}
                         placeholder="MVP"
                         maxLength={6}
-                        className="flex-1 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center placeholder:text-white/30"
+                        className="flex-1 bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary text-center placeholder:text-text-primary/30"
                       />
                       <button
                         type="button"
                         onClick={() => setShowIconPicker(!showIconPicker)}
-                        className={`p-1.5 rounded-lg border transition ${showIconPicker ? "border-accent bg-accent/10 text-accent" : "border-white/10 text-white/50 hover:text-white"}`}
+                        className={`p-1.5 rounded-lg border transition ${showIconPicker ? "border-accent bg-accent/10 text-accent" : "border-border text-text-muted hover:text-text-primary"}`}
                         title="Browse icons"
                       >
                         <Palette className="w-4 h-4" />
@@ -683,18 +685,18 @@ export function BadgesTab({
                 </div>
 
                 {showIconPicker && (
-                  <div className="bg-black/20 rounded-lg p-2 border border-white/10 space-y-2 max-h-52 overflow-y-auto">
+                  <div className="bg-surface-hover rounded-lg p-2 border border-border space-y-2 max-h-52 overflow-y-auto">
                     {ICON_LIBRARY.map(({ cat, icons }) => (
                       <div key={cat}>
-                        <p className="text-[9px] text-white/40 uppercase tracking-widest mb-1">{cat}</p>
+                        <p className="text-[9px] text-text-muted uppercase tracking-widest mb-1">{cat}</p>
                         <div className="flex flex-wrap gap-1">
                           {icons.map(icon => (
                             <button
                               key={icon}
                               type="button"
                               onClick={() => { setDefForm(f => ({ ...f, emoji: icon })); setShowIconPicker(false); }}
-                              className={`px-2 py-1 rounded text-sm border transition hover:bg-white/10 ${
-                                defForm.emoji === icon ? "border-accent bg-accent/10 text-accent" : "border-white/10 text-white/70"
+                              className={`px-2 py-1 rounded text-sm border transition hover:bg-surface-hover ${
+                                defForm.emoji === icon ? "border-accent bg-accent/10 text-accent" : "border-border text-text-secondary"
                               }`}
                             >
                               {icon}
@@ -707,7 +709,7 @@ export function BadgesTab({
                 )}
 
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+                  <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
                     <input
                       type="checkbox"
                       checked={defForm.stackable}
@@ -733,14 +735,14 @@ export function BadgesTab({
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setShowDefForm(false); setShowIconPicker(false); setEditingDef(null); setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false }); }}
-                    className="flex-1 py-2 border border-white/10 rounded-lg text-white/70 text-sm hover:bg-white/5"
+                    className="flex-1 py-2 border border-border rounded-lg text-text-secondary text-sm hover:bg-surface-hover"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveDef}
                     disabled={isSavingDef || !defForm.label.trim() || !defForm.emoji.trim() || (!editingDef && !defForm.id)}
-                    className="flex-1 py-2 bg-accent text-black rounded-lg text-sm font-bold hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-1"
+                    className="flex-1 py-2 bg-accent text-text-accent rounded-lg text-sm font-bold hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-1"
                   >
                     <Check className="w-3.5 h-3.5" />
                     {isSavingDef ? "Saving..." : editingDef ? "Update" : "Create"}
@@ -752,26 +754,26 @@ export function BadgesTab({
             {/* Custom badge types from Firestore */}
             {customDefs.length > 0 && (
               <div className="space-y-2">
-                <h4 className="text-xs text-white/50 uppercase tracking-widest">Custom Badges ({customDefs.length})</h4>
+                <h4 className="text-xs text-text-muted uppercase tracking-widest">Custom Badges ({customDefs.length})</h4>
                 {customDefs.map((def) => {
                   const colors = getBadgeTierColors(def.tier);
                   const hasAwards = badgesExistForType(def.id);
                   return (
                     <div
                       key={def.id}
-                      className="flex items-center gap-3 p-2 rounded-lg border border-white/10 bg-black/20"
+                      className="flex items-center gap-3 p-2 rounded-lg border border-border bg-surface-hover"
                     >
                       <BadgeIcon badgeType={def.id} size={36} customDefs={customDefs} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-white truncate">{def.label}</p>
-                        <p className="text-[10px] text-white/40">
+                        <p className="text-sm font-bold text-text-primary truncate">{def.label}</p>
+                        <p className="text-[10px] text-text-muted">
                           {def.short}{def.stackable && " · stackable"}
                         </p>
                       </div>
                       <div className="flex gap-1">
                         <button
                           onClick={() => openEditDefForm(def)}
-                          className="p-1.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition"
+                          className="p-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:bg-surface-hover transition"
                           title="Edit"
                         >
                           <Edit className="w-3.5 h-3.5" />
@@ -793,14 +795,14 @@ export function BadgesTab({
             {/* Default badge types */}
             {unseededDefaults.length > 0 && (
               <div className="space-y-2">
-                <h4 className="text-xs text-white/50 uppercase tracking-widest">Default Badges ({unseededDefaults.length})</h4>
+                <h4 className="text-xs text-text-muted uppercase tracking-widest">Default Badges ({unseededDefaults.length})</h4>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {unseededDefaults.map((bt) => {
                     const meta = getBadgeMeta(bt);
                     return (
-                      <div key={bt} className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/5 bg-black/10">
+                      <div key={bt} className="flex flex-col items-center gap-1 p-2 rounded-lg border border-border bg-surface-hover">
                         <BadgeIcon badgeType={bt} size={28} />
-                        <span className="text-[8px] text-white/40 text-center leading-tight">{meta.short}</span>
+                        <span className="text-[8px] text-text-muted text-center leading-tight">{meta.short}</span>
                       </div>
                     );
                   })}
@@ -841,13 +843,13 @@ export function BadgesTab({
       {/* Delete Badge Confirmation */}
       {confirmDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-white/10 space-y-4">
-            <h3 className="font-bold text-white">Remove Badge?</h3>
-            <p className="text-sm text-white/60">This will permanently remove this badge from the player.</p>
+          <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4">
+            <h3 className="font-bold text-text-primary">Remove Badge?</h3>
+            <p className="text-sm text-text-secondary">This will permanently remove this badge from the player.</p>
             <div className="flex gap-2">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="flex-1 py-2 border border-white/10 rounded-lg text-white/70 text-sm hover:bg-white/5"
+                className="flex-1 py-2 border border-border rounded-lg text-text-secondary text-sm hover:bg-surface-hover"
               >
                 Cancel
               </button>
@@ -865,19 +867,19 @@ export function BadgesTab({
       {/* Delete Badge Type Confirmation */}
       {confirmDeleteDef && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-white/10 space-y-4">
-            <h3 className="font-bold text-white">Delete Badge Type?</h3>
+          <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4">
+            <h3 className="font-bold text-text-primary">Delete Badge Type?</h3>
             {badgesExistForType(confirmDeleteDef) ? (
               <p className="text-sm text-red-400">
                 Some players have been awarded this badge. Deleting the type won't remove awarded badges, but they'll show a generic icon.
               </p>
             ) : (
-              <p className="text-sm text-white/60">This badge type will be permanently removed.</p>
+              <p className="text-sm text-text-secondary">This badge type will be permanently removed.</p>
             )}
             <div className="flex gap-2">
               <button
                 onClick={() => setConfirmDeleteDef(null)}
-                className="flex-1 py-2 border border-white/10 rounded-lg text-white/70 text-sm hover:bg-white/5"
+                className="flex-1 py-2 border border-border rounded-lg text-text-secondary text-sm hover:bg-surface-hover"
               >
                 Cancel
               </button>

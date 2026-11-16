@@ -4,6 +4,7 @@ import { Player, FeePlan } from "@/lib/types";
 import { dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthProviderBadges } from "@/components/AuthProviderBadges";
+import { useToast } from "@/components/ui/Toast";
 
 export function EditPlayerInline({
   player,
@@ -14,6 +15,7 @@ export function EditPlayerInline({
   store: ReturnType<typeof useStore>;
   onCancel: () => void;
 }) {
+  const { toast } = useToast();
   const { user, hasAdminClaim } = useAuth();
   const currentAppUser = store.appUsers.find(u => u.id === user?.uid);
   const isSuperAdmin = currentAppUser?.role === "admin" || hasAdminClaim;
@@ -60,7 +62,7 @@ export function EditPlayerInline({
     if (formData.jerseyNumber) {
       const jerseyError = validateJerseyNumber(formData.jerseyNumber);
       if (jerseyError) {
-        alert(jerseyError);
+        toast(jerseyError, "error");
         return;
       }
     }
@@ -94,21 +96,21 @@ export function EditPlayerInline({
   return (
     <form
       onSubmit={handleSubmit}
-      className="p-4 bg-black/40 border-t border-glass-border space-y-4"
+      className="p-4 bg-surface-hover border-t border-border space-y-4"
     >
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-bold text-accent">Edit Profile</h3>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-white/50 hover:text-white"
+          className="text-xs text-text-muted hover:text-text-primary"
         >
           Close
         </button>
       </div>
 
-      <div className="bg-white/5 border border-glass-border rounded-lg px-3 py-2 space-y-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50 block">
+      <div className="bg-surface-hover border border-border rounded-lg px-3 py-2 space-y-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted block">
           Sign-in method
         </span>
         <AuthProviderBadges
@@ -123,7 +125,7 @@ export function EditPlayerInline({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Name
           </label>
           <input
@@ -131,11 +133,11 @@ export function EditPlayerInline({
             type="text"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Email
           </label>
           <input
@@ -144,11 +146,11 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, email: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Mobile
           </label>
           <input
@@ -158,22 +160,22 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, mobile: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             DOB
           </label>
           <input
             type="date"
             value={inputToDbDate(formData.dob)}
             onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             KAvach Joining Date
           </label>
           <div className="flex gap-2">
@@ -182,7 +184,7 @@ export function EditPlayerInline({
               onChange={(e) =>
                 setFormData({ ...formData, kavachJoiningMonth: e.target.value })
               }
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
             >
               <option value="">Month</option>
               <option value="01">Jan</option>
@@ -203,7 +205,7 @@ export function EditPlayerInline({
               onChange={(e) =>
                 setFormData({ ...formData, kavachJoiningYear: e.target.value })
               }
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
             >
               <option value="">Year</option>
               {Array.from({ length: 2026 - 2015 + 1 }, (_, i) => 2015 + i).map((year) => (
@@ -214,7 +216,7 @@ export function EditPlayerInline({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
               Total Runs
             </label>
             <input
@@ -222,12 +224,12 @@ export function EditPlayerInline({
               min={0}
               value={formData.totalRuns}
               onChange={(e) => setFormData({ ...formData, totalRuns: e.target.value })}
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               placeholder="0"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
               Total Wickets
             </label>
             <input
@@ -235,13 +237,13 @@ export function EditPlayerInline({
               min={0}
               value={formData.totalWickets}
               onChange={(e) => setFormData({ ...formData, totalWickets: e.target.value })}
-              className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               placeholder="0"
             />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Locality
           </label>
           <input
@@ -250,11 +252,11 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, locality: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Emergency Contact
           </label>
           <input
@@ -263,11 +265,11 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, emergencyContact: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Blood Group
           </label>
           <input
@@ -276,11 +278,11 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, bloodGroup: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Chest Size
           </label>
           <select
@@ -288,7 +290,7 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, chestSize: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
           >
             <option value="">Select Size</option>
             {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
@@ -297,7 +299,7 @@ export function EditPlayerInline({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Jersey No.
           </label>
           <input
@@ -306,11 +308,11 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, jerseyNumber: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Batting Style
           </label>
           <select
@@ -318,14 +320,14 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, battingStyle: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
           >
             <option>Right-hand bat</option>
             <option>Left-hand bat</option>
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/70">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Bowling Style
           </label>
           <select
@@ -333,7 +335,7 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, bowlingStyle: e.target.value })
             }
-            className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
           >
             <option>Right-arm fast</option>
             <option>Right-arm medium</option>
@@ -356,7 +358,7 @@ export function EditPlayerInline({
           <h4 className="text-xs font-bold text-purple-300 uppercase tracking-widest">
             Privileges
           </h4>
-          <p className="text-[10px] text-white/50 leading-relaxed">
+          <p className="text-[10px] text-text-muted leading-relaxed">
             Elevated access to admin surfaces. See Settings for a
             consolidated view of every role and who holds it.
           </p>
@@ -442,8 +444,8 @@ export function EditPlayerInline({
               <label
                 key={r.label}
                 className={`flex items-start gap-3 p-2 rounded border ${
-                  r.disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-white/5"
-                } ${r.checked ? "bg-black/30 border-purple-500/20" : "bg-black/20 border-white/5"}`}
+                  r.disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-surface-hover"
+                } ${r.checked ? "bg-surface-hover border-purple-500/20" : "bg-surface-hover border-border"}`}
               >
                 <input
                   type="checkbox"
@@ -454,11 +456,11 @@ export function EditPlayerInline({
                 />
                 <div className="min-w-0">
                   <div
-                    className={`text-[11px] font-bold uppercase tracking-wider ${r.accent ? "text-accent" : "text-white"}`}
+                    className={`text-[11px] font-bold uppercase tracking-wider ${r.accent ? "text-accent" : "text-text-primary"}`}
                   >
                     {r.label}
                   </div>
-                  <div className="text-[10px] text-white/50">{r.desc}</div>
+                  <div className="text-[10px] text-text-muted">{r.desc}</div>
                   {r.disabled && r.label === "Super Admin" && (
                     <div className="text-[10px] text-amber-400 mt-0.5">
                       Cannot demote the last super admin.
@@ -477,11 +479,11 @@ export function EditPlayerInline({
           <h4 className="text-xs font-bold text-amber-300 uppercase tracking-widest">
             Match Fee Plans
           </h4>
-          <p className="text-[10px] text-white/50 leading-relaxed">
+          <p className="text-[10px] text-text-muted leading-relaxed">
             Assign one or more match fee plans to override the standard match fee for this player.
           </p>
           {activeFeePlans.length === 0 ? (
-            <p className="text-[10px] text-white/40 italic">
+            <p className="text-[10px] text-text-muted italic">
               No match fee plans created yet. Create plans in Finance → Match Fee Plans.
               {store.feePlans.length > 0 && ` (${store.feePlans.length} plan(s) exist but are inactive)`}
             </p>
@@ -500,10 +502,10 @@ export function EditPlayerInline({
                 return (
                   <label
                     key={plan.id}
-                    className={`flex items-start gap-3 p-2 rounded border cursor-pointer hover:bg-white/5 ${
+                    className={`flex items-start gap-3 p-2 rounded border cursor-pointer hover:bg-surface-hover ${
                       isSelected
-                        ? "bg-black/30 border-amber-500/30"
-                        : "bg-black/20 border-white/5"
+                        ? "bg-surface-hover border-amber-500/30"
+                        : "bg-surface-hover border-border"
                     }`}
                   >
                     <input
@@ -519,10 +521,10 @@ export function EditPlayerInline({
                       className="mt-0.5 w-4 h-4 rounded accent-amber-400"
                     />
                     <div className="min-w-0">
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-white">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-text-primary">
                         {plan.name}
                       </div>
-                      <div className="text-[10px] text-white/50">{desc}</div>
+                      <div className="text-[10px] text-text-muted">{desc}</div>
                     </div>
                   </label>
                 );
@@ -530,7 +532,7 @@ export function EditPlayerInline({
             </div>
           )}
           {activeFeePlans.length > 0 && selectedPlanIds.length === 0 && (
-            <p className="text-[10px] text-white/40 italic">
+            <p className="text-[10px] text-text-muted italic">
               No plans assigned — standard match fee applies.
             </p>
           )}
@@ -547,11 +549,11 @@ export function EditPlayerInline({
             <h4 className="text-xs font-bold text-accent uppercase tracking-widest">
               Studio Membership
             </h4>
-            <p className="text-[10px] text-white/50">
+            <p className="text-[10px] text-text-muted">
               Enable or disable player&apos;s studio subscription
             </p>
           </div>
-          <div className="flex items-center h-[28px] px-2.5 bg-black/40 border border-accent/20 rounded-lg">
+          <div className="flex items-center h-[28px] px-2.5 bg-surface-hover border border-accent/20 rounded-lg">
             <input
               type="checkbox"
               id={`isStudioMember-${player.id}`}
@@ -559,11 +561,11 @@ export function EditPlayerInline({
               onChange={(e) =>
                 setFormData({ ...formData, isStudioMember: e.target.checked })
               }
-              className="w-4 h-4 rounded border-glass-border bg-black/40 text-accent focus:ring-accent accent-accent cursor-pointer animate-pulse"
+              className="w-4 h-4 rounded border-border bg-surface-hover text-accent focus:ring-accent accent-accent cursor-pointer animate-pulse"
             />
             <label
               htmlFor={`isStudioMember-${player.id}`}
-              className="ml-2 text-[11px] font-bold text-white cursor-pointer select-none"
+              className="ml-2 text-[11px] font-bold text-text-primary cursor-pointer select-none"
             >
               Studio Member
             </label>
@@ -584,7 +586,7 @@ export function EditPlayerInline({
                     studioPlan: e.target.value as any,
                   })
                 }
-                className="w-full rounded-lg border border-accent/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                className="w-full rounded-lg border border-accent/30 bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
               >
                 <option value="Trial">Trial</option>
                 <option value="1M">1 Month</option>
@@ -604,7 +606,7 @@ export function EditPlayerInline({
                 onChange={(e) =>
                   setFormData({ ...formData, lastPaidDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-accent/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-accent/30 bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
             <div>
@@ -618,7 +620,7 @@ export function EditPlayerInline({
                 onChange={(e) =>
                   setFormData({ ...formData, lastPaidAmount: e.target.value })
                 }
-                className="w-full rounded-lg border border-accent/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-accent/30 bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
             <div className="sm:col-span-2">
@@ -633,7 +635,7 @@ export function EditPlayerInline({
                 onChange={(e) =>
                   setFormData({ ...formData, studioExpiryDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-accent/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-accent/30 bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
           </div>

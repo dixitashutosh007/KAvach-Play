@@ -226,19 +226,19 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
   const pastGrouped = groupWeeksByMonth(pastCalendarData);
 
   if (!isMounted) {
-    return <div className="p-4 text-center text-white/50 animate-pulse mt-4">Loading calendar view...</div>;
+    return <div className="p-4 text-center text-text-muted animate-pulse mt-4">Loading calendar view...</div>;
   }
 
   return (
     <div className="space-y-8 pb-12 mt-4 text-left">
       {isAdmin && (
-        <div className="glass p-4 rounded-xl flex flex-wrap gap-4 items-center">
+        <div className="bg-surface p-4 rounded-xl flex flex-wrap gap-4 items-center">
           <div className="flex-1 min-w-[200px]">
-            <label className="text-[10px] uppercase font-bold text-white/50 tracking-widest block mb-1">Ground</label>
+            <label className="text-[10px] uppercase font-bold text-text-muted tracking-widest block mb-1">Ground</label>
             <select
               value={filterGround}
               onChange={(e) => setFilterGround(e.target.value)}
-              className="w-full bg-black/30 border border-glass-border rounded-lg text-sm px-3 py-2 text-white focus:outline-none focus:border-accent"
+              className="w-full bg-surface-hover border border-border rounded-lg text-sm px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
             >
               <option value="all">All Grounds</option>
               {grounds.map(g => (
@@ -247,7 +247,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
             </select>
           </div>
           <div className="flex-none pt-4">
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-white/80 hover:text-white transition">
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-text-primary hover:text-text-primary transition">
               <input
                 type="checkbox"
                 checked={filterOpenSlots}
@@ -261,10 +261,10 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
       )}
 
       {Object.keys(pastGrouped).length > 0 && (
-        <div className="glass p-4 rounded-xl">
+        <div className="bg-surface p-4 rounded-xl">
           <button
             onClick={() => setIsPastCollapsed(!isPastCollapsed)}
-            className="flex w-full items-center justify-between text-white/80 hover:text-white"
+            className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
           >
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Calendar className="w-5 h-5" /> Past Matches
@@ -275,14 +275,14 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
             <div className="mt-4 space-y-6">
               {Object.entries(pastGrouped).reverse().map(([monthName, weeks]) => (
                 <div key={monthName} className="space-y-4">
-                  <h3 className="text-sm font-bold border-b border-glass-border pb-2 text-white/50 shrink-0">
+                  <h3 className="text-sm font-bold border-b border-border pb-2 text-text-muted shrink-0">
                     {monthName}
                   </h3>
                   <div className="space-y-4">
                     {weeks.slice().reverse().map((week, idx) => (
                       <div
                         key={idx}
-                        className="bg-white/5 border border-glass-border rounded-xl p-4 overflow-x-auto custom-scrollbar"
+                        className="bg-surface-hover border border-border rounded-xl p-4 overflow-x-auto custom-scrollbar"
                       >
                         <div className="flex gap-4 min-w-max flex-row-reverse justify-end">
                           {week.days.slice().reverse().map((day: any, dIdx: number) => (
@@ -290,15 +290,15 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                               key={dIdx}
                               className="w-40 shrink-0 flex flex-col space-y-2"
                             >
-                              <div className="text-center pb-2 border-b border-glass-border">
-                                <div className="text-[10px] uppercase font-bold tracking-widest text-white/50">
+                              <div className="text-center pb-2 border-b border-border">
+                                <div className="text-[10px] uppercase font-bold tracking-widest text-text-muted">
                                   {day.date.toLocaleDateString("en-US", {
                                     weekday: "short",
                                   })}
                                 </div>
                                 <div className="text-2xl font-bold font-mono flex flex-col items-center">
                                   <span>{day.date.getDate()}</span>
-                                  <span className="text-[10px] font-sans text-white/40 uppercase tracking-widest leading-none mt-1">{day.date.toLocaleDateString("en-US", { month: "short" })}</span>
+                                  <span className="text-[10px] font-sans text-text-muted uppercase tracking-widest leading-none mt-1">{day.date.toLocaleDateString("en-US", { month: "short" })}</span>
                                 </div>
                               </div>
                               <div className="space-y-2 pt-1 flex flex-col justify-start h-full min-h-[5rem]">
@@ -317,7 +317,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                       }`}
                                     >
                                       <div className="flex justify-between items-start">
-                                        <div className="text-[10px] uppercase font-bold tracking-wider text-white opacity-70">
+                                        <div className="text-[10px] uppercase font-bold tracking-wider text-text-primary opacity-70">
                                           {m.matchType} • {m.time}
                                         </div>
                                         {m.isTentative && (
@@ -347,7 +347,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                                 e.stopPropagation();
                                                 onCancelDelete?.();
                                               }}
-                                              className="text-white/60 hover:bg-white/10 rounded p-1 transition"
+                                              className="text-text-secondary hover:bg-surface-hover rounded p-1 transition"
                                             >
                                               <span className="text-[10px] font-bold px-0.5">X</span>
                                             </button>
@@ -355,10 +355,10 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                         </div>
                                       ) : (
                                         <>
-                                          <div className="font-bold text-sm leading-tight text-white/90">
+                                          <div className="font-bold text-sm leading-tight text-text-primary">
                                             vs {m.opponent}
                                           </div>
-                                          <div className="text-[10px] text-white/50 truncate">
+                                          <div className="text-[10px] text-text-muted truncate">
                                             {grounds.find((g) => g.id === m.groundId)?.name || "Unknown Ground"}
                                           </div>
                                           {effectiveAdmin && m.isGroundFeePaid && (
@@ -373,14 +373,14 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                             </div>
                                           )}
                                           {effectiveAdmin && (
-                                            <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
+                                            <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-border/50 transition-opacity">
                                               <div className="flex items-center gap-1">
                                                 <button
                                                   onClick={(e) => {
                                                     e.stopPropagation();
                                                     onEditMatch?.(m);
                                                   }}
-                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg bg-surface-hover border border-border transition"
                                                   title="Edit Match"
                                                 >
                                                   <Edit2 className="w-3.5 h-3.5" />
@@ -390,7 +390,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                                     e.stopPropagation();
                                                     onDuplicateMatch?.(m);
                                                   }}
-                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg bg-surface-hover border border-border transition"
                                                   title="Duplicate Match"
                                                 >
                                                   <Copy className="w-3.5 h-3.5" />
@@ -400,7 +400,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                                     e.stopPropagation();
                                                     onDeleteMatch?.(m);
                                                   }}
-                                                  className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                                  className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-red-400 hover:bg-red-500/10 rounded-lg bg-surface-hover border border-border transition"
                                                   title="Delete Match"
                                                 >
                                                   <Trash2 className="w-3.5 h-3.5" />
@@ -411,7 +411,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                                   href={m.matchUrl}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
-                                                  className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-white transition uppercase font-bold tracking-wider"
+                                                  className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-text-primary transition uppercase font-bold tracking-wider"
                                                   onClick={(e) => e.stopPropagation()}
                                                 >
                                                   Share
@@ -425,7 +425,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                   );
                                 })}
                                 {day.matches.length === 0 && (
-                                  <div className="flex-1 flex items-center justify-center text-white/10 text-xs italic">
+                                  <div className="flex-1 flex items-center justify-center text-text-primary/10 text-xs italic">
                                     No Match
                                   </div>
                                 )}
@@ -445,14 +445,14 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
 
       {Object.entries(upcomingGrouped).map(([monthName, weeks]) => (
         <div key={monthName} className="space-y-4">
-          <h2 className="text-xl font-bold border-b border-glass-border pb-2 text-white/80 shrink-0">
+          <h2 className="text-xl font-bold border-b border-border pb-2 text-text-primary shrink-0">
             {monthName}
           </h2>
           <div className="space-y-4">
             {weeks.map((week, idx) => (
               <div
                 key={idx}
-                className="bg-white/5 border border-glass-border rounded-xl p-4 overflow-x-auto custom-scrollbar"
+                className="bg-surface-hover border border-border rounded-xl p-4 overflow-x-auto custom-scrollbar"
               >
                 <div className="flex gap-4 min-w-max">
                   {week.days.map((day: any, dIdx: number) => (
@@ -460,15 +460,15 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                       key={dIdx}
                       className="w-40 shrink-0 flex flex-col space-y-2"
                     >
-                      <div className="text-center pb-2 border-b border-glass-border">
-                        <div className="text-[10px] uppercase font-bold tracking-widest text-white/50">
+                      <div className="text-center pb-2 border-b border-border">
+                        <div className="text-[10px] uppercase font-bold tracking-widest text-text-muted">
                           {day.date.toLocaleDateString("en-US", {
                             weekday: "short",
                           })}
                         </div>
                         <div className="text-2xl font-bold font-mono flex flex-col items-center">
                           <span>{day.date.getDate()}</span>
-                          <span className="text-[10px] font-sans text-white/40 uppercase tracking-widest leading-none mt-1">{day.date.toLocaleDateString("en-US", { month: "short" })}</span>
+                          <span className="text-[10px] font-sans text-text-muted uppercase tracking-widest leading-none mt-1">{day.date.toLocaleDateString("en-US", { month: "short" })}</span>
                         </div>
                       </div>
 
@@ -488,7 +488,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                             }`}
                           >
                             <div className="flex justify-between items-start">
-                              <div className="text-[10px] uppercase font-bold tracking-wider text-white opacity-70">
+                              <div className="text-[10px] uppercase font-bold tracking-wider text-text-primary opacity-70">
                                 {m.matchType} • {m.time}
                               </div>
                               {m.isTentative && (
@@ -532,7 +532,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                       e.stopPropagation();
                                       onCancelDelete?.();
                                     }}
-                                    className="text-white/60 hover:bg-white/10 rounded p-1 transition"
+                                    className="text-text-secondary hover:bg-surface-hover rounded p-1 transition"
                                   >
                                     <span className="text-[10px] font-bold px-0.5">X</span>
                                   </button>
@@ -540,11 +540,11 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                               </div>
                             ) : (
                               <>
-                                <div className="font-bold text-sm leading-tight text-white/90">
+                                <div className="font-bold text-sm leading-tight text-text-primary">
                                   vs {m.opponent}
                                 </div>
                                 {m.groundId && (
-                                  <div className="text-[9px] uppercase tracking-widest text-white/60 truncate mt-0.5">
+                                  <div className="text-[9px] uppercase tracking-widest text-text-secondary truncate mt-0.5">
                                     {grounds.find((g) => g.id === m.groundId)?.name || "Unknown Ground"}
                                   </div>
                                 )}
@@ -563,14 +563,14 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                 )}
 
                                 {effectiveAdmin && (
-                                  <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-glass-border/50 transition-opacity">
+                                  <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-border/50 transition-opacity">
                                     <div className="flex items-center gap-1">
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           onEditMatch?.(m);
                                         }}
-                                        className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                        className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg bg-surface-hover border border-border transition"
                                         title="Edit Match"
                                       >
                                         <Edit2 className="w-3.5 h-3.5" />
@@ -580,7 +580,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                           e.stopPropagation();
                                           onDuplicateMatch?.(m);
                                         }}
-                                        className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                        className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg bg-surface-hover border border-border transition"
                                         title="Duplicate Match"
                                       >
                                         <Copy className="w-3.5 h-3.5" />
@@ -590,7 +590,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                           e.stopPropagation();
                                           onDeleteMatch?.(m);
                                         }}
-                                        className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg bg-black/20 border border-white/5 transition"
+                                        className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-red-400 hover:bg-red-500/10 rounded-lg bg-surface-hover border border-border transition"
                                         title="Delete Match"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -601,7 +601,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                         href={m.matchUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-white transition uppercase font-bold tracking-wider"
+                                        className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-text-primary transition uppercase font-bold tracking-wider"
                                         onClick={(e) => e.stopPropagation()}
                                       >
                                         Share

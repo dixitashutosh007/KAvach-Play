@@ -4,8 +4,12 @@ import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert }
 import { formatDate, computeLateFees } from "@/lib/utils";
 import { isMatchBillable } from "@/lib/matchBillable";
 import type { ManualPaymentMethod } from "@/lib/types";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { store: any; isFinanceAdmin: boolean; isSuperAdmin?: boolean }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const [subTab, setSubTab] = useState<"dues_report" | "dues_table" | "email_template">("dues_report");
 
   // Dues Report State
@@ -37,15 +41,15 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
              due_reminder: emailTemplate
           },
        });
-       alert("Email template saved.");
+       toast("Email template saved.", "success");
      } catch (e) {
-       alert("Failed to save configuration.");
+       toast("Failed to save configuration.", "error");
      }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 bg-black/20 p-1 rounded-xl border border-glass-border overflow-x-auto hide-scrollbar">
+      <div className="flex items-center gap-3 bg-surface-hover p-1 rounded-xl border border-border overflow-x-auto hide-scrollbar">
         {[
           { key: "dues_report", label: "Report" },
           { key: "dues_table", label: "Table View" },
@@ -57,7 +61,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
               key={tab.key}
               onClick={() => setSubTab(tab.key as any)}
               className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest whitespace-nowrap transition-all ${
-                active ? "bg-accent text-black shadow-lg shadow-accent/20" : "text-white/50 hover:bg-white/5 hover:text-white"
+                active ? "bg-accent text-text-accent shadow-lg shadow-accent/20" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
               }`}
             >
               {tab.label}
@@ -68,47 +72,47 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
 
 
       {subTab === "email_template" && (
-        <div className="glass p-6 rounded-2xl border border-glass-border space-y-6">
+        <div className="bg-surface p-6 rounded-2xl border border-border space-y-6">
           <div className="bg-amber-500/5 border border-amber-500/20 text-amber-200/80 text-[11px] px-3 py-2 rounded-lg leading-snug">
             Automated cron-based reminders were removed to control server costs. Reminders are now sent only when an admin clicks the per-player <b className="text-amber-100">Send Email</b> or <b className="text-amber-100">Send WhatsApp</b> button in the Report tab. Use this section to edit the template body those buttons will send.
           </div>
 
-          <div className="border border-glass-border rounded-xl bg-white/5 overflow-hidden">
+          <div className="border border-border rounded-xl bg-surface-hover overflow-hidden">
             <button
               type="button"
               onClick={() => setIsEmailSubOpen(!isEmailSubOpen)}
-              className="w-full flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 transition focus:outline-none border-b border-glass-border"
+              className="w-full flex items-center justify-between p-3 bg-surface-hover hover:bg-surface-hover transition focus:outline-none border-b border-border"
             >
-              <h4 className="text-[11px] font-bold uppercase tracking-widest text-white/80">Email Template</h4>
-              {isEmailSubOpen ? <ChevronDown className="w-4 h-4 text-white/60" /> : <ChevronRight className="w-4 h-4 text-white/60" />}
+              <h4 className="text-[11px] font-bold uppercase tracking-widest text-text-primary">Email Template</h4>
+              {isEmailSubOpen ? <ChevronDown className="w-4 h-4 text-text-secondary" /> : <ChevronRight className="w-4 h-4 text-text-secondary" />}
             </button>
             {isEmailSubOpen && (
               <div className="p-4 space-y-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50 mb-1">Subject</label>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-1">Subject</label>
                   <input
                     type="text"
                     value={emailTemplate.subject}
                     onChange={(e) => setEmailTemplate({ ...emailTemplate, subject: e.target.value })}
-                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-white"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-white/50 mb-1">Body</label>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-1">Body</label>
                   <textarea
                     value={emailTemplate.body}
                     onChange={(e) => setEmailTemplate({ ...emailTemplate, body: e.target.value })}
                     rows={10}
-                    className="w-full bg-black/40 border border-glass-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-white custom-scrollbar leading-relaxed"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-text-primary custom-scrollbar leading-relaxed"
                   />
-                  <div className="mt-3 text-xs text-white/40 space-y-1">
-                    <div className="font-bold uppercase tracking-widest mb-2 text-white/60">Available Variables:</div>
+                  <div className="mt-3 text-xs text-text-muted space-y-1">
+                    <div className="font-bold uppercase tracking-widest mb-2 text-text-secondary">Available Variables:</div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      <span className="bg-white/5 px-2 py-1 rounded">{'{{clubName}}'}</span>
-                      <span className="bg-white/5 px-2 py-1 rounded">{'{{playerName}}'}</span>
-                      <span className="bg-white/5 px-2 py-1 rounded">{'{{amount}}'}</span>
-                      <span className="bg-white/5 px-2 py-1 rounded">{'{{duesText}}'}</span>
-                      <span className="bg-white/5 px-2 py-1 rounded">{'{{link}}'}</span>
+                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{clubName}}'}</span>
+                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{playerName}}'}</span>
+                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{amount}}'}</span>
+                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{duesText}}'}</span>
+                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{link}}'}</span>
                     </div>
                   </div>
                 </div>
@@ -118,7 +122,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
 
           <button
             onClick={handleSaveRemindersConfig}
-            className="bg-accent text-black font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-xl hover:bg-accent/90 transition shadow-lg shadow-accent/20 w-full"
+            className="bg-accent text-text-accent font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-xl hover:bg-accent/90 transition shadow-lg shadow-accent/20 w-full"
           >
             Save Email Template
           </button>
@@ -247,21 +251,21 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
         <div className="space-y-4">
           <div className="flex flex-col gap-4">
              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
                   Dues Report
                 </h2>
-                <div className="flex items-center flex-wrap gap-2 sm:gap-3 bg-white/5 py-1.5 px-3 rounded-xl border border-glass-border">
+                <div className="flex items-center flex-wrap gap-2 sm:gap-3 bg-surface-hover py-1.5 px-3 rounded-xl border border-border">
                    <div className="text-[10px] font-bold uppercase tracking-widest text-red-400">Total Due: ₹{grandDue}</div>
-                   <div className="w-px h-4 bg-glass-border"></div>
+                   <div className="w-px h-4 bg-border"></div>
 
                    <button
                      onClick={async () => {
                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
                        if (targetDues.length === 0) {
-                         alert("No dues found to remind."); return;
+                         toast("No dues found to remind."); return;
                        }
 
-                       if (!window.confirm(`Send an email reminder to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?`)) return;
+                       if (!await confirmAction({ message: `Send an email reminder to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?` })) return;
                        
                        const byEmail: Record<string, any> = {};
                        targetDues.forEach((d: any) => {
@@ -273,7 +277,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
 
                        const playersWithEmail = Object.values(byEmail);
                        if (playersWithEmail.length === 0) {
-                         alert("None of the included players have an email address stored.");
+                         toast("None of the included players have an email address stored.");
                          return;
                        }
                        
@@ -312,7 +316,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                             failCount++;
                           }
                        }
-                       alert(`Finished sending email reminders. Sent: ${sentCount}, Failed: ${failCount}`);
+                       toast(`Finished sending email reminders. Sent: ${sentCount}, Failed: ${failCount}`, "error");
                      }}
                      className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
                    >
@@ -322,10 +326,10 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                      onClick={async () => {
                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
                        if (targetDues.length === 0) {
-                         alert("No dues found to remind."); return;
+                         toast("No dues found to remind."); return;
                        }
 
-                       if (!window.confirm(`Send WhatsApp API reminders to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?`)) return;
+                       if (!await confirmAction({ message: `Send WhatsApp API reminders to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?` })) return;
                        
                        const byMobile: Record<string, any> = {};
                        targetDues.forEach((d: any) => {
@@ -337,7 +341,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
 
                        const playersWithMobile = Object.values(byMobile);
                        if (playersWithMobile.length === 0) {
-                         alert("None of the included players have a mobile number stored.");
+                         toast("None of the included players have a mobile number stored.");
                          return;
                        }
                        
@@ -382,7 +386,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                        const detail = failReasons.length
                          ? "\n\nFirst failures:\n" + failReasons.slice(0, 3).join("\n")
                          : "";
-                       alert(`Finished sending WhatsApp reminders. Sent: ${sentCount}, Failed: ${failCount}${detail}`);
+                       toast(`Finished sending WhatsApp reminders. Sent: ${sentCount}, Failed: ${failCount}${detail}`, "error");
                      }}
                      className={`${hasSelection ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
                    >
@@ -418,7 +422,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                           text += `\n`;
                         });
                         navigator.clipboard.writeText(text.trim());
-                        alert("WhatsApp Report Copied to Clipboard!");
+                        toast("WhatsApp Report Copied to Clipboard!", "success");
                      }}
                      className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap"
                    >
@@ -427,12 +431,12 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                 </div>
              </div>
 
-             <div className="glass rounded-xl p-4 flex flex-col gap-3">
+             <div className="bg-surface rounded-xl p-4 flex flex-col gap-3">
                <div className="flex flex-col sm:flex-row gap-3">
                  <select
                     value={dueType}
                     onChange={(e) => setDueType(e.target.value as any)}
-                    className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-emerald-950 flex-1"
+                    className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary  flex-1"
                  >
                     <option value="all">All Types of Dues</option>
                     <option value="matches">Match Fees Only</option>
@@ -444,13 +448,13 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                    placeholder="Filter by Player Name"
                    value={searchPlayer}
                    onChange={(e) => setSearchPlayer(e.target.value)}
-                   className="flex-1 bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                   className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
                  />
                  {dueType === "matches" && (
                    <select
                      value={filterMatchId}
                      onChange={(e) => setFilterMatchId(e.target.value)}
-                     className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white [&>option]:bg-emerald-950 flex-1"
+                     className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary  flex-1"
                    >
                      <option value="">All Matches</option>
                      {[...store.matches].sort((a: any, b: any) => b.date.localeCompare(a.date)).map((m: any) => (
@@ -464,7 +468,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
           
           <div className="space-y-4">
             {groupedDues.length === 0 ? (
-               <div className="text-center py-10 text-white/40 italic text-sm glass rounded-xl border-dashed">
+               <div className="text-center py-10 text-text-muted italic text-sm bg-surface rounded-xl border-dashed">
                  No dues found for the current filters.
                </div>
             ) : (
@@ -475,13 +479,13 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                   const isCollapsed = collapsedGroups.has(group.key);
 
                   return (
-                    <div key={group.key} className="glass rounded-xl overflow-hidden border border-glass-border">
+                    <div key={group.key} className="bg-surface rounded-xl overflow-hidden border border-border">
                       <div 
-                        className="bg-white/5 p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-glass-border cursor-pointer hover:bg-white/10 transition-colors"
+                        className="bg-surface-hover p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-border cursor-pointer hover:bg-surface-hover transition-colors"
                         onClick={() => toggleCollapse(group.key)}
                       >
                         <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
-                          <div className="text-white/50 hover:text-white/80 transition-colors">
+                          <div className="text-text-muted hover:text-text-primary transition-colors">
                             {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                           </div>
                           <input 
@@ -492,16 +496,16 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                             onChange={(e) => {
                                toggleGroup(group.key, group.items);
                             }}
-                            className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
+                            className="w-4 h-4 shrink-0 rounded border-border bg-surface-hover text-accent focus:ring-accent focus:ring-offset-0"
                           />
-                          <h3 className="font-bold text-white text-sm truncate">{group.title}</h3>
+                          <h3 className="font-bold text-text-primary text-sm truncate">{group.title}</h3>
                           {group.key.startsWith("latefee_") && (
                             <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-widest shrink-0">
                               Late Fee
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] font-bold uppercase tracking-widest text-white/50 shrink-0 pl-7 sm:pl-0">
+                        <div className="text-[11px] font-bold uppercase tracking-widest text-text-muted shrink-0 pl-7 sm:pl-0">
                            {group.items.length} Pending (₹{groupTotal})
                         </div>
                       </div>
@@ -510,15 +514,15 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                            {group.items.map((item: any, idx: number) => {
                             const isSelected = selectedDues.has(item.uid);
                             return (
-                              <div key={item.uid} className={`p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 transition ${idx !== group.items.length-1 ? 'border-b border-white/5' : ''} ${isSelected ? 'bg-accent/10' : 'hover:bg-white/5'}`}>
+                              <div key={item.uid} className={`p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 transition ${idx !== group.items.length-1 ? 'border-b border-border' : ''} ${isSelected ? 'bg-accent/10' : 'hover:bg-surface-hover'}`}>
                                 <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
                                   <input 
                                     type="checkbox"
                                     checked={isSelected}
                                     onChange={() => toggleItem(item.uid)}
-                                    className="w-4 h-4 shrink-0 rounded border-glass-border bg-black/40 text-accent focus:ring-accent focus:ring-offset-0"
+                                    className="w-4 h-4 shrink-0 rounded border-border bg-surface-hover text-accent focus:ring-accent focus:ring-offset-0"
                                   />
-                                  <span className="font-semibold text-white/90 text-sm truncate">{item.player.name}</span>
+                                  <span className="font-semibold text-text-primary text-sm truncate">{item.player.name}</span>
                                   {item.isLateFee && (
                                     <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1 py-0.5 rounded text-[8px] uppercase font-black tracking-widest shrink-0">
                                       Penalty
@@ -530,7 +534,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                   <button
                                     onClick={() => {
                                       if (!item.player.mobile) {
-                                        alert("Player does not have a mobile number saved.");
+                                        toast("Player does not have a mobile number saved.", "success");
                                         return;
                                       }
                                       const link = `${window.location.origin}/pay/${item.player.id}`;
@@ -545,7 +549,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                   <button
                                     onClick={async () => {
                                       if (!item.player.mobile) {
-                                        alert("Player does not have a mobile number saved.");
+                                        toast("Player does not have a mobile number saved.", "success");
                                         return;
                                       }
                                       const link = `${window.location.origin}/pay/${item.player.id}`;
@@ -561,17 +565,17 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                           })
                                         });
                                         if (res.ok) {
-                                          alert("WhatsApp API reminder sent successfully!");
+                                          toast("WhatsApp API reminder sent successfully!", "success");
                                         } else {
                                           const err = await res.json();
                                           let detailsStr = "";
                                           if (err.details) {
                                             detailsStr = `\nDetails: ${err.details.message || JSON.stringify(err.details)}`;
                                           }
-                                          alert(`Failed: ${err.error || "Network error"}${detailsStr}`);
+                                          toast(`Failed: ${err.error || "Network error"}${detailsStr}`, "error");
                                         }
                                       } catch(e: any) {
-                                        alert(`Failed: ${e.message || "Failed to send WhatsApp API reminder."}`);
+                                        toast(`Failed: ${e.message || "Failed to send WhatsApp API reminder."}`, "error");
                                       }
                                     }}
                                     className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
@@ -608,9 +612,9 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                              throw new Error(errData.error || "Network error");
                                            }
 
-                                           alert("Email reminder sent successfully!");
+                                           toast("Email reminder sent successfully!", "success");
                                          } catch (e: any) {
-                                           alert(`Failed: ${e.message || "Failed to send email reminder."}`);
+                                           toast(`Failed: ${e.message || "Failed to send email reminder."}`, "error");
                                          }
                                        }}
                                        className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
@@ -622,7 +626,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                     onClick={() => {
                                       const link = `${window.location.origin}/pay/${item.player.id}`;
                                       navigator.clipboard.writeText(link);
-                                      alert("Payment link copied to clipboard!\n" + link);
+                                      toast("Payment link copied to clipboard!\n" + link, "success");
                                     }}
                                     className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
                                   >
@@ -779,17 +783,17 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
   const SortHeader = ({ label, sKey }: { label: string; sKey: SortKey }) => (
     <button
       onClick={() => toggleSort(sKey)}
-      className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition"
+      className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-text-secondary hover:text-text-primary transition"
     >
       {label}
-      <ArrowUpDown className={`w-3 h-3 ${sortKey === sKey ? "text-accent" : "text-white/30"}`} />
+      <ArrowUpDown className={`w-3 h-3 ${sortKey === sKey ? "text-accent" : "text-text-primary/30"}`} />
     </button>
   );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h2 className="text-xl font-bold tracking-tight text-white">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary">
           All Dues
           <span className="ml-2 text-sm text-rose-400 font-mono">₹{grandTotal}</span>
         </h2>
@@ -798,20 +802,20 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
           placeholder="Filter by player name..."
           value={searchPlayer}
           onChange={(e) => setSearchPlayer(e.target.value)}
-          className="bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white sm:max-w-xs w-full"
+          className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary sm:max-w-xs w-full"
         />
       </div>
 
-      <div className="glass rounded-xl border border-glass-border overflow-hidden">
-        <div className="grid grid-cols-[1fr_auto_1fr_auto] sm:grid-cols-[1fr_100px_1fr_auto] gap-2 px-4 py-3 bg-white/5 border-b border-glass-border items-center">
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="grid grid-cols-[1fr_auto_1fr_auto] sm:grid-cols-[1fr_100px_1fr_auto] gap-2 px-4 py-3 bg-surface-hover border-b border-border items-center">
           <SortHeader label="Player" sKey="player" />
           <SortHeader label="Amount" sKey="amount" />
           <SortHeader label="Description" sKey="type" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Action</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Action</span>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-10 text-white/40 italic text-sm">
+          <div className="text-center py-10 text-text-muted italic text-sm">
             No dues found.
           </div>
         ) : (
@@ -819,12 +823,12 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
             {filtered.map((d) => (
               <div
                 key={d.uid}
-                className="grid grid-cols-[1fr_auto_1fr_auto] sm:grid-cols-[1fr_100px_1fr_auto] gap-2 px-4 py-3 items-center hover:bg-white/5 transition"
+                className="grid grid-cols-[1fr_auto_1fr_auto] sm:grid-cols-[1fr_100px_1fr_auto] gap-2 px-4 py-3 items-center hover:bg-surface-hover transition"
               >
-                <span className="text-sm font-semibold text-white truncate">{d.playerName}</span>
+                <span className="text-sm font-semibold text-text-primary truncate">{d.playerName}</span>
                 <span className="text-sm font-mono text-rose-400">₹{d.amount}</span>
                 <div className="min-w-0">
-                  <span className="text-sm text-white/70 truncate block">{d.desc}</span>
+                  <span className="text-sm text-text-secondary truncate block">{d.desc}</span>
                   <span className={`text-[9px] font-bold uppercase tracking-widest ${d.isLateFee ? "text-orange-400" : d.type === "match" ? "text-blue-400" : "text-amber-400"}`}>
                     {d.isLateFee ? "Late Fee" : d.type === "match" ? "Match Fee" : "Other Fee"}
                   </span>
@@ -889,6 +893,7 @@ function ExemptLateFeeModal({
   store: any;
   onClose: () => void;
 }) {
+  const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
   const handleExempt = async () => {
@@ -902,7 +907,7 @@ function ExemptLateFeeModal({
       });
       onClose();
     } catch {
-      alert("Failed to create exemption.");
+      toast("Failed to create exemption.", "error");
     } finally {
       setSaving(false);
     }
@@ -911,32 +916,32 @@ function ExemptLateFeeModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-white/10 space-y-4"
+        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+          <h3 className="font-bold text-text-primary text-sm flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-amber-400" />
             Exempt Late Fee
           </h3>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1">
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-1">
-          <p className="text-sm font-semibold text-white">{playerName}</p>
-          <p className="text-xs text-white/60">{matchLabel}</p>
+          <p className="text-sm font-semibold text-text-primary">{playerName}</p>
+          <p className="text-xs text-text-secondary">{matchLabel}</p>
         </div>
 
-        <p className="text-xs text-white/50">
+        <p className="text-xs text-text-muted">
           This will permanently exempt this player from all late fee penalties for this match. This action can only be undone by a Super Admin.
         </p>
 
         <div className="flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 bg-white/5 hover:bg-white/10 text-white/70 font-bold text-xs uppercase tracking-widest px-4 py-2.5 rounded-lg transition border border-white/10"
+            className="flex-1 bg-surface-hover hover:bg-surface-hover text-text-secondary font-bold text-xs uppercase tracking-widest px-4 py-2.5 rounded-lg transition border border-border"
           >
             Cancel
           </button>
@@ -973,6 +978,7 @@ function MarkPaidModal({
   onClose: () => void;
 }) {
   const [selectedMethod, setSelectedMethod] = useState<ManualPaymentMethod | null>(null);
+  const { toast } = useToast();
   const [collectedAmount, setCollectedAmount] = useState(String(Math.min(350, due.amount)));
   const [saving, setSaving] = useState(false);
 
@@ -1022,7 +1028,7 @@ function MarkPaidModal({
       }
       onClose();
     } catch {
-      alert("Failed to update payment status.");
+      toast("Failed to update payment status.", "error");
     } finally {
       setSaving(false);
     }
@@ -1031,43 +1037,43 @@ function MarkPaidModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-white/10 space-y-4"
+        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-white text-sm">Mark as Paid</h3>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1">
+          <h3 className="font-bold text-text-primary text-sm">Mark as Paid</h3>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="bg-white/5 rounded-lg p-3 space-y-1">
-          <p className="text-sm font-semibold text-white">{due.playerName}</p>
-          <p className="text-xs text-white/50">{due.desc}</p>
+        <div className="bg-surface-hover rounded-lg p-3 space-y-1">
+          <p className="text-sm font-semibold text-text-primary">{due.playerName}</p>
+          <p className="text-xs text-text-muted">{due.desc}</p>
           <p className="text-lg font-black text-rose-400">₹{due.amount}</p>
         </div>
 
         <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Payment Method</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Payment Method</p>
           {MANUAL_METHODS.map((m) => (
             <button
               key={m.key}
               onClick={() => setSelectedMethod(m.key)}
               className={`w-full text-left p-3 rounded-lg border transition ${
                 selectedMethod === m.key
-                  ? "border-accent bg-accent/10 text-white"
-                  : "border-white/10 text-white/70 hover:bg-white/5"
+                  ? "border-accent bg-accent/10 text-text-primary"
+                  : "border-border text-text-secondary hover:bg-surface-hover"
               }`}
             >
               <span className="text-sm font-bold">{m.label}</span>
-              <span className="block text-[10px] text-white/40 mt-0.5">{m.desc}</span>
+              <span className="block text-[10px] text-text-muted mt-0.5">{m.desc}</span>
             </button>
           ))}
         </div>
 
         {selectedMethod === "part_of_plan" && (
-          <div className="space-y-2 bg-white/5 rounded-lg p-3">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/60 block">
+          <div className="space-y-2 bg-surface-hover rounded-lg p-3">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block">
               Amount to count as Fee Collected
             </label>
             <input
@@ -1076,9 +1082,9 @@ function MarkPaidModal({
               onChange={(e) => setCollectedAmount(e.target.value)}
               min={0}
               max={due.amount}
-              className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
             />
-            <div className="flex justify-between text-xs text-white/50">
+            <div className="flex justify-between text-xs text-text-muted">
               <span>Collected: ₹{Math.max(0, Math.min(due.amount, Number(collectedAmount) || 0))}</span>
               <span>Offset: ₹{Math.max(0, due.amount - Math.min(due.amount, Number(collectedAmount) || 0))}</span>
             </div>
@@ -1088,7 +1094,7 @@ function MarkPaidModal({
         <button
           onClick={handleConfirm}
           disabled={!selectedMethod || saving}
-          className="w-full bg-accent text-black font-bold uppercase tracking-widest text-xs py-3 rounded-xl hover:bg-accent/90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full bg-accent text-text-accent font-bold uppercase tracking-widest text-xs py-3 rounded-xl hover:bg-accent/90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           <Check className="w-4 h-4" />
           {saving ? "Saving..." : "Confirm Payment"}

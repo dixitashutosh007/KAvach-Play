@@ -39,6 +39,8 @@ import {
 } from "./festive/IndependenceDay";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function HomeTab({
   store,
@@ -53,6 +55,8 @@ export function HomeTab({
   currentUserName: string;
   onNavigateToMatch?: (matchId: string) => void;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const [newPostText, setNewPostText] = useState("");
   const [isAddingPost, setIsAddingPost] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -319,12 +323,12 @@ export function HomeTab({
 
         {/* KAvach Identity Card */}
         {mePlayer?.kavachId && (
-          <div className="md:col-span-12 flex items-center gap-3 glass rounded-xl px-4 py-2.5 border border-glass-border">
+          <div className="md:col-span-12 flex items-center gap-3 bg-surface rounded-xl px-4 py-2.5 border border-border">
             <div className="w-8 h-8 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center shrink-0">
               <span className="text-yellow-400 font-black text-[10px]">K</span>
             </div>
             <div className="min-w-0">
-              <p className="text-white font-bold text-sm truncate">{mePlayer.name}</p>
+              <p className="text-text-primary font-bold text-sm truncate">{mePlayer.name}</p>
               <p className="text-yellow-400 font-mono text-xs font-bold tracking-wider">{mePlayer.kavachId}</p>
             </div>
           </div>
@@ -340,7 +344,7 @@ export function HomeTab({
             return (
               <div 
                 key={`alert-${match.id}`} 
-                className="glass rounded-2xl p-5 border-l-4 border-l-emerald-500 relative overflow-hidden bg-gradient-to-br from-emerald-500/10 to-transparent shadow-lg"
+                className="bg-surface rounded-2xl p-5 border-l-4 border-l-emerald-500 relative overflow-hidden bg-gradient-to-br from-emerald-500/10 to-transparent shadow-lg"
               >
                 <div className="absolute -top-4 -right-4 p-3 opacity-10">
                   <Clock className="w-24 h-24 text-emerald-400" />
@@ -354,25 +358,25 @@ export function HomeTab({
                        <div className="flex items-center gap-1.5 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full text-xs font-bold text-red-400">
                           <Shirt className="w-3.5 h-3.5 fill-red-500 text-red-500" />
                           <span>Red Jersey</span>
-                          <span className="text-white/20 mx-0.5">•</span>
-                          <Circle className="w-3 h-3 fill-white text-white" />
-                          <span className="text-white">White Ball</span>
+                          <span className="text-text-primary/20 mx-0.5">•</span>
+                          <Circle className="w-3 h-3 fill-white text-text-primary" />
+                          <span className="text-text-primary">White Ball</span>
                        </div>
                     )}
                     {match.jerseyColor === "Whites" && (
-                       <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-white">
-                          <Shirt className="w-3.5 h-3.5 fill-white text-white" />
+                       <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-hover border border-border rounded-full text-xs font-bold text-text-primary">
+                          <Shirt className="w-3.5 h-3.5 fill-white text-text-primary" />
                           <span>White Jersey</span>
-                          <span className="text-white/20 mx-0.5">•</span>
+                          <span className="text-text-primary/20 mx-0.5">•</span>
                           <Circle className="w-3 h-3 fill-red-600 text-red-600" />
                           <span className="text-red-400">Red Ball</span>
                        </div>
                     )}
                   </div>
-                  <h2 className="text-xl font-bold text-white mb-1">
+                  <h2 className="text-xl font-bold text-text-primary mb-1">
                     {isStarted ? "Match has started!" : `You are playing in ${diffStr}`}
                   </h2>
-                  <p className="text-sm text-white/70 mb-4 font-medium">
+                  <p className="text-sm text-text-secondary mb-4 font-medium">
                     vs {match.opponent} • {groundName} • {match.time ? format(parseISO(`${match.date}T${match.time}`), "h:mm a") : "Time TBD"}
                   </p>
                   
@@ -394,7 +398,7 @@ export function HomeTab({
 
       {/* Upcoming Matches (Player View Only) */}
       {hasMatches && (
-        <div className="md:col-span-12 lg:col-span-8 glass rounded-2xl border border-glass-border p-4 relative overflow-hidden h-full">
+        <div className="md:col-span-12 lg:col-span-8 bg-surface rounded-2xl border border-border p-4 relative overflow-hidden h-full">
           <div className="flex justify-between items-center mb-3 px-2">
             <h3 className="text-sm font-bold text-accent uppercase tracking-widest flex items-center gap-2">
               <Calendar className="w-4 h-4" /> Upcoming Matches
@@ -403,7 +407,7 @@ export function HomeTab({
               <motion.div
                 animate={{ x: [0, 5, 0] }}
                 transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                className="text-[10px] uppercase font-bold text-white/50 flex items-center"
+                className="text-[10px] uppercase font-bold text-text-muted flex items-center"
               >
                 Swipe <ChevronRight className="w-3 h-3 ml-0.5" />
               </motion.div>
@@ -429,15 +433,15 @@ export function HomeTab({
                 <div
                   key={match.id}
                   data-testid={`match-card-${match.id}`}
-                  className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-white/5 border border-white/10 rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-lg cursor-pointer hover:bg-white/10 transition"
+                  className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-surface-hover border border-border rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-lg cursor-pointer hover:bg-surface-hover transition"
                   onClick={() => onNavigateToMatch?.(match.id)}
                 >
                   <div>
-                    <h4 className="font-bold text-lg text-white mb-1 truncate">
+                    <h4 className="font-bold text-lg text-text-primary mb-1 truncate">
                       vs {match.opponent}
                     </h4>
                     <div className="flex flex-col gap-1.5 mb-2">
-                       <p className="text-xs text-white/60">
+                       <p className="text-xs text-text-secondary">
                           {format(new Date(match.date), "MMM do, yyyy")} • {match.format}
                        </p>
                        <div className="flex items-center gap-2">
@@ -445,16 +449,16 @@ export function HomeTab({
                             <div className="flex items-center gap-1 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[10px] font-bold text-red-400">
                                <Shirt className="w-3 h-3 fill-red-500 text-red-500" />
                                <span>Red</span>
-                               <span className="text-white/20 mx-0.5">•</span>
-                               <Circle className="w-2.5 h-2.5 fill-white text-white" />
-                               <span className="text-white">White</span>
+                               <span className="text-text-primary/20 mx-0.5">•</span>
+                               <Circle className="w-2.5 h-2.5 fill-white text-text-primary" />
+                               <span className="text-text-primary">White</span>
                             </div>
                          )}
                          {match.jerseyColor === "Whites" && (
-                            <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] font-bold text-white">
-                               <Shirt className="w-3 h-3 fill-white text-white" />
+                            <div className="flex items-center gap-1 px-2 py-0.5 bg-surface-hover border border-border rounded text-[10px] font-bold text-text-primary">
+                               <Shirt className="w-3 h-3 fill-white text-text-primary" />
                                <span>White</span>
-                               <span className="text-white/20 mx-0.5">•</span>
+                               <span className="text-text-primary/20 mx-0.5">•</span>
                                <Circle className="w-2.5 h-2.5 fill-red-600 text-red-600" />
                                <span className="text-red-400">Red</span>
                             </div>
@@ -468,7 +472,7 @@ export function HomeTab({
 
                   {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
                     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <p className="text-[10px] uppercase font-bold text-white/50 tracking-wide text-center">
+                      <p className="text-[10px] uppercase font-bold text-text-muted tracking-wide text-center">
                         Availability
                       </p>
                       <div className="flex gap-2">
@@ -526,7 +530,7 @@ export function HomeTab({
                                     : avStat === "No"
                                     ? "bg-red-500/20 text-red-500 border-red-500/50 shadow-md"
                                     : "bg-amber-500/20 text-amber-500 border-amber-500/50 shadow-md"
-                                  : "bg-transparent text-white border-glass-border hover:bg-white/5"
+                                  : "bg-transparent text-text-primary border-border hover:bg-surface-hover"
                               }`}
                             >
                               {avStat}
@@ -561,7 +565,7 @@ export function HomeTab({
         <div className="md:col-span-12 lg:col-span-12">
           <div className="grid grid-cols-2 gap-3">
             {(mePlayer.stunningCatches ?? 0) > 0 && (
-              <div className="glass rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-3">
+              <div className="bg-surface rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-3">
                 <span className="text-3xl">🧤</span>
                 <div>
                   <p className="text-2xl font-black text-emerald-400">{mePlayer.stunningCatches}</p>
@@ -570,7 +574,7 @@ export function HomeTab({
               </div>
             )}
             {(mePlayer.droppedCatches ?? 0) > 0 && (
-              <div className="glass rounded-2xl p-4 border border-red-500/30 bg-red-500/5 flex items-center gap-3">
+              <div className="bg-surface rounded-2xl p-4 border border-red-500/30 bg-red-500/5 flex items-center gap-3">
                 <span className="text-3xl">🫳</span>
                 <div>
                   <p className="text-2xl font-black text-red-400">{mePlayer.droppedCatches}</p>
@@ -586,11 +590,11 @@ export function HomeTab({
       <div className={`md:col-span-12 ${hasBirthdays ? 'lg:col-span-8' : 'lg:col-span-12'} lg:col-start-1 flex flex-col gap-6`}>
         {/* Admin Add Post Form */}
         {isAdmin && (
-          <div className="glass rounded-2xl p-4 border border-glass-border flex flex-col gap-3">
+          <div className="bg-surface rounded-2xl p-4 border border-border flex flex-col gap-3">
           {isAddingPost ? (
             <div className="flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200">
               <textarea
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-accent resize-none placeholder:text-white/30"
+                className="w-full bg-surface-hover border border-border rounded-xl p-3 text-sm text-text-primary focus:outline-none focus:border-accent resize-none placeholder:text-text-primary/30"
                 rows={3}
                 placeholder="What's happening in the club?"
                 value={newPostText}
@@ -599,14 +603,14 @@ export function HomeTab({
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setIsAddingPost(false)}
-                  className="px-4 py-2 text-xs font-bold text-white/50 hover:text-white uppercase tracking-wider transition cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-text-muted hover:text-text-primary uppercase tracking-wider transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreatePost}
                   disabled={!newPostText.trim()}
-                  className="px-4 py-2 text-xs font-bold bg-accent text-black rounded-xl uppercase tracking-wider hover:opacity-90 disabled:opacity-50 transition cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2 text-xs font-bold bg-accent text-text-accent rounded-xl uppercase tracking-wider hover:opacity-90 disabled:opacity-50 transition cursor-pointer flex items-center gap-2"
                 >
                   <Send className="w-3.5 h-3.5" /> Post
                 </button>
@@ -615,7 +619,7 @@ export function HomeTab({
           ) : (
             <button
               onClick={() => setIsAddingPost(true)}
-              className="w-full bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 text-left p-4 rounded-xl text-white/50 transition flex items-center gap-3 cursor-pointer"
+              className="w-full bg-surface-hover hover:bg-surface-hover border border-transparent hover:border-border text-left p-4 rounded-xl text-text-muted transition flex items-center gap-3 cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
                 <Edit className="w-4 h-4 text-accent" />
@@ -639,10 +643,10 @@ export function HomeTab({
         <div className="space-y-3">
           <button 
             onClick={() => setIsPulseExpanded(!isPulseExpanded)}
-            className="w-full text-sm font-bold text-white tracking-widest uppercase flex items-center justify-between cursor-pointer"
+            className="w-full text-sm font-bold text-text-primary tracking-widest uppercase flex items-center justify-between cursor-pointer"
           >
             <span className="flex items-center gap-2"><PieChart className="w-4 h-4 text-accent" /> Pulse</span>
-            {isPulseExpanded ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
+            {isPulseExpanded ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
           </button>
           {isPulseExpanded && (
             <div className="flex overflow-x-auto gap-4 pb-2 -mx-2 px-2 snap-x hide-scrollbar">
@@ -671,7 +675,7 @@ export function HomeTab({
                       updatedAt: serverTimestamp(),
                     });
                   } catch (err: any) {
-                    alert("Error voting: " + err.message);
+                    toast("Error voting: " + err.message, "error");
                   }
                 };
 
@@ -683,28 +687,28 @@ export function HomeTab({
                       updatedAt: serverTimestamp(),
                     });
                   } catch (err: any) {
-                    alert("Error archiving: " + err.message);
+                    toast("Error archiving: " + err.message, "error");
                   }
                 };
 
                 return (
-                  <div key={poll.id} className="min-w-[280px] max-w-[320px] snap-center glass rounded-2xl p-5 border border-white/10 relative shrink-0">
-                    <div className="absolute top-0 right-0 bg-accent text-black text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-bl-xl">
+                  <div key={poll.id} className="min-w-[280px] max-w-[320px] snap-center bg-surface rounded-2xl p-5 border border-border relative shrink-0">
+                    <div className="absolute top-0 right-0 bg-accent text-text-accent text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-bl-xl">
                       Sticked
                     </div>
                     {poll.isEdited && (
-                      <div className="absolute top-0 left-0 bg-white/20 text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-br-xl">
+                      <div className="absolute top-0 left-0 bg-surface-hover text-text-primary text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-br-xl">
                         Edited
                       </div>
                     )}
-                    <h3 className={`text-sm font-bold text-white pr-12 leading-tight ${poll.isEdited ? 'mt-3' : 'mb-4'}`}>
+                    <h3 className={`text-sm font-bold text-text-primary pr-12 leading-tight ${poll.isEdited ? 'mt-3' : 'mb-4'}`}>
                       {poll.title}
                     </h3>
                     
                     {myResponse ? (
                       <div className="space-y-4">
                         <PollResults poll={poll} store={store} />
-                        <button onClick={handleArchive} className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-white/50 hover:text-white transition flex items-center justify-center gap-2">
+                        <button onClick={handleArchive} className="w-full py-2 bg-surface-hover hover:bg-surface-hover rounded-xl text-xs font-bold text-text-muted hover:text-text-primary transition flex items-center justify-center gap-2">
                           <Archive className="w-4 h-4" /> Archive to Profile
                         </button>
                       </div>
@@ -722,19 +726,19 @@ export function HomeTab({
       {/* Feed */}
       <div className="flex flex-col gap-4">
         {renderedPosts.length === 0 ? (
-          <div className="text-center text-white/40 py-8 text-sm glass rounded-2xl">
+          <div className="text-center text-text-muted py-8 text-sm bg-surface rounded-2xl">
             No posts yet. Wait for club updates!
           </div>
         ) : (
           renderedPosts.map((post) => (
             <div
               key={post.id}
-              className={`glass rounded-2xl border ${post.isSystem ? "border-accent/30" : "border-glass-border"} overflow-hidden flex flex-col`}
+              className={`bg-surface rounded-2xl border ${post.isSystem ? "border-accent/30" : "border-border"} overflow-hidden flex flex-col`}
             >
               {/* Post Header */}
-              <div className="p-4 flex items-center justify-between border-b border-white/5">
+              <div className="p-4 flex items-center justify-between border-b border-border">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-white relative shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-surface-hover flex items-center justify-center font-bold text-text-primary relative shrink-0">
                     {post.isSystem ? (
                       <Cake className="w-5 h-5 text-accent" />
                     ) : post.authorName ? (
@@ -744,13 +748,13 @@ export function HomeTab({
                     )}
                   </div>
                   <div>
-                    <p className="font-semibold text-sm text-white/90">
+                    <p className="font-semibold text-sm text-text-primary">
                       {post.isSystem
                         ? "KAvach (Official)"
                         : post.authorName || "Admin"}
                     </p>
                     {post.createdAt && (
-                      <p className="text-[10px] text-white/50">
+                      <p className="text-[10px] text-text-muted">
                         {format(
                           new Date(post.createdAt.seconds * 1000),
                           "MMM d, yyyy • h:mm a",
@@ -766,17 +770,17 @@ export function HomeTab({
                         setEditingPostId(post.id);
                         setEditPostText(post.text);
                       }}
-                      className="p-2 text-white/40 hover:text-accent hover:bg-white/5 rounded-lg transition"
+                      className="p-2 text-text-muted hover:text-accent hover:bg-surface-hover rounded-lg transition"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => {
-                        if (window.confirm("Delete this post?")) {
+                      onClick={async () => {
+                        if (await confirmAction({ message: "Delete this post?", destructive: true })) {
                           deletePost(post.id);
                         }
                       }}
-                      className="p-2 text-white/40 hover:text-red-400 hover:bg-white/5 rounded-lg transition"
+                      className="p-2 text-text-muted hover:text-red-400 hover:bg-surface-hover rounded-lg transition"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -789,7 +793,7 @@ export function HomeTab({
                 {editingPostId === post.id ? (
                   <div className="flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200">
                     <textarea
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-accent resize-none placeholder:text-white/30"
+                      className="w-full bg-surface-hover border border-border rounded-xl p-3 text-sm text-text-primary focus:outline-none focus:border-accent resize-none placeholder:text-text-primary/30"
                       rows={3}
                       value={editPostText}
                       onChange={(e) => setEditPostText(e.target.value)}
@@ -797,7 +801,7 @@ export function HomeTab({
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setEditingPostId(null)}
-                        className="px-4 py-2 text-xs font-bold text-white/50 hover:text-white uppercase tracking-wider transition cursor-pointer"
+                        className="px-4 py-2 text-xs font-bold text-text-muted hover:text-text-primary uppercase tracking-wider transition cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -808,7 +812,7 @@ export function HomeTab({
                           setEditingPostId(null);
                         }}
                         disabled={!editPostText.trim()}
-                        className="px-4 py-2 text-xs font-bold bg-accent text-black rounded-xl uppercase tracking-wider hover:opacity-90 disabled:opacity-50 transition cursor-pointer"
+                        className="px-4 py-2 text-xs font-bold bg-accent text-text-accent rounded-xl uppercase tracking-wider hover:opacity-90 disabled:opacity-50 transition cursor-pointer"
                       >
                         Save
                       </button>
@@ -817,7 +821,7 @@ export function HomeTab({
                 ) : (
                   <>
                     {post.text && (
-                      <p className="text-sm text-white/80 whitespace-pre-wrap">
+                      <p className="text-sm text-text-primary whitespace-pre-wrap">
                         {post.text}
                       </p>
                     )}
@@ -826,24 +830,24 @@ export function HomeTab({
               </div>
 
               {/* Comments Section */}
-              <div className="bg-black/20 p-4 flex flex-col gap-3 border-t border-white/5">
+              <div className="bg-surface-hover p-4 flex flex-col gap-3 border-t border-border">
                 {post.comments?.length > 0 && (
                   <div className="flex flex-col gap-3 mb-2">
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 flex items-center gap-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-text-muted flex items-center gap-2">
                       <MessageSquare className="w-3 h-3" /> Comments (
                       {post.comments.length})
                     </h4>
                     {post.comments.map((c) => (
                       <div
                         key={c.id}
-                        className="flex flex-col bg-white/5 p-3 rounded-xl"
+                        className="flex flex-col bg-surface-hover p-3 rounded-xl"
                       >
                         <div className="flex justify-between items-end mb-1">
-                          <span className="font-semibold text-xs text-white/90">
+                          <span className="font-semibold text-xs text-text-primary">
                             {c.userName}
                           </span>
                         </div>
-                        <p className="text-xs text-white/70">{c.text}</p>
+                        <p className="text-xs text-text-secondary">{c.text}</p>
                       </div>
                     ))}
                   </div>
@@ -854,7 +858,7 @@ export function HomeTab({
                   <input
                     type="text"
                     placeholder="Write a comment..."
-                    className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-white/40"
+                    className="flex-1 bg-surface-hover rounded-xl px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-text-muted"
                     value={commentText[post.id] || ""}
                     onChange={(e) =>
                       setCommentText({
@@ -869,7 +873,7 @@ export function HomeTab({
                   <button
                     onClick={() => handleAddComment(post.id)}
                     disabled={!commentText[post.id]?.trim()}
-                    className="p-2 bg-accent text-black rounded-xl hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                    className="p-2 bg-accent text-text-accent rounded-xl hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
                   </button>
@@ -886,7 +890,7 @@ export function HomeTab({
          <div className="md:col-span-12 lg:col-span-4 lg:col-start-9 flex flex-col gap-6">
             {/* Birthday Player of the Day */}
             {hasTodayBdays && (
-              <div className="glass rounded-2xl p-6 border-2 border-accent/40 relative overflow-hidden bg-gradient-to-br from-accent/10 to-transparent">
+              <div className="bg-surface rounded-2xl p-6 border-2 border-accent/40 relative overflow-hidden bg-gradient-to-br from-accent/10 to-transparent">
                 <div className="absolute -top-4 -right-4 p-3 opacity-20">
                   <Cake className="w-24 h-24 text-accent" />
                 </div>
@@ -900,8 +904,8 @@ export function HomeTab({
                         {p.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div className="font-bold text-white text-lg">{p.name}</div>
-                        <div className="text-xs text-white/70">
+                        <div className="font-bold text-text-primary text-lg">{p.name}</div>
+                        <div className="text-xs text-text-secondary">
                           Wishing you a fantastic day ahead! 🎉
                         </div>
                       </div>
@@ -913,7 +917,7 @@ export function HomeTab({
 
             {/* Upcoming Birthdays Panel */}
             {hasUpcomingBdays && (
-              <div className="glass rounded-2xl p-4 border border-glass-border relative overflow-hidden">
+              <div className="bg-surface rounded-2xl p-4 border border-border relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 opacity-10">
                   <Cake className="w-12 h-12" />
                 </div>
@@ -926,8 +930,8 @@ export function HomeTab({
                       key={p.id}
                       className="flex justify-between items-center text-sm"
                     >
-                      <span className="font-semibold text-white/90">{p.name}</span>
-                      <span className="text-white/60">
+                      <span className="font-semibold text-text-primary">{p.name}</span>
+                      <span className="text-text-secondary">
                         {p.dob ? format(new Date(p.dob), "MMM do") : ""}
                       </span>
                     </div>
@@ -942,9 +946,9 @@ export function HomeTab({
 
       {showProfilePrompt && mePlayer && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="glass rounded-xl p-6 w-full max-w-sm flex flex-col items-center">
+          <div className="bg-surface rounded-xl p-6 w-full max-w-sm flex flex-col items-center">
             <h2 className="text-xl font-bold mb-2">Complete Profile</h2>
-            <p className="text-sm text-white/70 text-center mb-6">
+            <p className="text-sm text-text-secondary text-center mb-6">
               Please provide essential details to help us manage the team better.
             </p>
             <form
@@ -961,32 +965,32 @@ export function HomeTab({
               }}
             >
               <div>
-                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Email</label>
+                <label className="text-xs uppercase tracking-widest text-text-muted mb-1 block">Email</label>
                 <input
                   type="email"
                   required
                   value={profileFormData.email}
                   onChange={(e) => setProfileFormData({ ...profileFormData, email: e.target.value })}
-                  className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  className="w-full bg-surface-hover border border-border rounded tracking-wider px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
                 />
               </div>
               <div>
-                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Date of Birth</label>
+                <label className="text-xs uppercase tracking-widest text-text-muted mb-1 block">Date of Birth</label>
                 <input
                   type="date"
                   required
                   value={profileFormData.dob}
                   onChange={(e) => setProfileFormData({ ...profileFormData, dob: e.target.value })}
-                  className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                  className="w-full bg-surface-hover border border-border rounded tracking-wider px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
                 />
               </div>
               <div>
-                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Jersey Size</label>
+                <label className="text-xs uppercase tracking-widest text-text-muted mb-1 block">Jersey Size</label>
                 <select
                   required
                   value={profileFormData.chestSize}
                   onChange={(e) => setProfileFormData({ ...profileFormData, chestSize: e.target.value })}
-                  className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                  className="w-full bg-surface-hover border border-border rounded tracking-wider px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
                 >
                   <option value="">Select Size</option>
                   {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
@@ -995,7 +999,7 @@ export function HomeTab({
                 </select>
               </div>
               <div>
-                <label className="text-xs uppercase tracking-widest text-white/50 mb-1 block">Jersey Number</label>
+                <label className="text-xs uppercase tracking-widest text-text-muted mb-1 block">Jersey Number</label>
                 {isAdmin ? (
                   <input
                     type="text"
@@ -1003,7 +1007,7 @@ export function HomeTab({
                     placeholder="e.g. 7 or 18"
                     value={profileFormData.jerseyNumber}
                     onChange={(e) => setProfileFormData({ ...profileFormData, jerseyNumber: e.target.value })}
-                    className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white focus:outline-none focus:border-accent font-mono"
+                    className="w-full bg-surface-hover border border-border rounded tracking-wider px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono"
                   />
                 ) : (
                   <input
@@ -1011,7 +1015,7 @@ export function HomeTab({
                     disabled
                     placeholder="Assigned by Admin"
                     value={profileFormData.jerseyNumber || ""}
-                    className="w-full bg-black/30 border border-white/10 rounded tracking-wider px-3 py-2 text-sm text-white/50 focus:outline-none opacity-50 cursor-not-allowed font-mono"
+                    className="w-full bg-surface-hover border border-border rounded tracking-wider px-3 py-2 text-sm text-text-muted focus:outline-none opacity-50 cursor-not-allowed font-mono"
                     title="Jersey number can only be assigned or edited by administrators."
                   />
                 )}
@@ -1024,13 +1028,13 @@ export function HomeTab({
                     localStorage.setItem(`profilePromptDismissed_${mePlayer.id}`, "true");
                     setShowProfilePrompt(false);
                   }}
-                  className="w-full py-2 bg-white/5 text-white/60 hover:text-white rounded font-bold uppercase tracking-widest text-xs transition border border-white/10"
+                  className="w-full py-2 bg-surface-hover text-text-secondary hover:text-text-primary rounded font-bold uppercase tracking-widest text-xs transition border border-border"
                 >
                   Later
                 </button>
                 <button
                   type="submit"
-                  className="w-full py-2 bg-accent text-black rounded font-bold uppercase tracking-widest text-xs transition hover:bg-accent/90"
+                  className="w-full py-2 bg-accent text-text-accent rounded font-bold uppercase tracking-widest text-xs transition hover:bg-accent/90"
                 >
                   Save
                 </button>

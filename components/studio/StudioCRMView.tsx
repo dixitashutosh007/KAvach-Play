@@ -35,6 +35,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { format, parseISO, isToday, isPast } from "date-fns";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 interface StudioCRMViewProps {
   store: ReturnType<typeof useStore>;
@@ -95,6 +97,8 @@ export function StudioCRMView({
   adminId,
   adminName,
 }: StudioCRMViewProps) {
+  const { confirm: confirmAction } = useConfirm();
+  const { toast } = useToast();
   useEffect(() => {
     store.ensureLeads?.();
   }, [store]);
@@ -227,7 +231,7 @@ export function StudioCRMView({
       await store.addLeadNote?.(leadId, text);
       setNoteInputs((prev) => ({ ...prev, [leadId]: "" }));
     } catch (err: any) {
-      alert(`Failed to add note: ${err?.message || "Unknown error"}`);
+      toast(`Failed to add note: ${err?.message || "Unknown error"}`, "error");
     }
   };
 
@@ -235,20 +239,18 @@ export function StudioCRMView({
     try {
       await store.updateLead?.(leadId, { status: newStatus });
     } catch (err: any) {
-      alert(`Failed to update status: ${err?.message || "Unknown error"}`);
+      toast(`Failed to update status: ${err?.message || "Unknown error"}`, "error");
     }
   };
 
   const handleDeleteLead = async (lead: ClubLead) => {
     if (
-      window.confirm(
-        `Are you sure you want to delete enquiry for "${lead.name}"? This cannot be undone.`,
-      )
+      await confirmAction({ message: `Are you sure you want to delete enquiry for "${lead.name}"? This cannot be undone.`, destructive: true })
     ) {
       try {
         await store.deleteLead?.(lead.id);
       } catch (err: any) {
-        alert(`Failed to delete enquiry: ${err?.message || "Unknown error"}`);
+        toast(`Failed to delete enquiry: ${err?.message || "Unknown error"}`, "error");
       }
     }
   };
@@ -268,7 +270,7 @@ export function StudioCRMView({
     try {
       await store.updateAppConfig?.({ crmTeamPlayerIds: updated });
     } catch (err: any) {
-      alert(`Failed to update CRM team: ${err?.message || "Unknown error"}`);
+      toast(`Failed to update CRM team: ${err?.message || "Unknown error"}`, "error");
     }
   };
 
@@ -291,7 +293,7 @@ export function StudioCRMView({
         );
       }
     } catch (err: any) {
-      alert(`Failed to update assignment: ${err?.message || "Unknown error"}`);
+      toast(`Failed to update assignment: ${err?.message || "Unknown error"}`, "error");
     }
   };
 
@@ -350,13 +352,13 @@ export function StudioCRMView({
       }
 
       setConvertingLead(null);
-      alert(
+      toast(
         apiSuccess
           ? `Invite sent to ${convertingLead.name} via WhatsApp!`
           : `Lead converted. Invite opened in WhatsApp for manual send.`,
-      );
+      "success");
     } catch (err: any) {
-      alert(`Conversion failed: ${err?.message || "Unknown error"}`);
+      toast(`Conversion failed: ${err?.message || "Unknown error"}`, "error");
     }
   };
 
@@ -371,10 +373,10 @@ export function StudioCRMView({
       {/* Metrics Bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-card border border-border p-3.5 rounded-xl">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             Total Enquiries
           </div>
-          <div className="text-2xl font-black text-white mt-1">
+          <div className="text-2xl font-black text-text-primary mt-1">
             {metrics.total}
           </div>
         </div>
@@ -426,18 +428,18 @@ export function StudioCRMView({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search bar */}
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
             <input
               type="text"
               placeholder="Search by name, phone, area, or notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-black/40 border border-border rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-accent"
+              className="w-full pl-9 pr-4 py-2 bg-surface-hover border border-border rounded-lg text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -450,14 +452,14 @@ export function StudioCRMView({
               onClick={() => setShowTeamSettings(!showTeamSettings)}
               className={`flex items-center gap-1.5 border font-semibold px-3 py-2.5 rounded-lg text-sm transition shrink-0 ${
                 showTeamSettings
-                  ? "bg-white/15 border-white/30 text-white"
-                  : "bg-white/5 border-border text-white/70 hover:text-white hover:bg-white/10"
+                  ? "bg-surface-hover border-border text-text-primary"
+                  : "bg-surface-hover border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover"
               }`}
               title="Manage CRM Team"
             >
               <Settings className="w-4 h-4" /> CRM Team
               {crmTeamPlayers.length > 0 && (
-                <span className="text-[10px] bg-accent text-black font-bold px-1.5 py-0.5 rounded-full ml-0.5">
+                <span className="text-[10px] bg-accent text-text-accent font-bold px-1.5 py-0.5 rounded-full ml-0.5">
                   {crmTeamPlayers.length}
                 </span>
               )}
@@ -465,7 +467,7 @@ export function StudioCRMView({
 
             <button
               onClick={handleOpenAddForm}
-              className="flex items-center justify-center gap-2 bg-accent text-black font-bold px-4 py-2.5 rounded-lg text-sm hover:opacity-90 transition shrink-0 shadow-sm"
+              className="flex items-center justify-center gap-2 bg-accent text-text-accent font-bold px-4 py-2.5 rounded-lg text-sm hover:opacity-90 transition shrink-0 shadow-sm"
             >
               <Plus className="w-4 h-4" /> New Enquiry
             </button>
@@ -474,12 +476,12 @@ export function StudioCRMView({
 
         {/* CRM Team Settings Panel */}
         {showTeamSettings && (
-          <div className="border border-white/10 bg-black/30 rounded-lg p-4 space-y-3">
+          <div className="border border-border bg-surface-hover rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-bold uppercase tracking-wider text-white/60">
+              <div className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                 CRM Team Members
               </div>
-              <span className="text-[11px] text-white/40">
+              <span className="text-[11px] text-text-muted">
                 These players can be assigned to follow up on leads
               </span>
             </div>
@@ -504,20 +506,20 @@ export function StudioCRMView({
                 ))}
               </div>
             ) : (
-              <div className="text-xs text-white/40 italic">
+              <div className="text-xs text-text-muted italic">
                 No team members added yet. Search and add players below.
               </div>
             )}
 
             {/* Search and add players */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
                 type="text"
                 placeholder="Search players to add to CRM team..."
                 value={teamSearchQuery}
                 onChange={(e) => setTeamSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-black/40 border border-border rounded-lg text-xs text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                className="w-full pl-9 pr-3 py-2 bg-surface-hover border border-border rounded-lg text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
               />
             </div>
             {teamSearchQuery.trim() && (
@@ -542,22 +544,22 @@ export function StudioCRMView({
                         className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition ${
                           isInTeam
                             ? "bg-accent/15 border border-accent/30"
-                            : "bg-white/5 hover:bg-white/10 border border-transparent"
+                            : "bg-surface-hover hover:bg-surface-hover border border-transparent"
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-white">
+                          <div className="w-6 h-6 rounded-full bg-surface-hover flex items-center justify-center text-[10px] font-bold text-text-primary">
                             {p.name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-white font-medium">{p.name}</span>
+                          <span className="text-text-primary font-medium">{p.name}</span>
                           {p.mobile && (
-                            <span className="text-white/40">{p.mobile}</span>
+                            <span className="text-text-muted">{p.mobile}</span>
                           )}
                         </div>
                         {isInTeam ? (
                           <span className="text-accent font-bold text-[10px]">IN TEAM</span>
                         ) : (
-                          <span className="text-white/40 text-[10px]">+ Add</span>
+                          <span className="text-text-muted text-[10px]">+ Add</span>
                         )}
                       </div>
                     );
@@ -571,7 +573,7 @@ export function StudioCRMView({
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {/* Status filters */}
           <div className="flex flex-wrap items-center gap-1.5 mr-2">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-white/40 mr-1">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-text-muted mr-1">
               Status:
             </span>
             {(
@@ -589,8 +591,8 @@ export function StudioCRMView({
                 onClick={() => setStatusFilter(st)}
                 className={`text-xs px-2.5 py-1 rounded-md font-medium transition ${
                   statusFilter === st
-                    ? "bg-accent text-black font-bold"
-                    : "bg-white/5 text-white/70 hover:text-white hover:bg-white/10"
+                    ? "bg-accent text-text-accent font-bold"
+                    : "bg-surface-hover text-text-secondary hover:text-text-primary hover:bg-surface-hover"
                 }`}
               >
                 {st === "all"
@@ -602,7 +604,7 @@ export function StudioCRMView({
 
           {/* Interest filter */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-white/40 mr-1">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-text-muted mr-1">
               Interest:
             </span>
             {(["all", "studio", "matches", "both"] as const).map((it) => (
@@ -611,8 +613,8 @@ export function StudioCRMView({
                 onClick={() => setInterestFilter(it)}
                 className={`text-xs px-2.5 py-1 rounded-md font-medium transition ${
                   interestFilter === it
-                    ? "bg-white/20 text-white font-bold"
-                    : "bg-white/5 text-white/70 hover:text-white hover:bg-white/10"
+                    ? "bg-surface-hover text-text-primary font-bold"
+                    : "bg-surface-hover text-text-secondary hover:text-text-primary hover:bg-surface-hover"
                 }`}
               >
                 {it === "all"
@@ -632,11 +634,11 @@ export function StudioCRMView({
       <div className="space-y-3">
         {filteredLeads.length === 0 ? (
           <div className="bg-card border border-border rounded-xl p-10 text-center">
-            <User className="w-10 h-10 text-white/20 mx-auto mb-3" />
-            <div className="text-white/80 font-bold text-base">
+            <User className="w-10 h-10 text-text-primary/20 mx-auto mb-3" />
+            <div className="text-text-primary font-bold text-base">
               No enquiries match your search or filters.
             </div>
-            <div className="text-white/40 text-xs mt-1">
+            <div className="text-text-muted text-xs mt-1">
               Click &quot;New Enquiry&quot; to log a new enquiry from WhatsApp, Call, or Jotform.
             </div>
           </div>
@@ -671,16 +673,16 @@ export function StudioCRMView({
             return (
               <div
                 key={lead.id}
-                className="bg-card border border-border hover:border-white/20 transition rounded-xl p-4 space-y-3 shadow-sm"
+                className="bg-card border border-border hover:border-border transition rounded-xl p-4 space-y-3 shadow-sm"
               >
                 {/* Top Row: Name, Source, Status */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="text-base font-bold text-white tracking-wide">
+                    <span className="text-base font-bold text-text-primary tracking-wide">
                       {lead.name}
                     </span>
 
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white/10 text-white/70">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-surface-hover text-text-secondary">
                       {SOURCE_LABELS[lead.source] || lead.source}
                     </span>
 
@@ -704,8 +706,8 @@ export function StudioCRMView({
                   {/* Status + Locality */}
                   <div className="flex items-center gap-2">
                     {lead.area && (
-                      <span className="text-xs text-white/50 flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-white/40" /> {lead.area}
+                      <span className="text-xs text-text-muted flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-text-muted" /> {lead.area}
                       </span>
                     )}
 
@@ -741,7 +743,7 @@ export function StudioCRMView({
                 {/* Assigned Players Row */}
                 {(assignedPlayers.length > 0 || crmTeamPlayers.length > 0) && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                       Assigned:
                     </span>
                     {assignedPlayers.length > 0 ? (
@@ -768,7 +770,7 @@ export function StudioCRMView({
                         </span>
                       ))
                     ) : (
-                      <span className="text-[11px] text-white/30 italic">
+                      <span className="text-[11px] text-text-primary/30 italic">
                         None
                       </span>
                     )}
@@ -777,14 +779,14 @@ export function StudioCRMView({
                         onClick={() =>
                           setAssignDropdownLeadId(isAssignDropdownOpen ? null : lead.id)
                         }
-                        className="flex items-center gap-1 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 text-[11px] font-semibold px-2 py-0.5 rounded-lg transition"
+                        className="flex items-center gap-1 bg-surface-hover hover:bg-surface-hover text-text-secondary hover:text-text-primary border border-border text-[11px] font-semibold px-2 py-0.5 rounded-lg transition"
                       >
                         <UserPlus className="w-3 h-3" /> Assign
                       </button>
                       {isAssignDropdownOpen && (
                         <div className="absolute top-full left-0 mt-1 z-30 bg-neutral-900 border border-white/15 rounded-lg shadow-xl p-2 min-w-[180px] space-y-1">
                           {crmTeamPlayers.length === 0 ? (
-                            <div className="text-[11px] text-white/40 p-2">
+                            <div className="text-[11px] text-text-muted p-2">
                               No CRM team set up. Use the &quot;CRM Team&quot; button above.
                             </div>
                           ) : (
@@ -802,7 +804,7 @@ export function StudioCRMView({
                                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition ${
                                     isAssigned
                                       ? "bg-cyan-500/15 text-cyan-300"
-                                      : "hover:bg-white/10 text-white/80"
+                                      : "hover:bg-surface-hover text-text-primary"
                                   }`}
                                 >
                                   <span className="font-medium">{p.name}</span>
@@ -822,18 +824,18 @@ export function StudioCRMView({
                 )}
 
                 {/* Middle: Query summary and follow up status */}
-                <div className="text-xs text-white/70 bg-black/30 p-2.5 rounded-lg space-y-1.5">
+                <div className="text-xs text-text-secondary bg-surface-hover p-2.5 rounded-lg space-y-1.5">
                   {lead.queryText ? (
                     <div className="leading-relaxed">
-                      <span className="font-semibold text-white/90">Query: </span>
+                      <span className="font-semibold text-text-primary">Query: </span>
                       {lead.queryText}
                     </div>
                   ) : (
-                    <div className="text-white/40 italic">No query text recorded.</div>
+                    <div className="text-text-muted italic">No query text recorded.</div>
                   )}
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5 text-[11px]">
-                    <div className="text-white/40">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border text-[11px]">
+                    <div className="text-text-muted">
                       Logged:{" "}
                       {lead.createdAt?.seconds
                         ? format(
@@ -846,7 +848,7 @@ export function StudioCRMView({
                     {followUpLabel && (
                       <div
                         className={`flex items-center gap-1 font-semibold ${
-                          isFollowUpDue ? "text-amber-400" : "text-white/60"
+                          isFollowUpDue ? "text-amber-400" : "text-text-secondary"
                         }`}
                       >
                         <Clock className="w-3 h-3" />
@@ -868,9 +870,9 @@ export function StudioCRMView({
 
                     <a
                       href={`tel:${lead.mobile}`}
-                      className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white/90 border border-white/10 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+                      className="flex items-center gap-1.5 bg-surface-hover hover:bg-surface-hover text-text-primary border border-border font-semibold px-3 py-1.5 rounded-lg text-xs transition"
                     >
-                      <Phone className="w-3.5 h-3.5 text-white/60" /> Call {lead.mobile}
+                      <Phone className="w-3.5 h-3.5 text-text-secondary" /> Call {lead.mobile}
                     </a>
 
                     <button
@@ -879,14 +881,14 @@ export function StudioCRMView({
                           isNotesExpanded ? null : lead.id,
                         )
                       }
-                      className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 px-2.5 py-1.5 rounded-lg text-xs transition font-medium"
+                      className="flex items-center gap-1.5 bg-surface-hover hover:bg-surface-hover text-text-primary border border-border px-2.5 py-1.5 rounded-lg text-xs transition font-medium"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 text-white/60" />
+                      <MessageSquare className="w-3.5 h-3.5 text-text-secondary" />
                       {noteCount > 0 ? `${noteCount} Notes` : "Add Note"}
                       {isNotesExpanded ? (
-                        <ChevronUp className="w-3 h-3 text-white/40" />
+                        <ChevronUp className="w-3 h-3 text-text-muted" />
                       ) : (
-                        <ChevronDown className="w-3 h-3 text-white/40" />
+                        <ChevronDown className="w-3 h-3 text-text-muted" />
                       )}
                     </button>
 
@@ -918,7 +920,7 @@ export function StudioCRMView({
                                   setNotifyPickerLeadId(null);
                                   handleOpenNotify(lead, p);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs text-white/90 hover:bg-white/10 flex items-center gap-2 transition"
+                                className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover flex items-center gap-2 transition"
                               >
                                 <Bell className="w-3.5 h-3.5 text-amber-400" />
                                 {p.name}
@@ -929,7 +931,7 @@ export function StudioCRMView({
                                 setNotifyPickerLeadId(null);
                                 assignedPlayers.forEach((p) => handleOpenNotify(lead, p));
                               }}
-                              className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:bg-white/10 flex items-center gap-2 transition border-t border-white/10"
+                              className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:bg-surface-hover flex items-center gap-2 transition border-t border-border"
                             >
                               <Send className="w-3.5 h-3.5" />
                               Notify All ({assignedPlayers.length})
@@ -954,7 +956,7 @@ export function StudioCRMView({
 
                     <button
                       onClick={() => handleOpenEditForm(lead)}
-                      className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition"
+                      className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-hover rounded-lg transition"
                       title="Edit Enquiry"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -962,7 +964,7 @@ export function StudioCRMView({
 
                     <button
                       onClick={() => handleDeleteLead(lead)}
-                      className="p-1.5 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                      className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
                       title="Delete Enquiry"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -972,8 +974,8 @@ export function StudioCRMView({
 
                 {/* Collapsible Notes Timeline & Input */}
                 {isNotesExpanded && (
-                  <div className="pt-3 border-t border-white/10 space-y-3 bg-black/20 p-3 rounded-lg">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-white/40">
+                  <div className="pt-3 border-t border-border space-y-3 bg-surface-hover p-3 rounded-lg">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
                       Conversation History &amp; Notes
                     </div>
 
@@ -982,9 +984,9 @@ export function StudioCRMView({
                         {lead.notes.map((note) => (
                           <div
                             key={note.id}
-                            className="bg-card border border-white/5 rounded-lg p-2.5 text-xs space-y-1"
+                            className="bg-card border border-border rounded-lg p-2.5 text-xs space-y-1"
                           >
-                            <div className="flex items-center justify-between text-[11px] text-white/40">
+                            <div className="flex items-center justify-between text-[11px] text-text-muted">
                               <span className="font-semibold text-accent">
                                 {note.adminName}
                               </span>
@@ -997,14 +999,14 @@ export function StudioCRMView({
                                   : ""}
                               </span>
                             </div>
-                            <div className="text-white/80 leading-relaxed">
+                            <div className="text-text-primary leading-relaxed">
                               {note.text}
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="text-xs text-white/40 italic">
+                      <div className="text-xs text-text-muted italic">
                         No conversation notes yet. Add what was discussed below.
                       </div>
                     )}
@@ -1026,7 +1028,7 @@ export function StudioCRMView({
                             handleAddNote(lead.id);
                           }
                         }}
-                        className="flex-1 bg-black/40 border border-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                        className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
                       />
                       <button
                         onClick={() => handleAddNote(lead.id)}
@@ -1095,28 +1097,28 @@ export function StudioCRMView({
               <UserCheck className="w-5 h-5" /> Convert Lead — Send Invite
             </div>
 
-            <div className="text-xs text-white/80 leading-relaxed space-y-2">
+            <div className="text-xs text-text-primary leading-relaxed space-y-2">
               <p>
-                This will send a <strong className="text-white">WhatsApp welcome message</strong>{" "}
-                to <strong className="text-white">{convertingLead.name}</strong> with{" "}
+                This will send a <strong className="text-text-primary">WhatsApp welcome message</strong>{" "}
+                to <strong className="text-text-primary">{convertingLead.name}</strong> with{" "}
                 the Play App registration link and mark this lead as converted.
               </p>
-              <div className="bg-black/30 rounded-lg p-3 border border-white/5 text-white/60 leading-relaxed">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-1.5">
+              <div className="bg-surface-hover rounded-lg p-3 border border-border text-text-secondary leading-relaxed">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Message Preview
                 </div>
                 {DEFAULT_INVITE_MESSAGE(convertingLead.name, clubName)}
               </div>
-              <p className="text-white/50 text-[11px]">
+              <p className="text-text-muted text-[11px]">
                 The message will be sent via WhatsApp Business API if configured.
                 Otherwise, it opens in your personal WhatsApp for manual send.
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
               <button
                 onClick={() => setConvertingLead(null)}
-                className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+                className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary"
               >
                 Cancel
               </button>
@@ -1137,40 +1139,40 @@ export function StudioCRMView({
       {notifyTarget && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2 text-cyan-400 font-bold text-base">
                 <Bell className="w-5 h-5" /> Notify {notifyTarget.player.name}
               </div>
               <button
                 onClick={() => setNotifyTarget(null)}
-                className="text-white/40 hover:text-white p-1"
+                className="text-text-muted hover:text-text-primary p-1"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="text-xs text-white/60">
+            <div className="text-xs text-text-secondary">
               This will open WhatsApp with a pre-filled message about the lead{" "}
-              <strong className="text-white">{notifyTarget.lead.name}</strong>.
+              <strong className="text-text-primary">{notifyTarget.lead.name}</strong>.
               You can edit the message before sending.
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-white/70 mb-1">
+              <label className="block text-[11px] font-semibold text-text-secondary mb-1">
                 Message to {notifyTarget.player.name}
               </label>
               <textarea
                 rows={5}
                 value={notifyMessage}
                 onChange={(e) => setNotifyMessage(e.target.value)}
-                className="w-full bg-black/40 border border-border rounded-lg p-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-cyan-500 leading-relaxed"
+                className="w-full bg-surface-hover border border-border rounded-lg p-2.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-cyan-500 leading-relaxed"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
               <button
                 onClick={() => setNotifyTarget(null)}
-                className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+                className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary"
               >
                 Cancel
               </button>
@@ -1206,6 +1208,7 @@ function LeadFormModal({
   onClose: () => void;
   onSave: (data: any) => Promise<void>;
 }) {
+  const { toast } = useToast();
   const [name, setName] = useState(initialData?.name || "");
   const [mobile, setMobile] = useState(initialData?.mobile || "");
   const [email, setEmail] = useState(initialData?.email || "");
@@ -1229,7 +1232,7 @@ function LeadFormModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !mobile.trim()) {
-      alert("Name and contact number are required.");
+      toast("Name and contact number are required.", "error");
       return;
     }
 
@@ -1262,7 +1265,7 @@ function LeadFormModal({
 
       await onSave(payload);
     } catch (err: any) {
-      alert(err?.message || "Failed to save enquiry.");
+      toast(err?.message || "Failed to save enquiry.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -1271,13 +1274,13 @@ function LeadFormModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-card border border-border rounded-xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
-          <div className="font-bold text-base text-white">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="font-bold text-base text-text-primary">
             {initialData ? "Edit Enquiry Details" : "Record New Enquiry"}
           </div>
           <button
             onClick={onClose}
-            className="text-white/40 hover:text-white p-1 rounded-lg"
+            className="text-text-muted hover:text-text-primary p-1 rounded-lg"
           >
             <X className="w-5 h-5" />
           </button>
@@ -1287,7 +1290,7 @@ function LeadFormModal({
           {/* Name & Mobile */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Player / Contact Name *
               </label>
               <input
@@ -1296,12 +1299,12 @@ function LeadFormModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Rahul Sharma"
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
               />
             </div>
 
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Mobile Number *
               </label>
               <input
@@ -1310,9 +1313,9 @@ function LeadFormModal({
                 value={mobile}
                 onChange={(e) => setMobile(e.target.value)}
                 placeholder="e.g. 9876543210"
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
               />
-              <span className="text-[10px] text-white/40 mt-0.5 block">
+              <span className="text-[10px] text-text-muted mt-0.5 block">
                 Auto-normalizes to +91XXXXXXXXXX
               </span>
             </div>
@@ -1321,7 +1324,7 @@ function LeadFormModal({
           {/* Area & Email */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Locality / Area
               </label>
               <input
@@ -1329,12 +1332,12 @@ function LeadFormModal({
                 value={area}
                 onChange={(e) => setArea(e.target.value)}
                 placeholder="e.g. Indiranagar, HSR, Whitefield"
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
               />
             </div>
 
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Email Address (Optional)
               </label>
               <input
@@ -1342,7 +1345,7 @@ function LeadFormModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="e.g. rahul@gmail.com"
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
               />
             </div>
           </div>
@@ -1350,13 +1353,13 @@ function LeadFormModal({
           {/* Source & Stage */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Enquiry Source
               </label>
               <select
                 value={source}
                 onChange={(e) => setSource(e.target.value as LeadSource)}
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
               >
                 <option value="whatsapp" className="bg-neutral-900">WhatsApp</option>
                 <option value="call" className="bg-neutral-900">Direct Call</option>
@@ -1368,13 +1371,13 @@ function LeadFormModal({
             </div>
 
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Lead Status
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as LeadStatus)}
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
               >
                 <option value="new" className="bg-neutral-900">New / Uncontacted</option>
                 <option value="contacted" className="bg-neutral-900">In Discussion</option>
@@ -1387,11 +1390,11 @@ function LeadFormModal({
 
           {/* Interest Checkboxes */}
           <div>
-            <label className="block text-white/70 font-semibold mb-1.5">
+            <label className="block text-text-secondary font-semibold mb-1.5">
               Interest Area
             </label>
-            <div className="flex items-center gap-4 bg-black/40 border border-border rounded-lg p-2.5">
-              <label className="flex items-center gap-2 cursor-pointer text-white">
+            <div className="flex items-center gap-4 bg-surface-hover border border-border rounded-lg p-2.5">
+              <label className="flex items-center gap-2 cursor-pointer text-text-primary">
                 <input
                   type="checkbox"
                   checked={interest === "studio" || interest === "both"}
@@ -1409,7 +1412,7 @@ function LeadFormModal({
                 <span>Studio Nets / Bowling Machine</span>
               </label>
 
-              <label className="flex items-center gap-2 cursor-pointer text-white">
+              <label className="flex items-center gap-2 cursor-pointer text-text-primary">
                 <input
                   type="checkbox"
                   checked={interest === "matches" || interest === "both"}
@@ -1431,7 +1434,7 @@ function LeadFormModal({
 
           {/* Query Text */}
           <div>
-            <label className="block text-white/70 font-semibold mb-1">
+            <label className="block text-text-secondary font-semibold mb-1">
               Enquiry Query / Requirements
             </label>
             <textarea
@@ -1439,27 +1442,27 @@ function LeadFormModal({
               value={queryText}
               onChange={(e) => setQueryText(e.target.value)}
               placeholder="What did they ask about? (e.g. weekday morning slots, 3-month membership, weekend squad availability)"
-              className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-accent"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
             />
           </div>
 
           {/* Next Follow-Up Date */}
           <div>
-            <label className="block text-white/70 font-semibold mb-1 flex items-center gap-1.5">
+            <label className="block text-text-secondary font-semibold mb-1 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-accent" /> Next Follow-up Date
             </label>
             <input
               type="date"
               value={nextFollowUpDate}
               onChange={(e) => setNextFollowUpDate(e.target.value)}
-              className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
             />
           </div>
 
           {/* Initial Note (only for new lead) */}
           {!initialData && (
             <div>
-              <label className="block text-white/70 font-semibold mb-1">
+              <label className="block text-text-secondary font-semibold mb-1">
                 Initial Discussion Note (Optional)
               </label>
               <input
@@ -1467,17 +1470,17 @@ function LeadFormModal({
                 value={initialNote}
                 onChange={(e) => setInitialNote(e.target.value)}
                 placeholder="e.g. Sent pricing catalog on WhatsApp, requested morning slot."
-                className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-accent"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
               />
             </div>
           )}
 
           {/* Action buttons */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+              className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary"
             >
               Cancel
             </button>
@@ -1539,16 +1542,16 @@ function WhatsAppTemplateModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
             <MessageCircle className="w-5 h-5" /> WhatsApp to {lead.name}
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1">
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="text-xs text-white/60">
+        <div className="text-xs text-text-secondary">
           Select a template or edit the message before opening in personal WhatsApp:
         </div>
 
@@ -1560,8 +1563,8 @@ function WhatsAppTemplateModal({
               onClick={() => setSelectedText(tpl.body)}
               className={`p-2.5 rounded-lg border cursor-pointer transition text-xs ${
                 selectedText === tpl.body
-                  ? "bg-emerald-500/20 border-emerald-500/50 text-white"
-                  : "bg-black/30 border-white/5 text-white/70 hover:bg-white/5"
+                  ? "bg-emerald-500/20 border-emerald-500/50 text-text-primary"
+                  : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
               }`}
             >
               <div className="font-bold flex items-center justify-between">
@@ -1576,21 +1579,21 @@ function WhatsAppTemplateModal({
 
         {/* Editable Message Box */}
         <div>
-          <label className="block text-[11px] font-semibold text-white/70 mb-1">
+          <label className="block text-[11px] font-semibold text-text-secondary mb-1">
             Message Preview
           </label>
           <textarea
             rows={4}
             value={selectedText}
             onChange={(e) => setSelectedText(e.target.value)}
-            className="w-full bg-black/40 border border-border rounded-lg p-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500 leading-relaxed"
+            className="w-full bg-surface-hover border border-border rounded-lg p-2.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-emerald-500 leading-relaxed"
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+            className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary"
           >
             Cancel
           </button>

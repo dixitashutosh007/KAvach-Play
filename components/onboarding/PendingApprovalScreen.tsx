@@ -30,16 +30,16 @@ export function PendingApprovalScreen({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="glass max-w-sm w-full p-8 rounded-2xl border border-white/10 shadow-xl z-10"
+        className="bg-surface max-w-sm w-full p-8 rounded-2xl border border-border shadow-xl z-10"
       >
         <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto mb-5">
           <Clock className="w-7 h-7 text-amber-400 animate-pulse" />
         </div>
 
-        <h2 className="text-xl font-bold text-white mb-1">
+        <h2 className="text-xl font-bold text-text-primary mb-1">
           Waiting for Approval
         </h2>
-        <p className="text-xs text-white/50 mb-6">
+        <p className="text-xs text-text-muted mb-6">
           Your profile has been submitted successfully
         </p>
 
@@ -54,7 +54,7 @@ export function PendingApprovalScreen({
                       ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
                       : step.current
                         ? "bg-amber-500/20 border border-amber-500/40 text-amber-400 animate-pulse"
-                        : "bg-white/5 border border-white/10 text-white/30"
+                        : "bg-surface-hover border border-border text-text-primary/30"
                   }`}
                 >
                   {step.done ? (
@@ -71,7 +71,7 @@ export function PendingApprovalScreen({
                       ? "text-emerald-400/80"
                       : step.current
                         ? "text-amber-400/80"
-                        : "text-white/30"
+                        : "text-text-primary/30"
                   }`}
                 >
                   {step.label}
@@ -80,7 +80,7 @@ export function PendingApprovalScreen({
               {i < steps.length - 1 && (
                 <div
                   className={`w-4 sm:w-6 h-px mx-0.5 mb-4 ${
-                    step.done ? "bg-emerald-500/40" : "bg-white/10"
+                    step.done ? "bg-emerald-500/40" : "bg-surface-hover"
                   }`}
                 />
               )}
@@ -88,11 +88,11 @@ export function PendingApprovalScreen({
           ))}
         </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
-          <p className="text-xs text-white/70 leading-relaxed">
+        <div className="bg-surface-hover border border-border rounded-xl p-4 mb-6">
+          <p className="text-xs text-text-secondary leading-relaxed">
             The club admin will review and approve your request.
             You&apos;ll get full access once approved.{" "}
-            <span className="text-white/40">
+            <span className="text-text-muted">
               Check back later or contact the club desk.
             </span>
           </p>
@@ -100,7 +100,7 @@ export function PendingApprovalScreen({
 
         <button
           onClick={onLogOut}
-          className="w-full py-3 px-6 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20 transition-all text-xs"
+          className="w-full py-3 px-6 rounded-xl bg-surface-hover text-text-primary font-bold hover:bg-surface-hover transition-all text-xs"
         >
           Sign Out
         </button>

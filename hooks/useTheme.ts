@@ -3,12 +3,6 @@
 import { useEffect, useMemo } from "react";
 import { resolveTheme, ThemePreset } from "@/lib/theme";
 
-/**
- * Resolves the active theme and pushes it into CSS custom properties on
- * :root so global styles pick it up. Returns { currentTheme, themeStyles }
- * so callers can also use inline `style={themeStyles}` on tree roots when
- * needed (helpful for full-screen overlays that mount above the app shell).
- */
 export function useTheme(
   previewThemeId: string | null | undefined,
   globalThemeId: string | null | undefined,
@@ -26,6 +20,13 @@ export function useTheme(
     root.style.setProperty("--theme-glass-bg", currentTheme.glassBg);
     root.style.setProperty("--theme-glass-border", currentTheme.glassBorder);
     root.style.setProperty("--theme-text-accent", currentTheme.textAccent);
+    root.style.setProperty("--theme-text-primary", currentTheme.textPrimary);
+    root.style.setProperty("--theme-text-secondary", currentTheme.textSecondary);
+    root.style.setProperty("--theme-text-muted", currentTheme.textMuted);
+    root.style.setProperty("--theme-surface", currentTheme.surface);
+    root.style.setProperty("--theme-surface-hover", currentTheme.surfaceHover);
+    root.style.setProperty("--theme-border", currentTheme.border);
+    root.setAttribute("data-theme-mode", currentTheme.mode);
   }, [currentTheme]);
 
   const themeStyles = useMemo(
@@ -36,6 +37,12 @@ export function useTheme(
         "--theme-glass-bg": currentTheme.glassBg,
         "--theme-glass-border": currentTheme.glassBorder,
         "--theme-text-accent": currentTheme.textAccent,
+        "--theme-text-primary": currentTheme.textPrimary,
+        "--theme-text-secondary": currentTheme.textSecondary,
+        "--theme-text-muted": currentTheme.textMuted,
+        "--theme-surface": currentTheme.surface,
+        "--theme-surface-hover": currentTheme.surfaceHover,
+        "--theme-border": currentTheme.border,
       }) as React.CSSProperties,
     [currentTheme],
   );

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Copy, IndianRupee } from "lucide-react";
 import { Player } from "@/lib/types";
 import { useStore } from "@/hooks/useStore";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 /**
  * Admin tool for reviewing and merging duplicate player profiles.
@@ -30,6 +32,8 @@ export function DuplicatePlayersReport({
 }: {
   store: ReturnType<typeof useStore>;
 }) {
+  const { confirm: confirmAction } = useConfirm();
+  const { toast } = useToast();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
   const [mergingGroup, setMergingGroup] = useState<string | null>(null);
@@ -114,15 +118,13 @@ export function DuplicatePlayersReport({
     if (!keeperId || losers.length === 0) return;
     const loserNames = losers.map((l) => l.name).join(", ");
     if (
-      !window.confirm(
-        `Merge ${loserNames} into ${keeperName}?\n\n` +
+      !await confirmAction({ message: `Merge ${loserNames} into ${keeperName}?\n\n` +
           `• Every match payment and Other Fee owned by the merged profile(s) will be reassigned to ${keeperName}.\n` +
           `• Shop orders will move too.\n` +
           `• Merged profile(s) will be moved to Trash (they can be restored from the Squad list if needed).\n` +
           `• Empty fields on ${keeperName} will be filled in from the merged profiles; existing values are kept.\n` +
           `• ${keeperName}'s mobile will be normalized to +91XXXXXXXXXX.\n\n` +
-          `This cannot be automatically undone. Continue?`,
-      )
+          `This cannot be automatically undone. Continue?`, destructive: true })
     )
       return;
 
@@ -131,7 +133,7 @@ export function DuplicatePlayersReport({
       for (const loser of losers) {
         await store.mergePlayer(loser.id, keeperId);
       }
-      alert("Merge complete.");
+      toast("Merge complete.");
     } catch (err: any) {
       console.error("Merge failed", err);
       // Surface the real reason (permission denied, missing index, etc.)
@@ -140,7 +142,7 @@ export function DuplicatePlayersReport({
         err?.code
           ? `Merge failed [${err.code}]: ${err.message || "unknown error"}`
           : `Merge failed: ${err?.message || String(err)}`;
-      alert(msg);
+      toast(msg);
     } finally {
       setMergingGroup(null);
     }
@@ -149,10 +151,10 @@ export function DuplicatePlayersReport({
   if (groups.length === 0) return null;
 
   return (
-    <div className="glass rounded-xl border border-amber-500/30 p-4 mb-4">
+    <div className="bg-surface rounded-xl border border-amber-500/30 p-4 mb-4">
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="flex w-full items-center justify-between text-white/90 hover:text-white"
+        className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
       >
         <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400">
           <AlertTriangle className="h-4 w-4" />
@@ -167,7 +169,7 @@ export function DuplicatePlayersReport({
 
       {!isCollapsed && (
         <div className="mt-4 space-y-4">
-          <p className="text-[11px] text-white/50 leading-relaxed">
+          <p className="text-[11px] text-text-muted leading-relaxed">
             These profiles share the same mobile number or email. Pick the
             profile you want to keep, then click Merge — every match
             payment, Other Fee, and shop order tied to the other row(s)
@@ -192,7 +194,7 @@ export function DuplicatePlayersReport({
                     onClick={() => {
                       navigator.clipboard.writeText(g.key);
                     }}
-                    className="ml-1 p-0.5 hover:bg-white/10 rounded"
+                    className="ml-1 p-0.5 hover:bg-surface-hover rounded"
                     title="Copy value"
                   >
                     <Copy className="w-3 h-3" />
@@ -209,7 +211,7 @@ export function DuplicatePlayersReport({
                         className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border px-3 py-2 cursor-pointer transition ${
                           isKeeper
                             ? "border-emerald-500/40 bg-emerald-500/10"
-                            : "border-white/10 bg-black/30 hover:bg-white/5"
+                            : "border-border bg-surface-hover hover:bg-surface-hover"
                         }`}
                       >
                         <div className="flex items-start gap-2 min-w-0">
@@ -227,7 +229,7 @@ export function DuplicatePlayersReport({
                             disabled={isMerging}
                           />
                           <div className="min-w-0">
-                            <p className="text-sm font-bold text-white truncate">
+                            <p className="text-sm font-bold text-text-primary truncate">
                               {p.name}
                               {p.disabled && (
                                 <span className="ml-2 text-[9px] font-bold uppercase tracking-widest text-red-400">
@@ -240,16 +242,16 @@ export function DuplicatePlayersReport({
                                 </span>
                               )}
                             </p>
-                            <p className="text-[11px] text-white/50 truncate">
+                            <p className="text-[11px] text-text-muted truncate">
                               <span className="font-mono">{p.mobile || "—"}</span>
                               {p.email && (
                                 <>
-                                  <span className="mx-1.5 text-white/30">·</span>
+                                  <span className="mx-1.5 text-text-primary/30">·</span>
                                   <span>{p.email}</span>
                                 </>
                               )}
                             </p>
-                            <p className="text-[10px] text-white/40 font-mono truncate mt-0.5">
+                            <p className="text-[10px] text-text-muted font-mono truncate mt-0.5">
                               {p.id}
                             </p>
                           </div>
@@ -261,7 +263,7 @@ export function DuplicatePlayersReport({
                           <span className="px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 font-bold uppercase tracking-wider">
                             Unpaid: {t.unpaidCount}
                           </span>
-                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white/70 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded bg-surface-hover border border-border text-text-secondary font-bold uppercase tracking-wider flex items-center gap-1">
                             <IndianRupee className="w-2.5 h-2.5" />
                             {t.unpaidAmount}
                           </span>

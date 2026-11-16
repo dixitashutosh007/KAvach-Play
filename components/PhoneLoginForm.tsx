@@ -135,11 +135,11 @@ export function PhoneLoginForm({
       <form onSubmit={requestOTP} className="space-y-4 text-left">
         <div id="recaptcha-container"></div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
             Mobile Number
           </label>
-          <div className="flex bg-white/5 border border-white/10 rounded-xl focus-within:border-accent transition overflow-hidden">
-            <span className="px-3 py-2 flex items-center justify-center text-white/40 border-r border-white/10 text-sm">
+          <div className="flex bg-surface-hover border border-border rounded-xl focus-within:border-accent transition overflow-hidden">
+            <span className="px-3 py-2 flex items-center justify-center text-text-muted border-r border-border text-sm">
               +91
             </span>
             <input
@@ -147,7 +147,7 @@ export function PhoneLoginForm({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="9876543210"
-              className="w-full px-3.5 py-2 bg-transparent text-white text-sm focus:outline-none"
+              className="w-full px-3.5 py-2 bg-transparent text-text-primary text-sm focus:outline-none"
               required
             />
           </div>
@@ -164,14 +164,14 @@ export function PhoneLoginForm({
             type="button"
             onClick={onOtherOptions}
             data-testid="other-auth-options"
-            className="flex-1 py-3 px-4 rounded-xl border border-white/10 text-white text-xs font-bold hover:bg-white/5 transition cursor-pointer text-center"
+            className="flex-1 py-3 px-4 rounded-xl border border-border text-text-primary text-xs font-bold hover:bg-surface-hover transition cursor-pointer text-center"
           >
             Google Sign-In
           </button>
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 py-3 px-4 rounded-xl bg-accent text-black text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            className="flex-1 py-3 px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
             style={{ backgroundColor: themeAccent, color: themeTextAccent }}
           >
             {loading ? (
@@ -191,7 +191,7 @@ export function PhoneLoginForm({
   return (
     <form onSubmit={verifyOTP} className="space-y-4 text-left">
       <div className="space-y-1">
-        <label className="text-[10px] font-bold uppercase tracking-wider text-white/60">
+        <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
           Enter OTP Sent to +91 {phone}
         </label>
         <input
@@ -200,7 +200,7 @@ export function PhoneLoginForm({
           autoComplete="one-time-code"
           onChange={(e) => setOtp(e.target.value)}
           placeholder="123456"
-          className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-accent transition text-center tracking-widest text-lg font-mono"
+          className="w-full px-3.5 py-2 rounded-xl bg-surface-hover border border-border text-text-primary text-sm focus:outline-none focus:border-accent transition text-center tracking-widest text-lg font-mono"
           required
         />
       </div>
@@ -219,14 +219,14 @@ export function PhoneLoginForm({
             setOtp("");
             setError("");
           }}
-          className="py-3 px-4 rounded-xl border border-white/10 text-white text-xs font-bold hover:bg-white/5 transition cursor-pointer"
+          className="py-3 px-4 rounded-xl border border-border text-text-primary text-xs font-bold hover:bg-surface-hover transition cursor-pointer"
         >
           Back
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 py-3 px-4 rounded-xl bg-accent text-black text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+          className="flex-1 py-3 px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
           style={{ backgroundColor: themeAccent, color: themeTextAccent }}
         >
           {loading ? (

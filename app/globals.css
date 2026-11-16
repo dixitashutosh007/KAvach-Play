@@ -1,18 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --color-glass-bg: var(--theme-glass-bg, rgba(255, 255, 255, 0.1));
-  --color-glass-border: var(--theme-glass-border, rgba(255, 255, 255, 0.2));
-  --color-accent: var(--theme-accent, #10b981);
+  --color-glass-bg: var(--theme-glass-bg, #FFFFFF);
+  --color-glass-border: var(--theme-glass-border, #E5E7EB);
+  --color-accent: var(--theme-accent, #D51F43);
+  --color-text-primary: var(--theme-text-primary, #171C26);
+  --color-text-secondary: var(--theme-text-secondary, #4B5563);
+  --color-text-muted: var(--theme-text-muted, #9CA3AF);
+  --color-surface: var(--theme-surface, #FFFFFF);
+  --color-surface-hover: var(--theme-surface-hover, #F3F4F6);
+  --color-border: var(--theme-border, #E5E7EB);
+  --color-text-accent: var(--theme-text-accent, #FFFFFF);
+  --color-brand: #A30F2D;
 }
 
 body {
-  background-image: var(
-    --theme-bg,
-    radial-gradient(circle at 0% 0%, #064e3b 0%, #022c22 100%)
-  );
-  background-attachment: fixed;
-  color: #fff;
+  background: var(--theme-bg, #F6F7F9);
+  color: var(--theme-text-primary, #171C26);
   transition: all 0.3s ease-in-out;
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
@@ -53,6 +57,17 @@ input[type="number"] {
 .animate-slide-up {
   animation: slide-up 0.25s ease-out;
 }
+
+@keyframes toast-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+.animate-toast-in { animation: toast-in 0.3s ease-out; }
+.animate-toast-out { animation: toast-out 0.2s ease-in forwards; }
 
 /* Hide Next.js dev indicator from screen */
 nextjs-portal {

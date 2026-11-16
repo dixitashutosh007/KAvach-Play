@@ -4,8 +4,12 @@ import { PieChart, Plus, Trash2, Edit2, Activity, CheckCircle2, Circle, AlertCir
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { Poll, PollResponse } from "@/lib/types";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function OpinionTab({ store, persona }: { store: any; persona: "admin" | "player" }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const { user } = useAuth();
   const isAdmin = persona === "admin";
   const [isAdding, setIsAdding] = useState(false);
@@ -42,8 +46,8 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
   };
 
   const submitPoll = async () => {
-    if (!title) return alert("Title is required");
-    if (type !== "slider" && options.length < 2) return alert("At least 2 options required");
+    if (!title) return toast("Title is required", "error");
+    if (type !== "slider" && options.length < 2) return toast("At least 2 options required", "error");
     
     try {
       if (editingId) {
@@ -82,7 +86,7 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
       setSliderMinLabel("Strongly Disagree");
       setSliderMaxLabel("Strongly Agree");
     } catch (err: any) {
-      alert("Error saving poll: " + err.message);
+      toast("Error saving poll: " + err.message, "error");
     }
   };
 
@@ -93,7 +97,7 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
         updatedAt: serverTimestamp()
       });
     } catch (err: any) {
-      alert("Error toggling status: " + err.message);
+      toast("Error toggling status: " + err.message, "error");
     }
   };
 
@@ -104,17 +108,17 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
         updatedAt: serverTimestamp()
       });
     } catch (err: any) {
-      alert("Error toggling stick status: " + err.message);
+      toast("Error toggling stick status: " + err.message, "error");
     }
   };
 
   const deletePoll = async (pollId: string) => {
-    if (!confirm("Are you sure? This will remove all responses from players' profiles too.")) return;
+    if (!await confirmAction({ message: "Are you sure? This will remove all responses from players' profiles too.", destructive: true })) return;
     try {
       await deleteDoc(doc(db, "polls", pollId));
       // Optionally cleanup responses, but usually we just filter them out.
     } catch(err: any) {
-      alert("Error deleting: " + err.message);
+      toast("Error deleting: " + err.message, "error");
     }
   };
 
@@ -130,7 +134,7 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
         updatedAt: serverTimestamp()
       });
     } catch (err: any) {
-      alert("Error voting: " + err.message);
+      toast("Error voting: " + err.message, "error");
     }
   };
 
@@ -144,13 +148,13 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
             <PieChart className="w-5 h-5 text-accent" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Pulse</h2>
+            <h2 className="text-xl font-bold text-text-primary tracking-tight">Pulse</h2>
           </div>
         </div>
         {isAdmin && !isAdding && (
           <button
             onClick={() => setIsAdding(true)}
-            className="px-4 py-2 bg-accent text-black font-bold uppercase tracking-wider text-[10px] rounded-xl hover:opacity-90 transition flex items-center gap-2"
+            className="px-4 py-2 bg-accent text-text-accent font-bold uppercase tracking-wider text-[10px] rounded-xl hover:opacity-90 transition flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Add Poll
           </button>
@@ -158,23 +162,23 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
       </div>
 
       {isAdding && isAdmin && (
-        <div className="glass p-5 rounded-2xl border border-accent/30 space-y-4 shadow-lg">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Create New Poll</h3>
+        <div className="bg-surface p-5 rounded-2xl border border-accent/30 space-y-4 shadow-lg">
+          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Create New Poll</h3>
           
           <div className="space-y-1">
-            <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Question / Title</label>
+            <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Question / Title</label>
             <input 
               value={title} onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-accent outline-none"
+              className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary focus:border-accent outline-none"
               placeholder="e.g. Where should we host the annual party?"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Poll Type</label>
+            <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Poll Type</label>
             <select
               value={type} onChange={(e: any) => setType(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-accent outline-none [&>option]:bg-emerald-950"
+              className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary focus:border-accent outline-none "
             >
               <option value="singleChoice">Single Choice</option>
               <option value="multipleChoice">Multiple Choice</option>
@@ -184,12 +188,12 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
 
           {type !== "slider" && (
             <div className="space-y-2">
-              <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Options</label>
+              <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Options</label>
               {options.map((opt, idx) => (
                 <div key={idx} className="flex items-center gap-2">
                   <input 
                     value={opt} onChange={(e) => handleOptionChange(idx, e.target.value)}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-accent outline-none"
+                    className="flex-1 bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary focus:border-accent outline-none"
                   />
                   <button onClick={() => handleRemoveOption(idx)} className="p-2 text-rose-400 hover:bg-rose-500/20 rounded-xl">
                     <Trash2 className="w-4 h-4" />
@@ -204,22 +208,22 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
             <div className="space-y-4">
               <div className="flex gap-4">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Min Value</label>
-                  <input type="number" value={sliderMin} onChange={e => setSliderMin(Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white" />
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Min Value</label>
+                  <input type="number" value={sliderMin} onChange={e => setSliderMin(Number(e.target.value))} className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Max Value</label>
-                  <input type="number" value={sliderMax} onChange={e => setSliderMax(Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white" />
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Max Value</label>
+                  <input type="number" value={sliderMax} onChange={e => setSliderMax(Number(e.target.value))} className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary" />
                 </div>
               </div>
               <div className="flex gap-4">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Min Label</label>
-                  <input value={sliderMinLabel} onChange={e => setSliderMinLabel(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white" />
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Min Label</label>
+                  <input value={sliderMinLabel} onChange={e => setSliderMinLabel(e.target.value)} className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Max Label</label>
-                  <input value={sliderMaxLabel} onChange={e => setSliderMaxLabel(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white" />
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">Max Label</label>
+                  <input value={sliderMaxLabel} onChange={e => setSliderMaxLabel(e.target.value)} className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary" />
                 </div>
               </div>
             </div>
@@ -227,12 +231,12 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
 
           <div className="flex items-center gap-2 pt-2">
             <input type="checkbox" id="stick" checked={isSticked} onChange={e => setIsSticked(e.target.checked)} className="accent-accent w-4 h-4" />
-            <label htmlFor="stick" className="text-sm text-white/80">Stick to Club Feed</label>
+            <label htmlFor="stick" className="text-sm text-text-primary">Stick to Club Feed</label>
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button onClick={() => { setIsAdding(false); setEditingId(null); }} className="flex-1 py-2 rounded-xl bg-white/5 text-white/70 text-xs font-bold hover:bg-white/10 transition">Cancel</button>
-            <button onClick={submitPoll} className="flex-1 py-2 rounded-xl bg-accent text-black text-xs font-bold hover:opacity-90 transition">{editingId ? "Update Poll" : "Save Poll"}</button>
+            <button onClick={() => { setIsAdding(false); setEditingId(null); }} className="flex-1 py-2 rounded-xl bg-surface-hover text-text-secondary text-xs font-bold hover:bg-surface-hover transition">Cancel</button>
+            <button onClick={submitPoll} className="flex-1 py-2 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-90 transition">{editingId ? "Update Poll" : "Save Poll"}</button>
           </div>
         </div>
       )}
@@ -240,7 +244,7 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
       {/* Render Polls */}
       <div className="space-y-8">
         {(isAdmin ? store.polls : activePolls).length === 0 ? (
-           <div className="text-center text-white/40 text-sm py-10 glass rounded-2xl border border-white/5">No polls available.</div>
+           <div className="text-center text-text-muted text-sm py-10 bg-surface rounded-2xl border border-border">No polls available.</div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {(isAdmin ? store.polls : activePolls).map((poll: Poll) => {
@@ -248,37 +252,37 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
               const totalResponses = store.pollResponses.filter((r: PollResponse) => r.pollId === poll.id);
 
               return (
-                <div key={poll.id} className={`glass rounded-2xl p-5 border relative overflow-hidden flex flex-col ${poll.isActive ? 'border-white/10' : 'border-rose-500/30 opacity-70'}`}>
+                <div key={poll.id} className={`bg-surface rounded-2xl p-5 border relative overflow-hidden flex flex-col ${poll.isActive ? 'border-border' : 'border-rose-500/30 opacity-70'}`}>
                   {poll.isSticked && (
-                    <div className="absolute top-0 right-0 bg-accent text-black text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-bl-xl">Sticked</div>
+                    <div className="absolute top-0 right-0 bg-accent text-text-accent text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-bl-xl">Sticked</div>
                   )}
                   {!poll.isActive && isAdmin && (
                     <div className="absolute top-0 right-0 bg-rose-500 text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-bl-xl">Deactivated</div>
                   )}
                   {poll.isEdited && (
-                    <div className={`absolute top-0 right-${(poll.isSticked || (!poll.isActive && isAdmin)) ? '12' : '0'} bg-white/20 text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 ${!(poll.isSticked || (!poll.isActive && isAdmin)) ? 'rounded-bl-xl' : ''}`}>Edited</div>
+                    <div className={`absolute top-0 right-${(poll.isSticked || (!poll.isActive && isAdmin)) ? '12' : '0'} bg-surface-hover text-text-primary text-[9px] font-bold uppercase tracking-widest px-2 py-1 ${!(poll.isSticked || (!poll.isActive && isAdmin)) ? 'rounded-bl-xl' : ''}`}>Edited</div>
                   )}
 
-                  <h3 className="text-base font-bold text-white pr-12 leading-tight">{poll.title}</h3>
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mt-1.5 mb-4">
+                  <h3 className="text-base font-bold text-text-primary pr-12 leading-tight">{poll.title}</h3>
+                  <p className="text-[10px] text-text-muted uppercase tracking-widest mt-1.5 mb-4">
                     {poll.type === "singleChoice" ? "Single Choice" : poll.type === "multipleChoice" ? "Multiple Choice" : "Slider"} 
-                    {isAdmin && <span className="ml-2 bg-white/10 px-1.5 py-0.5 rounded">{totalResponses.length} Votes</span>}
+                    {isAdmin && <span className="ml-2 bg-surface-hover px-1.5 py-0.5 rounded">{totalResponses.length} Votes</span>}
                   </p>
 
                   <div className="mt-auto">
                     {isAdmin ? (
                       <div className="space-y-3">
-                        <div className="bg-black/30 rounded-xl p-3 max-h-48 overflow-y-auto">
+                        <div className="bg-surface-hover rounded-xl p-3 max-h-48 overflow-y-auto">
                            {poll.type === "slider" && (
-                             <div className="text-xs text-white/60 font-mono mb-2">Range: {poll.sliderMin} to {poll.sliderMax}</div>
+                             <div className="text-xs text-text-secondary font-mono mb-2">Range: {poll.sliderMin} to {poll.sliderMax}</div>
                            )}
                            <PollResults poll={poll} store={store} isAdmin={true} />
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => togglePollStatus(poll)} className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold uppercase transition flex justify-center items-center gap-1">
+                          <button onClick={() => togglePollStatus(poll)} className="flex-1 py-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover text-text-primary text-[10px] font-bold uppercase transition flex justify-center items-center gap-1">
                             {poll.isActive ? <EyeOff className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />} {poll.isActive ? "Deactivate" : "Activate"}
                           </button>
-                          <button onClick={() => toggleStickStatus(poll)} className={`flex-1 py-1.5 rounded-lg text-white text-[10px] font-bold uppercase transition flex justify-center items-center gap-1 ${poll.isSticked ? 'bg-accent/20 text-accent hover:bg-accent/30' : 'bg-white/5 hover:bg-white/10'}`}>
+                          <button onClick={() => toggleStickStatus(poll)} className={`flex-1 py-1.5 rounded-lg text-text-primary text-[10px] font-bold uppercase transition flex justify-center items-center gap-1 ${poll.isSticked ? 'bg-accent/20 text-accent hover:bg-accent/30' : 'bg-surface-hover hover:bg-surface-hover'}`}>
                             <Activity className="w-3 h-3" /> {poll.isSticked ? "Unstick" : "Stick"}
                           </button>
                           <button onClick={() => startEditing(poll)} className="w-8 flex items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition">
@@ -295,7 +299,7 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
                            <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 text-center">
                              <div className="w-8 h-8 mx-auto bg-accent/20 rounded-full flex items-center justify-center text-accent mb-2"><CheckCircle2 className="w-5 h-5"/></div>
                              <p className="text-accent text-xs font-bold uppercase tracking-wider">Submitted</p>
-                             <p className="text-[10px] text-white/60 mt-1">View your response in Profile &gt; Opinion</p>
+                             <p className="text-[10px] text-text-secondary mt-1">View your response in Profile &gt; Opinion</p>
                            </div>
                         ) : (
                            <PollInteraction poll={poll} onVote={(val) => handleVote(poll.id, val)} />
@@ -340,7 +344,7 @@ export function PollInteraction({ poll, onVote }: { poll: Poll, onVote: (val: an
       {poll.type === "singleChoice" && (
         <div className="space-y-2">
           {poll.options?.map(opt => (
-            <div key={opt} onClick={() => setSingleVal(opt)} className={`p-2 rounded-xl border text-sm cursor-pointer transition flex items-center gap-2 ${singleVal === opt ? 'bg-accent/20 border-accent/40 text-white' : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'}`}>
+            <div key={opt} onClick={() => setSingleVal(opt)} className={`p-2 rounded-xl border text-sm cursor-pointer transition flex items-center gap-2 ${singleVal === opt ? 'bg-accent/20 border-accent/40 text-text-primary' : 'bg-surface-hover border-border text-text-secondary hover:bg-surface-hover'}`}>
               {singleVal === opt ? <CheckCircle2 className="w-4 h-4 text-accent" /> : <Circle className="w-4 h-4 opacity-40" />}
               {opt}
             </div>
@@ -351,8 +355,8 @@ export function PollInteraction({ poll, onVote }: { poll: Poll, onVote: (val: an
       {poll.type === "multipleChoice" && (
         <div className="space-y-2">
           {poll.options?.map(opt => (
-            <div key={opt} onClick={() => handleMultiToggle(opt)} className={`p-2 rounded-xl border text-sm cursor-pointer transition flex items-center gap-2 ${multiVal.includes(opt) ? 'bg-accent/20 border-accent/40 text-white' : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'}`}>
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${multiVal.includes(opt) ? 'border-accent bg-accent text-black' : 'border-white/30'}`}>
+            <div key={opt} onClick={() => handleMultiToggle(opt)} className={`p-2 rounded-xl border text-sm cursor-pointer transition flex items-center gap-2 ${multiVal.includes(opt) ? 'bg-accent/20 border-accent/40 text-text-primary' : 'bg-surface-hover border-border text-text-secondary hover:bg-surface-hover'}`}>
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${multiVal.includes(opt) ? 'border-accent bg-accent text-text-accent' : 'border-border'}`}>
                 {multiVal.includes(opt) && <CheckCircle2 className="w-3 h-3" />}
               </div>
               {opt}
@@ -363,15 +367,15 @@ export function PollInteraction({ poll, onVote }: { poll: Poll, onVote: (val: an
 
       {poll.type === "slider" && (
         <div className="space-y-4 px-2">
-           <div className="flex justify-between text-xs font-mono text-white/50">
+           <div className="flex justify-between text-xs font-mono text-text-muted">
              <div className="flex flex-col items-start gap-1">
                <span>{poll.sliderMin}</span>
-               {poll.sliderMinLabel && <span className="text-[10px] uppercase tracking-wider text-white/40">{poll.sliderMinLabel}</span>}
+               {poll.sliderMinLabel && <span className="text-[10px] uppercase tracking-wider text-text-muted">{poll.sliderMinLabel}</span>}
              </div>
              <span className="text-accent text-lg font-bold">{sliderVal}</span>
              <div className="flex flex-col items-end gap-1">
                <span>{poll.sliderMax}</span>
-               {poll.sliderMaxLabel && <span className="text-[10px] uppercase tracking-wider text-white/40">{poll.sliderMaxLabel}</span>}
+               {poll.sliderMaxLabel && <span className="text-[10px] uppercase tracking-wider text-text-muted">{poll.sliderMaxLabel}</span>}
              </div>
            </div>
            <input 
@@ -382,7 +386,7 @@ export function PollInteraction({ poll, onVote }: { poll: Poll, onVote: (val: an
         </div>
       )}
 
-      <button onClick={submit} className="w-full py-2.5 mt-2 bg-accent text-black text-xs font-bold uppercase tracking-wider rounded-xl hover:opacity-90 transition">
+      <button onClick={submit} className="w-full py-2.5 mt-2 bg-accent text-text-accent text-xs font-bold uppercase tracking-wider rounded-xl hover:opacity-90 transition">
         Submit Vote
       </button>
     </div>
@@ -396,6 +400,7 @@ export function PollResults({ poll, store, isAdmin }: { poll: Poll, store: any, 
   const tally: Record<string, { count: number, voters: string[] }> = {};
 
   if (poll.options) {
+  const { confirm: confirmAction } = useConfirm();
     poll.options.forEach(opt => {
       tally[opt] = { count: 0, voters: [] };
     });
@@ -425,28 +430,28 @@ export function PollResults({ poll, store, isAdmin }: { poll: Poll, store: any, 
   const sortedTally = Object.entries(tally).sort((a, b) => b[1].count - a[1].count);
 
   return (
-    <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
-      <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-white/50">
+    <div className="mt-4 space-y-4 border-t border-border pt-4">
+      <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-text-muted">
         <span>Results</span>
         <span>{totalVotes} {totalVotes === 1 ? "Vote" : "Votes"}</span>
       </div>
       {sortedTally.length === 0 ? (
-        <div className="text-xs text-white/40">No options to show.</div>
+        <div className="text-xs text-text-muted">No options to show.</div>
       ) : (
         <div className="space-y-3">
           {sortedTally.map(([opt, data]) => {
             const percentage = totalVotes > 0 ? Math.round((data.count / totalVotes) * 100) : 0;
             return (
               <div key={opt} className="space-y-1">
-                <div className="flex justify-between text-xs text-white">
+                <div className="flex justify-between text-xs text-text-primary">
                   <span className="font-medium">{opt}</span>
-                  <span className="text-white/60">{data.count} ({percentage}%)</span>
+                  <span className="text-text-secondary">{data.count} ({percentage}%)</span>
                 </div>
-                <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div className="w-full h-1.5 bg-surface-hover rounded-full overflow-hidden">
                   <div className="h-full bg-accent" style={{ width: `${percentage}%` }} />
                 </div>
                 {isAdmin && data.voters.length > 0 && (
-                  <div className="text-[10px] text-white/40 leading-tight mt-1">
+                  <div className="text-[10px] text-text-muted leading-tight mt-1">
                     <span className="font-bold text-accent">Voters:</span> {data.voters.join(", ")}
                   </div>
                 )}

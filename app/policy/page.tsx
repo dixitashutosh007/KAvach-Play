@@ -2,18 +2,18 @@ import Link from "next/link";
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-[#022c22] text-white/80 p-6 sm:p-12 font-sans overflow-y-auto">
-      <div className="max-w-3xl mx-auto glass border border-white/10 rounded-3xl p-8 sm:p-12 shadow-2xl backdrop-blur-xl">
+    <div className="min-h-screen bg-[#022c22] text-text-primary p-6 sm:p-12 font-sans overflow-y-auto">
+      <div className="max-w-3xl mx-auto bg-surface border border-border rounded-3xl p-8 sm:p-12 shadow-2xl backdrop-blur-xl">
         <h1 className="text-3xl sm:text-4xl font-extrabold text-[#10b981] mb-2 uppercase tracking-wide">
           Privacy Policy
         </h1>
-        <p className="text-white/50 text-sm font-semibold uppercase tracking-widest mb-10 pb-4 border-b border-white/10">
+        <p className="text-text-muted text-sm font-semibold uppercase tracking-widest mb-10 pb-4 border-b border-border">
           Kavach Play
         </p>
 
         <div className="space-y-8 text-sm leading-relaxed max-w-none">
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">
+            <h2 className="text-xl font-bold text-text-primary mb-3">
               1. Introduction
             </h2>
             <p>
@@ -25,14 +25,14 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">
+            <h2 className="text-xl font-bold text-text-primary mb-3">
               2. Information We Collect
             </h2>
             <p className="mb-2">
               We collect personal information that you voluntarily provide to us
               when you register on the application, including:
             </p>
-            <ul className="list-disc pl-5 space-y-1 text-white/70">
+            <ul className="list-disc pl-5 space-y-1 text-text-secondary">
               <li>
                 Name, email address, and profile picture (via Google
                 Authentication)
@@ -46,14 +46,14 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">
+            <h2 className="text-xl font-bold text-text-primary mb-3">
               3. How We Use Your Information
             </h2>
             <p className="mb-2">
               We use the personal information collected via our application for
               a variety of sports management purposes described below:
             </p>
-            <ul className="list-disc pl-5 space-y-1 text-white/70">
+            <ul className="list-disc pl-5 space-y-1 text-text-secondary">
               <li>To facilitate account creation and logon process</li>
               <li>To manage player rosters and team assignments</li>
               <li>
@@ -69,7 +69,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">
+            <h2 className="text-xl font-bold text-text-primary mb-3">
               4. Information Sharing and Disclosure
             </h2>
             <p>
@@ -81,7 +81,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">
+            <h2 className="text-xl font-bold text-text-primary mb-3">
               5. Data Security
             </h2>
             <p>
@@ -92,7 +92,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">
+            <h2 className="text-xl font-bold text-text-primary mb-3">
               6. User Consent
             </h2>
             <p>
@@ -103,7 +103,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">7. Contact Us</h2>
+            <h2 className="text-xl font-bold text-text-primary mb-3">7. Contact Us</h2>
             <p>
               If you have questions or comments about this policy, you may email
               the club administration at{" "}
@@ -117,7 +117,7 @@ export default function PrivacyPolicy() {
             </p>
           </section>
 
-          <div className="pt-8 mt-10 border-t border-white/10 flex justify-center">
+          <div className="pt-8 mt-10 border-t border-border flex justify-center">
             <Link
               href="/"
               className="inline-block bg-[#10b981]/10 text-[#10b981] px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#10b981]/20 transition border border-[#10b981]/20"

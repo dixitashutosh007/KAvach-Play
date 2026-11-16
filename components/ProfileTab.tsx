@@ -23,6 +23,8 @@ import { Award } from "lucide-react";
 import type { Badge } from "@/lib/types";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 export function ProfileTab({
@@ -32,6 +34,8 @@ export function ProfileTab({
   store: ReturnType<typeof useStore>;
   forceEdit?: boolean;
 }) {
+  const { confirm: confirmAction } = useConfirm();
+  const { toast } = useToast();
   const { user, hasAdminClaim, logOut } = useAuth();
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
   const userPhone = user?.phoneNumber || appUser?.mobile;
@@ -81,7 +85,7 @@ export function ProfileTab({
     e.preventDefault();
     const jerseyError = validateJerseyNumber(formData.jerseyNumber);
     if (jerseyError) {
-      alert(jerseyError);
+      toast(jerseyError, "error");
       return;
     }
     const processedForm = {
@@ -203,8 +207,8 @@ export function ProfileTab({
         <div className="w-16 h-16 mx-auto rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center">
           <Save className="w-7 h-7 text-accent" />
         </div>
-        <h2 className="text-lg font-bold text-white">Profile Submitted</h2>
-        <p className="text-white/60 text-sm max-w-xs mx-auto">
+        <h2 className="text-lg font-bold text-text-primary">Profile Submitted</h2>
+        <p className="text-text-secondary text-sm max-w-xs mx-auto">
           Your profile has been submitted for admin approval. You&apos;ll get access once approved.
         </p>
       </div>
@@ -219,14 +223,14 @@ export function ProfileTab({
   return (
     <div className="space-y-6 flex flex-col">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white mb-2">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary mb-2">
           My Overview
         </h2>
       </div>
 
       {store.appConfig?.isStudioEnabled &&
         (appUser?.isStudioMember || linkedPlayer?.isStudioMember) && (
-          <div className="glass rounded-xl border border-accent/30 bg-accent/10 p-5 relative overflow-hidden">
+          <div className="bg-surface rounded-xl border border-accent/30 bg-accent/10 p-5 relative overflow-hidden">
             <div className="absolute right-0 top-0 w-32 h-32 bg-accent opacity-20 blur-3xl rounded-full translate-x-10 -translate-y-10 pointer-events-none"></div>
             <div className="relative z-10 flex flex-col gap-4">
               <div className="flex gap-4 items-center">
@@ -237,7 +241,7 @@ export function ProfileTab({
                   <h4 className="text-base font-black text-accent uppercase tracking-widest leading-none mb-1">
                     Studio Member
                   </h4>
-                  <p className="text-sm text-white/80">
+                  <p className="text-sm text-text-primary">
                     Active Premium Club Membership
                   </p>
                 </div>
@@ -245,23 +249,23 @@ export function ProfileTab({
 
               <div className="grid grid-cols-2 gap-4 pt-3 border-t border-accent/20 text-xs font-mono">
                 <div>
-                  <span className="text-white/50 block mb-1">LAST PAID</span>
-                  <span className="text-white font-bold text-sm">
+                  <span className="text-text-muted block mb-1">LAST PAID</span>
+                  <span className="text-text-primary font-bold text-sm">
                     {(appUser?.lastPaidAmount ?? linkedPlayer?.lastPaidAmount)
                       ? `₹${appUser?.lastPaidAmount ?? linkedPlayer?.lastPaidAmount}`
                       : "—"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-white/50 block mb-1">PAID ON</span>
-                  <span className="text-white font-bold text-sm">
+                  <span className="text-text-muted block mb-1">PAID ON</span>
+                  <span className="text-text-primary font-bold text-sm">
                     {formatDate(
                       appUser?.lastPaidDate ?? linkedPlayer?.lastPaidDate,
                     )}
                   </span>
                 </div>
                 <div className="col-span-2">
-                  <span className="text-white/50 block mb-1">
+                  <span className="text-text-muted block mb-1">
                     MEMBERSHIP VALID TILL
                   </span>
                   <span className="text-accent font-black text-lg">
@@ -279,20 +283,20 @@ export function ProfileTab({
         )}
 
       <div className="flex items-center justify-between pt-4">
-        <h2 className="text-lg font-bold tracking-tight text-white">
+        <h2 className="text-lg font-bold tracking-tight text-text-primary">
           Personal Profile
         </h2>
         {!isEditing && (
           <button
             onClick={() => setIsEditing(true)}
-            className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/20 transition"
+            className="rounded-full bg-surface-hover px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-text-primary hover:bg-surface-hover transition"
           >
             Edit
           </button>
         )}
       </div>
 
-      <div className="glass rounded-xl p-5 relative">
+      <div className="bg-surface rounded-xl p-5 relative">
         {/* Decorative background element — wrapped in its own overflow-hidden
             layer so position: sticky on the submit button (inside the form
             below) still works reliably across browsers. */}
@@ -303,7 +307,7 @@ export function ProfileTab({
         {isEditing ? (
           <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Full Name <span className="text-red-400">*</span>
               </label>
               <input
@@ -313,13 +317,13 @@ export function ProfileTab({
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
-                className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Email <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -331,18 +335,18 @@ export function ProfileTab({
                   placeholder="you@example.com"
                   className={
                     emailIsProviderLocked
-                      ? "w-full rounded-lg border border-glass-border bg-black/20 px-3 py-2 text-sm text-white/50 cursor-not-allowed"
-                      : "w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                      ? "w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-muted cursor-not-allowed"
+                      : "w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                   }
                 />
                 {emailIsProviderLocked && (
-                  <p className="mt-1 text-[9px] text-white/40 leading-tight">
+                  <p className="mt-1 text-[9px] text-text-muted leading-tight">
                     Email is managed by your sign-in provider (Google) and can't be changed here.
                   </p>
                 )}
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Mobile Number <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -352,7 +356,7 @@ export function ProfileTab({
                   onChange={(e) =>
                     setFormData({ ...formData, mobile: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                   placeholder="e.g. 9876543210"
                 />
               </div>
@@ -360,7 +364,7 @@ export function ProfileTab({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Date of Birth
                   <span className="text-red-400">*</span>
                 </label>
@@ -371,11 +375,11 @@ export function ProfileTab({
                   onChange={(e) =>
                     setFormData({ ...formData, dob: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Locality/Area <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -385,14 +389,14 @@ export function ProfileTab({
                   onChange={(e) =>
                     setFormData({ ...formData, locality: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Blood Group <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -401,7 +405,7 @@ export function ProfileTab({
                   onChange={(e) =>
                     setFormData({ ...formData, bloodGroup: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                 >
                   <option value="" disabled>
                     Select
@@ -417,7 +421,7 @@ export function ProfileTab({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Emergency Contact <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -430,14 +434,14 @@ export function ProfileTab({
                       emergencyContact: e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Batting Style
                 </label>
                 <select
@@ -445,14 +449,14 @@ export function ProfileTab({
                   onChange={(e) =>
                     setFormData({ ...formData, battingStyle: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                 >
                   <option value="Right-hand bat">Right-hand bat</option>
                   <option value="Left-hand bat">Left-hand bat</option>
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Bowling Style
                 </label>
                 <select
@@ -460,7 +464,7 @@ export function ProfileTab({
                   onChange={(e) =>
                     setFormData({ ...formData, bowlingStyle: e.target.value })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                 >
                   <option value="Right-arm fast">Right-arm fast</option>
                   <option value="Right-arm medium">Right-arm medium</option>
@@ -474,7 +478,7 @@ export function ProfileTab({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Wicket Keeper
                 </label>
                 <select
@@ -485,14 +489,14 @@ export function ProfileTab({
                       isWicketKeeper: e.target.value === "Yes",
                     })
                   }
-                  className="w-full rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-emerald-950"
+                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
                 >
                   <option value="No">No</option>
                   <option value="Yes">Yes</option>
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-white/70">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                   Jersey Size & No. *
                 </label>
                 <div className="flex gap-2">
@@ -502,7 +506,7 @@ export function ProfileTab({
                     onChange={(e) =>
                       setFormData({ ...formData, chestSize: e.target.value })
                     }
-                    className="w-1/2 rounded-lg border border-glass-border bg-black/40 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
+                    className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
                   >
                     <option value="">Select Size *</option>
                     {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
@@ -523,7 +527,7 @@ export function ProfileTab({
                         jerseyNumber: e.target.value.replace(/\D/g, "").slice(0, 3),
                       })
                     }
-                    className="w-1/2 rounded-lg border border-glass-border bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none font-mono"
+                    className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none font-mono"
                     title="Up to 3 digits. Number 10 is reserved."
                   />
                 </div>
@@ -533,12 +537,12 @@ export function ProfileTab({
             {/* Sticky action bar so users on mobile always see the submit
                 button even with the virtual keyboard open, and don't have
                 to scroll all the way to the bottom of a tall form. */}
-            <div className="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex gap-2 bg-neutral-950/95 backdrop-blur-md border-t border-glass-border mt-6">
+            <div className="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex gap-2 bg-neutral-950/95 backdrop-blur-md border-t border-border mt-6">
               {!hasMissingMandatory && (
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="flex-1 rounded-lg bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/20 transition"
+                  className="flex-1 rounded-lg bg-surface-hover py-3 text-sm font-bold text-text-primary hover:bg-surface-hover transition"
                 >
                   Cancel
                 </button>
@@ -570,10 +574,10 @@ export function ProfileTab({
                 )}
               </div>
               <div className="min-w-0">
-                <h3 className="font-bold text-xl text-white truncate">
+                <h3 className="font-bold text-xl text-text-primary truncate">
                   {appUser?.name || linkedPlayer?.name || "Set your name"}
                 </h3>
-                <p className="text-white/60 font-mono text-xs">
+                <p className="text-text-secondary font-mono text-xs">
                   {appUser?.mobile || linkedPlayer?.mobile || "Add mobile to link"}
                 </p>
                 <p className="inline-block mt-1 px-2 py-0.5 rounded border border-accent/30 bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-widest">
@@ -596,8 +600,8 @@ export function ProfileTab({
               return (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20">
                   <Calendar className="w-4 h-4 text-accent shrink-0" />
-                  <p className="text-xs text-white/70">
-                    <span className="font-bold text-white">KAvach Member Since</span>{" "}
+                  <p className="text-xs text-text-secondary">
+                    <span className="font-bold text-text-primary">KAvach Member Since</span>{" "}
                     <span className="text-accent font-semibold">{label}</span>
                   </p>
                 </div>
@@ -605,7 +609,7 @@ export function ProfileTab({
             })()}
 
             <div className="pt-1">
-              <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1.5">
+              <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-1.5">
                 Sign-in method
               </p>
               <AuthProviderBadges
@@ -622,7 +626,7 @@ export function ProfileTab({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-3">
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
+                  <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
                     <Calendar className="w-3 h-3" /> DOB
                   </p>
                   <p className="text-sm font-medium">
@@ -630,7 +634,7 @@ export function ProfileTab({
                   </p>
                 </div>
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
+                  <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
                     <MapPin className="w-3 h-3" /> Area
                   </p>
                   <p className="text-sm font-medium">
@@ -638,9 +642,9 @@ export function ProfileTab({
                   </p>
                 </div>
               </div>
-              <div className="space-y-3 pl-4 border-l border-glass-border">
+              <div className="space-y-3 pl-4 border-l border-border">
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1">
+                  <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-1">
                     Batting
                   </p>
                   <p className="text-sm font-medium">
@@ -648,7 +652,7 @@ export function ProfileTab({
                   </p>
                 </div>
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1">
+                  <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-1">
                     Bowling
                   </p>
                   <p className="text-sm font-medium">
@@ -701,7 +705,7 @@ export function ProfileTab({
             href="/legal"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-white/5 border border-white/10 py-3 text-sm font-bold text-white/50 hover:bg-white/10 hover:text-white transition"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-surface-hover border border-border py-3 text-sm font-bold text-text-muted hover:bg-surface-hover hover:text-text-primary transition"
           >
             Privacy Policy & Terms of Service
             <CreditCard className="w-4 h-4 hidden" />
@@ -725,6 +729,8 @@ function OutOfPlayConfig({
   store: ReturnType<typeof useStore>;
   playerId: string;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -738,11 +744,11 @@ function OutOfPlayConfig({
 
   const handleSave = async () => {
     if (!startDate || !endDate) {
-      alert("Please select both start and end dates.");
+      toast("Please select both start and end dates.", "error");
       return;
     }
     if (new Date(startDate) > new Date(endDate)) {
-      alert("End date cannot be before start date.");
+      toast("End date cannot be before start date.", "error");
       return;
     }
 
@@ -772,7 +778,7 @@ function OutOfPlayConfig({
       setComment("");
     } catch (e) {
       console.error(e);
-      alert("Failed to save Out of Play data.");
+      toast("Failed to save Out of Play data.", "error");
     }
   };
 
@@ -785,15 +791,15 @@ function OutOfPlayConfig({
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this record?")) {
+    if (await confirmAction({ message: "Are you sure you want to delete this record?", destructive: true })) {
       await store.deleteOutOfPlay(id);
     }
   };
 
   return (
-    <div className="glass rounded-xl sm:border border-glass-border p-5">
+    <div className="bg-surface rounded-xl sm:border border-border p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-bold text-white tracking-widest uppercase">
+        <h3 className="text-sm font-bold text-text-primary tracking-widest uppercase">
           Out of Play Calendar
         </h3>
         {!isAdding && (
@@ -813,33 +819,33 @@ function OutOfPlayConfig({
       </div>
 
       {isAdding && (
-        <div className="mb-6 space-y-3 bg-black/20 p-4 rounded-xl border border-glass-border">
+        <div className="mb-6 space-y-3 bg-surface-hover p-4 rounded-xl border border-border">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
                 Start Date
               </label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
                 End Date
               </label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
               />
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1 block">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
               Reason / Comment (Optional)
             </label>
             <input
@@ -847,13 +853,13 @@ function OutOfPlayConfig({
               placeholder="e.g. Vacation, Injury"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              className="w-full bg-white/5 border border-glass-border rounded-lg px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
             />
           </div>
           <div className="flex gap-2 pt-2">
             <button
               onClick={() => setIsAdding(false)}
-              className="flex-1 rounded-lg bg-white/5 py-2 text-xs font-bold text-white hover:bg-white/10 transition"
+              className="flex-1 rounded-lg bg-surface-hover py-2 text-xs font-bold text-text-primary hover:bg-surface-hover transition"
             >
               Cancel
             </button>
@@ -868,7 +874,7 @@ function OutOfPlayConfig({
       )}
 
       {outOfPlays.length === 0 && !isAdding ? (
-        <div className="text-center py-6 text-white/40 text-sm italic">
+        <div className="text-center py-6 text-text-muted text-sm italic">
           You have no upcoming out-of-play dates.
         </div>
       ) : (
@@ -876,20 +882,20 @@ function OutOfPlayConfig({
           {outOfPlays.map((o) => (
             <div
               key={o.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-glass-border"
+              className="flex items-center justify-between p-3 rounded-lg bg-surface-hover border border-border"
             >
               <div>
-                <div className="text-sm font-bold text-white">
+                <div className="text-sm font-bold text-text-primary">
                   {formatDate(o.startDate)} - {formatDate(o.endDate)}
                 </div>
                 {o.comment && (
-                  <div className="text-xs text-white/50">{o.comment}</div>
+                  <div className="text-xs text-text-muted">{o.comment}</div>
                 )}
               </div>
               <div className="flex gap-1">
                 <button
                   onClick={() => startEdit(o)}
-                  className="p-1.5 text-white/40 hover:text-white transition"
+                  className="p-1.5 text-text-muted hover:text-text-primary transition"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -909,6 +915,8 @@ function OutOfPlayConfig({
 }
 
 function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore>, playerId: string }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const myResponses = store.pollResponses.filter(r => r.playerId === playerId);
@@ -916,11 +924,11 @@ function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore
   if (myResponses.length === 0) return null;
 
   const handleDelete = async (responseId: string) => {
-    if (!confirm("Delete your response?")) return;
+    if (!await confirmAction({ message: "Delete your response?", destructive: true })) return;
     try {
       await deleteDoc(doc(db, "pollResponses", responseId));
     } catch (err: any) {
-      alert("Error: " + err.message);
+      toast("Error: " + err.message, "error");
     }
   };
 
@@ -933,23 +941,23 @@ function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore
       });
       setEditingPollId(null);
     } catch (err: any) {
-      alert("Error updating vote: " + err.message);
+      toast("Error updating vote: " + err.message, "error");
     }
   };
 
   return (
-    <div className="glass rounded-xl sm:border border-glass-border p-5">
+    <div className="bg-surface rounded-xl sm:border border-border p-5">
       <button 
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center justify-between cursor-pointer"
       >
         <div className="flex items-center gap-3">
           <PieChart className="w-5 h-5 text-accent" />
-          <h3 className="text-sm font-bold text-white tracking-widest uppercase">
+          <h3 className="text-sm font-bold text-text-primary tracking-widest uppercase">
             Pulse
           </h3>
         </div>
-        {isExpanded ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
+        {isExpanded ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
       </button>
       {isExpanded && (
         <div className="space-y-3 mt-4">
@@ -960,10 +968,10 @@ function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore
 
             if (editingPollId === poll.id) {
               return (
-                <div key={resp.id} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
+                <div key={resp.id} className="p-4 rounded-xl bg-surface-hover border border-border space-y-4">
                   <div className="flex justify-between items-start gap-4">
-                    <h4 className="text-sm font-bold text-white leading-tight">{poll.title}</h4>
-                    <button onClick={() => setEditingPollId(null)} className="text-white/50 hover:text-white shrink-0">Cancel</button>
+                    <h4 className="text-sm font-bold text-text-primary leading-tight">{poll.title}</h4>
+                    <button onClick={() => setEditingPollId(null)} className="text-text-muted hover:text-text-primary shrink-0">Cancel</button>
                   </div>
                   <PollInteraction poll={poll} onVote={(val) => handleUpdateVote(poll.id, val)} />
                 </div>
@@ -971,19 +979,19 @@ function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore
             }
 
             return (
-              <div key={resp.id} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3 group">
+              <div key={resp.id} className="p-4 rounded-xl bg-surface-hover border border-border space-y-3 group">
                 <div className="flex justify-between items-start gap-4">
                   <div>
-                    <h4 className="text-sm font-bold text-white mb-1 leading-tight">{poll.title}</h4>
+                    <h4 className="text-sm font-bold text-text-primary mb-1 leading-tight">{poll.title}</h4>
                     <p className="text-xs text-accent">
                       Your Vote: {Array.isArray(resp.response) ? resp.response.join(", ") : resp.response}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition shrink-0">
-                    <button onClick={() => setEditingPollId(poll.id)} className="p-2 text-white/50 hover:text-white rounded bg-white/5 hover:bg-white/10 transition">
+                    <button onClick={() => setEditingPollId(poll.id)} className="p-2 text-text-muted hover:text-text-primary rounded bg-surface-hover hover:bg-surface-hover transition">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => handleDelete(resp.id)} className="p-2 text-red-500/50 hover:text-red-500 rounded bg-white/5 hover:bg-white/10 transition">
+                    <button onClick={() => handleDelete(resp.id)} className="p-2 text-red-500/50 hover:text-red-500 rounded bg-surface-hover hover:bg-surface-hover transition">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -1022,11 +1030,11 @@ function MyBadgesSection({
 
   return (
     <div className="pt-2">
-      <div className="glass rounded-xl p-4 border border-glass-border">
-        <h3 className="font-bold text-white flex items-center gap-2 mb-3">
+      <div className="bg-surface rounded-xl p-4 border border-border">
+        <h3 className="font-bold text-text-primary flex items-center gap-2 mb-3">
           <Award className="w-5 h-5 text-accent" />
           My Badges
-          <span className="text-xs text-white/40 font-normal ml-auto">{myBadges.length} earned</span>
+          <span className="text-xs text-text-muted font-normal ml-auto">{myBadges.length} earned</span>
         </h3>
         <div className="flex flex-wrap gap-3">
           {Array.from(grouped.entries()).map(([badgeType, bList]) => {
@@ -1037,7 +1045,7 @@ function MyBadgesSection({
               <button
                 key={badgeType}
                 onClick={() => setShowcaseBadge(bList[0])}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/10 bg-black/20 min-w-[72px] hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition cursor-pointer"
+                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-border bg-surface-hover min-w-[72px] hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition cursor-pointer"
               >
                 <div className="relative">
                   <BadgeIcon badgeType={badgeType} size={48} customDefs={badgeTypeDefs} />
@@ -1047,12 +1055,12 @@ function MyBadgesSection({
                     </span>
                   )}
                 </div>
-                <span className="text-[9px] text-white/60 text-center leading-tight">{meta.short}</span>
+                <span className="text-[9px] text-text-secondary text-center leading-tight">{meta.short}</span>
               </button>
             );
           })}
         </div>
-        <p className="text-[10px] text-white/25 mt-3 text-center">Tap a badge to view &amp; share</p>
+        <p className="text-[10px] text-text-primary/25 mt-3 text-center">Tap a badge to view &amp; share</p>
       </div>
 
       {showcaseBadge && (
@@ -1070,14 +1078,14 @@ function CricketStatsCards({ runs, wickets }: { runs: number; wickets: number })
   return (
     <div className="grid grid-cols-2 gap-3 pt-2">
       {runs > 0 && (
-        <div className="glass rounded-xl p-4 border border-blue-500/30 bg-blue-500/5 text-center">
+        <div className="bg-surface rounded-xl p-4 border border-blue-500/30 bg-blue-500/5 text-center">
           <div className="text-3xl mb-1">🏏</div>
           <p className="text-2xl font-black text-blue-400">{runs.toLocaleString()}</p>
           <p className="text-[10px] text-blue-300/70 font-bold uppercase tracking-wider mt-1">Total Runs</p>
         </div>
       )}
       {wickets > 0 && (
-        <div className="glass rounded-xl p-4 border border-purple-500/30 bg-purple-500/5 text-center">
+        <div className="bg-surface rounded-xl p-4 border border-purple-500/30 bg-purple-500/5 text-center">
           <div className="text-3xl mb-1">🎳</div>
           <p className="text-2xl font-black text-purple-400">{wickets}</p>
           <p className="text-[10px] text-purple-300/70 font-bold uppercase tracking-wider mt-1">Total Wickets</p>
@@ -1091,14 +1099,14 @@ function CatchStatsCards({ stunning, dropped }: { stunning: number; dropped: num
   return (
     <div className="grid grid-cols-2 gap-3 pt-2">
       {stunning > 0 && (
-        <div className="glass rounded-xl p-4 border border-emerald-500/30 bg-emerald-500/5 text-center">
+        <div className="bg-surface rounded-xl p-4 border border-emerald-500/30 bg-emerald-500/5 text-center">
           <div className="text-3xl mb-1">🧤</div>
           <p className="text-2xl font-black text-emerald-400">{stunning}</p>
           <p className="text-[10px] text-emerald-300/70 font-bold uppercase tracking-wider mt-1">Stunning Catches</p>
         </div>
       )}
       {dropped > 0 && (
-        <div className="glass rounded-xl p-4 border border-red-500/30 bg-red-500/5 text-center">
+        <div className="bg-surface rounded-xl p-4 border border-red-500/30 bg-red-500/5 text-center">
           <div className="text-3xl mb-1">🫳</div>
           <p className="text-2xl font-black text-red-400">{dropped}</p>
           <p className="text-[10px] text-red-300/70 font-bold uppercase tracking-wider mt-1">Dropped Catches</p>

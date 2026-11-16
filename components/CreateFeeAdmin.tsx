@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Trash2 as TrashIcon } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 export function CreateFeeAdmin({
   store,
 }: {
   store: ReturnType<typeof useStore>;
 }) {
+  const { toast } = useToast();
   const [templateName, setTemplateName] = useState("");
   const [templateAmount, setTemplateAmount] = useState("");
 
@@ -18,22 +20,22 @@ export function CreateFeeAdmin({
       await store.addFeeTemplate(templateName, isNaN(amount) ? 0 : amount);
       setTemplateName("");
       setTemplateAmount("");
-      alert("Fee Template added successfully!");
+      toast("Fee Template added successfully!", "success");
     } catch (err) {
       console.error(err);
-      alert("Failed to create template.");
+      toast("Failed to create template.", "error");
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="glass rounded-xl p-5 border border-glass-border">
+      <div className="bg-surface rounded-xl p-5 border border-border">
         <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
           Create Custom Fee
         </h3>
         <form onSubmit={handleCreateTemplate} className="space-y-4">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
               Fee Name
             </label>
             <input
@@ -41,12 +43,12 @@ export function CreateFeeAdmin({
               placeholder="e.g. Club Jersey"
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
-              className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
               required
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1 block">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1 block">
               Amount (₹)
             </label>
             <input
@@ -54,7 +56,7 @@ export function CreateFeeAdmin({
               placeholder="0"
               value={templateAmount}
               onChange={(e) => setTemplateAmount(e.target.value)}
-              className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary"
               required
               min="1"
             />
@@ -62,29 +64,29 @@ export function CreateFeeAdmin({
           <button
             type="submit"
             disabled={!templateName || !templateAmount}
-            className="w-full bg-accent text-black font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2"
+            className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition shadow text-sm mt-2"
           >
             Save Fee Template
           </button>
         </form>
 
         <div className="mt-6">
-          <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">
             Saved Fees
           </h4>
           <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
             {(!store.feeTemplates || store.feeTemplates.length === 0) && (
-              <div className="text-xs text-white/30 italic text-center p-4">
+              <div className="text-xs text-text-primary/30 italic text-center p-4">
                 No fees created yet
               </div>
             )}
             {store.feeTemplates?.map((t) => (
               <div
                 key={t.id}
-                className="flex justify-between items-center p-2 rounded bg-black/20 border border-glass-border"
+                className="flex justify-between items-center p-2 rounded bg-surface-hover border border-border"
               >
                 <div>
-                  <div className="text-sm font-bold text-white">{t.name}</div>
+                  <div className="text-sm font-bold text-text-primary">{t.name}</div>
                   <div className="text-xs text-accent">₹{t.amount}</div>
                 </div>
                 <button

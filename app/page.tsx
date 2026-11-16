@@ -592,10 +592,10 @@ export default function Home() {
             <h1 className="font-extrabold text-2xl tracking-tight text-accent mb-1">
               {clubName}
             </h1>
-            <p className="text-white/60 text-xs uppercase tracking-widest font-semibold">
+            <p className="text-text-secondary text-xs uppercase tracking-widest font-semibold">
               Complete Your Profile
             </p>
-            <p className="text-white/40 text-[11px] mt-2 max-w-xs mx-auto leading-relaxed">
+            <p className="text-text-muted text-[11px] mt-2 max-w-xs mx-auto leading-relaxed">
               {hasMissingMandatory
                 ? `Please fill in: ${missingMandatoryLabels.join(", ")}. Save to submit for admin approval.`
                 : "Fill in the required details below and save to submit for admin approval."}
@@ -605,7 +605,7 @@ export default function Home() {
           <div className="mt-8 text-center">
             <button
               onClick={logOut}
-              className="text-white/40 hover:text-white text-xs font-bold uppercase tracking-widest transition"
+              className="text-text-muted hover:text-text-primary text-xs font-bold uppercase tracking-widest transition"
             >
               Sign Out
             </button>
@@ -640,7 +640,7 @@ export default function Home() {
       style={themeStyles}
     >
       {/* Dynamic Header */}
-      <header className="bg-black/60 backdrop-blur-xl border-b border-glass-border fixed top-0 w-full z-40 p-3 sm:px-6 flex items-center shadow-lg transition-all">
+      <header className="bg-surface/95 backdrop-blur-xl border-b border-border fixed top-0 w-full z-40 p-3 sm:px-6 flex items-center shadow-sm transition-all">
         <div className="max-w-7xl xl:max-w-[1440px] mx-auto w-full px-1 sm:px-2 md:px-4 flex items-center justify-between gap-4">
           <button onClick={() => setActiveTab("home")} className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer group">
             {logoUrl ? (
@@ -649,7 +649,7 @@ export default function Home() {
                 width={40}
                 height={40}
                 alt="Logo"
-                className="w-10 h-10 rounded-full object-cover border border-glass-border shrink-0 shadow-md group-hover:opacity-80 transition"
+                className="w-10 h-10 rounded-full object-cover border border-border shrink-0 shadow-md group-hover:opacity-80 transition"
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -689,12 +689,12 @@ export default function Home() {
 
             <button
               onClick={() => setActiveTab("notifications")}
-              className="relative p-1.5 rounded-full ring-2 ring-transparent hover:ring-accent transition flex shrink-0 shadow text-white/70 hover:text-white"
+              className="relative p-1.5 rounded-full ring-2 ring-transparent hover:ring-accent transition flex shrink-0 shadow text-text-secondary hover:text-text-primary"
               title="Notifications"
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border border-black animate-pulse" />
+                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border border-surface animate-pulse" />
               )}
             </button>
 
@@ -717,7 +717,7 @@ export default function Home() {
 
             <button
               onClick={() => logOut()}
-              className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-white/10 text-white/60 px-2.5 py-1.5 rounded-lg hover:bg-white/10 hover:text-white transition flex items-center gap-1 shrink-0 cursor-pointer"
+              className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-border text-text-secondary px-2.5 py-1.5 rounded-lg hover:bg-surface-hover hover:text-text-primary transition flex items-center gap-1 shrink-0 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden xs:inline">Exit</span>
@@ -732,7 +732,7 @@ export default function Home() {
           {/* LEFT PANEL: Live Desktop Sidebar Panel (Hidden on Mobile, Beautiful on Desktop) */}
           <div className="hidden md:block md:col-span-4 lg:col-span-3 space-y-6 sticky top-28">
             {/* Elegant user card dashboard */}
-            <div className="glass rounded-2xl p-5 border border-glass-border flex flex-col relative overflow-hidden">
+            <div className="bg-surface rounded-2xl p-5 border border-border flex flex-col relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center gap-4.5">
                 {user.photoURL || appUser?.photoURL ? (
@@ -741,7 +741,7 @@ export default function Home() {
                     width={56}
                     height={56}
                     alt="User Avatar"
-                    className="w-14 h-14 rounded-full border border-glass-border object-cover shrink-0 shadow-md"
+                    className="w-14 h-14 rounded-full border border-border object-cover shrink-0 shadow-md"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
@@ -750,10 +750,10 @@ export default function Home() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <h3 className="font-extrabold text-white text-base leading-tight truncate">
+                  <h3 className="font-extrabold text-text-primary text-base leading-tight truncate">
                     {appUser?.name || "Profile"}
                   </h3>
-                  <p className="text-white/40 text-xs truncate mt-0.5">
+                  <p className="text-text-muted text-xs truncate mt-0.5">
                     {user.email}
                   </p>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-md inline-block mt-2">
@@ -767,7 +767,7 @@ export default function Home() {
               </div>
 
               {/* Stats overview mini widget inside card */}
-              <div className="grid grid-cols-2 gap-2 mt-5 pt-4 border-t border-glass-border text-center">
+              <div className="grid grid-cols-2 gap-2 mt-5 pt-4 border-t border-border text-center">
                 {(() => {
                   const myPlayers = store.players.filter(
                     (p) =>
@@ -805,7 +805,7 @@ export default function Home() {
 
                   const innerContent = (
                     <>
-                      <div className="text-[9px] text-white/40 uppercase font-black tracking-wider">
+                      <div className="text-[9px] text-text-muted uppercase font-black tracking-wider">
                         Total Due
                       </div>
                       <div className="text-xs font-bold text-red-400 mt-1 truncate">
@@ -818,7 +818,7 @@ export default function Home() {
                     return (
                       <button
                         onClick={() => setActiveTab("profile")}
-                        className="block w-full text-left bg-white/5 p-2.5 rounded-xl border border-white/5 hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer"
+                        className="block w-full text-left bg-surface-hover p-2.5 rounded-xl border border-border hover:bg-surface-hover hover:border-border transition-all cursor-pointer"
                         title="Click to view and pay dues"
                       >
                         {innerContent}
@@ -826,13 +826,13 @@ export default function Home() {
                     );
                   }
                   return (
-                    <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+                    <div className="bg-surface-hover p-2.5 rounded-xl border border-border">
                       {innerContent}
                     </div>
                   );
                 })()}
-                <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-                  <div className="text-[9px] text-white/40 uppercase font-black tracking-wider">
+                <div className="bg-surface-hover p-2.5 rounded-xl border border-border">
+                  <div className="text-[9px] text-text-muted uppercase font-black tracking-wider">
                     Blood Group
                   </div>
                   <div className="text-xs font-bold text-accent mt-1">
@@ -843,8 +843,8 @@ export default function Home() {
             </div>
 
             {/* Desktop Navigation Link Column */}
-            <div className="glass rounded-2xl p-4 border border-glass-border space-y-1.5">
-              <div className="text-[9px] text-white/30 uppercase font-black tracking-wider px-3 mb-2">
+            <div className="bg-surface rounded-2xl p-4 border border-border space-y-1.5">
+              <div className="text-[9px] text-text-primary/30 uppercase font-black tracking-wider px-3 mb-2">
                 Navigation Console
               </div>
 
@@ -855,8 +855,8 @@ export default function Home() {
                       onClick={() => setActiveTab("home")}
                       className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
                         activeTab === "home"
-                          ? "bg-accent text-black"
-                          : "text-white/70 hover:bg-white/5"
+                          ? "bg-accent text-text-accent"
+                          : "text-text-secondary hover:bg-surface-hover"
                       }`}
                     >
                       <span className="flex items-center gap-3">
@@ -870,8 +870,8 @@ export default function Home() {
                     onClick={() => setActiveTab("finance")}
                     className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
                       activeTab === "finance"
-                        ? "bg-accent text-black"
-                        : "text-white/70 hover:bg-white/5"
+                        ? "bg-accent text-text-accent"
+                        : "text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     <span className="flex items-center gap-3">
@@ -894,8 +894,8 @@ export default function Home() {
                     onClick={() => setActiveTab("profile")}
                     className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
                       activeTab === "profile"
-                        ? "bg-accent text-black"
-                        : "text-white/70 hover:bg-white/5"
+                        ? "bg-accent text-text-accent"
+                        : "text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     <span className="flex items-center gap-3">
@@ -904,15 +904,15 @@ export default function Home() {
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                   </button>
 
-                  <div className="border-t border-white/5 mt-2 pt-2">
-                    <div className="text-[9px] text-white/30 uppercase font-black tracking-wider px-3 mb-1.5">
+                  <div className="border-t border-border mt-2 pt-2">
+                    <div className="text-[9px] text-text-primary/30 uppercase font-black tracking-wider px-3 mb-1.5">
                       More
                     </div>
                     {isFeatureEnabled("matches") && (
                       <button
                         onClick={() => setActiveTab("matches")}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "matches" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                          activeTab === "matches" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
                         }`}
                       >
                         <CalendarDays className="w-4 h-4 shrink-0" /> Matches
@@ -922,7 +922,7 @@ export default function Home() {
                       <button
                         onClick={() => setActiveTab("leaderboard")}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "leaderboard" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                          activeTab === "leaderboard" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
                         }`}
                       >
                         <Trophy className="w-4 h-4 shrink-0" /> Leaderboard
@@ -932,7 +932,7 @@ export default function Home() {
                       <button
                         onClick={() => setActiveTab("studio")}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "studio" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                          activeTab === "studio" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
                         }`}
                       >
                         <Video className="w-4 h-4 shrink-0" /> Studio
@@ -942,7 +942,7 @@ export default function Home() {
                       <button
                         onClick={() => setActiveTab("shop")}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "shop" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                          activeTab === "shop" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
                         }`}
                       >
                         <ShoppingBag className="w-4 h-4 shrink-0" /> Shop
@@ -952,7 +952,7 @@ export default function Home() {
                       <button
                         onClick={() => setActiveTab("design")}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "design" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                          activeTab === "design" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
                         }`}
                       >
                         <ImageIcon className="w-4 h-4 shrink-0" /> Design
@@ -981,8 +981,8 @@ export default function Home() {
                           onClick={() => setActiveTab(item.tab as any)}
                           className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
                             activeTab === item.tab
-                              ? "bg-accent text-black"
-                              : "text-white/70 hover:bg-white/5"
+                              ? "bg-accent text-text-accent"
+                              : "text-text-secondary hover:bg-surface-hover"
                           }`}
                         >
                           <span className="flex items-center gap-2.5 uppercase text-[11px]">
@@ -1018,17 +1018,17 @@ export default function Home() {
                     ⚠️
                   </span>
                   <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary">
                       Database Quota Limit Reached
                     </h3>
-                    <p className="text-xs text-white/70 mt-0.5">
+                    <p className="text-xs text-text-secondary mt-0.5">
                       This applet has exceeded the free Firestore Enterprise
                       daily read limit.
                     </p>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-white/50 leading-relaxed pl-1">
+                <p className="text-[11px] text-text-muted leading-relaxed pl-1">
                   Because multiple players or repeated fetches consumed all
                   daily free units, queries or data loads on some tabs may be
                   incomplete until the quota restarts tomorrow. You can upgrade
@@ -1063,10 +1063,10 @@ export default function Home() {
                       🔔
                     </span>
                     <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-text-primary">
                         Pending Approvals Alert
                       </h4>
-                      <p className="text-xs text-white/60 mt-0.5">
+                      <p className="text-xs text-text-secondary mt-0.5">
                         There are{" "}
                         <strong className="text-accent font-semibold">
                           {
@@ -1082,7 +1082,7 @@ export default function Home() {
                   </div>
                   <button
                     onClick={() => setActiveTab("club", "players")}
-                    className="text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-4 py-2 rounded-xl hover:opacity-90 transition inline-flex items-center gap-1 shrink-0 self-start sm:self-auto cursor-pointer"
+                    className="text-[10px] font-bold uppercase tracking-wider bg-accent text-text-accent px-4 py-2 rounded-xl hover:opacity-90 transition inline-flex items-center gap-1 shrink-0 self-start sm:self-auto cursor-pointer"
                     style={{ color: currentThemeObj.textAccent }}
                   >
                     Review <ArrowRight className="w-3.5 h-3.5 animate-pulse" />
@@ -1092,7 +1092,7 @@ export default function Home() {
 
             {/* Active Tab Screen Area */}
             {hasMissingMandatory ? (
-              <div className="glass rounded-2xl p-5 border border-red-500/30">
+              <div className="bg-surface rounded-2xl p-5 border border-red-500/30">
                 <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-4 rounded-xl mb-6 text-xs font-semibold text-left">
                   <div className="uppercase tracking-wider font-bold mb-2">
                     ⚠️ Complete your profile to continue
@@ -1187,8 +1187,8 @@ export default function Home() {
                           onClick={() => setActiveTab(item.tab as any)}
                           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
                             isActive
-                              ? "bg-accent text-black shadow-lg shadow-accent/20"
-                              : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+                              ? "bg-accent text-text-accent shadow-lg shadow-accent/20"
+                              : "bg-surface-hover text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                           }`}
                         >
                           <IconComp className="w-3.5 h-3.5" />

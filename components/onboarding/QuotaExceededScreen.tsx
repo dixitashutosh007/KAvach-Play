@@ -22,24 +22,24 @@ export function QuotaExceededScreen({
       className="min-h-screen flex flex-col items-center justify-center p-4 text-center"
       style={themeStyles}
     >
-      <div className="glass max-w-lg w-full p-8 rounded-2xl border border-amber-500/30 space-y-6 shadow-xl leading-relaxed">
+      <div className="bg-surface max-w-lg w-full p-8 rounded-2xl border border-amber-500/30 space-y-6 shadow-xl leading-relaxed">
         <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-2 border border-amber-500/30">
           <span className="text-2xl">⚠️</span>
         </div>
         <div className="space-y-2">
-          <h2 className="text-xl font-bold uppercase tracking-wider text-white">
+          <h2 className="text-xl font-bold uppercase tracking-wider text-text-primary">
             Database Quota Exceeded
           </h2>
-          <p className="text-xs text-white/70 leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed">
             This database has exceeded the free daily read limits. Daily read
             operations are currently suspended until the quota resets tomorrow.
           </p>
         </div>
-        <div className="bg-white/5 p-4 rounded-xl text-left border border-white/5 space-y-3">
+        <div className="bg-surface-hover p-4 rounded-xl text-left border border-border space-y-3">
           <h4 className="text-[11px] font-bold text-accent uppercase tracking-wider">
             How to resolve immediately:
           </h4>
-          <p className="text-[11px] text-white/50 leading-relaxed">
+          <p className="text-[11px] text-text-muted leading-relaxed">
             You can instantly upgrade the database to the pay-as-you-go Plan
             (Flame/Blaze) via the Google Firebase Console. Simply click the link
             below and enable billing.

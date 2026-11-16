@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { ClientOnly } from "@/components/ClientOnly";
+import { ToastProvider } from "@/components/ui/Toast";
+import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 
 export const metadata: Metadata = {
   title: "KAvach Play | Cricket Club Management App",
@@ -40,15 +42,15 @@ export default function RootLayout({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "#022c22",
+                backgroundColor: "#F6F7F9",
               }}
             >
               <div
                 style={{
                   width: 48,
                   height: 48,
-                  border: "3px solid rgba(52, 211, 153, 0.2)",
-                  borderTopColor: "rgb(52, 211, 153)",
+                  border: "3px solid rgba(213, 31, 67, 0.2)",
+                  borderTopColor: "#D51F43",
                   borderRadius: "50%",
                   animation: "kavach-spin 1s linear infinite",
                 }}
@@ -58,7 +60,11 @@ export default function RootLayout({
           }
         >
           <AuthProvider>
-            {children}
+            <ToastProvider>
+              <ConfirmProvider>
+                {children}
+              </ConfirmProvider>
+            </ToastProvider>
           </AuthProvider>
         </ClientOnly>
       </body>

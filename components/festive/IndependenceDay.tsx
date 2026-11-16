@@ -172,16 +172,16 @@ export function IndependenceDayLoader({ clubName }: { clubName?: string }) {
 
       {/* Greeting */}
       <div className="relative z-10 text-center px-6" style={{ animation: "idFadeUp 0.7s ease-out 0.2s both" }}>
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-text-primary">
           Happy Independence Day
         </h1>
         <div className="mt-2 flex items-center justify-center gap-2 text-sm font-bold uppercase tracking-[0.3em]">
           <span style={{ color: SAFFRON }}>15</span>
-          <span className="text-white/70">August</span>
+          <span className="text-text-secondary">August</span>
           <span style={{ color: GREEN }}>1947</span>
         </div>
         {clubName && (
-          <p className="mt-3 text-[11px] font-semibold uppercase tracking-widest text-white/50">
+          <p className="mt-3 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
             {clubName} salutes the spirit of India 🇮🇳
           </p>
         )}
@@ -238,7 +238,7 @@ export function IndependenceDayBanner({ clubName }: { clubName?: string }) {
             <button
               onClick={() => setDismissed(true)}
               aria-label="Dismiss"
-              className="relative z-10 shrink-0 rounded-full p-1.5 text-[#000080]/50 hover:text-[#000080] hover:bg-black/5 transition"
+              className="relative z-10 shrink-0 rounded-full p-1.5 text-[#000080]/50 hover:text-[#000080] hover:bg-surface-hover transition"
             >
               <X className="w-4 h-4" />
             </button>

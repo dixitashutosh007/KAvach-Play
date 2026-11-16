@@ -11,6 +11,8 @@ import {
   IndependenceDayBanner,
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function AdminDashboard({
   store,
@@ -29,6 +31,8 @@ export function AdminDashboard({
   isStudioAdmin?: boolean;
   isClubAdmin?: boolean;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   const { matches, payments, players, otherFees } = store;
   const [showCatchModal, setShowCatchModal] = useState(false);
   const [remindingStudioId, setRemindingStudioId] = useState<string | null>(null);
@@ -246,11 +250,11 @@ export function AdminDashboard({
   const handleSaveNoShow = async () => {
     if (isSavingNoShow) return;
     if (noShowSelected.length === 0) {
-      alert("Pick at least one player.");
+      toast("Pick at least one player.", "error");
       return;
     }
     if (!noShowAmount || noShowAmount <= 0) {
-      alert("Set a No Show amount (₹).");
+      toast("Set a No Show amount (₹).");
       return;
     }
     setIsSavingNoShow(true);
@@ -258,11 +262,11 @@ export function AdminDashboard({
       for (const pid of noShowSelected) {
         await store.addOtherFee(pid, "No Show", noShowAmount, noShowComment);
       }
-      alert(`No Show fee added to ${noShowSelected.length} player(s).`);
+      toast(`No Show fee added to ${noShowSelected.length} player(s).`, "success");
       resetNoShow();
     } catch (err) {
       console.error("Failed to add No Show fee", err);
-      alert("Failed to add No Show fee. Try again.");
+      toast("Failed to add No Show fee. Try again.", "error");
       setIsSavingNoShow(false);
     }
   };
@@ -361,7 +365,7 @@ export function AdminDashboard({
 
   const handleStudioRemind = async (p: Player) => {
     if (!p.mobile) {
-      alert(`${p.name} has no mobile number.`);
+      toast(`${p.name} has no mobile number.`);
       return;
     }
     const expiry = p.studioExpiryDate || p.studioEndDate;
@@ -378,9 +382,9 @@ export function AdminDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      alert(`Reminder sent to ${p.name}!`);
+      toast(`Reminder sent to ${p.name}!`, "success");
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      toast(`Error: ${err.message}`, "error");
     } finally {
       setRemindingStudioId(null);
     }
@@ -389,10 +393,10 @@ export function AdminDashboard({
   const handleBulkStudioRemind = async (membersList: Player[]) => {
     const withMobile = membersList.filter(p => p.mobile);
     if (withMobile.length === 0) {
-      alert("No players have mobile numbers.");
+      toast("No players have mobile numbers.", "error");
       return;
     }
-    if (!confirm(`Send WhatsApp reminder to ${withMobile.length} player(s)?`)) return;
+    if (!await confirmAction({ message: `Send WhatsApp reminder to ${withMobile.length} player(s)?` })) return;
 
     setRemindingStudioId("bulk");
     let sent = 0;
@@ -414,7 +418,7 @@ export function AdminDashboard({
       }
     }
     setRemindingStudioId(null);
-    alert(`Sent: ${sent}${failed > 0 ? `, Failed: ${failed}` : ""}`);
+    toast(`Sent: ${sent}${failed > 0 ? `, Failed: ${failed}` : ""}`, "error");
   };
 
   const totalDueAmount = totalDueMatch + totalDueFee;
@@ -438,13 +442,13 @@ export function AdminDashboard({
       )}
 
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+        <h2 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-2">
            Admin Dashboard
         </h2>
         {isSuperAdmin && (
           <a
             href="/admin-tools"
-            className="text-xs text-white/50 hover:text-white/80 transition flex items-center gap-1"
+            className="text-xs text-text-muted hover:text-text-primary transition flex items-center gap-1"
           >
             <Search className="w-3.5 h-3.5" />
             Admin Tools
@@ -456,38 +460,38 @@ export function AdminDashboard({
       {isFinanceAdmin && (
         <>
           <div className="grid grid-cols-2 gap-4">
-            <div className="glass rounded-xl border border-glass-border p-4 flex flex-col justify-between cursor-pointer hover:bg-white/5 transition" onClick={() => setActiveTab("finance", "dues")}>
+            <div className="bg-surface rounded-xl border border-border p-4 flex flex-col justify-between cursor-pointer hover:bg-surface-hover transition" onClick={() => setActiveTab("finance", "dues")}>
                 <div>
                     <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
-                    <p className="text-xs text-white/60 font-bold uppercase tracking-widest mt-1">Total Dues</p>
+                    <p className="text-xs text-text-secondary font-bold uppercase tracking-widest mt-1">Total Dues</p>
                     <h3 className="text-2xl font-black text-rose-400">₹{totalDueAmount}</h3>
                 </div>
-                <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-white/50 bg-black/20 p-2 rounded-lg">
+                <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-text-muted bg-surface-hover p-2 rounded-lg">
                     <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {duePlayersCount} Players Due</span>
                     <span className="text-rose-400 flex items-center gap-1">Notify <ArrowRight className="w-3 h-3" /></span>
                 </div>
             </div>
 
             <div className="flex flex-col gap-4">
-              <button onClick={() => setActiveTab("club", "reminders")} className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
+              <button onClick={() => setActiveTab("club", "reminders")} className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
                  <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
                      <Bell className="w-5 h-5 group-hover:scale-110 transition" />
                  </div>
                  <div className="text-left">
-                     <p className="font-bold text-white text-sm">Send Reminders</p>
-                     <p className="text-[10px] text-white/50">Notify accounts</p>
+                     <p className="font-bold text-text-primary text-sm">Send Reminders</p>
+                     <p className="text-[10px] text-text-muted">Notify accounts</p>
                  </div>
               </button>
               <button
                 onClick={() => setIsNoShowModalOpen(true)}
-                className="glass p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
+                className="bg-surface p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
               >
                  <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
                      <UserX className="w-5 h-5 group-hover:scale-110 transition" />
                  </div>
                  <div className="text-left">
-                     <p className="font-bold text-white text-sm">Add No Show</p>
-                     <p className="text-[10px] text-white/50">Fine Absentees</p>
+                     <p className="font-bold text-text-primary text-sm">Add No Show</p>
+                     <p className="text-[10px] text-text-muted">Fine Absentees</p>
                  </div>
               </button>
             </div>
@@ -501,53 +505,53 @@ export function AdminDashboard({
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => setActiveTab("matches", "add_match")}
-              className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
+              className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
             >
                 <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
                     <Plus className="w-5 h-5 group-hover:scale-110 transition" />
                 </div>
                 <div className="text-left">
-                    <p className="font-bold text-white text-sm">Add New Match</p>
-                    <p className="text-[10px] text-white/50">Schedule a fixture</p>
+                    <p className="font-bold text-text-primary text-sm">Add New Match</p>
+                    <p className="text-[10px] text-text-muted">Schedule a fixture</p>
                 </div>
             </button>
-            <button onClick={() => setActiveTab("matches", "assign")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+            <button onClick={() => setActiveTab("matches", "assign")} className="bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition">
                <div className="flex items-center gap-3">
                    <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
                        <Calculator className="w-5 h-5" />
                    </div>
                    <div className="text-left">
-                       <p className="text-sm font-bold text-white">Assign Fees</p>
-                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">To Players</p>
+                       <p className="text-sm font-bold text-text-primary">Assign Fees</p>
+                       <p className="text-[10px] text-text-muted uppercase font-black tracking-widest mt-0.5">To Players</p>
                    </div>
                </div>
-               <ArrowRight className="w-4 h-4 text-white/30" />
+               <ArrowRight className="w-4 h-4 text-text-primary/30" />
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => setActiveTab("matches", "calendar")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+            <button onClick={() => setActiveTab("matches", "calendar")} className="bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition">
                <div className="flex items-center gap-3">
                    <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
                        <Landmark className="w-5 h-5" />
                    </div>
                    <div className="text-left">
-                       <p className="text-sm font-bold text-white">View Calendar</p>
-                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
+                       <p className="text-sm font-bold text-text-primary">View Calendar</p>
+                       <p className="text-[10px] text-text-muted uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
                    </div>
                </div>
-               <ArrowRight className="w-4 h-4 text-white/30" />
+               <ArrowRight className="w-4 h-4 text-text-primary/30" />
             </button>
-            <button onClick={() => setActiveTab("club", "pulse")} className="glass flex items-center justify-between p-4 rounded-xl border border-glass-border hover:bg-white/5 transition">
+            <button onClick={() => setActiveTab("club", "pulse")} className="bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition">
                <div className="flex items-center gap-3">
                    <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
                        <PieChart className="w-5 h-5" />
                    </div>
                    <div className="text-left">
-                       <p className="text-sm font-bold text-white">Start a Poll</p>
-                       <p className="text-[10px] text-white/50 uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
+                       <p className="text-sm font-bold text-text-primary">Start a Poll</p>
+                       <p className="text-[10px] text-text-muted uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
                    </div>
                </div>
-               <ArrowRight className="w-4 h-4 text-white/30" />
+               <ArrowRight className="w-4 h-4 text-text-primary/30" />
             </button>
           </div>
         </>
@@ -558,38 +562,38 @@ export function AdminDashboard({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <button
             onClick={() => setActiveTab("club", "badges_grant")}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-yellow-500/10 transition group"
+            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-yellow-500/10 transition group"
           >
             <div className="bg-yellow-500/20 text-yellow-400 p-2 rounded-lg">
               <Award className="w-5 h-5 group-hover:scale-110 transition" />
             </div>
             <div className="text-left">
-              <p className="font-bold text-white text-sm">Grant Badge</p>
-              <p className="text-[10px] text-white/50">Grant to players</p>
+              <p className="font-bold text-text-primary text-sm">Grant Badge</p>
+              <p className="text-[10px] text-text-muted">Grant to players</p>
             </div>
           </button>
           <button
             onClick={() => setShowCatchModal(true)}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-teal-500/10 transition group"
+            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-teal-500/10 transition group"
           >
             <div className="bg-teal-500/20 text-teal-400 p-2 rounded-lg">
               <Target className="w-5 h-5 group-hover:scale-110 transition" />
             </div>
             <div className="text-left">
-              <p className="font-bold text-white text-sm">Record Catches</p>
-              <p className="text-[10px] text-white/50">Drop / Stunning</p>
+              <p className="font-bold text-text-primary text-sm">Record Catches</p>
+              <p className="text-[10px] text-text-muted">Drop / Stunning</p>
             </div>
           </button>
           <button
             onClick={() => setActiveTab("club", "invite_player")}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
+            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
           >
             <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
               <UserPlus className="w-5 h-5 group-hover:scale-110 transition" />
             </div>
             <div className="text-left">
-              <p className="font-bold text-white text-sm">Invite Player</p>
-              <p className="text-[10px] text-white/50">WhatsApp invite</p>
+              <p className="font-bold text-text-primary text-sm">Invite Player</p>
+              <p className="text-[10px] text-text-muted">WhatsApp invite</p>
             </div>
           </button>
         </div>
@@ -599,14 +603,14 @@ export function AdminDashboard({
       {isStudioAdmin && (
         <button
           onClick={() => setActiveTab("studio", "add_player")}
-          className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-amber-500/10 transition group w-full"
+          className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-amber-500/10 transition group w-full"
         >
             <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
                 <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
             </div>
             <div className="text-left">
-                <p className="font-bold text-white text-sm">Add to Studio</p>
-                <p className="text-[10px] text-white/50">Add a new member</p>
+                <p className="font-bold text-text-primary text-sm">Add to Studio</p>
+                <p className="text-[10px] text-text-muted">Add a new member</p>
             </div>
         </button>
       )}
@@ -616,38 +620,38 @@ export function AdminDashboard({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <button
             onClick={() => setActiveTab("club", "players")}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-sky-500/10 transition group"
+            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-sky-500/10 transition group"
           >
               <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
                   <Users className="w-5 h-5 group-hover:scale-110 transition" />
               </div>
               <div className="text-left">
-                  <p className="font-bold text-white text-sm">Manage Players</p>
-                  <p className="text-[10px] text-white/50">Directory & profiles</p>
+                  <p className="font-bold text-text-primary text-sm">Manage Players</p>
+                  <p className="text-[10px] text-text-muted">Directory & profiles</p>
               </div>
           </button>
           <button
             onClick={() => setActiveTab("club", "reminders")}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-rose-500/10 transition group"
+            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-rose-500/10 transition group"
           >
               <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
                   <Bell className="w-5 h-5 group-hover:scale-110 transition" />
               </div>
               <div className="text-left">
-                  <p className="font-bold text-white text-sm">Send Reminders</p>
-                  <p className="text-[10px] text-white/50">Payment notifications</p>
+                  <p className="font-bold text-text-primary text-sm">Send Reminders</p>
+                  <p className="text-[10px] text-text-muted">Payment notifications</p>
               </div>
           </button>
           <button
             onClick={() => setActiveTab("club", "invite_player")}
-            className="glass p-4 rounded-xl border border-glass-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
+            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
           >
               <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
                   <UserPlus className="w-5 h-5 group-hover:scale-110 transition" />
               </div>
               <div className="text-left">
-                  <p className="font-bold text-white text-sm">Invite Player</p>
-                  <p className="text-[10px] text-white/50">WhatsApp invite</p>
+                  <p className="font-bold text-text-primary text-sm">Invite Player</p>
+                  <p className="text-[10px] text-text-muted">WhatsApp invite</p>
               </div>
           </button>
         </div>
@@ -655,7 +659,7 @@ export function AdminDashboard({
 
       {/* Studio Subscription Alerts — Studio/Super admin */}
       {isStudioAdmin && expiredStudioMembers.length > 0 && (
-        <div className="glass rounded-xl border border-red-500/30 p-4">
+        <div className="bg-surface rounded-xl border border-red-500/30 p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-400" />
@@ -670,8 +674,8 @@ export function AdminDashboard({
               return (
                 <div key={p.id} className="flex items-center justify-between bg-red-500/5 rounded-lg px-3 py-2 border border-red-500/10">
                   <div>
-                    <p className="text-sm font-bold text-white">{p.name}</p>
-                    <p className="text-[10px] text-white/40">{expiry ? `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago` : "No expiry date"}</p>
+                    <p className="text-sm font-bold text-text-primary">{p.name}</p>
+                    <p className="text-[10px] text-text-muted">{expiry ? `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago` : "No expiry date"}</p>
                   </div>
                   <button
                     onClick={() => handleStudioRemind(p)}
@@ -699,7 +703,7 @@ export function AdminDashboard({
       )}
 
       {isStudioAdmin && renewalDueMembers.length > 0 && (
-        <div className="glass rounded-xl border border-amber-500/30 p-4">
+        <div className="bg-surface rounded-xl border border-amber-500/30 p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-amber-400" />
@@ -714,8 +718,8 @@ export function AdminDashboard({
               return (
                 <div key={p.id} className="flex items-center justify-between bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
                   <div>
-                    <p className="text-sm font-bold text-white">{p.name}</p>
-                    <p className="text-[10px] text-white/40">{daysLeft === 0 ? "Expires today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}</p>
+                    <p className="text-sm font-bold text-text-primary">{p.name}</p>
+                    <p className="text-[10px] text-text-muted">{daysLeft === 0 ? "Expires today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}</p>
                   </div>
                   <button
                     onClick={() => handleStudioRemind(p)}
@@ -734,27 +738,27 @@ export function AdminDashboard({
 
       {/* Match Fee Payment Compliance — Finance/Super only */}
       {isFinanceAdmin && matchCompliance.perMatch.length > 0 && (
-        <div className="glass rounded-xl border border-glass-border p-4">
+        <div className="bg-surface rounded-xl border border-border p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-sm font-bold text-white uppercase tracking-widest">Payment Compliance</h3>
+              <h3 className="text-sm font-bold text-text-primary uppercase tracking-widest">Payment Compliance</h3>
             </div>
             <span className={`text-lg font-black ${matchCompliance.overall >= 75 ? "text-emerald-400" : matchCompliance.overall >= 50 ? "text-amber-400" : "text-red-400"}`}>
               {matchCompliance.overall}%
             </span>
           </div>
-          <p className="text-[10px] text-white/40 mb-3">Paid within 4 days of match = compliant</p>
+          <p className="text-[10px] text-text-muted mb-3">Paid within 4 days of match = compliant</p>
           <div className="space-y-2">
             {matchCompliance.perMatch.map(({ match, compliant, total, rate }) => (
-              <div key={match.id} className="flex items-center justify-between bg-black/20 rounded-lg px-3 py-2 border border-glass-border">
+              <div key={match.id} className="flex items-center justify-between bg-surface-hover rounded-lg px-3 py-2 border border-border">
                 <div>
-                  <p className="text-xs font-bold text-white">vs {match.opponent}</p>
-                  <p className="text-[10px] text-white/40">{formatDate(match.date)}</p>
+                  <p className="text-xs font-bold text-text-primary">vs {match.opponent}</p>
+                  <p className="text-[10px] text-text-muted">{formatDate(match.date)}</p>
                 </div>
                 <div className="text-right">
                   <span className={`text-sm font-black ${rate >= 75 ? "text-emerald-400" : rate >= 50 ? "text-amber-400" : "text-red-400"}`}>{rate}%</span>
-                  <p className="text-[10px] text-white/30">{compliant}/{total} on time</p>
+                  <p className="text-[10px] text-text-primary/30">{compliant}/{total} on time</p>
                 </div>
               </div>
             ))}
@@ -766,17 +770,17 @@ export function AdminDashboard({
       {isFinanceAdmin && topDuePlayers.length > 0 && (
         <div className="mt-4" data-testid="top-dues-section">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-bold text-white tracking-tight">Top Dues</h3>
+            <h3 className="text-lg font-bold text-text-primary tracking-tight">Top Dues</h3>
             <button onClick={() => setActiveTab("finance", "dues")} className="text-xs text-accent hover:underline">View All</button>
           </div>
-          <div className="glass rounded-xl border border-glass-border divide-y divide-glass-border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border divide-y divide-border overflow-hidden">
             {topDuePlayers.map((d, i) => (
-              <div key={d.player!.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition">
+              <div key={d.player!.id} className="flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition">
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-black text-white/30 w-4">{i + 1}</span>
+                  <span className="text-[10px] font-black text-text-primary/30 w-4">{i + 1}</span>
                   <div>
-                    <p className="text-sm font-bold text-white">{d.player!.name}</p>
-                    <p className="text-[10px] text-white/40 font-mono">{d.player!.mobile || ""}</p>
+                    <p className="text-sm font-bold text-text-primary">{d.player!.name}</p>
+                    <p className="text-[10px] text-text-muted font-mono">{d.player!.mobile || ""}</p>
                   </div>
                 </div>
                 <span className="text-sm font-black text-rose-400">₹{d.amount}</span>
@@ -790,19 +794,19 @@ export function AdminDashboard({
       {isFinanceAdmin && recentTransactions.length > 0 && (
         <div className="mt-4" data-testid="recent-transactions-section">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-bold text-white tracking-tight">Recent Transactions</h3>
+            <h3 className="text-lg font-bold text-text-primary tracking-tight">Recent Transactions</h3>
             <button onClick={() => setActiveTab("finance")} className="text-xs text-accent hover:underline">View All</button>
           </div>
-          <div className="glass rounded-xl border border-glass-border divide-y divide-glass-border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border divide-y divide-border overflow-hidden">
             {recentTransactions.map((txn) => (
-              <div key={txn.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition">
+              <div key={txn.id} className="flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition">
                 <div>
-                  <p className="text-sm font-bold text-white">{txn.playerName}</p>
-                  <p className="text-[10px] text-white/40">{txn.type}{txn.method ? ` • ${txn.method}` : ""}</p>
+                  <p className="text-sm font-bold text-text-primary">{txn.playerName}</p>
+                  <p className="text-[10px] text-text-muted">{txn.type}{txn.method ? ` • ${txn.method}` : ""}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-black text-emerald-400">₹{txn.amount}</span>
-                  <p className="text-[10px] text-white/30">{format(new Date(txn.date), "dd MMM")}</p>
+                  <p className="text-[10px] text-text-primary/30">{format(new Date(txn.date), "dd MMM")}</p>
                 </div>
               </div>
             ))}
@@ -813,18 +817,18 @@ export function AdminDashboard({
       {/* Swipe Pane for matches — Match/Super only */}
       {isMatchAdmin && <div className="mt-4">
         <div className="flex items-center justify-between mb-4">
-           <h3 className="text-lg font-bold text-white tracking-tight">Upcoming Matches</h3>
-           <span className="text-xs text-white/50 hover:text-white cursor-pointer" onClick={() => setActiveTab("matches")}>View All</span>
+           <h3 className="text-lg font-bold text-text-primary tracking-tight">Upcoming Matches</h3>
+           <span className="text-xs text-text-muted hover:text-text-primary cursor-pointer" onClick={() => setActiveTab("matches")}>View All</span>
         </div>
         <div className="flex overflow-x-auto gap-4 pb-4 snap-x no-scrollbar">
            {upcomingMatches.length === 0 ? (
-               <div className="text-white/40 text-sm glass p-6 rounded-xl w-full text-center border border-white/5">No upcoming matches</div>
+               <div className="text-text-muted text-sm bg-surface p-6 rounded-xl w-full text-center border border-border">No upcoming matches</div>
            ) : (
                upcomingMatches.map(m => (
-                   <div key={m.id} className="min-w-[280px] snap-center glass p-5 rounded-2xl border border-glass-border shrink-0">
+                   <div key={m.id} className="min-w-[280px] snap-center bg-surface p-5 rounded-2xl border border-border shrink-0">
                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">{format(parseISO(m.date), "MMM d, yyyy")}</p>
-                       <p className="text-lg font-bold text-white mb-2">vs {m.opponent}</p>
-                       <p className="text-xs font-medium text-white/70 mb-4">{m.format} • {m.time ? format(parseISO(`${m.date}T${m.time}`), "h:mm a") : "Time TBD"}</p>
+                       <p className="text-lg font-bold text-text-primary mb-2">vs {m.opponent}</p>
+                       <p className="text-xs font-medium text-text-secondary mb-4">{m.format} • {m.time ? format(parseISO(`${m.date}T${m.time}`), "h:mm a") : "Time TBD"}</p>
                        <div className="space-y-2">
                            <button
                              onClick={() => handleNotifyMatch(m)}
@@ -838,7 +842,7 @@ export function AdminDashboard({
                                  setSelectedRemindMatch(m);
                                  setIsGroupRemindModalOpen(true);
                                }} className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Remind</button>
-                               <button onClick={() => setActiveTab("matches", `match_${m.id}`)} className="flex-1 bg-white/10 hover:bg-white/15 text-white/80 py-2 rounded-lg text-xs font-bold transition">Manage</button>
+                               <button onClick={() => setActiveTab("matches", `match_${m.id}`)} className="flex-1 bg-surface-hover hover:bg-surface-hover text-text-primary py-2 rounded-lg text-xs font-bold transition">Manage</button>
                            </div>
                        </div>
                    </div>
@@ -850,28 +854,28 @@ export function AdminDashboard({
       {/* Group Remind Modal */}
       {isGroupRemindModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
+          <div className="bg-surface border border-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
             <button
               onClick={() => setIsGroupRemindModalOpen(false)}
-              className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition"
             >
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-2">
               <MessageSquare className="w-4 h-4" /> Remind Group
             </h3>
-            <p className="text-xs text-white/60 mb-4 leading-relaxed">
+            <p className="text-xs text-text-secondary mb-4 leading-relaxed">
               This will open WhatsApp with the match details and squad list. You can select your club's WhatsApp group to send the message.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
                   Optional Custom Message
                 </label>
                 <textarea
                   value={groupRemindCustomMsg}
                   onChange={(e) => setGroupRemindCustomMsg(e.target.value)}
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-white placeholder-white/30"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-text-primary placeholder-text-muted"
                   placeholder="e.g., Please reach 15 mins early!"
                   rows={3}
                 />
@@ -890,10 +894,10 @@ export function AdminDashboard({
       {/* Add No Show Modal */}
       {isNoShowModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#0f172a] border border-glass-border rounded-xl w-full max-w-md p-5 relative shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-surface border border-border rounded-xl w-full max-w-md p-5 relative shadow-2xl max-h-[90vh] flex flex-col">
             <button
               onClick={resetNoShow}
-              className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition"
               disabled={isSavingNoShow}
             >
               <X className="w-5 h-5" />
@@ -901,7 +905,7 @@ export function AdminDashboard({
             <h3 className="text-sm font-bold uppercase tracking-widest text-orange-400 mb-3 flex items-center gap-2">
               <UserX className="w-4 h-4" /> Add No Show Fee
             </h3>
-            <p className="text-[11px] text-white/60 mb-4 leading-relaxed">
+            <p className="text-[11px] text-text-secondary mb-4 leading-relaxed">
               Charges an <span className="text-orange-400 font-bold">Other Fee</span>
               {" "}called <em>No Show</em> to every selected player. Add a
               comment (e.g. the match date) so players know what the fine
@@ -910,7 +914,7 @@ export function AdminDashboard({
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
                   Amount (₹) *
                 </label>
                 <input
@@ -919,21 +923,21 @@ export function AdminDashboard({
                   value={noShowAmount || ""}
                   onChange={(e) => setNoShowAmount(Number(e.target.value))}
                   placeholder="e.g. 200"
-                  className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-white placeholder-white/30"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-text-primary placeholder-text-muted"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
                   Selected
                 </label>
-                <div className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm text-white h-[38px] flex items-center">
+                <div className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary h-[38px] flex items-center">
                   {noShowSelected.length} player(s)
                 </div>
               </div>
             </div>
 
             <div className="mb-3">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 block mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
                 Comment (visible to players)
               </label>
               <input
@@ -941,13 +945,13 @@ export function AdminDashboard({
                 value={noShowComment}
                 onChange={(e) => setNoShowComment(e.target.value)}
                 placeholder="e.g. No show for match vs Titans on 12 Aug"
-                className="w-full bg-black/40 border border-glass-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-white placeholder-white/30"
+                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-text-primary placeholder-text-muted"
               />
             </div>
 
             <div className="mb-3 flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                   Select Players
                 </label>
                 <button
@@ -972,11 +976,11 @@ export function AdminDashboard({
                 placeholder="Search players..."
                 value={noShowSearch}
                 onChange={(e) => setNoShowSearch(e.target.value)}
-                className="w-full bg-black/40 border border-glass-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-white placeholder-white/30"
+                className="w-full bg-surface-hover border border-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-text-primary placeholder-text-muted"
               />
-              <div className="flex-1 overflow-y-auto min-h-[8rem] max-h-[16rem] border border-t-0 border-glass-border rounded-b-lg bg-black/20 p-2 flex flex-col gap-1">
+              <div className="flex-1 overflow-y-auto min-h-[8rem] max-h-[16rem] border border-t-0 border-border rounded-b-lg bg-surface-hover p-2 flex flex-col gap-1">
                 {noShowFiltered.length === 0 && (
-                  <div className="text-xs text-white/40 italic p-2 text-center">
+                  <div className="text-xs text-text-muted italic p-2 text-center">
                     No players found.
                   </div>
                 )}
@@ -985,8 +989,8 @@ export function AdminDashboard({
                     key={p.id}
                     className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${
                       noShowSelected.includes(p.id)
-                        ? "bg-orange-500/20 border border-orange-500/40 text-white"
-                        : "hover:bg-white/5 border border-transparent text-white/70"
+                        ? "bg-orange-500/20 border border-orange-500/40 text-text-primary"
+                        : "hover:bg-surface-hover border border-transparent text-text-secondary"
                     }`}
                   >
                     <input
@@ -1002,7 +1006,7 @@ export function AdminDashboard({
                       className="accent-orange-500"
                     />
                     <span className="text-xs truncate flex-1">{p.name}</span>
-                    <span className="text-[10px] text-white/40 font-mono">
+                    <span className="text-[10px] text-text-muted font-mono">
                       {p.mobile || ""}
                     </span>
                   </label>
@@ -1108,26 +1112,26 @@ function RecordCatchesModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-md w-full border border-white/10 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-white flex items-center gap-2">
+          <h3 className="font-bold text-text-primary flex items-center gap-2">
             <Target className="w-5 h-5 text-teal-400" />
             Record Catches
           </h3>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Type toggle */}
         <div className="flex gap-2">
           <button
             onClick={() => setCatchType("stunning")}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "stunning" ? "bg-emerald-500 text-black" : "border border-white/10 text-white/50 hover:text-white"}`}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "stunning" ? "bg-emerald-500 text-black" : "border border-border text-text-muted hover:text-text-primary"}`}
           >
             Stunning Catch
           </button>
           <button
             onClick={() => setCatchType("dropped")}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "dropped" ? "bg-red-500 text-white" : "border border-white/10 text-white/50 hover:text-white"}`}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "dropped" ? "bg-red-500 text-white" : "border border-border text-text-muted hover:text-text-primary"}`}
           >
             Dropped Catch
           </button>
@@ -1135,11 +1139,11 @@ function RecordCatchesModal({
 
         {/* Match selection */}
         <div>
-          <label className="text-[10px] text-white/50 uppercase tracking-widest mb-1 block">Match (optional)</label>
+          <label className="text-[10px] text-text-muted uppercase tracking-widest mb-1 block">Match (optional)</label>
           <select
             value={matchId}
             onChange={(e) => setMatchId(e.target.value)}
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-2 text-sm text-white"
+            className="w-full bg-surface-hover border border-border rounded-lg px-2 py-2 text-sm text-text-primary"
           >
             <option value="">— Select a match —</option>
             {recentMatches.map((m) => (
@@ -1152,27 +1156,27 @@ function RecordCatchesModal({
 
         {/* Comment */}
         <div>
-          <label className="text-[10px] text-white/50 uppercase tracking-widest mb-1 block">Comment {!matchId && <span className="text-red-400">(required if no match)</span>}</label>
+          <label className="text-[10px] text-text-muted uppercase tracking-widest mb-1 block">Comment {!matchId && <span className="text-red-400">(required if no match)</span>}</label>
           <input
             type="text"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="e.g. Practice session"
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30"
+            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-primary/30"
           />
         </div>
 
         {/* Player search */}
         <div>
-          <label className="text-[10px] text-white/50 uppercase tracking-widest mb-1 block">Select Players</label>
+          <label className="text-[10px] text-text-muted uppercase tracking-widest mb-1 block">Select Players</label>
           <div className="relative mb-2">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-primary/30" />
             <input
               type="text"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
               placeholder="Search players..."
-              className="w-full bg-black/30 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder:text-white/30"
+              className="w-full bg-surface-hover border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder:text-text-primary/30"
             />
           </div>
 
@@ -1191,7 +1195,7 @@ function RecordCatchesModal({
                     <button className="flex items-center" onClick={() => updateCount(pid, 1)}>
                       <Plus className="w-3 h-3" />
                     </button>
-                    <button onClick={() => setSelectedPlayers((prev) => prev.filter((x) => x !== pid))} className="ml-1 hover:text-white">
+                    <button onClick={() => setSelectedPlayers((prev) => prev.filter((x) => x !== pid))} className="ml-1 hover:text-text-primary">
                       <X className="w-3 h-3" />
                     </button>
                   </span>
@@ -1201,14 +1205,14 @@ function RecordCatchesModal({
           )}
 
           {/* Player list */}
-          <div className="max-h-40 overflow-y-auto space-y-0.5 border border-white/10 rounded-lg p-1">
+          <div className="max-h-40 overflow-y-auto space-y-0.5 border border-border rounded-lg p-1">
             {filtered.map((p) => (
               <label
                 key={p.id}
                 className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition text-xs ${
                   selectedPlayers.includes(p.id)
-                    ? "bg-teal-500/20 border border-teal-500/40 text-white"
-                    : "hover:bg-white/5 border border-transparent text-white/70"
+                    ? "bg-teal-500/20 border border-teal-500/40 text-text-primary"
+                    : "hover:bg-surface-hover border border-transparent text-text-secondary"
                 }`}
               >
                 <input

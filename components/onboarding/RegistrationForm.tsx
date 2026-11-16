@@ -8,6 +8,7 @@ import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
 import { createNotification } from "@/lib/notifications";
+import { useToast } from "@/components/ui/Toast";
 
 interface FormState {
   name: string;
@@ -81,6 +82,7 @@ export function RegistrationForm({
   accentColor: string;
   textAccentColor: string;
 }) {
+  const { toast } = useToast();
   const [form, setForm] = useState<FormState>(EMPTY_STATE);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -99,7 +101,7 @@ export function RegistrationForm({
 
     const jerseyError = validateJerseyNumber(form.jerseyNumber);
     if (jerseyError) {
-      alert(jerseyError);
+      toast(jerseyError, "error");
       return;
     }
 
@@ -162,18 +164,18 @@ export function RegistrationForm({
       );
     } catch (err) {
       console.error("Registration error:", err);
-      alert("Registration failed. Please try again.");
+      toast("Registration failed. Please try again.", "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const inputCls =
-    "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent";
+    "w-full px-3 py-2 bg-surface-hover border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent";
   const selectCls =
-    "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-emerald-950";
+    "w-full px-3 py-2 bg-surface-hover border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent ";
   const labelCls =
-    "text-[10px] font-bold uppercase tracking-wider text-white/60";
+    "text-[10px] font-bold uppercase tracking-wider text-text-secondary";
 
   return (
     <div
@@ -183,16 +185,16 @@ export function RegistrationForm({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass max-w-md w-full p-8 rounded-2xl border border-white/10 shadow-xl text-left my-8"
+        className="bg-surface max-w-md w-full p-8 rounded-2xl border border-border shadow-xl text-left my-8"
       >
         <div className="mb-6 mt-2 text-center text-accent flex justify-center">
           <Shield className="w-10 h-10" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-2 text-center">
+        <h2 className="text-xl font-bold text-text-primary mb-2 text-center">
           Join Kavach Cricket Club
         </h2>
-        <p className="text-xs text-white/70 mb-4 text-center leading-relaxed">
-          Fill in <strong className="text-white">all fields</strong> below to submit your join request.
+        <p className="text-xs text-text-secondary mb-4 text-center leading-relaxed">
+          Fill in <strong className="text-text-primary">all fields</strong> below to submit your join request.
           Your request will be sent for admin approval only after you submit this form.
         </p>
 
@@ -211,23 +213,23 @@ export function RegistrationForm({
               <AlertTriangle className="w-5 h-5 text-red-400" />
               <span className="text-sm font-bold text-red-300">Player Already Exists</span>
             </div>
-            <p className="text-xs text-white/70 leading-relaxed text-center">
-              A profile for <strong className="text-white">&quot;{duplicate.player.name}&quot;</strong> already
+            <p className="text-xs text-text-secondary leading-relaxed text-center">
+              A profile for <strong className="text-text-primary">&quot;{duplicate.player.name}&quot;</strong> already
               exists with the same {duplicate.matchedOn === "mobile" ? "mobile number" : "email address"}.
             </p>
-            <div className="bg-black/30 rounded-lg px-3 py-2 space-y-1">
-              <p className="text-[11px] text-white/60">
-                <span className="text-white/40">Login using:</span>{" "}
+            <div className="bg-surface-hover rounded-lg px-3 py-2 space-y-1">
+              <p className="text-[11px] text-text-secondary">
+                <span className="text-text-muted">Login using:</span>{" "}
                 <strong className="text-emerald-400">{getLoginMethod(duplicate.player).method}</strong>
               </p>
-              <p className="text-[10px] text-white/40">
+              <p className="text-[10px] text-text-muted">
                 {getLoginMethod(duplicate.player).detail}
               </p>
             </div>
             <button
               type="button"
               onClick={onLogOut}
-              className="w-full py-2.5 px-4 rounded-xl font-bold bg-accent text-black text-xs flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition"
+              className="w-full py-2.5 px-4 rounded-xl font-bold bg-accent text-text-accent text-xs flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition"
             >
               <LogIn className="w-3.5 h-3.5" />
               Go to Login
@@ -352,7 +354,7 @@ export function RegistrationForm({
               <select
                 value={form.isWicketKeeper ? "Yes" : "No"}
                 onChange={(e) => set("isWicketKeeper", e.target.value === "Yes")}
-                className="w-full px-3 py-2 bg-neutral-950 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                className="w-full px-3 py-2 bg-neutral-950 border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
               >
                 <option value="No">No</option>
                 <option value="Yes">Yes</option>
@@ -364,7 +366,7 @@ export function RegistrationForm({
                 required
                 value={form.chestSize}
                 onChange={(e) => set("chestSize", e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-950 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                className="w-full px-3 py-2 bg-neutral-950 border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
               >
                 <option value="">Select Size</option>
                 {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
@@ -387,10 +389,10 @@ export function RegistrationForm({
                     e.target.value.replace(/\D/g, "").slice(0, 3),
                   )
                 }
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-accent font-mono"
+                className="w-full px-3 py-2 bg-surface-hover border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent font-mono"
                 placeholder="e.g. 7"
               />
-              <p className="text-[9px] text-white/40 mt-0.5 leading-tight">
+              <p className="text-[9px] text-text-muted mt-0.5 leading-tight">
                 Up to 3 digits. Number 10 is reserved and cannot be used.
               </p>
             </div>
@@ -404,13 +406,13 @@ export function RegistrationForm({
           >
             {isSubmitting ? "Submitting..." : "Submit Join Request"}
           </button>
-          <p className="text-[10px] text-white/40 text-center leading-tight">
+          <p className="text-[10px] text-text-muted text-center leading-tight">
             After submitting, the admin will review and approve your request.
           </p>
           <button
             type="button"
             onClick={onLogOut}
-            className="w-full py-3 px-4 rounded-xl font-bold mt-2 border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-all text-xs"
+            className="w-full py-3 px-4 rounded-xl font-bold mt-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-all text-xs"
           >
             Cancel / Sign Out
           </button>

@@ -317,16 +317,16 @@ export default function TenureBadgeEvaluator({
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="relative bg-[#0f172a] rounded-xl border border-glass-border w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+      <div className="relative bg-surface rounded-xl border border-border w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-glass-border shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2.5">
             <Award className="w-5 h-5 text-accent" />
-            <h2 className="text-white font-bold text-lg">Tenure Badge Evaluator</h2>
+            <h2 className="text-text-primary font-bold text-lg">Tenure Badge Evaluator</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-white/40 hover:text-white transition p-1"
+            className="text-text-muted hover:text-text-primary transition p-1"
           >
             <X className="w-5 h-5" />
           </button>
@@ -337,7 +337,7 @@ export default function TenureBadgeEvaluator({
           {/* ============ PHASE: ENTRY ============ */}
           {phase === "entry" && (
             <>
-              <p className="text-white/50 text-xs mb-4">
+              <p className="text-text-muted text-xs mb-4">
                 Set or update KAvach joining dates for players, then evaluate
                 which year badges should be granted or revoked.
               </p>
@@ -349,15 +349,15 @@ export default function TenureBadgeEvaluator({
                   placeholder="Search players..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white/5 border border-glass-border rounded-lg text-white text-xs px-3 py-2 outline-none focus:border-accent/50 transition placeholder:text-white/30"
+                  className="w-full bg-surface-hover border border-border rounded-lg text-text-primary text-xs px-3 py-2 outline-none focus:border-accent/50 transition placeholder:text-text-primary/30"
                 />
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto rounded-lg border border-glass-border">
+              <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-white/5 text-white/60">
+                    <tr className="bg-surface-hover text-text-secondary">
                       <th className="text-left px-3 py-2.5 font-semibold">Player</th>
                       <th className="text-left px-3 py-2.5 font-semibold w-28">Current</th>
                       <th className="text-left px-3 py-2.5 font-semibold w-56">Set Joining Date</th>
@@ -373,19 +373,19 @@ export default function TenureBadgeEvaluator({
                       return (
                         <tr
                           key={player.id}
-                          className="border-t border-glass-border hover:bg-white/[0.02] transition"
+                          className="border-t border-border hover:bg-white/[0.02] transition"
                         >
-                          <td className="px-3 py-2.5 text-white font-medium">
+                          <td className="px-3 py-2.5 text-text-primary font-medium">
                             {player.name}
                           </td>
-                          <td className="px-3 py-2.5 text-white/40">
+                          <td className="px-3 py-2.5 text-text-muted">
                             {player.kavachJoining ? (
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
                                 {player.kavachJoining}
                               </span>
                             ) : (
-                              <span className="text-white/20">Not set</span>
+                              <span className="text-text-primary/20">Not set</span>
                             )}
                           </td>
                           <td className="px-3 py-2.5">
@@ -395,14 +395,14 @@ export default function TenureBadgeEvaluator({
                                 onChange={(e) =>
                                   handleEditMonth(player.id, e.target.value)
                                 }
-                                className="bg-white/5 border border-glass-border rounded-lg text-white text-xs px-2 py-1.5 outline-none focus:border-accent/50 transition appearance-none cursor-pointer"
+                                className="bg-surface-hover border border-border rounded-lg text-text-primary text-xs px-2 py-1.5 outline-none focus:border-accent/50 transition appearance-none cursor-pointer"
                               >
-                                <option value="" className="bg-[#0f172a]">Month</option>
+                                <option value="" className="bg-surface">Month</option>
                                 {MONTHS.map((m) => (
                                   <option
                                     key={m.value}
                                     value={m.value}
-                                    className="bg-[#0f172a]"
+                                    className="bg-surface"
                                   >
                                     {m.label}
                                   </option>
@@ -413,14 +413,14 @@ export default function TenureBadgeEvaluator({
                                 onChange={(e) =>
                                   handleEditYear(player.id, e.target.value)
                                 }
-                                className="bg-white/5 border border-glass-border rounded-lg text-white text-xs px-2 py-1.5 outline-none focus:border-accent/50 transition appearance-none cursor-pointer"
+                                className="bg-surface-hover border border-border rounded-lg text-text-primary text-xs px-2 py-1.5 outline-none focus:border-accent/50 transition appearance-none cursor-pointer"
                               >
-                                <option value="" className="bg-[#0f172a]">Year</option>
+                                <option value="" className="bg-surface">Year</option>
                                 {YEARS.map((y) => (
                                   <option
                                     key={y}
                                     value={y}
-                                    className="bg-[#0f172a]"
+                                    className="bg-surface"
                                   >
                                     {y}
                                   </option>
@@ -435,7 +435,7 @@ export default function TenureBadgeEvaluator({
                       <tr>
                         <td
                           colSpan={3}
-                          className="px-3 py-8 text-center text-white/30"
+                          className="px-3 py-8 text-center text-text-primary/30"
                         >
                           No players found.
                         </td>
@@ -458,7 +458,7 @@ export default function TenureBadgeEvaluator({
               </button>
 
               {changes.length === 0 ? (
-                <div className="text-center py-12 text-white/40">
+                <div className="text-center py-12 text-text-muted">
                   <CheckCircle className="w-10 h-10 mx-auto mb-3 text-green-400/60" />
                   <p className="text-sm font-medium">No changes needed</p>
                   <p className="text-xs mt-1">
@@ -468,14 +468,14 @@ export default function TenureBadgeEvaluator({
               ) : (
                 <>
                   {/* Summary bar */}
-                  <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-white/5 border border-glass-border">
+                  <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-surface-hover border border-border">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                    <p className="text-white/70 text-xs">
+                    <p className="text-text-secondary text-xs">
                       <span className="text-green-400 font-bold">{totalGrants} grant{totalGrants !== 1 ? "s" : ""}</span>
                       {", "}
                       <span className="text-red-400 font-bold">{totalRevokes} revoke{totalRevokes !== 1 ? "s" : ""}</span>
                       {" across "}
-                      <span className="text-white font-bold">{changes.length} player{changes.length !== 1 ? "s" : ""}</span>
+                      <span className="text-text-primary font-bold">{changes.length} player{changes.length !== 1 ? "s" : ""}</span>
                     </p>
                   </div>
 
@@ -484,13 +484,13 @@ export default function TenureBadgeEvaluator({
                     {changes.map((c) => (
                       <div
                         key={c.playerId}
-                        className="rounded-lg border border-glass-border bg-white/[0.02] p-3"
+                        className="rounded-lg border border-border bg-white/[0.02] p-3"
                       >
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-white font-semibold text-sm">
+                          <span className="text-text-primary font-semibold text-sm">
                             {c.playerName}
                           </span>
-                          <span className="text-white/40 text-xs">
+                          <span className="text-text-muted text-xs">
                             {c.tenureYears} year{c.tenureYears !== 1 ? "s" : ""} tenure
                           </span>
                         </div>
@@ -536,17 +536,17 @@ export default function TenureBadgeEvaluator({
           {phase === "done" && (
             <div className="text-center py-12">
               <CheckCircle className="w-12 h-12 mx-auto mb-4 text-green-400" />
-              <p className="text-white font-bold text-lg mb-2">Changes Applied</p>
-              <p className="text-white/50 text-sm">{applySummary}</p>
+              <p className="text-text-primary font-bold text-lg mb-2">Changes Applied</p>
+              <p className="text-text-muted text-sm">{applySummary}</p>
             </div>
           )}
         </div>
 
         {/* Footer actions */}
-        <div className="shrink-0 px-5 py-4 border-t border-glass-border flex items-center justify-between gap-3">
+        <div className="shrink-0 px-5 py-4 border-t border-border flex items-center justify-between gap-3">
           {phase === "entry" && (
             <>
-              <div className="text-white/30 text-xs">
+              <div className="text-text-primary/30 text-xs">
                 {editCount > 0 && !datesSaved && (
                   <span>{editCount} unsaved change{editCount !== 1 ? "s" : ""}</span>
                 )}
@@ -561,7 +561,7 @@ export default function TenureBadgeEvaluator({
                   <button
                     onClick={handleSaveDates}
                     disabled={saving}
-                    className="bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl px-4 py-2 transition disabled:opacity-50"
+                    className="bg-surface-hover hover:bg-surface-hover text-text-primary font-semibold text-xs rounded-xl px-4 py-2 transition disabled:opacity-50"
                   >
                     {saving ? "Saving..." : "Save Dates"}
                   </button>
@@ -569,7 +569,7 @@ export default function TenureBadgeEvaluator({
                 <button
                   onClick={handleEvaluate}
                   disabled={editCount > 0 && !datesSaved}
-                  className="bg-accent text-black font-bold text-xs rounded-xl px-5 py-2 transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="bg-accent text-text-accent font-bold text-xs rounded-xl px-5 py-2 transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Evaluate Awards
                 </button>
@@ -583,7 +583,7 @@ export default function TenureBadgeEvaluator({
               <button
                 onClick={handleApply}
                 disabled={applying}
-                className="bg-accent text-black font-bold text-xs rounded-xl px-5 py-2 transition hover:brightness-110 disabled:opacity-50"
+                className="bg-accent text-text-accent font-bold text-xs rounded-xl px-5 py-2 transition hover:brightness-110 disabled:opacity-50"
               >
                 {applying ? "Applying..." : "Confirm & Apply"}
               </button>
@@ -595,7 +595,7 @@ export default function TenureBadgeEvaluator({
               <div />
               <button
                 onClick={onClose}
-                className="bg-accent text-black font-bold text-xs rounded-xl px-5 py-2 transition hover:brightness-110"
+                className="bg-accent text-text-accent font-bold text-xs rounded-xl px-5 py-2 transition hover:brightness-110"
               >
                 Close
               </button>

@@ -26,6 +26,8 @@ import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
 import { Player, MatchPayment, OtherFee } from "@/lib/types";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function PlayersTab({
   store,
@@ -38,6 +40,8 @@ export function PlayersTab({
   isStudioAdmin?: boolean;
   autoOpenInvite?: boolean;
 }) {
+  const { toast } = useToast();
+  const { confirm: confirmAction } = useConfirm();
   // We allow basic admin functions (adding/editing players) if they are any kind of admin,
   // but strictly, it might just be better to let all admins do basic directory edits,
   // or restrict it. Given the system, any admin (isStudioAdmin !== false) usually manages
@@ -156,7 +160,7 @@ export function PlayersTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-1">
+        <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-1">
           Squad <span className="opacity-50 text-sm ml-1">({store.players.length})</span>
         </h2>
         {isAdmin && (
@@ -165,7 +169,7 @@ export function PlayersTab({
               setShowInviteModal(true);
               setInviteForm({ name: "", phone: "" });
             }}
-            className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-emerald-500 transition"
+            className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-text-primary shadow hover:bg-emerald-500 transition"
           >
             <UserPlus className="h-3.5 w-3.5" />
             Invite Player
@@ -180,13 +184,13 @@ export function PlayersTab({
           placeholder="Search players..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-black/40 border border-glass-border text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-accent flex-1 max-w-sm"
+          className="bg-surface-hover border border-border text-text-primary text-xs rounded-xl px-3 py-2 outline-none focus:border-accent flex-1 max-w-sm"
         />
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <button
               onClick={() => setViewMode(viewMode === "list" ? "table" : "list")}
-              className={`text-xs px-3 py-2 rounded-xl font-bold border transition flex items-center gap-1.5 ${viewMode === "table" ? "bg-accent/20 text-accent border-accent/30" : "bg-white/5 text-white/60 border-glass-border hover:bg-white/10"}`}
+              className={`text-xs px-3 py-2 rounded-xl font-bold border transition flex items-center gap-1.5 ${viewMode === "table" ? "bg-accent/20 text-accent border-accent/30" : "bg-surface-hover text-text-secondary border-border hover:bg-surface-hover"}`}
             >
               <Table2 className="h-3.5 w-3.5" />
               {viewMode === "table" ? "Table View" : "Table View"}
@@ -194,14 +198,14 @@ export function PlayersTab({
           )}
           <button
             onClick={() => setShowDisabled(!showDisabled)}
-            className={`text-xs px-3 py-2 rounded-xl font-bold border transition ${showDisabled ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-white/5 text-white/60 border-glass-border hover:bg-white/10"}`}
+            className={`text-xs px-3 py-2 rounded-xl font-bold border transition ${showDisabled ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-surface-hover text-text-secondary border-border hover:bg-surface-hover"}`}
           >
             {showDisabled ? "Viewing Deactivated" : "View Deactivated"}
           </button>
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as any)}
-            className="bg-black/40 border border-glass-border text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-accent"
+            className="bg-surface-hover border border-border text-text-primary text-xs rounded-xl px-3 py-2 outline-none focus:border-accent"
           >
             <option value="name">Sort by Name</option>
             <option value="expiry">Sort by Expiry Date</option>
@@ -223,11 +227,11 @@ export function PlayersTab({
               </span>
               Pending Approvals ({pendingPlayers.length})
             </h3>
-            <div className="glass rounded-xl overflow-hidden divide-y divide-glass-border border border-accent/25">
+            <div className="bg-surface rounded-xl overflow-hidden divide-y divide-border border border-accent/25">
               {pendingPlayers.map((player) => (
                 <div
                   key={player.id}
-                  className="flex flex-col hover:bg-white/5 transition"
+                  className="flex flex-col hover:bg-surface-hover transition"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3">
                     <div className="flex items-center gap-3">
@@ -235,16 +239,16 @@ export function PlayersTab({
                         {player.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold text-white text-[15px] truncate">
+                        <p className="font-semibold text-text-primary text-[15px] truncate">
                           {player.name}
                         </p>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-white/60">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-text-secondary">
                           <span className="flex items-center gap-1">
                             <PhoneCall className="h-3 w-3 shrink-0" />
                             {player.mobile}
                           </span>
                           {player.locality && (
-                            <span className="text-white/40">
+                            <span className="text-text-muted">
                               • {player.locality}
                             </span>
                           )}
@@ -266,9 +270,7 @@ export function PlayersTab({
                       <button
                         onClick={async () => {
                           if (
-                            window.confirm(
-                              `Decline registration request for ${player.name}? This will notify them via email and they can retry after 3 days.`,
-                            )
+                            await confirmAction({ message: `Decline registration request for ${player.name}? This will notify them via email and they can retry after 3 days.`, })
                           ) {
                             await store.updatePlayer(player.id, {
                               inviteStatus: "Rejected",
@@ -296,24 +298,24 @@ export function PlayersTab({
               </span>
               Incomplete Registrations ({unverifiedPlayers.length})
             </h3>
-            <p className="text-[11px] text-white/40 -mt-1">
+            <p className="text-[11px] text-text-muted -mt-1">
               These players signed in but haven&apos;t completed their profile yet.
             </p>
-            <div className="glass rounded-xl overflow-hidden divide-y divide-glass-border border border-yellow-500/20">
+            <div className="bg-surface rounded-xl overflow-hidden divide-y divide-border border border-yellow-500/20">
               {unverifiedPlayers.map((player) => (
                 <div
                   key={player.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 hover:bg-white/5 transition"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 hover:bg-surface-hover transition"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 font-bold text-yellow-400 shrink-0">
                       {player.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="font-semibold text-white text-[15px] truncate">
+                      <p className="font-semibold text-text-primary text-[15px] truncate">
                         {player.name}
                       </p>
-                      <p className="text-[11px] text-white/40">Profile incomplete</p>
+                      <p className="text-[11px] text-text-muted">Profile incomplete</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-auto">
@@ -328,7 +330,7 @@ export function PlayersTab({
                     </button>
                     <button
                       onClick={async () => {
-                        if (window.confirm(`Remove incomplete registration for ${player.name}?`)) {
+                        if (await confirmAction({ message: `Remove incomplete registration for ${player.name}?`, destructive: true })) {
                           await store.deletePlayer(player.id);
                         }
                       }}
@@ -346,21 +348,21 @@ export function PlayersTab({
         {viewMode === "table" && isAdmin ? (
           <BulkEditTable store={store} players={displayPlayers} />
         ) : (
-        <div className="glass rounded-xl overflow-hidden divide-y divide-glass-border">
+        <div className="bg-surface rounded-xl overflow-hidden divide-y divide-border">
           {displayPlayers.length === 0 && (
-            <div className="py-8 text-center text-sm text-white/50">
+            <div className="py-8 text-center text-sm text-text-muted">
               No players added yet.
             </div>
           )}
           {displayPlayers.map((player) => (
             <div
               key={player.id}
-              className="flex flex-col hover:bg-white/5 transition cursor-pointer"
+              className="flex flex-col hover:bg-surface-hover transition cursor-pointer"
               onClick={() => setSelectedPlayer(player)}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-bold text-white relative shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-hover font-bold text-text-primary relative shrink-0">
                     {player.name.charAt(0).toUpperCase()}
                     {player.isStudioMember && (
                       <span className="absolute -bottom-1 -right-1 bg-accent text-[9px] rounded-full p-0.5">
@@ -370,7 +372,7 @@ export function PlayersTab({
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-white text-[15px] truncate">
+                      <p className="font-semibold text-text-primary text-[15px] truncate">
                         {player.name}
                       </p>
                       {player.kavachId && (
@@ -379,18 +381,18 @@ export function PlayersTab({
                         </span>
                       )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-white/60">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-secondary">
                       <span className="flex items-center gap-1">
                         <PhoneCall className="h-3 w-3 shrink-0" />
                         {player.mobile}
                       </span>
                       {player.email && (
-                        <span className="flex items-center gap-1 border-l border-white/20 pl-2">
+                        <span className="flex items-center gap-1 border-l border-border pl-2">
                           ✉️ {player.email}
                         </span>
                       )}
                       <span
-                        className={`flex items-center gap-1 border-l border-white/20 pl-2 font-bold ${getTotalDue(player.id) > 0 ? "text-red-400" : "text-emerald-400"}`}
+                        className={`flex items-center gap-1 border-l border-border pl-2 font-bold ${getTotalDue(player.id) > 0 ? "text-red-400" : "text-emerald-400"}`}
                       >
                         Due: ₹{getTotalDue(player.id)}
                       </span>
@@ -410,7 +412,7 @@ export function PlayersTab({
                           ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                           : player.inviteStatus === "Rejected"
                             ? "bg-red-500/20 text-red-500 border-red-500/30"
-                            : "bg-white/10 text-white/70 border-glass-border"
+                            : "bg-surface-hover text-text-secondary border-border"
                       }`}
                     >
                       {player.inviteStatus === "Invited"
@@ -421,9 +423,9 @@ export function PlayersTab({
                   {isAdmin && (
                     <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (player.disabled) {
-                            if (window.confirm(`Activate ${player.name}? They will appear in match squads and fee lists again.`)) {
+                            if (await confirmAction({ message: `Activate ${player.name}? They will appear in match squads and fee lists again.` })) {
                               store.updatePlayer(player.id, {
                                 disabled: false,
                                 disabledAt: undefined,
@@ -431,9 +433,7 @@ export function PlayersTab({
                             }
                           } else {
                             if (
-                              window.confirm(
-                                `Deactivate ${player.name}? They won't appear in matches, catches, or fees. They'll be automatically reactivated when they sign in again.`,
-                              )
+                              await confirmAction({ message: `Deactivate ${player.name}? They won't appear in matches, catches, or fees. They'll be automatically reactivated when they sign in again.`, destructive: true })
                             ) {
                               store.updatePlayer(player.id, {
                                 disabled: true,
@@ -443,7 +443,7 @@ export function PlayersTab({
                           }
                         }}
                         title={player.disabled ? "Activate Player" : "Deactivate Player"}
-                        className={`p-1.5 rounded-md transition cursor-pointer text-xs font-bold px-2 ${player.disabled ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" : "hover:bg-red-500/10 text-white/60 hover:text-red-400"}`}
+                        className={`p-1.5 rounded-md transition cursor-pointer text-xs font-bold px-2 ${player.disabled ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" : "hover:bg-red-500/10 text-text-secondary hover:text-red-400"}`}
                       >
                         {player.disabled ? "Activate" : <UserX className="h-4 w-4" />}
                       </button>
@@ -451,9 +451,7 @@ export function PlayersTab({
                         <button
                           onClick={async () => {
                             if (
-                              window.confirm(
-                                `Permanently delete ${player.name}? This action cannot be undone and may orphan payment/match records.`
-                              )
+                              await confirmAction({ message: `Permanently delete ${player.name}? This action cannot be undone and may orphan payment/match records.`, destructive: true })
                             ) {
                               await store.deletePlayer(player.id);
                             }
@@ -487,46 +485,46 @@ export function PlayersTab({
       {showInviteModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
                 <UserPlus className="w-5 h-5" /> Invite Player
               </div>
               <button
                 onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); }}
-                className="text-white/40 hover:text-white p-1"
+                className="text-text-muted hover:text-text-primary p-1"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="text-xs text-white/60">
+            <div className="text-xs text-text-secondary">
               Send a WhatsApp welcome message to invite someone to register on the Play App.
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-white/70 mb-1">Name</label>
+                <label className="block text-[11px] font-semibold text-text-secondary mb-1">Name</label>
                 <input
                   type="text"
                   value={inviteForm.name}
                   onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="Player name"
-                  className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-emerald-500"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-white/70 mb-1">Phone Number</label>
+                <label className="block text-[11px] font-semibold text-text-secondary mb-1">Phone Number</label>
                 <input
                   type="tel"
                   value={inviteForm.phone}
                   onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))}
                   placeholder="e.g. 9876543210"
-                  className="w-full bg-black/40 border border-border rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
-            <div className="text-[10px] text-white/40 italic">
+            <div className="text-[10px] text-text-muted italic">
               A WhatsApp template message will be sent with the club name, player name, and registration link.
             </div>
 
@@ -536,16 +534,16 @@ export function PlayersTab({
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
               <button
                 onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); setStandaloneInviteStatus(null); }}
-                className="px-4 py-2 text-xs font-semibold text-white/60 hover:text-white"
+                className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary"
               >
                 Cancel
               </button>
               <button
                 onClick={async () => {
-                  if (!inviteForm.phone.trim()) { alert("Please enter a phone number."); return; }
+                  if (!inviteForm.phone.trim()) { toast("Please enter a phone number.", "error"); return; }
                   setStandaloneInviteSending(true);
                   setStandaloneInviteStatus(null);
                   try {
@@ -570,7 +568,7 @@ export function PlayersTab({
                   setStandaloneInviteSending(false);
                 }}
                 disabled={standaloneInviteSending || !inviteForm.phone.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-text-primary font-bold rounded-lg text-xs transition shadow-sm"
               >
                 <Send className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Sending..." : "Send Invite"}
               </button>
@@ -662,17 +660,17 @@ function BulkEditTable({
   };
 
   const inputClass =
-    "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-2 py-1.5 w-full";
+    "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-2 py-1.5 w-full";
   const selectClass =
-    "bg-transparent border-none text-white text-xs focus:bg-white/5 focus:outline-none px-1 py-1.5 appearance-none cursor-pointer";
+    "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-1 py-1.5 appearance-none cursor-pointer";
 
   return (
     <>
-      <div className="glass rounded-xl overflow-hidden border border-glass-border">
+      <div className="bg-surface rounded-xl overflow-hidden border border-border">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1250px] border-collapse">
             <thead>
-              <tr className="bg-black/60 text-white/70 text-[10px] uppercase tracking-wider">
+              <tr className="bg-black/60 text-text-secondary text-[10px] uppercase tracking-wider">
                 <th className="text-left px-2 py-2 font-bold">Name</th>
                 <th className="text-left px-2 py-2 font-bold">Phone</th>
                 <th className="text-left px-2 py-2 font-bold">Role</th>
@@ -690,13 +688,13 @@ function BulkEditTable({
             <tbody>
               {players.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-8 text-center text-sm text-white/50">
+                  <td colSpan={12} className="py-8 text-center text-sm text-text-muted">
                     No players to display.
                   </td>
                 </tr>
               )}
               {players.map((player) => (
-                <tr key={player.id} className="border-b border-glass-border hover:bg-white/[0.03] transition">
+                <tr key={player.id} className="border-b border-border hover:bg-white/[0.03] transition">
                   <td className="bg-transparent px-0">
                     <input
                       type="text"
@@ -720,7 +718,7 @@ function BulkEditTable({
                       className={selectClass}
                     >
                       {BATTING_STYLE_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt} className="bg-[#0f172a] text-white">
+                        <option key={opt} value={opt} className="bg-surface text-text-primary">
                           {opt || "-- Select --"}
                         </option>
                       ))}
@@ -750,20 +748,20 @@ function BulkEditTable({
                         onChange={(e) => setKavachJoiningPart(player.id, player, "month", e.target.value)}
                         className={`${selectClass} w-[52px]`}
                       >
-                        <option value="" className="bg-[#0f172a] text-white">MM</option>
+                        <option value="" className="bg-surface text-text-primary">MM</option>
                         {MONTHS.map((m) => (
-                          <option key={m} value={m} className="bg-[#0f172a] text-white">{m}</option>
+                          <option key={m} value={m} className="bg-surface text-text-primary">{m}</option>
                         ))}
                       </select>
-                      <span className="text-white/30 text-xs">/</span>
+                      <span className="text-text-primary/30 text-xs">/</span>
                       <select
                         value={parseKavachYear(getVal(player, "kavachJoining") as string | undefined)}
                         onChange={(e) => setKavachJoiningPart(player.id, player, "year", e.target.value)}
                         className={`${selectClass} w-[62px]`}
                       >
-                        <option value="" className="bg-[#0f172a] text-white">YYYY</option>
+                        <option value="" className="bg-surface text-text-primary">YYYY</option>
                         {YEARS.map((y) => (
-                          <option key={y} value={y} className="bg-[#0f172a] text-white">{y}</option>
+                          <option key={y} value={y} className="bg-surface text-text-primary">{y}</option>
                         ))}
                       </select>
                     </div>
@@ -838,7 +836,7 @@ function BulkEditTable({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-accent text-black font-bold px-6 py-3 rounded-xl shadow-lg z-50 hover:bg-accent/90 transition disabled:opacity-50"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-accent text-text-accent font-bold px-6 py-3 rounded-xl shadow-lg z-50 hover:bg-accent/90 transition disabled:opacity-50"
         >
           {saving ? "Saving..." : `Save Changes (${dirty.size})`}
         </button>
@@ -886,23 +884,23 @@ function SquadPlayerDetails({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg my-8 bg-[#0f172a] rounded-xl border border-glass-border overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-lg my-8 bg-surface rounded-xl border border-border overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-[#0f172a] p-4 flex justify-between items-center z-10 border-b border-glass-border">
-          <h2 className="text-xl font-bold text-white tracking-tight">
+        <div className="sticky top-0 bg-surface p-4 flex justify-between items-center z-10 border-b border-border">
+          <h2 className="text-xl font-bold text-text-primary tracking-tight">
             {player.name}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-full transition"
+            className="p-2 hover:bg-surface-hover rounded-full transition"
           >
-            <X className="w-5 h-5 text-white/70" />
+            <X className="w-5 h-5 text-text-secondary" />
           </button>
         </div>
 
         <div className="overflow-y-auto p-4 custom-scrollbar">
-          <div className="mb-6 bg-white/5 border border-glass-border rounded-xl p-4">
+          <div className="mb-6 bg-surface-hover border border-border rounded-xl p-4">
             <h4 className="text-[11px] font-bold uppercase tracking-widest text-accent mb-3 flex items-center justify-between">
               <span>Ledger Details</span>
               <span className={totalDue > 0 ? "text-red-400" : "text-emerald-400"}>
@@ -911,7 +909,7 @@ function SquadPlayerDetails({
             </h4>
 
             {unpaidMatchPayments.length === 0 && unpaidOtherFees.length === 0 ? (
-              <p className="text-xs text-white/50 italic mb-4">No unpaid dues.</p>
+              <p className="text-xs text-text-muted italic mb-4">No unpaid dues.</p>
             ) : (
               <div className="mb-4">
                 <h5 className="text-[10px] uppercase font-bold text-red-400 mb-2">Unpaid Dues</h5>
@@ -921,7 +919,7 @@ function SquadPlayerDetails({
                     return m ? (
                       <li
                         key={p.id}
-                        className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
+                        className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0"
                       >
                         <div className="flex items-center gap-2 truncate">
                           {isAdmin && (
@@ -943,7 +941,7 @@ function SquadPlayerDetails({
                   {unpaidOtherFees.map((f) => (
                     <li
                       key={f.id}
-                      className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0"
+                      className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0"
                     >
                       <div className="flex items-center gap-2 truncate">
                         {isAdmin && (
@@ -965,14 +963,14 @@ function SquadPlayerDetails({
 
             {allPaidItems.length > 0 ? (
               <div>
-                <h5 className="text-[10px] uppercase font-bold text-emerald-400 mb-2">Paid Dues <span className="text-white/40 font-normal">({allPaidItems.length})</span></h5>
+                <h5 className="text-[10px] uppercase font-bold text-emerald-400 mb-2">Paid Dues <span className="text-text-muted font-normal">({allPaidItems.length})</span></h5>
                 <ul className="text-xs space-y-2 opacity-70">
                   {visiblePaidItems.map((entry) => {
                     if (entry.kind === "match") {
                       const p = entry.item as MatchPayment;
                       const m = store.matches.find((mx) => mx.id === p.matchId);
                       return m ? (
-                        <li key={p.id} className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0">
+                        <li key={p.id} className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0">
                           <div className="flex items-center gap-2 truncate">
                             {isAdmin && (
                               <input type="checkbox" checked={true} onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
@@ -985,7 +983,7 @@ function SquadPlayerDetails({
                     } else {
                       const f = entry.item as OtherFee;
                       return (
-                        <li key={f.id} className="flex items-center justify-between text-white/80 border-b border-white/5 pb-1 last:border-0">
+                        <li key={f.id} className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0">
                           <div className="flex items-center gap-2 truncate">
                             {isAdmin && (
                               <input type="checkbox" checked={true} onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Unpaid")} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
@@ -1010,7 +1008,7 @@ function SquadPlayerDetails({
             ) : null}
           </div>
           <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-widest text-white/50 mb-3 block border-b border-glass-border pb-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-widest text-text-muted mb-3 block border-b border-border pb-2">
               Edit Profile
             </h4>
             <EditPlayerInline player={player} store={store} onCancel={onClose} />
