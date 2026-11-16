@@ -20,7 +20,7 @@
 | 8 | Workflow Simplification | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 9 | Studio & Shop Enhancement | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 10 | Testing & Quality Infrastructure | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 11 | Performance & Optimization | NOT STARTED | — | — |
+| 11 | Performance & Optimization | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 
 ---
 
@@ -404,7 +404,63 @@
 
 ## Phase 11 — Performance & Optimization
 
-Task breakdown will be added when this phase is approved.
+### Task Breakdown
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 11.1 | Bundle & code-splitting audit | COMPLETE |
+| 11.2 | Firestore listener lifecycle audit | COMPLETE |
+| 11.3 | Memoization & re-render analysis | COMPLETE |
+| 11.4 | Image optimization audit | COMPLETE |
+| 11.5 | Console output audit | COMPLETE |
+| 11.6 | Next.js config audit | COMPLETE |
+
+### Findings
+
+**11.1 — Bundle & Code Splitting** (GOOD)
+- All 15 tab components use `next/dynamic` with `{ ssr: false }` — proper code splitting already in place
+- Only `HomeTab`, `ProfileTab`, and `LoadingScreen` are statically imported (correctly — they're needed on first paint)
+- `output: "standalone"` configured for production deployment
+
+**11.2 — Firestore Listener Lifecycle** (GOOD)
+- 20 `onSnapshot` real-time listeners in `useStore.ts`
+- 12 core listeners established on auth; all cleaned up in `useEffect` return
+- 8+ lazy subscriptions tracked via `lazySubsRef` (Map of unsub functions)
+- Lazy pattern: `ensurePayments()`, `ensurePosts()`, `ensurePlayerStats()`, etc. — only subscribed when tab that needs them activates
+- All lazy subs torn down on user change via `lazySubsRef.current.forEach(unsub => unsub())`
+
+**11.3 — Memoization & Re-render Patterns** (ACCEPTABLE)
+- 31 `useCallback`/`useMemo` instances in `useStore.ts` for expensive computations
+- `useStore` returns a new object literal per render (~110 properties) — this is the expected pattern for this single-page architecture. Converting to a proper state management library (Zustand, Jotai) would be a major architectural change outside audit scope
+- 0 `React.memo` wrappers on components — not needed since `dynamic()` imports mean inactive tabs aren't in the tree
+- **Recommendation (future)**: Extract read-heavy selectors via `useMemo` in consuming components to avoid unnecessary child re-renders when unrelated store slices change
+
+**11.4 — Image Optimization** (GOOD)
+- Only 1 raw `<img>` tag found (in `BadgeIcon.tsx` for dynamic badge SVGs)
+- `next/image` is imported in `app/page.tsx` (via `Image from "next/image"`)
+- `next.config.ts` has proper `remotePatterns` for `picsum.photos` and `*.googleusercontent.com`
+
+**11.5 — Console Output** (ACCEPTABLE)
+- 86 console calls across 38 files
+- Only 4 are `console.log` (2 in e2e test, 2 in WhatsApp API route)
+- Remaining 82 are `console.error`/`console.warn` — appropriate for error reporting
+- **Recommendation (future)**: Replace `console.error`/`console.warn` with structured logging for production observability
+
+**11.6 — Next.js Config** (GOOD)
+- `reactStrictMode: true` — correct
+- `eslint.ignoreDuringBuilds: true` and `typescript.ignoreBuildErrors: true` — needed due to pre-existing TS errors; should be revisited when those are resolved
+- `serverExternalPackages` correctly lists Firebase packages
+- HMR disable option via `DISABLE_HMR` env var for AI Studio agent editing
+
+### Pre-existing Architecture Notes (NOT actionable within audit constraints)
+
+| Item | Description | Impact | Recommendation |
+|------|-------------|--------|----------------|
+| P-01 | `useStore.ts` is 2,778 lines — single monolithic hook | Re-renders all consumers when any state slice changes | Extract domain-specific stores (match, finance, studio) with Zustand or context splitting |
+| P-02 | `MatchesTab.tsx` is 3,733 lines — largest component | Long initial parse, complex state | Decompose into sub-components (match list, match detail, match form) |
+| P-03 | 107 `alert()` calls (from prior review) | Blocks UI thread, no branding | Migrate to toast system (Toast provider already exists) |
+| P-04 | `ignoreBuildErrors: true` in next.config | Masks real type errors at build | Fix 15 pre-existing TS errors, then disable |
+| P-05 | `ShopTab.tsx` `orderPayload` scope bug (SS-D1) | Razorpay merch intent missing order details | Refactor `handleRazorpayCheckout` to build payload before API call |
 
 ---
 
