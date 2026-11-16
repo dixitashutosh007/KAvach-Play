@@ -17,7 +17,7 @@
 | 5 | Navigation Rationalisation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 6 | UI/UX Redesign | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 7 | Financial Logic Overhaul | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 8 | Workflow Simplification | NOT STARTED | — | — |
+| 8 | Workflow Simplification | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 9 | Studio & Shop Enhancement | NOT STARTED | — | — |
 | 10 | Testing & Quality Infrastructure | NOT STARTED | — | — |
 | 11 | Performance & Optimization | NOT STARTED | — | — |
@@ -241,7 +241,40 @@
 
 ---
 
-## Phases 8–11
+## Phase 8 — Workflow Simplification
+
+### Audit Findings
+
+| Finding | Severity | Description | Status |
+|---------|----------|-------------|--------|
+| WF-01 | HIGH | Auto-reactivation silently bypasses admin disable — disabled players re-enabled on every login | **FIXED** |
+| WF-02 | MEDIUM | `AccountDisabledScreen` fully implemented but never imported or rendered — dead code | **FIXED** (wired up) |
+| WF-03 | MEDIUM | `handleSyncAccount` swallows Firestore errors silently — no user feedback on failure | **FIXED** |
+| WF-04 | MEDIUM | 50+ hardcoded dark-theme colors in modals and select dropdowns (Phase 6 spillover) | **FIXED** |
+
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 8.1 | Wire AccountDisabledScreen into page.tsx disabled-player guard | `app/page.tsx`, `components/onboarding/AccountDisabledScreen.tsx` | Medium | COMPLETE |
+| 8.2 | Add toast error feedback to handleSyncAccount catch block | `app/page.tsx` | Low | COMPLETE |
+| 8.3 | Fix bg-[#1a1a2e] modal backgrounds → bg-surface (5 instances) | `AdminDashboard.tsx`, `DuesAndRemindersTab.tsx`, `BadgesTab.tsx` | Low | COMPLETE |
+| 8.4 | Fix [&>option]:bg-neutral-950/900 → [&>option]:bg-surface (29 instances) | 8 component files | Low | COMPLETE |
+| 8.5 | Fix bg-neutral-950 form backgrounds → bg-surface-hover | `RegistrationForm.tsx`, `ProfileTab.tsx` | Low | COMPLETE |
+| 8.6 | Fix bg-neutral-900 backgrounds → bg-surface in CRM dropdowns | `StudioCRMView.tsx` | Low | COMPLETE |
+| 8.7 | Fix bg-black/60 select backgrounds → bg-surface-hover | `ShopTab.tsx` | Low | COMPLETE |
+| 8.8 | Fix border-white/15 → border-border in CRM dropdown | `StudioCRMView.tsx` | Low | COMPLETE |
+| 8.9 | Fix bg-black in AccountDisabledScreen → bg-background | `AccountDisabledScreen.tsx` | Low | COMPLETE |
+
+### Notes
+
+- WF-01 was a critical workflow bug: admin trash/disable action was silently reversed on every player login. The fix renders the existing `AccountDisabledScreen` (with 3-day cooldown and server-time anti-tamper check) instead of auto-reactivating.
+- Phase 6 spillover: ~50 hardcoded dark-theme colors in select `<option>` elements, modal backgrounds, and form controls were missed during the bulk color migration. These rendered as dark backgrounds on the light theme. All replaced with semantic tokens (`bg-surface`, `bg-surface-hover`).
+- Zero new TypeScript errors introduced (build passes clean)
+
+---
+
+## Phases 9–11
 
 Task breakdowns will be added as each phase is approved.
 

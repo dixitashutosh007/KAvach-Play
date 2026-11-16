@@ -2308,7 +2308,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             <select
               value={scMatchId}
               onChange={(e) => setScMatchId(e.target.value)}
-              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-surface"
             >
               <option value="">— none —</option>
               {sortedMatches.map((m) => (
@@ -2331,7 +2331,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                   const p = store.players.find((pp) => pp.id === e.target.value);
                   if (p) setScPotmNameOverride(p.name);
                 }}
-                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-surface"
               >
                 <option value="">— pick player —</option>
                 {rosterOptions.map((p) => (
@@ -2501,7 +2501,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
               <select
                 value={resultId}
                 onChange={(e) => setResultId(e.target.value)}
-                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                className="bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-surface"
               >
                 {resultTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -2589,7 +2589,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
             <select
               value={aPlayerId}
               onChange={(e) => setAPlayerId(e.target.value)}
-              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent [&>option]:bg-surface"
             >
               {rosterOptions.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -2736,7 +2736,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
                       c[i] = { ...c[i], outcome: e.target.value as WeekOutcome };
                       setWkRows(c);
                     }}
-                    className="bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent [&>option]:bg-neutral-900"
+                    className="bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent [&>option]:bg-surface"
                   >
                     <option value="W">Win</option>
                     <option value="L">Loss</option>

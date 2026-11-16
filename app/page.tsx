@@ -58,10 +58,11 @@ import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
 import { RegistrationForm } from "@/components/onboarding/RegistrationForm";
 import { PendingApprovalScreen } from "@/components/onboarding/PendingApprovalScreen";
 import { RejectedScreen } from "@/components/onboarding/RejectedScreen";
-
+import { AccountDisabledScreen } from "@/components/onboarding/AccountDisabledScreen";
 import { QuotaExceededScreen } from "@/components/onboarding/QuotaExceededScreen";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { useToast } from "@/components/ui/Toast";
 
 // Lazy-loaded tab components — only downloaded when the user navigates to them
 const MatchesTab = dynamic(() => import("@/components/MatchesTab").then(m => ({ default: m.MatchesTab })), { ssr: false });
@@ -90,6 +91,7 @@ export default function Home() {
     logOut,
   } = useAuth();
   const store = useStore(user);
+  const { toast } = useToast();
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   useEffect(() => {
@@ -446,6 +448,7 @@ export default function Home() {
       });
     } catch (err) {
       console.error("Error syncing profile:", err);
+      toast("Failed to sync your profile. Please try again.", "error");
     } finally {
       setIsRegistering(false);
     }
@@ -523,7 +526,14 @@ export default function Home() {
     store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
 
   if (player?.disabled) {
-    store.updatePlayer(player.id, { disabled: false, disabledAt: undefined });
+    return (
+      <AccountDisabledScreen
+        player={player}
+        user={user}
+        store={store}
+        now={now}
+      />
+    );
   }
 
   const isSuperAdmin =

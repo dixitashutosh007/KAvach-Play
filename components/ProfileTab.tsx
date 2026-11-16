@@ -506,7 +506,7 @@ export function ProfileTab({
                     onChange={(e) =>
                       setFormData({ ...formData, chestSize: e.target.value })
                     }
-                    className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
+                    className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface font-mono"
                   >
                     <option value="">Select Size *</option>
                     {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (
@@ -537,7 +537,7 @@ export function ProfileTab({
             {/* Sticky action bar so users on mobile always see the submit
                 button even with the virtual keyboard open, and don't have
                 to scroll all the way to the bottom of a tall form. */}
-            <div className="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex gap-2 bg-neutral-950/95 backdrop-blur-md border-t border-border mt-6">
+            <div className="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex gap-2 bg-surface/95 backdrop-blur-md border-t border-border mt-6">
               {!hasMissingMandatory && (
                 <button
                   type="button"

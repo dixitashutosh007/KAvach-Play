@@ -200,7 +200,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={entityFilter}
           onChange={e => setEntityFilter(e.target.value as AuditEntity | "")}
-          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           <option value="">All Types</option>
           {ENTITY_OPTIONS.map(o => (
@@ -210,7 +210,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={actionFilter}
           onChange={e => setActionFilter(e.target.value as AuditAction | "")}
-          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           <option value="">All Actions</option>
           {ACTION_OPTIONS.map(o => (
@@ -220,7 +220,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={actorTypeFilter}
           onChange={e => setActorTypeFilter(e.target.value as AuditActorType | "")}
-          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           <option value="">All Actors</option>
           {ACTOR_TYPE_OPTIONS.map(o => (

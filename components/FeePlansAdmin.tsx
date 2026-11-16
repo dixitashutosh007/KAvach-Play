@@ -90,7 +90,7 @@ export function FeePlansAdmin({ store }: { store: ReturnType<typeof useStore> })
             <select
               value={type}
               onChange={(e) => setType(e.target.value as FeePlan["type"])}
-              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-950"
+              className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
             >
               {PLAN_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>

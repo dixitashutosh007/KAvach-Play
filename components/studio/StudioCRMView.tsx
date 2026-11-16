@@ -721,19 +721,19 @@ export function StudioCRMView({
                       }
                       className={`text-xs font-bold px-2.5 py-1 rounded-md border appearance-none cursor-pointer focus:outline-none ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border}`}
                     >
-                      <option value="new" className="bg-neutral-900 text-emerald-400">
+                      <option value="new" className="bg-surface text-emerald-400">
                         New
                       </option>
-                      <option value="contacted" className="bg-neutral-900 text-amber-400">
+                      <option value="contacted" className="bg-surface text-amber-400">
                         In Discussion
                       </option>
-                      <option value="trial" className="bg-neutral-900 text-blue-400">
+                      <option value="trial" className="bg-surface text-blue-400">
                         Trial / Visit
                       </option>
-                      <option value="converted" className="bg-neutral-900 text-purple-400">
+                      <option value="converted" className="bg-surface text-purple-400">
                         Converted
                       </option>
-                      <option value="closed" className="bg-neutral-900 text-gray-400">
+                      <option value="closed" className="bg-surface text-gray-400">
                         Closed
                       </option>
                     </select>
@@ -784,7 +784,7 @@ export function StudioCRMView({
                         <UserPlus className="w-3 h-3" /> Assign
                       </button>
                       {isAssignDropdownOpen && (
-                        <div className="absolute top-full left-0 mt-1 z-30 bg-neutral-900 border border-white/15 rounded-lg shadow-xl p-2 min-w-[180px] space-y-1">
+                        <div className="absolute top-full left-0 mt-1 z-30 bg-surface border border-border rounded-lg shadow-xl p-2 min-w-[180px] space-y-1">
                           {crmTeamPlayers.length === 0 ? (
                             <div className="text-[11px] text-text-muted p-2">
                               No CRM team set up. Use the &quot;CRM Team&quot; button above.
@@ -912,7 +912,7 @@ export function StudioCRMView({
                           Notify Assignee{assignedPlayers.length > 1 ? "s" : ""}
                         </button>
                         {notifyPickerLeadId === lead.id && assignedPlayers.length > 1 && (
-                          <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-white/15 rounded-lg shadow-xl py-1 min-w-[180px]">
+                          <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-border rounded-lg shadow-xl py-1 min-w-[180px]">
                             {assignedPlayers.map((p) => (
                               <button
                                 key={p.id}
@@ -1361,12 +1361,12 @@ function LeadFormModal({
                 onChange={(e) => setSource(e.target.value as LeadSource)}
                 className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
               >
-                <option value="whatsapp" className="bg-neutral-900">WhatsApp</option>
-                <option value="call" className="bg-neutral-900">Direct Call</option>
-                <option value="jotform" className="bg-neutral-900">Jotform</option>
-                <option value="email" className="bg-neutral-900">Email</option>
-                <option value="walk_in" className="bg-neutral-900">Walk-in</option>
-                <option value="other" className="bg-neutral-900">Other</option>
+                <option value="whatsapp" className="bg-surface">WhatsApp</option>
+                <option value="call" className="bg-surface">Direct Call</option>
+                <option value="jotform" className="bg-surface">Jotform</option>
+                <option value="email" className="bg-surface">Email</option>
+                <option value="walk_in" className="bg-surface">Walk-in</option>
+                <option value="other" className="bg-surface">Other</option>
               </select>
             </div>
 
@@ -1379,11 +1379,11 @@ function LeadFormModal({
                 onChange={(e) => setStatus(e.target.value as LeadStatus)}
                 className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
               >
-                <option value="new" className="bg-neutral-900">New / Uncontacted</option>
-                <option value="contacted" className="bg-neutral-900">In Discussion</option>
-                <option value="trial" className="bg-neutral-900">Trial / Visit Scheduled</option>
-                <option value="converted" className="bg-neutral-900">Converted</option>
-                <option value="closed" className="bg-neutral-900">Closed / Not Interested</option>
+                <option value="new" className="bg-surface">New / Uncontacted</option>
+                <option value="contacted" className="bg-surface">In Discussion</option>
+                <option value="trial" className="bg-surface">Trial / Visit Scheduled</option>
+                <option value="converted" className="bg-surface">Converted</option>
+                <option value="closed" className="bg-surface">Closed / Not Interested</option>
               </select>
             </div>
           </div>

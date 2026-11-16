@@ -843,7 +843,7 @@ export function BadgesTab({
       {/* Delete Badge Confirmation */}
       {confirmDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4">
+          <div className="bg-surface rounded-xl p-5 max-w-sm w-full border border-border space-y-4">
             <h3 className="font-bold text-text-primary">Remove Badge?</h3>
             <p className="text-sm text-text-secondary">This will permanently remove this badge from the player.</p>
             <div className="flex gap-2">
@@ -867,7 +867,7 @@ export function BadgesTab({
       {/* Delete Badge Type Confirmation */}
       {confirmDeleteDef && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4">
+          <div className="bg-surface rounded-xl p-5 max-w-sm w-full border border-border space-y-4">
             <h3 className="font-bold text-text-primary">Delete Badge Type?</h3>
             {badgesExistForType(confirmDeleteDef) ? (
               <p className="text-sm text-red-400">

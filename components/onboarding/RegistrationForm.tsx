@@ -354,7 +354,7 @@ export function RegistrationForm({
               <select
                 value={form.isWicketKeeper ? "Yes" : "No"}
                 onChange={(e) => set("isWicketKeeper", e.target.value === "Yes")}
-                className="w-full px-3 py-2 bg-neutral-950 border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                className="w-full px-3 py-2 bg-surface-hover border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent [&>option]:bg-surface font-mono"
               >
                 <option value="No">No</option>
                 <option value="Yes">Yes</option>
@@ -366,7 +366,7 @@ export function RegistrationForm({
                 required
                 value={form.chestSize}
                 onChange={(e) => set("chestSize", e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-950 border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent [&>option]:bg-neutral-950 font-mono"
+                className="w-full px-3 py-2 bg-surface-hover border border-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent [&>option]:bg-surface font-mono"
               >
                 <option value="">Select Size</option>
                 {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (

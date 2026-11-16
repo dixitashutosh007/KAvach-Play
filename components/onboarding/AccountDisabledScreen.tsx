@@ -60,7 +60,7 @@ export function AccountDisabledScreen({
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-black">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background">
       <div className="bg-surface p-8 rounded-2xl max-w-lg w-full text-center space-y-6 border border-red-500/30">
         <h2 className="font-extrabold text-xl text-text-primary tracking-wide uppercase">
           Account In Trash

@@ -961,7 +961,7 @@ export function ShopTab({
                   <select
                     value={merchCategory}
                     onChange={(e) => setMerchCategory(e.target.value as any)}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                   >
                     <option value="Jersey">Jersey</option>
                     <option value="Pant">Pant</option>
@@ -1091,7 +1091,7 @@ export function ShopTab({
                                 <select
                                   value={opt.priceModifierType}
                                   onChange={(e) => handleUpdateCustomFieldOption(fieldIndex, optIndex, { priceModifierType: e.target.value as "None" | "Add", priceModifierValue: e.target.value === "None" ? undefined : opt.priceModifierValue })}
-                                  className="w-full sm:w-auto bg-surface-hover border border-border rounded px-3 py-1.5 text-xs focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                                  className="w-full sm:w-auto bg-surface-hover border border-border rounded px-3 py-1.5 text-xs focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                                 >
                                   <option value="None">Keep Same Price</option>
                                   <option value="Add">Add INR</option>
@@ -1166,7 +1166,7 @@ export function ShopTab({
                   <select
                     value={merchStatus}
                     onChange={(e) => setMerchStatus(e.target.value as any)}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                   >
                     <option value="Accepting Orders">Accepting Orders and Payments</option>
                     <option value="Not Accepting Orders">Not Accepting New Orders Yet</option>
@@ -1266,7 +1266,7 @@ export function ShopTab({
                         setManualSize(pl.chestSize || "");
                       }
                     }}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                   >
                     <option value="">-- Choose Player --</option>
                     {store.players.map((p) => (
@@ -1293,7 +1293,7 @@ export function ShopTab({
                         setManualSpec(prod.specs[0] || "");
                       }
                     }}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                   >
                     <option value="">-- Choose Item --</option>
                     {store.merchandises.map((m) => (
@@ -1336,7 +1336,7 @@ export function ShopTab({
                                   [field.name]: e.target.value
                                 });
                               }}
-                              className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900 font-semibold"
+                              className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface font-semibold"
                             >
                               <option value="">-- Choose {field.name} --</option>
                               {field.options.map((opt) => {
@@ -1368,7 +1368,7 @@ export function ShopTab({
                             required
                             value={manualSize}
                             onChange={(e) => setManualSize(e.target.value)}
-                            className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900 font-mono"
+                            className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface font-mono"
                           >
                             <option value="">-- Choose Size --</option>
                             {store.merchandises.find((m: any) => m.id === manualMerchId)?.sizes?.map((s: string) => (
@@ -1389,7 +1389,7 @@ export function ShopTab({
                             id="manualSpecSelect"
                             value={manualSpec}
                             onChange={(e) => setManualSpec(e.target.value)}
-                            className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900 font-semibold"
+                            className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface font-semibold"
                           >
                             <option value="">-- Choose Specification --</option>
                             {store.merchandises.find((m: any) => m.id === manualMerchId)?.specs?.map((sp: string) => (
@@ -1411,7 +1411,7 @@ export function ShopTab({
                   <select
                     value={manualPaidStatus}
                     onChange={(e) => setManualPaidStatus(e.target.value as any)}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                   >
                     <option value="Paid">Paid Upfront</option>
                     <option value="Unpaid">Unpaid / Cash Awaiting</option>
@@ -1548,7 +1548,7 @@ export function ShopTab({
                                   onChange={(e) =>
                                     stagePendingEdit(ord.id, { paymentStatus: e.target.value })
                                   }
-                                  className={`bg-black/60 border rounded px-2 py-1 text-[10px] font-bold focus:outline-none ${
+                                  className={`bg-surface-hover border rounded px-2 py-1 text-[10px] font-bold focus:outline-none ${
                                     isDirty ? "border-accent ring-1 ring-accent/40" : "border-border"
                                   } ${effective === "Paid" ? "text-emerald-400" : "text-amber-400"}`}
                                 >
@@ -1569,7 +1569,7 @@ export function ShopTab({
                                   onChange={(e) =>
                                     stagePendingEdit(ord.id, { orderStatus: e.target.value })
                                   }
-                                  className={`bg-black/60 border rounded px-2 py-1 text-[10px] font-bold text-text-primary focus:outline-none whitespace-nowrap ${
+                                  className={`bg-surface-hover border rounded px-2 py-1 text-[10px] font-bold text-text-primary focus:outline-none whitespace-nowrap ${
                                     isDirty ? "border-accent ring-1 ring-accent/40" : "border-border"
                                   }`}
                                 >
@@ -1874,7 +1874,7 @@ export function ShopTab({
                               {paidCount} / {moq} Ordered ({pct}%)
                             </span>
                           </div>
-                          <div className="h-2 bg-black/60 rounded-full overflow-hidden border border-border">
+                          <div className="h-2 bg-surface-hover rounded-full overflow-hidden border border-border">
                             <div
                               style={{ width: `${pct}%` }}
                               className={`h-full rounded-full transition-all duration-500 ${
@@ -2273,7 +2273,7 @@ export function ShopTab({
                       paymentStatus: e.target.value as "Paid" | "Unpaid",
                     }))
                   }
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-neutral-900"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary [&>option]:bg-surface"
                 >
                   <option value="Paid">Paid</option>
                   <option value="Unpaid">Unpaid</option>
@@ -2426,7 +2426,7 @@ export function ShopTab({
                             [field.name]: e.target.value
                           });
                         }}
-                        className="w-full bg-black/60 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-semibold [&>option]:bg-neutral-900"
+                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-semibold [&>option]:bg-surface"
                       >
                         <option value="" disabled>-- Select {field.name} --</option>
                         {field.options.map((opt) => {
@@ -2455,7 +2455,7 @@ export function ShopTab({
                         id="orderSizeSelect"
                         value={orderSize}
                         onChange={(e) => setOrderSize(e.target.value)}
-                        className="w-full bg-black/60 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-mono [&>option]:bg-neutral-900"
+                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-mono [&>option]:bg-surface"
                       >
                         <option value="" disabled>-- Select Size --</option>
                         {selectedMerch.sizes.map((s) => (
@@ -2477,7 +2477,7 @@ export function ShopTab({
                         id="orderSpecSelect"
                         value={orderSpec}
                         onChange={(e) => setOrderSpec(e.target.value)}
-                        className="w-full bg-black/60 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-semibold [&>option]:bg-neutral-900"
+                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-semibold [&>option]:bg-surface"
                       >
                         <option value="" disabled>-- Select Specification --</option>
                         {selectedMerch.specs.map((sp) => (
@@ -2510,7 +2510,7 @@ export function ShopTab({
                       value={customJerseyName}
                       onChange={(e) => setCustomJerseyName(e.target.value.toUpperCase())}
                       placeholder="e.g. DHONI"
-                      className="w-full bg-black/60 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary uppercase font-mono"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary uppercase font-mono"
                     />
                   </div>
 
@@ -2524,7 +2524,7 @@ export function ShopTab({
                       value={customJerseyNumber}
                       onChange={(e) => setCustomJerseyNumber(e.target.value.replace(/\D/g, ""))}
                       placeholder="e.g. 7"
-                      className="w-full bg-black/60 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-mono"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary font-mono"
                     />
                     {customJerseyNumber === "10" && (
                       <p className="text-red-400 font-bold text-[10px] mt-1 flex items-center gap-0.5 animate-pulse">

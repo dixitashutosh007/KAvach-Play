@@ -916,7 +916,7 @@ function ExemptLateFeeModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4"
+        className="bg-surface rounded-xl p-5 max-w-sm w-full border border-border space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -1045,7 +1045,7 @@ function MarkPaidModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-[#1a1a2e] rounded-xl p-5 max-w-sm w-full border border-border space-y-4"
+        className="bg-surface rounded-xl p-5 max-w-sm w-full border border-border space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

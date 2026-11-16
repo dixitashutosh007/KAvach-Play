@@ -207,7 +207,7 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
   };
 
   const inputClass = "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-2 py-1.5 w-full";
-  const selectClass = "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-1 py-1.5 appearance-none cursor-pointer w-full [&>option]:bg-neutral-950";
+  const selectClass = "bg-transparent border-none text-text-primary text-xs focus:bg-surface-hover focus:outline-none px-1 py-1.5 appearance-none cursor-pointer w-full [&>option]:bg-surface";
 
   const activeTournaments = store.tournaments.filter(t => t.status === "Ongoing" || t.status === "Upcoming");
 
@@ -217,7 +217,7 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
         <select
           value={filter}
           onChange={e => setFilter(e.target.value as SheetFilter)}
-          className="rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950"
+          className="rounded-lg border border-border bg-surface-hover px-3 py-2 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           {(Object.keys(SHEET_FILTER_LABELS) as SheetFilter[]).map(f => (
             <option key={f} value={f}>{SHEET_FILTER_LABELS[f]}</option>

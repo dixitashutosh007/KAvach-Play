@@ -290,7 +290,7 @@ export function EditPlayerInline({
             onChange={(e) =>
               setFormData({ ...formData, chestSize: e.target.value })
             }
-            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&>option]:bg-neutral-950 font-mono"
+            className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface font-mono"
           >
             <option value="">Select Size</option>
             {["36", "38", "40", "42", "44", "46", "S", "M", "L", "XL", "XXL"].map((sz) => (

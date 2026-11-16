@@ -1112,7 +1112,7 @@ function RecordCatchesModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#1a1a2e] rounded-xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface rounded-xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-text-primary flex items-center gap-2">
             <Target className="w-5 h-5 text-teal-400" />
