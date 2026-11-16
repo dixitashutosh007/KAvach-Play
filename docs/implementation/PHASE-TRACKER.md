@@ -19,7 +19,7 @@
 | 7 | Financial Logic Overhaul | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 8 | Workflow Simplification | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 9 | Studio & Shop Enhancement | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 10 | Testing & Quality Infrastructure | NOT STARTED | — | — |
+| 10 | Testing & Quality Infrastructure | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 11 | Performance & Optimization | NOT STARTED | — | — |
 
 ---
@@ -333,9 +333,78 @@
 
 ---
 
-## Phases 10–11
+## Phase 10 — Testing & Quality Infrastructure
 
-Task breakdowns will be added as each phase is approved.
+### Task Breakdown
+
+| Task | Description | Files | Status |
+|------|-------------|-------|--------|
+| 10.1 | Baseline test run — existing accounting tests | `tests/accounting-functional.test.mjs` | COMPLETE (12/12 pass) |
+| 10.2 | TypeScript strict-mode audit | `npx tsc --noEmit` | COMPLETE (15 pre-existing errors, 0 introduced) |
+| 10.3 | Utility function test suite | `tests/utils-functional.test.mjs` | COMPLETE (52 tests, 11 suites) |
+| 10.4 | E2E test infrastructure audit | `e2e/`, `playwright.config.ts` | COMPLETE (documented) |
+| 10.5 | Coverage gap analysis | — | COMPLETE (documented below) |
+
+### Test Suite Summary
+
+**Functional tests (node:test)**: 64 total tests, 18 suites, 0 failures
+- `tests/accounting-functional.test.mjs` — 12 tests across 5 suites (match fee accounting)
+- `tests/utils-functional.test.mjs` — 52 tests across 11 suites (utility functions)
+
+**New test coverage added (Phase 10)**:
+1. **normalizeIndianMobile** — 9 tests: plain 10-digit, +91 prefix, 91 prefix, 091 prefix, leading 0, spaces/dashes, short input, null/undefined, overflow digits
+2. **normalizeEmail** — 2 tests: case normalization, null handling
+3. **formatDate** — 7 tests: YYYY-MM-DD, DD/MM/YYYY, Firestore timestamp, Date object, null/fallback, garbage input, toDate() mock
+4. **dbToInputDate** — 4 tests: YYYY-MM-DD conversion, Firestore timestamp, null, Date object
+5. **inputToDbDate** — 4 tests: DD/MM/YYYY conversion, padding, passthrough, null
+6. **computeLateFees** — 7 tests: weekday rejection, empty date, Saturday base fee, Sunday base fee, weekly increments, Saturday→Tuesday deadline, Sunday→Tuesday deadline
+7. **findExistingPlayer** — 7 tests: mobile match, email case-insensitive match, disabled skip, merged skip, excludeId, no match, mobile-before-email priority
+8. **validateJerseyNumber** — 5 tests: valid numbers, reserved 10, non-numeric, >3 digits, empty
+9. **parseExpiryDate** — 3 tests: YYYY-MM-DD, DD/MM/YYYY, ISO 8601 NaN proof (validates Phase 9 fix)
+10. **toYMD webhook helper** — 2 tests: zero-padded formatting, roundtrip with parseExpiryDate
+11. **Date conversion roundtrip** — 2 tests: inputToDbDate↔dbToInputDate, formatDate chain
+
+### TypeScript Error Inventory (15 pre-existing)
+
+| # | File | Error | Type |
+|---|------|-------|------|
+| 1 | `app/page.tsx` | `isFeatureEnabled` type mismatch (string vs union) | TS2769 (x2) |
+| 2 | `components/AdminDashboard.tsx` | `OtherFee.label` property missing | TS2339 |
+| 3 | `components/AdminDashboard.tsx` | `Match.title` property missing | TS2339 |
+| 4 | `components/AssignFeesAdmin.tsx` | `Match.title` property missing | TS2339 |
+| 5 | `components/ClubTab.tsx` | `persona` string vs "admin" \| "player" literal | TS2769 (x3) |
+| 6 | `components/FinanceTab.tsx` | `Match.title` property missing | TS2339 |
+| 7 | `components/FinanceTab.tsx` | `paymentMethod` not in `Partial<MerchOrder>` | TS2353 |
+| 8 | `components/MatchesTab.tsx` | `Match.title` property missing (x2) | TS2339 |
+| 9 | `components/RazorReportView.tsx` | `razorpayPaymentId` not in `MatchPayment` | TS2339 |
+| 10 | `components/RazorReportView.tsx` | "cash" comparison with no overlap | TS2367 |
+| 11 | `components/ShopTab.tsx` | `orderPayload` not found in scope | TS2304 |
+
+**Note**: Error #11 (`ShopTab.tsx:390 orderPayload`) is a pre-existing scope bug in `handleRazorpayCheckout` — `orderPayload` is defined later in `finalizeOrderPlacement` (line 468) but referenced in the intent payload at line 390. This is the same duplicated-order-logic issue documented as SS-D1 in Phase 9.
+
+### E2E Test Infrastructure
+
+**Playwright config**: Mobile-first (Pixel 5 emulation) + Desktop Chrome, base URL `localhost:3000`, auto dev server, `data-testid` selectors.
+
+**15 spec files**: login, registration, app-loading, navigation, finance, match-fees, studio-admin, club-tab, settings-features, admin-dashboard, home-match-nav, mobile-ux, match-fee-accounting, grounds, plus auth helpers.
+
+**Limitations**: E2E tests require `ADMIN_EMAIL`/`ADMIN_PASSWORD` environment variables and a running Firebase backend — not executable in this audit environment without credentials. Spec files audited for structural correctness; no regressions detected from Phase 6-9 changes (tests use `data-testid` attributes which remain stable).
+
+### Coverage Gap Analysis
+
+| Gap | Priority | Notes |
+|-----|----------|-------|
+| Subscription payment webhook end-to-end | High | Requires Firebase emulator setup; webhook logic covered by toYMD/parseExpiryDate unit tests |
+| AccountDisabledScreen 3-day cooldown logic | Medium | Anti-tamper server-time check depends on Firestore `_ping` document |
+| Razorpay order creation intent flow | Medium | ShopTab `orderPayload` scope bug (SS-D1) blocks correct testing |
+| Firestore security rules regression tests | Medium | Deferred from Phase 1 (task 1.10); requires Firebase emulator |
+| `alert()` → toast migration verification | Low | 107 `alert()` calls documented in prior review; systematic migration deferred |
+
+---
+
+## Phase 11 — Performance & Optimization
+
+Task breakdown will be added when this phase is approved.
 
 ---
 
