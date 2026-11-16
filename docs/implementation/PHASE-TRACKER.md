@@ -287,6 +287,14 @@
 | SS-05 | **LOW** | Same dark-palette status colors in PlayersTab `getMembershipStatus` (`bg-red-950/10`, `bg-amber-950/10`, `bg-emerald-950/10`) | `PlayersTab.tsx:114-158` |
 | SS-06 | **LOW** | Inactive plan border used `border-red-900/30` (dark) | `PlansView.tsx:192` |
 | SS-07 | **LOW** | `<optgroup>` background used `bg-emerald-900` (dark) | `AssignFeesAdmin.tsx:276` |
+| SS-08 | **MEDIUM** | ShopTab dead code: `defaultJerseyName/Number/ChestSize` computed but never read; shadowed `hasJerseyDetails` + dead `orderPayload` in Razorpay branch | `ShopTab.tsx:158-160, 385-401` |
+| SS-09 | **MEDIUM** | ShopTab typo `bg-surface-hover0` (undefined class) on WhatsApp report textarea | `ShopTab.tsx:2275` |
+| SS-10 | **MEDIUM** | ShopTab 5 no-op hover effects: `bg-surface-hover hover:bg-surface-hover` (identical) | `ShopTab.tsx` (5 locations) |
+| SS-11 | **MEDIUM** | ShopTab dark-theme gradient banners (`from-emerald-950/80`, `from-emerald-950`) unreadable on light bg | `ShopTab.tsx` (4 gradient locations) |
+| SS-12 | **MEDIUM** | ShopTab 15+ dark-theme status badges (`*-950/*` alpha, `text-*-300/400`) invisible or unreadable on light bg | `ShopTab.tsx` (bulk) |
+| SS-13 | **HIGH** | `bg-card` token undefined (no `--color-card` in theme system) — 13 elements had no background at all | `StudioCRMView.tsx` (12), `PlayersTab.tsx` (1) |
+| SS-14 | **MEDIUM** | StudioCRMView `bg-gray-800` dropdown, all `text-*-300/400` colors unreadable on light background | `StudioCRMView.tsx` (30+ instances) |
+| SS-15 | **LOW** | StudioCRMView `text-black` on accent buttons should use semantic `text-text-accent` | `StudioCRMView.tsx:1036, 1490` |
 
 ### Documented (Not Fixed — Requires Product Decision)
 
@@ -307,12 +315,21 @@
 | 9.5 | Fix dark-palette membership status colors in PlayersTab | `PlayersTab.tsx` | Low | COMPLETE |
 | 9.6 | Fix dark-palette inactive plan border | `PlansView.tsx` | Low | COMPLETE |
 | 9.7 | Fix dark-palette optgroup background | `AssignFeesAdmin.tsx` | Low | COMPLETE |
+| 9.8 | Remove dead code: unused vars + shadowed hasJerseyDetails + dead orderPayload | `ShopTab.tsx` | Medium | COMPLETE |
+| 9.9 | Fix typo `bg-surface-hover0` → `bg-surface-hover` | `ShopTab.tsx` | Medium | COMPLETE |
+| 9.10 | Fix 5 no-op hover effects → `hover:bg-border` | `ShopTab.tsx` | Low | COMPLETE |
+| 9.11 | Fix dark-theme gradients → `from-accent/10 to-surface-hover` | `ShopTab.tsx` | Medium | COMPLETE |
+| 9.12 | Fix 15+ dark-theme status badges (`*-950/*` → `*-500/*`, text `*-300/400` → `*-600`) | `ShopTab.tsx` | Medium | COMPLETE |
+| 9.13 | Fix undefined `bg-card` → `bg-surface` (13 instances) | `StudioCRMView.tsx`, `PlayersTab.tsx` | High | COMPLETE |
+| 9.14 | Fix dark-theme colors in StudioCRMView: `bg-gray-800`, all `text-*-300/400` → `text-*-600`, `bg-*-500/20` → `bg-*-500/10` | `StudioCRMView.tsx` | Medium | COMPLETE |
+| 9.15 | Fix `text-black` → `text-text-accent` on accent buttons | `StudioCRMView.tsx` | Low | COMPLETE |
 
 ### Notes
 
 - SS-01 was the highest-impact finding: the Razorpay client `handler` callback and the server webhook BOTH computed and wrote `studioExpiryDate`. If the webhook fired after the client (common timing), it read the already-extended date and extended again — doubling the subscription duration. Fix: client handler now only writes membership status fields (`isStudioMember`, `studioPlan`, `studioStartDate`, `lastPaidDate`, `lastPaidAmount`); expiry calculation and subscription history are handled exclusively by the webhook.
 - This follows the pattern established in Phase 7/8 for match late fees (FinanceTab line 340: "Late fees are created and marked Paid server-side by the webhook").
 - Zero new TypeScript errors introduced (build passes clean)
+- Second pass (SS-08 through SS-15) completed comprehensive light-theme audit of ShopTab (2,581 lines) and StudioCRMView (1,607 lines), fixing dead code, undefined tokens, dark-theme gradients/badges/text colors, and semantic token compliance across all Studio & Shop components
 
 ---
 
