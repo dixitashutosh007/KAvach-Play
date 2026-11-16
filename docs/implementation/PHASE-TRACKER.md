@@ -13,7 +13,7 @@
 | 1 | Critical Security & Financial Fixes | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 2 | Data Integrity & Schema Cleanup | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 3 | Identity Consolidation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 4 | Component Decomposition | NOT STARTED | — | — |
+| 4 | Component Decomposition | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 5 | Navigation Rationalisation | NOT STARTED | — | — |
 | 6 | UI/UX Redesign | NOT STARTED | — | — |
 | 7 | Financial Logic Overhaul | NOT STARTED | — | — |
@@ -121,7 +121,28 @@
 
 ---
 
-## Phases 4–11
+## Phase 4 — Component Decomposition
+
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 4.1 | Link admin-tools from AdminDashboard nav (D-04) | `components/AdminDashboard.tsx` | Low | COMPLETE |
+| 4.2 | Extract `useSessionState` to shared hook | `hooks/useSessionState.ts` (new), `components/MatchesTab.tsx` | Low | COMPLETE |
+| 4.3 | Extract `MatchCalendarView` (627 lines) | `components/MatchCalendarView.tsx` (new), `components/MatchesTab.tsx` | Medium | COMPLETE |
+| 4.4 | Extract `MatchToolbar` (323 lines) | `components/MatchToolbar.tsx` (new), `components/MatchesTab.tsx` | Medium | COMPLETE |
+| 4.5 | Extract `MatchSheetView` (463 lines) | `components/MatchSheetView.tsx` (new), `components/MatchesTab.tsx` | Medium | COMPLETE |
+
+### Notes
+
+- MatchesTab.tsx reduced from 5,185 to 3,721 lines (28% reduction)
+- `AssignMatchAdmin` (L3499-3721) found to be dead code: defined but never rendered. Left in place per non-negotiable rules.
+- All extracted components are self-contained with explicit imports; no circular dependencies
+- Zero new TypeScript errors introduced
+
+---
+
+## Phases 5–11
 
 Task breakdowns will be added as each phase is approved.
 

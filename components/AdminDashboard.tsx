@@ -441,6 +441,15 @@ export function AdminDashboard({
         <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
            Admin Dashboard
         </h2>
+        {isSuperAdmin && (
+          <a
+            href="/admin-tools"
+            className="text-xs text-white/50 hover:text-white/80 transition flex items-center gap-1"
+          >
+            <Search className="w-3.5 h-3.5" />
+            Admin Tools
+          </a>
+        )}
       </div>
 
       {/* Finance: Total Dues + Add No Show + Send Reminders */}
