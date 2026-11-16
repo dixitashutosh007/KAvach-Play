@@ -322,12 +322,15 @@ export type MatchPayment = {
   matchId: string;
   playerId: string;
   guestName?: string;
-  status: "Paid" | "Unpaid" | "Not Playing" | "Failed";
+  status: "Paid" | "Unpaid" | "Not Playing" | "Failed" | "Waived";
   paymentMethod?: "razorpay" | "manual";
+  razorpayPaymentId?: string;
   manualMethod?: ManualPaymentMethod;
   manualBy?: string;
   feeCollectedAmount?: number;
   feeOffsetAmount?: number;
+  waivedReason?: string;
+  waivedAt?: any;
   availability?:
     | "Yes"
     | "No"

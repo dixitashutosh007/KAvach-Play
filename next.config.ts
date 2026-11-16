@@ -2,12 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   serverExternalPackages: ['firebase', 'firebase-admin', '@firebase/firestore'],
   // Allow access to remote image placeholder.
   images: {

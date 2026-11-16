@@ -80,7 +80,7 @@ export default function RazorReportView({
           if (isGenuineRazorpay) {
             productDesc = `Match Fee: vs ${match.opponent}`;
           } else {
-            const methodLabel = p.manualMethod === "cash" ? "Cash Collected" : (p.manualMethod ? p.manualMethod.replace(/_/g, " ") : "Cash Collected");
+            const methodLabel = p.manualMethod === "cash_collected" ? "Cash Collected" : (p.manualMethod ? p.manualMethod.replace(/_/g, " ") : "Cash Collected");
             productDesc = `Match Fee (${methodLabel}${p.manualBy ? ` by ${p.manualBy}` : ""}): vs ${match.opponent}`;
           }
 

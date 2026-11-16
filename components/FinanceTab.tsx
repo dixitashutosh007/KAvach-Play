@@ -110,7 +110,7 @@ export function PlayerFinanceView({
     rawId: string;
     playerId?: string;
     matchId?: string;
-    status: "Paid" | "Unpaid" | "Not Playing" | "Failed" | "Cancelled";
+    status: "Paid" | "Unpaid" | "Not Playing" | "Failed" | "Cancelled" | "Waived";
     updatedAtSeconds: number;
   };
 
@@ -167,7 +167,8 @@ export function PlayerFinanceView({
     if (p.status !== "Unpaid") return;
     if (p.feeOverride === 0) return;
     const match = store.matches.find((m: any) => m.id === p.matchId);
-    if (!match) return;
+    if (!match || !isMatchBillable(match)) return;
+    const matchLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
     const exempted = store.otherFees.some(
       (f: any) =>
         f.playerId === p.playerId &&
@@ -176,7 +177,19 @@ export function PlayerFinanceView({
         f.status !== "Cancelled",
     );
     if (exempted) return;
-    const matchLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+
+    // FIN-007: Do not re-levy or duplicate automatic late fees if already recorded in otherFees
+    const alreadyRecorded = store.otherFees.some(
+      (f: any) =>
+        f.playerId === p.playerId &&
+        f.status !== "Cancelled" &&
+        (
+          (f.title?.startsWith("Late Fee") && (f.title?.includes(match.id) || f.title?.includes(matchLabel) || f.comment?.includes(match.id))) ||
+          (f.templateId && f.templateId.includes(`latefee_${match.id}`))
+        ),
+    );
+    if (alreadyRecorded) return;
+
     const fees = computeLateFees(match.date, match.id, p.playerId, matchLabel);
     fees.forEach((lf, idx) => {
       const dueId = `latefee_${p.id}_${idx}`;
@@ -348,7 +361,7 @@ export function PlayerFinanceView({
                   );
                 } else if (due.type === "merch") {
                   updates.push(
-                    store.updateMerchOrder(due.rawId, { paymentStatus: "Paid", paymentMethod: "razorpay" })
+                    store.updateMerchOrder(due.rawId, { paymentStatus: "Paid" })
                   );
                 }
               }
@@ -1260,9 +1273,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
       .filter((d) => !searchPlayer || d.hasResults); // If searching, hide matches with no matches
   }, [filteredMatches, store.payments, store.players, searchPlayer]);
 
-  const grandTotalCollected = reportData
-    .filter((d) => isMatchBillable(d.match))
-    .reduce((t, d) => t + d.feeCollected, 0);
+  const grandTotalCollected = reportData.reduce((t, d) => t + d.feeCollected, 0);
   const grandTotalDue = reportData
     .filter((d) => isMatchBillable(d.match))
     .reduce((t, d) => t + d.totalDue, 0);

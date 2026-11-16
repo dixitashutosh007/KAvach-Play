@@ -38,7 +38,7 @@ export function StudioAdminTab({
   isStudioAdmin?: boolean;
   isSuperAdmin?: boolean;
   defaultAction?: string | null;
-  isFeatureEnabled?: (f: string) => boolean;
+  isFeatureEnabled?: (f: any) => boolean;
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();

@@ -105,7 +105,18 @@ service cloud.firestore {
 
     match /appUsers/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow create: if isSuperAdmin() || (
+        isSignedIn()
+        && request.auth.uid == userId
+        && (!('role' in incoming()) || incoming().role == 'player')
+        && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'canDesign', 'status'])
+      );
+      allow update: if isSuperAdmin() || (
+        isSignedIn()
+        && (request.auth.uid == userId || isClubAdmin())
+        && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'canDesign', 'status'])
+      );
+      allow delete: if isSuperAdmin();
     }
 
     function isValidGround(data) {
@@ -162,7 +173,7 @@ service cloud.firestore {
         && data.id is string
         && data.matchId is string && data.matchId.size() <= 128
         && data.playerId is string && data.playerId.size() <= 128
-        && data.status in ['Paid', 'Unpaid', 'Not Playing']
+        && data.status in ['Paid', 'Unpaid', 'Not Playing', 'Waived']
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -223,6 +234,19 @@ service cloud.firestore {
         && (!data.keys().hasAny(['isArchived']) || data.isArchived is bool)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
+    }
+
+    function isValidMerchOrder(data) {
+      return data.keys().hasAll(['id', 'playerId', 'playerName', 'merchId', 'merchName', 'price', 'paymentStatus', 'orderStatus', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.playerId is string && data.playerId.size() <= 128
+        && data.playerName is string && data.playerName.size() <= 100
+        && data.merchId is string && data.merchId.size() <= 128
+        && data.merchName is string && data.merchName.size() <= 100
+        && (data.price is int || data.price is float)
+        && data.paymentStatus is string
+        && data.orderStatus is string
+        && data.createdAt is timestamp;
     }
 
     match /auditLogs/{logId} {
@@ -345,7 +369,7 @@ service cloud.firestore {
     match /posts/{postId} {
       allow read: if isSignedIn();
       allow create: if isAnyAdmin();
-      allow update: if isSignedIn();
+      allow update: if isAnyAdmin();
       allow delete: if isAnyAdmin();
     }
 
@@ -430,9 +454,8 @@ service cloud.firestore {
       allow delete: if isAnyAdmin() && isValidId(playerId);
 
       match /otherFees/{feeId} {
-        allow read: if isSignedIn();
-        allow create, delete: if isAnyAdmin() || isSelf(playerId);
-        allow update: if isAnyAdmin() || isSelf(playerId);
+        allow read: if isFinanceAdmin() || isSuperAdmin() || isSelf(playerId);
+        allow create, update, delete: if isFinanceAdmin() || isSuperAdmin();
       }
     }
 
@@ -466,7 +489,7 @@ service cloud.firestore {
       }
 
       match /payments/{paymentId} {
-        allow read: if isSignedIn();
+        allow read: if isAnyAdmin() || (isSignedIn() && (resource.data.playerId == request.auth.uid || isSelf(resource.data.playerId)));
         allow create: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(incoming().playerId) && incoming().status == 'Not Playing'))
           && isValidId(paymentId)
           && isValidMatchPayment(incoming())
@@ -479,7 +502,24 @@ service cloud.firestore {
         // client-side writes. Duplicate-profile merges no longer touch
         // this collection from the client — /api/admin/merge-players
         // uses the admin SDK, which bypasses these rules entirely.
-        allow update: if (isMatchAdmin() || isFinanceAdmin() || (isSignedIn() && isSelf(existing().playerId)))
+        allow update: if (
+            (isMatchAdmin() || isFinanceAdmin()) ||
+            (
+              isSignedIn()
+              && isSelf(existing().playerId)
+              && (incoming().status == existing().status || incoming().status in ['Unpaid', 'Not Playing'])
+              && !incoming().diff(existing()).affectedKeys().hasAny([
+                'feeOverride',
+                'feeCollectedAmount',
+                'feeOffsetAmount',
+                'planTag',
+                'manualMethod',
+                'manualBy',
+                'sponsoredBy',
+                'sponsoring'
+              ])
+            )
+          )
           && isValidId(paymentId)
           && isValidMatchPayment(incoming())
           && incoming().matchId == existing().matchId
@@ -497,9 +537,23 @@ service cloud.firestore {
     }
 
     match /merchOrders/{orderId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isAnyAdmin() || (isSignedIn() && (existing().playerId == request.auth.uid || isSelf(existing().playerId)));
+      allow read: if isAnyAdmin() || (isSignedIn() && (resource.data.playerId == request.auth.uid || isSelf(resource.data.playerId)));
+      allow create: if isSignedIn()
+        && isValidId(orderId)
+        && isValidMerchOrder(incoming())
+        && (incoming().playerId == request.auth.uid || isSelf(incoming().playerId))
+        && incoming().paymentStatus == 'Unpaid'
+        && incoming().orderStatus == 'Order Placed'
+        && incoming().createdAt == request.time;
+      allow update: if isAnyAdmin() || (
+        isSignedIn()
+        && (existing().playerId == request.auth.uid || isSelf(existing().playerId))
+        && isValidMerchOrder(incoming())
+        && incoming().paymentStatus == existing().paymentStatus
+        && incoming().price == existing().price
+        && incoming().playerId == existing().playerId
+        && incoming().createdAt == existing().createdAt
+      );
       allow delete: if isAnyAdmin();
     }
 

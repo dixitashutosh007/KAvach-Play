@@ -27,14 +27,14 @@ export function ClubTab({
   defaultSubTab,
 }: {
   store: ReturnType<typeof useStore>;
-  persona: string;
+  persona: "admin" | "player";
   canDesign: boolean;
   isFinanceAdmin: boolean;
   isClubAdmin: boolean;
   isSuperAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
-  isFeatureEnabled: (f: string) => boolean;
+  isFeatureEnabled: (f: any) => boolean;
   defaultSubTab?: ClubSubTab | string | null;
 }) {
   const badgesDefaultView = defaultSubTab === "badges_grant" ? "award" : undefined;

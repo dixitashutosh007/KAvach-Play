@@ -10,6 +10,7 @@
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
 import { Match, MatchComment, Player, FeePlan } from "@/lib/types";
+import { isMatchBillable } from "@/lib/matchBillable";
 
 import {
   Plus,
@@ -1764,9 +1765,10 @@ export function MatchPayments({
     setIsGroupRemindModalOpen(false);
   };
 
-  const matchLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+  const matchLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
   const myLateFees = (() => {
     if (!myPayment || myPayment.status !== "Unpaid") return [];
+    if (!isMatchBillable(match)) return [];
     if (myPayment.feeOverride === 0) return [];
     const exempted = store.otherFees.some(
       (f: any) =>
@@ -1779,9 +1781,11 @@ export function MatchPayments({
     const alreadyPersisted = store.otherFees.some(
       (f: any) =>
         f.playerId === myPayment.playerId &&
-        f.title?.startsWith("Late Fee:") &&
-        f.title?.includes(matchLabel) &&
-        f.status === "Paid",
+        f.status !== "Cancelled" &&
+        (
+          (f.title?.startsWith("Late Fee") && (f.title?.includes(match.id) || f.title?.includes(matchLabel) || f.comment?.includes(match.id))) ||
+          (f.templateId && f.templateId.includes(`latefee_${match.id}`))
+        ),
     );
     if (alreadyPersisted) return [];
     return computeLateFees(match.date, match.id, myPayment.playerId, matchLabel);
@@ -2899,7 +2903,7 @@ export function MatchPayments({
                                       f.status !== "Cancelled",
                                   );
                                   if (!existingLateFee) {
-                                    const pLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+                                    const pLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
                                     const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
                                     for (const lf of fees) {
                                       const feeId = await store.addOtherFee(payment.playerId, {

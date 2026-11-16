@@ -418,7 +418,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const unsubPosts = () => {};
 
     const unsubMatches = onSnapshot(
-      collection(db, "matches"),
+      query(collection(db, "matches"), orderBy("date", "desc")),
       (snapshot) => {
         const ms = snapshot.docs.map(
           (doc) => ({ id: doc.id, ...doc.data() }) as Match,
@@ -507,6 +507,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       loadedOneShotsRef.current.clear();
     };
   }, [user]);
+
+  // ---- Lazy subscription lifecycle helpers (ARCH-001) ----
+
+  const detachDomain = useCallback((domainKey: string) => {
+    const unsub = lazySubsRef.current.get(domainKey);
+    if (unsub) {
+      try {
+        unsub();
+      } catch (err) {
+        console.warn(`[useStore] Error detaching subscription for ${domainKey}:`, err);
+      }
+      lazySubsRef.current.delete(domainKey);
+    }
+  }, []);
+
+  const detachAllLazy = useCallback((excludeKeys: string[] = []) => {
+    const excludeSet = new Set(excludeKeys);
+    lazySubsRef.current.forEach((unsub, key) => {
+      if (!excludeSet.has(key)) {
+        try {
+          unsub();
+        } catch (err) {
+          console.warn(`[useStore] Error detaching subscription for ${key}:`, err);
+        }
+        lazySubsRef.current.delete(key);
+      }
+    });
+  }, []);
 
   // ---- Lazy subscription helpers ----
 
@@ -1527,10 +1555,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const hasAppUserSync = Object.keys(cleanedAppUserUpdates).length > 0 && appUserToUpdate;
 
       if (hasAppUserSync) {
-        const batch = writeBatch(db);
-        batch.update(doc(db, "players", playerId), cleanedUpdates);
-        batch.update(doc(db, "appUsers", appUserToUpdate.id), cleanedAppUserUpdates);
-        await batch.commit();
+        try {
+          const batch = writeBatch(db);
+          batch.update(doc(db, "players", playerId), cleanedUpdates);
+          batch.update(doc(db, "appUsers", appUserToUpdate.id), cleanedAppUserUpdates);
+          await batch.commit();
+        } catch (syncErr) {
+          console.warn("[updatePlayer] Dual-write batch to appUsers failed, falling back to players-only update:", syncErr);
+          await updateDoc(doc(db, "players", playerId), cleanedUpdates);
+        }
       } else {
         await updateDoc(doc(db, "players", playerId), cleanedUpdates);
       }
@@ -2773,6 +2806,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     updateLead,
     deleteLead,
     addLeadNote,
+    detachDomain,
+    detachAllLazy,
     isLoaded,
   };
 }

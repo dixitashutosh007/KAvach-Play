@@ -12,6 +12,8 @@ export interface ThemePreset {
   name: string;
   mode: "light" | "dark";
   accent: string;
+  brand?: string;
+  brandSurface?: string;
   bg: string;
   glassBg: string;
   glassBorder: string;
@@ -31,17 +33,19 @@ export const THEME_PRESETS: ThemePreset[] = [
     name: "Kavach Light",
     mode: "light",
     accent: "#D51F43",
+    brand: "#A30F2D",
+    brandSurface: "#FCE8ED",
     bg: "#F6F7F9",
     glassBg: "#FFFFFF",
     glassBorder: "#E5E7EB",
     textAccent: "#FFFFFF",
     textPrimary: "#171C26",
-    textSecondary: "#4B5563",
+    textSecondary: "#667085",
     textMuted: "#9CA3AF",
     surface: "#FFFFFF",
     surfaceHover: "#F3F4F6",
     border: "#E5E7EB",
-    description: "Clean, professional light theme with KAvach red branding.",
+    description: "Clean, professional light theme with KAvach scarlet branding.",
   },
   {
     id: "emerald",

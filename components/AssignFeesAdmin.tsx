@@ -584,7 +584,7 @@ export function AssignFeesAdmin({
                                           f.status !== "Cancelled",
                                       );
                                       if (!existingLateFee) {
-                                        const mLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+                                        const mLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
                                         const fees = computeLateFees(match.date, match.id, fee.playerId, mLabel);
                                         for (const lf of fees) {
                                           const feeId = await store.addOtherFee(fee.playerId, {

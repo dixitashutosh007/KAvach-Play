@@ -111,7 +111,7 @@ export function AdminDashboard({
             id: f.id,
             playerName: player.name,
             amount: f.amount,
-            type: f.label || "Other Fee",
+            type: f.title || "Other Fee",
             date: ts,
           });
         }
@@ -1148,7 +1148,7 @@ function RecordCatchesModal({
             <option value="">— Select a match —</option>
             {recentMatches.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.date ? format(parseISO(m.date), "dd MMM yyyy") : "No date"} — {m.opponent || m.title || "Match"}
+                {m.date ? format(parseISO(m.date), "dd MMM yyyy") : "No date"} — {m.opponent || "Match"}
               </option>
             ))}
           </select>

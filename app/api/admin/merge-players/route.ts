@@ -6,17 +6,19 @@
  * regardless of the strict rules that govern client-side writes
  * (in particular, the payments rule that forbids changing playerId).
  *
- * Body: { loserId: string, keeperId: string }
+ * Body: { loserId: string, keeperId: string, dryRun?: boolean }
  * Auth: requireAdmin (Firebase ID token with the admin claim or
  *       an appUsers/{uid}.role === 'admin' fallback).
  *
- * Semantics identical to the previous client-side mergePlayer:
+ * Semantics:
  *   1. Reparent every matches/{matchId}/payments doc owned by loser → keeper
  *   2. Move every players/{loserId}/otherFees doc to players/{keeperId}
  *   3. Reparent every merchOrders doc owned by loser → keeper
- *   4. Fill any empty field on keeper from loser (never overwrites)
- *   5. Normalize keeper's mobile to +91XXXXXXXXXX
- *   6. Mark loser as disabled + mergedInto: keeperId (soft delete)
+ *   4. Reparent every appUsers doc linked to loser → keeper (IDT-001)
+ *   5. Fill any empty field on keeper from loser (never overwrites)
+ *   6. Normalize keeper's mobile to +91XXXXXXXXXX
+ *   7. Mark loser as disabled + mergedInto: keeperId (soft delete)
+ *   8. Supports dryRun flag to preview changes without modifying data
  */
 
 import { NextResponse } from "next/server";
@@ -80,9 +82,9 @@ const FILL_IF_EMPTY = [
 /**
  * PATCH /api/admin/merge-players
  *
- * Repair previously-merged otherFees whose playerId field was not updated.
- * Finds all players with mergedInto set, then fixes any otherFees under
- * the keeper that still reference the loser's playerId.
+ * Repair previously-merged records:
+ * 1. otherFees under the keeper that still reference the loser's playerId.
+ * 2. appUsers docs that still reference a merged loser player.
  */
 export async function PATCH(req: Request) {
   try {
@@ -96,7 +98,9 @@ export async function PATCH(req: Request) {
       .where("mergedInto", "!=", "")
       .get();
 
-    let totalRepaired = 0;
+    let totalFeesRepaired = 0;
+    let totalUsersRepaired = 0;
+
     for (const loserDoc of mergedSnap.docs) {
       const loserId = loserDoc.id;
       const keeperId = loserDoc.data().mergedInto;
@@ -117,13 +121,32 @@ export async function PATCH(req: Request) {
         }
       }
 
+      // Also repair any appUsers still linked to this loser
+      const usersSnap = await db
+        .collection("appUsers")
+        .where("playerId", "==", loserId)
+        .get();
+
+      for (const userDoc of usersSnap.docs) {
+        batch.update(userDoc.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        batchCount++;
+        totalUsersRepaired++;
+      }
+
       if (batchCount > 0) {
         await batch.commit();
-        totalRepaired += batchCount;
+        totalFeesRepaired += batchCount - (usersSnap.docs.length);
       }
     }
 
-    return NextResponse.json({ ok: true, feesRepaired: totalRepaired });
+    return NextResponse.json({
+      ok: true,
+      feesRepaired: totalFeesRepaired,
+      usersRepaired: totalUsersRepaired,
+    });
   } catch (err: any) {
     console.error("merge-players repair failed", err);
     return NextResponse.json(
@@ -142,6 +165,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const loserId = typeof body.loserId === "string" ? body.loserId.trim() : "";
     const keeperId = typeof body.keeperId === "string" ? body.keeperId.trim() : "";
+    const dryRun = Boolean(body.dryRun);
+
     if (!loserId || !keeperId) {
       return NextResponse.json(
         { error: "loserId and keeperId are required." },
@@ -171,76 +196,41 @@ export async function POST(req: Request) {
     const loser = loserSnap.data() || {};
     const keeper = keeperSnap.data() || {};
 
-    // Admin SDK writeBatch limit is 500 ops. Use a helper that flushes
-    // whenever we approach the ceiling.
-    const BATCH_LIMIT = 400;
-    let batch = db.batch();
-    let opCount = 0;
-    const flush = async () => {
-      if (opCount === 0) return;
-      await batch.commit();
-      batch = db.batch();
-      opCount = 0;
-    };
-    const enqueue = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
-      fn(batch);
-      opCount++;
-      if (opCount >= BATCH_LIMIT) await flush();
-    };
-
-    // 1. Reparent match payments (collectionGroup query on `payments`,
-    //    filtered by playerId). Admin SDK doesn't need a composite index
-    //    for this kind of single-field collectionGroup where().
+    // 1. Check match payments to reparent
     const paySnap = await db
       .collectionGroup("payments")
       .where("playerId", "==", loserId)
       .get();
-    let paymentsReparented = 0;
-    for (const d of paySnap.docs) {
-      await enqueue((b) =>
-        b.update(d.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
-      paymentsReparented++;
-    }
+    const paymentsReparented = paySnap.docs.length;
 
-    // 2. Move otherFees under keeper (update playerId so UI filters work)
+    // 2. Check otherFees to move
     const feeSnap = await loserRef.collection("otherFees").get();
-    let feesMoved = 0;
-    for (const feeDoc of feeSnap.docs) {
-      await enqueue((b) =>
-        b.set(
-          keeperRef.collection("otherFees").doc(feeDoc.id),
-          { ...feeDoc.data(), playerId: keeperId, updatedAt: FieldValue.serverTimestamp() },
-        ),
-      );
-      await enqueue((b) =>
-        b.delete(loserRef.collection("otherFees").doc(feeDoc.id)),
-      );
-      feesMoved++;
-    }
+    const feesMoved = feeSnap.docs.length;
 
-    // 3. Reparent merchOrders
+    // 3. Check merchOrders to reparent
     const orderSnap = await db
       .collection("merchOrders")
       .where("playerId", "==", loserId)
       .get();
-    let ordersReparented = 0;
-    for (const d of orderSnap.docs) {
-      await enqueue((b) =>
-        b.update(d.ref, {
-          playerId: keeperId,
-          playerName:
-            (keeper as any).name || d.data().playerName || "",
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
-      ordersReparented++;
+    const ordersReparented = orderSnap.docs.length;
+
+    // 4. Check appUsers to reparent (IDT-001)
+    const userQuerySnap = await db
+      .collection("appUsers")
+      .where("playerId", "==", loserId)
+      .get();
+
+    // Also check direct doc appUsers/{loserId}
+    const directUserDoc = await db.collection("appUsers").doc(loserId).get();
+    const directUserNeedsUpdate =
+      directUserDoc.exists && directUserDoc.data()?.playerId !== keeperId;
+
+    let appUsersReparented = userQuerySnap.docs.length;
+    if (directUserNeedsUpdate && !userQuerySnap.docs.some((d) => d.id === loserId)) {
+      appUsersReparented++;
     }
 
-    // 4. Fill-in-empties on keeper
+    // 5. Fill-in-empties on keeper
     const keeperPatch: Record<string, any> = {};
     for (const field of FILL_IF_EMPTY) {
       const kVal = (keeper as any)[field];
@@ -260,16 +250,108 @@ export async function POST(req: Request) {
     if (!(keeper as any).isWicketKeeper && (loser as any).isWicketKeeper) {
       keeperPatch.isWicketKeeper = true;
     }
+    // Reparent authUid if keeper has none and loser has one
+    if (!(keeper as any).authUid && (loser as any).authUid) {
+      keeperPatch.authUid = (loser as any).authUid;
+    }
+
     const canonicalMobile =
       (keeper as any).mobile || (loser as any).mobile || "";
     const normalized = normalizeIndianMobile(canonicalMobile);
     if (normalized) keeperPatch.mobile = normalized;
+
+    // Dry Run early exit
+    if (dryRun) {
+      return NextResponse.json({
+        ok: true,
+        dryRun: true,
+        loserId,
+        keeperId,
+        loserName: (loser as any).name || "Unknown",
+        keeperName: (keeper as any).name || "Unknown",
+        paymentsReparented,
+        feesMoved,
+        ordersReparented,
+        appUsersReparented,
+        keeperPatch,
+      });
+    }
+
+    // Live Execution with writeBatch batching
+    const BATCH_LIMIT = 400;
+    let batch = db.batch();
+    let opCount = 0;
+    const flush = async () => {
+      if (opCount === 0) return;
+      await batch.commit();
+      batch = db.batch();
+      opCount = 0;
+    };
+    const enqueue = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
+      fn(batch);
+      opCount++;
+      if (opCount >= BATCH_LIMIT) await flush();
+    };
+
+    // 1. Reparent match payments
+    for (const d of paySnap.docs) {
+      await enqueue((b) =>
+        b.update(d.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+
+    // 2. Move otherFees under keeper
+    for (const feeDoc of feeSnap.docs) {
+      await enqueue((b) =>
+        b.set(
+          keeperRef.collection("otherFees").doc(feeDoc.id),
+          { ...feeDoc.data(), playerId: keeperId, updatedAt: FieldValue.serverTimestamp() },
+        ),
+      );
+      await enqueue((b) =>
+        b.delete(loserRef.collection("otherFees").doc(feeDoc.id)),
+      );
+    }
+
+    // 3. Reparent merchOrders
+    for (const d of orderSnap.docs) {
+      await enqueue((b) =>
+        b.update(d.ref, {
+          playerId: keeperId,
+          playerName: (keeper as any).name || d.data().playerName || "",
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+
+    // 4. Reparent appUsers (IDT-001)
+    for (const u of userQuerySnap.docs) {
+      await enqueue((b) =>
+        b.update(u.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    if (directUserNeedsUpdate) {
+      await enqueue((b) =>
+        b.update(directUserDoc.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+
+    // 5. Update keeper with patched fields
     if (Object.keys(keeperPatch).length > 0) {
       keeperPatch.updatedAt = FieldValue.serverTimestamp();
       await enqueue((b) => b.update(keeperRef, keeperPatch));
     }
 
-    // 5. Trash the loser
+    // 6. Trash the loser (soft delete)
     await enqueue((b) =>
       b.update(loserRef, {
         disabled: true,
@@ -283,9 +365,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      dryRun: false,
       paymentsReparented,
       feesMoved,
       ordersReparented,
+      appUsersReparented,
     });
   } catch (err: any) {
     console.error("merge-players failed", err);

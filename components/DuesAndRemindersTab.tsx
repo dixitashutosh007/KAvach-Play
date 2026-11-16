@@ -170,11 +170,21 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
               .forEach((pay: any) => {
                 const m = store.matches.find((mx: any) => mx.id === pay.matchId);
                 if (!m || !isMatchBillable(m)) return;
+                const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
                 const exempted = store.otherFees.some(
                   (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
                 );
                 if (exempted) return;
-                const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
+                const alreadyRecorded = store.otherFees.some(
+                  (f: any) =>
+                    f.playerId === p.id &&
+                    f.status !== "Cancelled" &&
+                    (
+                      (f.title?.startsWith("Late Fee") && (f.title?.includes(m.id) || f.title?.includes(matchLabel) || f.comment?.includes(m.id))) ||
+                      (f.templateId && f.templateId.includes(`latefee_${m.id}`))
+                    ),
+                );
+                if (alreadyRecorded) return;
                 const fees = computeLateFees(m.date, m.id, p.id, matchLabel);
                 fees.forEach((lf: any, idx: number) => {
                   allDues.push({
@@ -729,11 +739,21 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
         .forEach((pay: any) => {
           const m = store.matches.find((mx: any) => mx.id === pay.matchId);
           if (!m || !isMatchBillable(m)) return;
+          const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
           const exempted = store.otherFees.some(
             (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
           );
           if (exempted) return;
-          const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
+          const alreadyRecorded = store.otherFees.some(
+            (f: any) =>
+              f.playerId === p.id &&
+              f.status !== "Cancelled" &&
+              (
+                (f.title?.startsWith("Late Fee") && (f.title?.includes(m.id) || f.title?.includes(matchLabel) || f.comment?.includes(m.id))) ||
+                (f.templateId && f.templateId.includes(`latefee_${m.id}`))
+              ),
+          );
+          if (alreadyRecorded) return;
           const fees = computeLateFees(m.date, m.id, p.id, matchLabel);
           fees.forEach((lf: any, idx: number) => {
             dues.push({

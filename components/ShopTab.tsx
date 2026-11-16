@@ -368,6 +368,36 @@ export function ShopTab({
     try {
       const finalPrice = selectedMerch.basePrice + customPriceAdditions;
 
+      let effectiveSize = orderSize;
+      Object.entries(orderCustomSelections).forEach(([key, value]) => {
+        const lowerKey = key.toLowerCase();
+        if (!value) return;
+        if (!effectiveSize && (lowerKey.includes("chest") || lowerKey === "size")) {
+          effectiveSize = value;
+        }
+      });
+
+      const currentPaidCount = getPaidOrdersCount(selectedMerch.id);
+      const newPaidCount = currentPaidCount + 1;
+      const reachedMoq = newPaidCount >= selectedMerch.minOrderQuantity;
+
+      const orderPayload = {
+        playerId: playerProfile?.id || user?.uid || "unknown",
+        playerName: playerProfile?.name || userProfile?.name || "Anonymous Player",
+        merchId: selectedMerch.id,
+        merchName: selectedMerch.name,
+        size: effectiveSize,
+        spec: orderSpec || undefined,
+        customSelections: Object.keys(orderCustomSelections).length > 0 ? orderCustomSelections : undefined,
+        customPriceAdditions: customPriceAdditions > 0 ? customPriceAdditions : undefined,
+        jerseyName: hasJerseyDetails ? customJerseyName : undefined,
+        jerseyNumber: hasJerseyDetails ? customJerseyNumber : undefined,
+        price: finalPrice,
+        paymentStatus: "Paid" as const,
+        orderStatus: (reachedMoq ? "Ready to Place Order" : "Awaiting Min Order Qnty") as any,
+        isManual: false,
+      };
+
       if (finalPrice > 0) {
         const keyId =
           store.appConfig?.razorpayKeyId ||
@@ -387,6 +417,7 @@ export function ShopTab({
             currency: "INR",
             intentData: {
               type: "merch_order",
+              merchId: selectedMerch.id,
               orderPayload: orderPayload
             }
           }),

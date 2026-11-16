@@ -5,13 +5,14 @@
   --color-glass-border: var(--theme-glass-border, #E5E7EB);
   --color-accent: var(--theme-accent, #D51F43);
   --color-text-primary: var(--theme-text-primary, #171C26);
-  --color-text-secondary: var(--theme-text-secondary, #4B5563);
+  --color-text-secondary: var(--theme-text-secondary, #667085);
   --color-text-muted: var(--theme-text-muted, #9CA3AF);
   --color-surface: var(--theme-surface, #FFFFFF);
   --color-surface-hover: var(--theme-surface-hover, #F3F4F6);
   --color-border: var(--theme-border, #E5E7EB);
   --color-text-accent: var(--theme-text-accent, #FFFFFF);
-  --color-brand: #A30F2D;
+  --color-brand: var(--theme-brand, #A30F2D);
+  --color-brand-surface: var(--theme-brand-surface, #FCE8ED);
 }
 
 body {

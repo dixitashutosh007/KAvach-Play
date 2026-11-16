@@ -16,6 +16,8 @@ export function useTheme(
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.style.setProperty("--theme-accent", currentTheme.accent);
+    root.style.setProperty("--theme-brand", currentTheme.brand || "#A30F2D");
+    root.style.setProperty("--theme-brand-surface", currentTheme.brandSurface || "#FCE8ED");
     root.style.setProperty("--theme-bg", currentTheme.bg);
     root.style.setProperty("--theme-glass-bg", currentTheme.glassBg);
     root.style.setProperty("--theme-glass-border", currentTheme.glassBorder);
@@ -33,6 +35,8 @@ export function useTheme(
     () =>
       ({
         "--theme-accent": currentTheme.accent,
+        "--theme-brand": currentTheme.brand || "#A30F2D",
+        "--theme-brand-surface": currentTheme.brandSurface || "#FCE8ED",
         "--theme-bg": currentTheme.bg,
         "--theme-glass-bg": currentTheme.glassBg,
         "--theme-glass-border": currentTheme.glassBorder,

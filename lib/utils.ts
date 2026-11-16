@@ -165,26 +165,44 @@ export type LateFee = {
   weeks: number;
 };
 
+export function getClubCalendarDate(referenceDate: Date = new Date()): { year: number; month: number; day: number; dateString: string } {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const dateString = formatter.format(referenceDate);
+  const [y, m, d] = dateString.split("-").map(Number);
+  return { year: y, month: m - 1, day: d, dateString };
+}
+
 export function computeLateFees(
   matchDate: string,
   matchId: string,
   playerId: string,
   matchLabel: string,
+  referenceDate: Date = new Date(),
 ): LateFee[] {
   if (!matchDate) return [];
   const parts = matchDate.split("-");
-  const matchDateObj = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-  const dayOfWeek = matchDateObj.getDay();
+  if (parts.length !== 3) return [];
+  const matchYear = parseInt(parts[0], 10);
+  const matchMonth = parseInt(parts[1], 10) - 1;
+  const matchDay = parseInt(parts[2], 10);
+
+  // Pure UTC calendar arithmetic prevents local device timezone drift
+  const matchDateUtc = new Date(Date.UTC(matchYear, matchMonth, matchDay));
+  const dayOfWeek = matchDateUtc.getUTCDay();
   if (dayOfWeek !== 0 && dayOfWeek !== 6) return [];
 
-  const daysToTuesdayEOD = dayOfWeek === 6 ? 3 : 2;
-  const deadlineDate = new Date(matchDateObj);
-  deadlineDate.setDate(deadlineDate.getDate() + daysToTuesdayEOD);
-  deadlineDate.setHours(23, 59, 59, 999);
+  const daysToTuesday = dayOfWeek === 6 ? 3 : 2;
+  const deadlineUtc = new Date(Date.UTC(matchYear, matchMonth, matchDay + daysToTuesday));
 
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (today <= deadlineDate) return [];
+  const clubToday = getClubCalendarDate(referenceDate);
+  const todayUtc = new Date(Date.UTC(clubToday.year, clubToday.month, clubToday.day));
+
+  if (todayUtc.getTime() <= deadlineUtc.getTime()) return [];
 
   const fees: LateFee[] = [];
   fees.push({
@@ -195,9 +213,8 @@ export function computeLateFees(
     weeks: 0,
   });
 
-  const wednesdayDate = new Date(deadlineDate);
-  wednesdayDate.setDate(wednesdayDate.getDate() + 1);
-  const msSinceWednesday = today.getTime() - wednesdayDate.getTime();
+  const wednesdayUtc = new Date(Date.UTC(matchYear, matchMonth, matchDay + daysToTuesday + 1));
+  const msSinceWednesday = todayUtc.getTime() - wednesdayUtc.getTime();
   const weeksPassed = Math.floor(msSinceWednesday / (7 * 86400000));
   for (let w = 1; w <= weeksPassed; w++) {
     fees.push({

@@ -7,6 +7,7 @@ import {
   Video,
   ShoppingBag,
   Image as ImageIcon,
+  Settings as SettingsIcon,
   X,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
@@ -30,7 +31,7 @@ type Tab =
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
-const MORE_ITEMS: Array<{
+const PLAYER_MORE_ITEMS: Array<{
   tab: Tab;
   label: string;
   icon: typeof CalendarDays;
@@ -44,6 +45,20 @@ const MORE_ITEMS: Array<{
   { tab: "design", label: "Design", icon: ImageIcon, requireDesign: true },
 ];
 
+const ADMIN_MORE_ITEMS: Array<{
+  tab: Tab;
+  label: string;
+  icon: typeof CalendarDays;
+  feature?: Feature;
+  requireDesign?: boolean;
+}> = [
+  { tab: "settings", label: "Settings & Access", icon: SettingsIcon },
+  { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio" },
+  { tab: "design", label: "Design Studio", icon: ImageIcon, requireDesign: true },
+  { tab: "shop", label: "Merchandise Shop", icon: ShoppingBag, feature: "shop" },
+  { tab: "leaderboard", label: "Leaderboard & Stats", icon: Trophy, feature: "leaderboard" },
+];
+
 export function MoreDrawer({
   open,
   onClose,
@@ -51,6 +66,7 @@ export function MoreDrawer({
   activeTab,
   isFeatureEnabled,
   canDesign,
+  persona,
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,6 +74,7 @@ export function MoreDrawer({
   activeTab: Tab;
   isFeatureEnabled: (key: Feature) => boolean;
   canDesign: boolean;
+  persona?: "admin" | "player";
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -72,7 +89,8 @@ export function MoreDrawer({
 
   if (!open) return null;
 
-  const visibleItems = MORE_ITEMS.filter((item) => {
+  const targetItems = persona === "admin" ? ADMIN_MORE_ITEMS : PLAYER_MORE_ITEMS;
+  const visibleItems = targetItems.filter((item) => {
     if (item.feature && !isFeatureEnabled(item.feature)) return false;
     if (item.requireDesign && !canDesign) return false;
     return true;
@@ -90,13 +108,13 @@ export function MoreDrawer({
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary">
-            More
+            {persona === "admin" ? "Admin Tools" : "More"}
           </h3>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-surface-hover transition text-text-muted hover:text-text-primary"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-surface-hover transition text-text-muted hover:text-text-primary cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
         <div className="px-3 pb-4 space-y-1">
@@ -110,7 +128,7 @@ export function MoreDrawer({
                   onSelectTab(item.tab);
                   onClose();
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition cursor-pointer ${
+                className={`w-full min-h-[44px] flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition cursor-pointer ${
                   isActive
                     ? "bg-accent text-text-accent"
                     : "text-text-secondary hover:bg-surface-hover"

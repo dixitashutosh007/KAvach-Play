@@ -288,7 +288,25 @@ export default function Home() {
     if (MERCH_CATALOG_TABS.has(activeTab)) store.ensureMerchandises?.();
     if (OUT_OF_PLAY_TABS.has(activeTab)) store.ensureOutOfPlays?.();
     if (BADGE_TABS.has(activeTab)) { store.ensureBadges?.(); store.ensureBadgeTypeDefs?.(); }
-  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs]);
+
+    return () => {
+      // ARCH-001: Detach listeners when domain tab is no longer active
+      if (!PAYMENT_TABS.has(activeTab)) store.detachDomain?.("allPayments");
+      if (!OTHER_FEE_TABS.has(activeTab)) store.detachDomain?.("allOtherFees");
+      if (!POSTS_TABS.has(activeTab)) store.detachDomain?.("posts");
+      if (!STATS_TABS.has(activeTab)) store.detachDomain?.("playerStats");
+      if (!MERCH_TABS.has(activeTab)) store.detachDomain?.("merchOrders");
+      if (!POLL_TABS.has(activeTab)) {
+        store.detachDomain?.("polls");
+        store.detachDomain?.("pollResponses");
+      }
+      if (!OUT_OF_PLAY_TABS.has(activeTab)) store.detachDomain?.("outOfPlays");
+      if (!BADGE_TABS.has(activeTab)) {
+        store.detachDomain?.("badges");
+        store.detachDomain?.("badgeTypeDefs");
+      }
+    };
+  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
@@ -650,31 +668,31 @@ export default function Home() {
       style={themeStyles}
     >
       {/* Dynamic Header */}
-      <header className="bg-surface/95 backdrop-blur-xl border-b border-border fixed top-0 w-full z-40 p-3 sm:px-6 flex items-center shadow-sm transition-all">
-        <div className="max-w-7xl xl:max-w-[1440px] mx-auto w-full px-1 sm:px-2 md:px-4 flex items-center justify-between gap-4">
-          <button onClick={() => setActiveTab("home")} className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer group">
+      <header className="bg-surface/95 backdrop-blur-xl border-b border-border fixed top-0 w-full z-40 p-2 sm:p-3 sm:px-6 flex items-center shadow-sm transition-all">
+        <div className="max-w-7xl xl:max-w-[1440px] mx-auto w-full px-1 sm:px-2 md:px-4 flex items-center justify-between gap-2 sm:gap-4">
+          <button onClick={() => setActiveTab("home")} className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 text-left cursor-pointer group">
             {logoUrl ? (
               <Image
                 src={logoUrl}
                 width={40}
                 height={40}
                 alt="Logo"
-                className="w-10 h-10 rounded-full object-cover border border-border shrink-0 shadow-md group-hover:opacity-80 transition"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-border shrink-0 shadow-md group-hover:opacity-80 transition"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="w-9 h-9 rounded-xl bg-accent/15 border border-accent/20 flex items-center justify-center shrink-0 group-hover:bg-accent/25 transition">
-                <Shield className="w-5 h-5 text-accent" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition">
+                <Shield className="w-5 h-5 text-brand" />
               </div>
             )}
-            <div>
-              <h1 className="font-black text-lg sm:text-xl tracking-tight text-accent break-words leading-none uppercase group-hover:text-accent/80 transition">
+            <div className="min-w-0 flex-1">
+              <h1 className="font-black text-sm sm:text-lg md:text-xl tracking-tight text-brand truncate leading-tight uppercase group-hover:opacity-80 transition">
                 {clubName}
               </h1>
             </div>
           </button>
 
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {isAdmin && (
               <button
                 onClick={() => {
@@ -691,27 +709,29 @@ export default function Home() {
                     else setActiveTab("home");
                   }
                 }}
-                className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-accent/30 text-accent px-2.5 py-1.5 rounded-lg hover:bg-accent/10 transition shadow-inner cursor-pointer"
+                className="min-h-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center"
+                title={persona === "admin" ? "Switch to Player View" : "Switch to Admin View"}
               >
-                {persona === "admin" ? "View Player" : "Manage Admin"}
+                <span className="hidden xs:inline">{persona === "admin" ? "View Player" : "Manage Admin"}</span>
+                <span className="xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>
               </button>
             )}
 
             <button
               onClick={() => setActiveTab("notifications")}
-              className="relative p-1.5 rounded-full ring-2 ring-transparent hover:ring-accent transition flex shrink-0 shadow text-text-secondary hover:text-text-primary"
+              className="relative min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0 text-text-secondary hover:text-text-primary"
               title="Notifications"
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border border-surface animate-pulse" />
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border border-surface animate-pulse" />
               )}
             </button>
 
             {(user.photoURL || appUser?.photoURL) && (
               <button
                 onClick={() => setActiveTab("profile")}
-                className="p-0.5 rounded-full ring-2 ring-transparent hover:ring-accent transition flex shrink-0 shadow"
+                className="min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0"
                 title="My Profile"
               >
                 <Image
@@ -727,7 +747,7 @@ export default function Home() {
 
             <button
               onClick={() => logOut()}
-              className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-border text-text-secondary px-2.5 py-1.5 rounded-lg hover:bg-surface-hover hover:text-text-primary transition flex items-center gap-1 shrink-0 cursor-pointer"
+              className="min-h-[44px] text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-border text-text-secondary px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-surface-hover hover:text-text-primary transition flex items-center justify-center gap-1 shrink-0 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden xs:inline">Exit</span>
