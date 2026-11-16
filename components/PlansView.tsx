@@ -189,7 +189,7 @@ export function PlansView({ store }: { store: ReturnType<typeof useStore> }) {
           return (
             <div
               key={plan.id}
-              className={`bg-surface-hover border ${planIsActive ? "border-border hover:border-accent/30" : "border-red-900/30 opacity-60"} rounded-xl p-5 relative overflow-hidden flex flex-col transition`}
+              className={`bg-surface-hover border ${planIsActive ? "border-border hover:border-accent/30" : "border-red-500/20 opacity-60"} rounded-xl p-5 relative overflow-hidden flex flex-col transition`}
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
 

@@ -112,43 +112,15 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
         description: `Studio Subscription - ${plan.name}`,
         order_id: data.id,
         handler: function (response: any) {
+          // Expiry date extension and subscription history are handled
+          // server-side by the Razorpay webhook to avoid a dual-write race
+          // that could double the subscription duration.
           const updates = [];
 
           const getTodayStr = () => {
             const d = new Date();
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           };
-
-          const currentExpiry =
-            player?.studioExpiryDate ||
-            player?.studioEndDate ||
-            appUser?.studioExpiryDate ||
-            appUser?.studioEndDate;
-          let baseDate = new Date();
-          if (currentExpiry) {
-            let parts = currentExpiry.includes("-")
-              ? currentExpiry.split("-")
-              : currentExpiry.split("/");
-            let exp: Date;
-            if (currentExpiry.includes("-"))
-              exp = new Date(
-                Number(parts[0]),
-                Number(parts[1]) - 1,
-                Number(parts[2]),
-              );
-            else
-              exp = new Date(
-                Number(parts[2]),
-                Number(parts[1]) - 1,
-                Number(parts[0]),
-              );
-
-            if (!isNaN(exp.getTime()) && exp > new Date()) {
-              baseDate = exp;
-            }
-          }
-          baseDate.setDate(baseDate.getDate() + plan.durationDays);
-          const newExpiry = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, "0")}-${String(baseDate.getDate()).padStart(2, "0")}`;
           const todayStr = getTodayStr();
           const startDateToUse =
             player?.studioStartDate || appUser?.studioStartDate || todayStr;
@@ -159,8 +131,6 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
                 isStudioMember: true,
                 studioPlan: plan.id,
                 studioStartDate: startDateToUse,
-                studioExpiryDate: newExpiry,
-                studioEndDate: newExpiry,
                 lastPaidDate: todayStr,
                 lastPaidAmount: plan.fee,
               }),
@@ -172,25 +142,8 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
                 isStudioMember: true,
                 studioPlan: plan.id,
                 studioStartDate: startDateToUse,
-                studioExpiryDate: newExpiry,
-                studioEndDate: newExpiry,
                 lastPaidDate: todayStr,
                 lastPaidAmount: plan.fee,
-              }),
-            );
-          }
-
-          if (player?.id) {
-            updates.push(
-              store.addSubscriptionHistory({
-                playerId: player.id,
-                adminId: appUser?.id || "self",
-                adminName: appUser?.name || player?.name || "Self",
-                oldExpiryDate: currentExpiry || undefined,
-                newExpiryDate: newExpiry,
-                planId: plan.id,
-                planName: plan.name,
-                paidAmount: plan.fee,
               }),
             );
           }

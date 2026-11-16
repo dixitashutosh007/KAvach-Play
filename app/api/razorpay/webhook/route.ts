@@ -145,7 +145,12 @@ export async function POST(req: NextRequest) {
                   if (data.planId && data.userId) {
                     const durationDays = data.durationDays || 30;
                     const now = new Date();
+                    const toYMD = (d: Date) =>
+                      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+                    // Read expiry BEFORE the client handler may have written,
+                    // falling back to the intent's own creation timestamp so we
+                    // never double-extend when the client writes first.
                     let currentExpiry: string | undefined;
                     try {
                        const playerQuery = await db.collection("players").where("id", "==", data.userId).get();
@@ -169,15 +174,19 @@ export async function POST(req: NextRequest) {
                           baseDate = exp;
                        }
                     }
-                    const endDate = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+                    const endDateObj = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+                    const endDate = toYMD(endDateObj);
+                    const todayStr = toYMD(now);
 
                     await db.collection("subscriptionHistory").add({
                       planId: data.planId,
-                      userId: data.userId,
-                      amount: data.amount || 0,
-                      startDate: now.toISOString(),
-                      endDate: endDate,
-                      status: "Active",
+                      playerId: data.userId,
+                      adminId: "webhook",
+                      adminName: "Razorpay Webhook",
+                      oldExpiryDate: currentExpiry || undefined,
+                      newExpiryDate: endDate,
+                      planName: data.planId,
+                      paidAmount: data.amount || 0,
                       createdAt: now
                     });
 
@@ -186,6 +195,7 @@ export async function POST(req: NextRequest) {
                        if (!playerQuery.empty) {
                           await playerQuery.docs[0].ref.update({
                              studioExpiryDate: endDate,
+                             studioEndDate: endDate,
                              updatedAt: now
                           });
                        }
@@ -193,6 +203,7 @@ export async function POST(req: NextRequest) {
                        if (!appUserQuery.empty) {
                           await appUserQuery.docs[0].ref.update({
                              studioExpiryDate: endDate,
+                             studioEndDate: endDate,
                              updatedAt: now
                           });
                        } else {
@@ -200,6 +211,7 @@ export async function POST(req: NextRequest) {
                           if (appUserDoc.exists) {
                              await appUserDoc.ref.update({
                                 studioExpiryDate: endDate,
+                                studioEndDate: endDate,
                                 updatedAt: now
                              });
                           }

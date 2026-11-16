@@ -372,7 +372,7 @@ export function StudioCRMView({
     <div className="space-y-6">
       {/* Metrics Bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-card border border-border p-3.5 rounded-xl">
+        <div className="bg-surface border border-border p-3.5 rounded-xl">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             Total Enquiries
           </div>
@@ -381,7 +381,7 @@ export function StudioCRMView({
           </div>
         </div>
 
-        <div className="bg-card border border-emerald-500/20 p-3.5 rounded-xl">
+        <div className="bg-surface border border-emerald-500/20 p-3.5 rounded-xl">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
             New / Uncontacted
           </div>
@@ -395,36 +395,36 @@ export function StudioCRMView({
           className={`cursor-pointer border p-3.5 rounded-xl transition ${
             dueTodayOnly
               ? "bg-amber-500/20 border-amber-400 ring-2 ring-amber-400/40"
-              : "bg-card border-amber-500/20 hover:border-amber-500/40"
+              : "bg-surface border-amber-500/20 hover:border-amber-500/40"
           }`}
         >
           <div className="flex items-center justify-between">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" /> Due / Overdue
             </div>
             {dueTodayOnly && (
-              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/30 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded">
                 Active Filter
               </span>
             )}
           </div>
-          <div className="text-2xl font-black text-amber-300 mt-1">
+          <div className="text-2xl font-black text-amber-600 mt-1">
             {metrics.dueTodayCount}
           </div>
         </div>
 
-        <div className="bg-card border border-purple-500/20 p-3.5 rounded-xl">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-400">
+        <div className="bg-surface border border-purple-500/20 p-3.5 rounded-xl">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-600">
             Converted
           </div>
-          <div className="text-2xl font-black text-purple-300 mt-1">
+          <div className="text-2xl font-black text-purple-600 mt-1">
             {metrics.convertedCount}
           </div>
         </div>
       </div>
 
       {/* Action & Filter Controls */}
-      <div className="bg-card border border-border p-4 rounded-xl space-y-3">
+      <div className="bg-surface border border-border p-4 rounded-xl space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search bar */}
           <div className="relative flex-1">
@@ -633,7 +633,7 @@ export function StudioCRMView({
       {/* Leads List */}
       <div className="space-y-3">
         {filteredLeads.length === 0 ? (
-          <div className="bg-card border border-border rounded-xl p-10 text-center">
+          <div className="bg-surface border border-border rounded-xl p-10 text-center">
             <User className="w-10 h-10 text-text-primary/20 mx-auto mb-3" />
             <div className="text-text-primary font-bold text-base">
               No enquiries match your search or filters.
@@ -673,7 +673,7 @@ export function StudioCRMView({
             return (
               <div
                 key={lead.id}
-                className="bg-card border border-border hover:border-border transition rounded-xl p-4 space-y-3 shadow-sm"
+                className="bg-surface border border-border hover:border-border transition rounded-xl p-4 space-y-3 shadow-sm"
               >
                 {/* Top Row: Name, Source, Status */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -689,10 +689,10 @@ export function StudioCRMView({
                     <span
                       className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
                         lead.interest === "studio"
-                          ? "bg-blue-500/20 text-blue-300"
+                          ? "bg-blue-500/10 text-blue-600"
                           : lead.interest === "matches"
-                          ? "bg-amber-500/20 text-amber-300"
-                          : "bg-emerald-500/20 text-emerald-300"
+                          ? "bg-amber-500/10 text-amber-600"
+                          : "bg-emerald-500/10 text-emerald-600"
                       }`}
                     >
                       {lead.interest === "studio"
@@ -750,19 +750,19 @@ export function StudioCRMView({
                       assignedPlayers.map((p) => (
                         <span
                           key={p.id}
-                          className="flex items-center gap-1 bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold px-2 py-0.5 rounded-lg"
+                          className="flex items-center gap-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 text-[11px] font-semibold px-2 py-0.5 rounded-lg"
                         >
                           {p.name.split(" ")[0]}
                           <button
                             onClick={() => handleOpenNotify(lead, p)}
-                            className="text-cyan-400/70 hover:text-emerald-400 transition ml-0.5"
+                            className="text-cyan-600/70 hover:text-emerald-600 transition ml-0.5"
                             title={`Notify ${p.name} via WhatsApp`}
                           >
                             <Bell className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => handleToggleAssignment(lead.id, p.id)}
-                            className="text-cyan-400/50 hover:text-red-400 transition"
+                            className="text-cyan-600/50 hover:text-red-500 transition"
                             title="Unassign"
                           >
                             <X className="w-3 h-3" />
@@ -803,13 +803,13 @@ export function StudioCRMView({
                                   }}
                                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition ${
                                     isAssigned
-                                      ? "bg-cyan-500/15 text-cyan-300"
+                                      ? "bg-cyan-500/10 text-cyan-600"
                                       : "hover:bg-surface-hover text-text-primary"
                                   }`}
                                 >
                                   <span className="font-medium">{p.name}</span>
                                   {isAssigned && (
-                                    <span className="text-[10px] text-cyan-400 font-bold">
+                                    <span className="text-[10px] text-cyan-600 font-bold">
                                       ASSIGNED
                                     </span>
                                   )}
@@ -848,7 +848,7 @@ export function StudioCRMView({
                     {followUpLabel && (
                       <div
                         className={`flex items-center gap-1 font-semibold ${
-                          isFollowUpDue ? "text-amber-400" : "text-text-secondary"
+                          isFollowUpDue ? "text-amber-600" : "text-text-secondary"
                         }`}
                       >
                         <Clock className="w-3 h-3" />
@@ -863,7 +863,7 @@ export function StudioCRMView({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setActiveWhatsAppLead(lead)}
-                      className="flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+                      className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
                     >
                       <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                     </button>
@@ -905,14 +905,14 @@ export function StudioCRMView({
                               );
                             }
                           }}
-                          className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+                          className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border border-amber-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
                           title="Notify assigned team member(s) via WhatsApp"
                         >
                           <Bell className="w-3.5 h-3.5" />
                           Notify Assignee{assignedPlayers.length > 1 ? "s" : ""}
                         </button>
                         {notifyPickerLeadId === lead.id && assignedPlayers.length > 1 && (
-                          <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-border rounded-lg shadow-xl py-1 min-w-[180px]">
+                          <div className="absolute top-full left-0 mt-1 z-50 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[180px]">
                             {assignedPlayers.map((p) => (
                               <button
                                 key={p.id}
@@ -931,7 +931,7 @@ export function StudioCRMView({
                                 setNotifyPickerLeadId(null);
                                 assignedPlayers.forEach((p) => handleOpenNotify(lead, p));
                               }}
-                              className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:bg-surface-hover flex items-center gap-2 transition border-t border-border"
+                              className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-surface-hover flex items-center gap-2 transition border-t border-border"
                             >
                               <Send className="w-3.5 h-3.5" />
                               Notify All ({assignedPlayers.length})
@@ -947,7 +947,7 @@ export function StudioCRMView({
                     {lead.status !== "converted" && (
                       <button
                         onClick={() => setConvertingLead(lead)}
-                        className="flex items-center gap-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition"
+                        className="flex items-center gap-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border border-purple-500/30 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition"
                         title="Send invite to register on Play App"
                       >
                         <UserCheck className="w-3.5 h-3.5" /> Convert
@@ -984,7 +984,7 @@ export function StudioCRMView({
                         {lead.notes.map((note) => (
                           <div
                             key={note.id}
-                            className="bg-card border border-border rounded-lg p-2.5 text-xs space-y-1"
+                            className="bg-surface border border-border rounded-lg p-2.5 text-xs space-y-1"
                           >
                             <div className="flex items-center justify-between text-[11px] text-text-muted">
                               <span className="font-semibold text-accent">
@@ -1033,7 +1033,7 @@ export function StudioCRMView({
                       <button
                         onClick={() => handleAddNote(lead.id)}
                         disabled={!(noteInputs[lead.id] || "").trim()}
-                        className="bg-accent disabled:opacity-30 text-black font-bold px-3 py-1.5 rounded-lg text-xs transition"
+                        className="bg-accent disabled:opacity-30 text-text-accent font-bold px-3 py-1.5 rounded-lg text-xs transition"
                       >
                         Post Note
                       </button>
@@ -1092,8 +1092,8 @@ export function StudioCRMView({
       {/* ------------------------------------------------------------- */}
       {convertingLead && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center gap-2 text-purple-400 font-bold text-base">
+          <div className="bg-surface border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center gap-2 text-purple-600 font-bold text-base">
               <UserCheck className="w-5 h-5" /> Convert Lead — Send Invite
             </div>
 
@@ -1138,9 +1138,9 @@ export function StudioCRMView({
       {/* ------------------------------------------------------------- */}
       {notifyTarget && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+          <div className="bg-surface border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2 text-cyan-400 font-bold text-base">
+              <div className="flex items-center gap-2 text-cyan-600 font-bold text-base">
                 <Bell className="w-5 h-5" /> Notify {notifyTarget.player.name}
               </div>
               <button
@@ -1273,7 +1273,7 @@ function LeadFormModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
+      <div className="bg-surface border border-border rounded-xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="font-bold text-base text-text-primary">
             {initialData ? "Edit Enquiry Details" : "Record New Enquiry"}
@@ -1487,7 +1487,7 @@ function LeadFormModal({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 bg-accent disabled:opacity-50 text-black font-bold rounded-lg text-xs hover:opacity-90 transition"
+              className="px-4 py-2 bg-accent disabled:opacity-50 text-text-accent font-bold rounded-lg text-xs hover:opacity-90 transition"
             >
               {isSubmitting ? "Saving..." : initialData ? "Update Enquiry" : "Save Enquiry"}
             </button>
@@ -1541,9 +1541,9 @@ function WhatsAppTemplateModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+      <div className="bg-surface border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
         <div className="flex items-center justify-between border-b border-border pb-3">
-          <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
+          <div className="flex items-center gap-2 text-emerald-600 font-bold text-base">
             <MessageCircle className="w-5 h-5" /> WhatsApp to {lead.name}
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1">

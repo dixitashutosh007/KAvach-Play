@@ -117,7 +117,7 @@ export function PlayersTab({
       return {
         status: "Expired",
         colorClass: "bg-red-500/10 text-red-400 border border-red-500/20",
-        lineClass: "border-l-red-500 bg-red-950/10 border-red-500/20",
+        lineClass: "border-l-red-500 bg-red-500/5 border-red-500/20",
         label: "Expired (No date set)",
         daysLeft: -1,
       };
@@ -131,7 +131,7 @@ export function PlayersTab({
       return {
         status: "Expired",
         colorClass: "bg-red-500/10 text-red-400 border border-red-500/20",
-        lineClass: "border-l-red-500 bg-red-950/10 border-red-500/20",
+        lineClass: "border-l-red-500 bg-red-500/5 border-red-500/20",
         label: "Expired",
         daysLeft: diffDays,
       };
@@ -140,7 +140,7 @@ export function PlayersTab({
         status: "Expiring",
         colorClass:
           "bg-amber-500/10 text-orange-400 border border-orange-500/20",
-        lineClass: "border-l-orange-500 bg-amber-950/10 border-orange-500/20",
+        lineClass: "border-l-orange-500 bg-orange-500/5 border-orange-500/20",
         label: `Expiring in ${diffDays} day${diffDays === 1 ? "" : "s"}`,
         daysLeft: diffDays,
       };
@@ -150,7 +150,7 @@ export function PlayersTab({
         colorClass:
           "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
         lineClass:
-          "border-l-emerald-500 bg-emerald-950/10 border-emerald-500/20",
+          "border-l-emerald-500 bg-emerald-500/5 border-emerald-500/20",
         label: `Active (${diffDays} days left)`,
         daysLeft: diffDays,
       };
@@ -484,7 +484,7 @@ export function PlayersTab({
       {/* Standalone Invite Player Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+          <div className="bg-surface border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
                 <UserPlus className="w-5 h-5" /> Invite Player

@@ -329,8 +329,8 @@ const getMembershipStatus = (player: Player) => {
   if (!expiryDateStr) {
     return {
       status: "Expired",
-      colorClass: "bg-red-900/40 text-red-500 border border-red-900/50",
-      lineClass: "border-l-red-800 bg-red-950/20 border-red-900/30 border-l-4",
+      colorClass: "bg-rose-500/10 text-rose-600 border border-rose-500/20",
+      lineClass: "border-l-rose-500 bg-rose-500/5 border-rose-500/10 border-l-4",
     };
   }
   const expiryTime = new Date(expiryDateStr).setHours(23, 59, 59, 999);
@@ -341,20 +341,20 @@ const getMembershipStatus = (player: Player) => {
   if (diffDays < 0) {
     return {
       status: "Expired",
-      colorClass: "bg-red-900/40 text-red-500 border border-red-900/50",
-      lineClass: "border-l-red-800 bg-red-950/20 border-red-900/30 border-l-4",
+      colorClass: "bg-rose-500/10 text-rose-600 border border-rose-500/20",
+      lineClass: "border-l-rose-500 bg-rose-500/5 border-rose-500/10 border-l-4",
     };
   } else if (diffDays <= 3) {
     return {
       status: `Expiring in ${diffDays} days`,
-      colorClass: "bg-red-500/20 text-red-400 border border-red-500/30",
+      colorClass: "bg-red-500/10 text-red-600 border border-red-500/20",
       lineClass: "border-l-red-500 bg-red-500/5 border-red-500/10 border-l-4",
     };
   } else if (diffDays <= 7) {
     return {
       status: `Expiring in ${diffDays} days`,
       colorClass:
-        "bg-orange-500/20 text-orange-400 border border-orange-500/30",
+        "bg-orange-500/10 text-orange-600 border border-orange-500/20",
       lineClass:
         "border-l-orange-500 bg-orange-500/5 border-orange-500/10 border-l-4",
     };
@@ -362,7 +362,7 @@ const getMembershipStatus = (player: Player) => {
     return {
       status: "Active",
       colorClass:
-        "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+        "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20",
       lineClass:
         "border-l-emerald-500 bg-emerald-500/5 border-emerald-500/10 border-l-4",
     };

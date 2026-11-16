@@ -155,9 +155,6 @@ export function ShopTab({
   const playerProfile = store.players.find((p) => p.authUid === user?.uid);
   const userProfile = store.appUsers.find((u) => u.id === user?.uid);
 
-  const defaultJerseyName = customJerseyName || playerProfile?.jerseyName || userProfile?.name || "";
-  const defaultJerseyNumber = customJerseyNumber || playerProfile?.jerseyNumber || userProfile?.jerseyNumber || "";
-  const defaultChestSize = orderSize || playerProfile?.chestSize || userProfile?.chestSize || "";
 
   // Group orders by merch item to calculate MOQ progress
   const getOrdersForMerch = (merchId: string) => {
@@ -381,24 +378,6 @@ export function ShopTab({
           setIsOrdering(false);
           return;
         }
-
-        const hasJerseyDetails = selectedMerch.category === "Jersey" || selectedMerch.requirePlayerDetails;
-
-        const orderPayload = {
-          playerId: playerProfile?.id || user?.uid || "unknown",
-          playerName: playerProfile?.name || userProfile?.name || "Anonymous Player",
-          merchId: selectedMerch.id,
-          merchName: selectedMerch.name,
-          size: orderSize,
-          spec: orderSpec || undefined,
-          customSelections: Object.keys(orderCustomSelections).length > 0 ? orderCustomSelections : undefined,
-          customPriceAdditions: customPriceAdditions > 0 ? customPriceAdditions : undefined,
-          jerseyName: hasJerseyDetails ? customJerseyName : undefined,
-          jerseyNumber: hasJerseyDetails ? customJerseyNumber : undefined,
-          price: finalPrice,
-          paymentStatus: "Paid",
-          deliveryStatus: "Processing" as const,
-        };
 
         const res = await authedFetch("/api/razorpay/order", {
           method: "POST",
@@ -1034,7 +1013,7 @@ export function ShopTab({
                       <button
                         type="button"
                         onClick={handleAddCustomField}
-                        className="text-xs bg-surface-hover hover:bg-surface-hover text-text-primary px-3 py-1.5 rounded transition flex items-center gap-2"
+                        className="text-xs bg-surface-hover hover:bg-border text-text-primary px-3 py-1.5 rounded transition flex items-center gap-2"
                       >
                         <Plus className="w-3 h-3" /> Add Attribute
                       </button>
@@ -1216,7 +1195,7 @@ export function ShopTab({
                 <button
                   type="button"
                   onClick={resetMerchForm}
-                  className="px-4 py-2 bg-surface-hover hover:bg-surface-hover text-text-primary rounded-lg text-xs font-bold uppercase tracking-wider transition"
+                  className="px-4 py-2 bg-surface-hover hover:bg-border text-text-primary rounded-lg text-xs font-bold uppercase tracking-wider transition"
                 >
                   Cancel
                 </button>
@@ -1234,7 +1213,7 @@ export function ShopTab({
           {adminSubTab === "orders" && showManualOrder && (
             <form
               onSubmit={handleAddManualOrder}
-              className="bg-surface p-6 rounded-2xl border border-border space-y-4 bg-blue-950/20"
+              className="bg-surface p-6 rounded-2xl border border-border space-y-4 bg-blue-500/5"
             >
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h3 className="text-sm font-bold uppercase tracking-widest text-blue-400 flex items-center gap-2">
@@ -1449,7 +1428,7 @@ export function ShopTab({
                 <button
                   type="button"
                   onClick={() => setShowManualOrder(false)}
-                  className="px-4 py-2 bg-surface-hover hover:bg-surface-hover text-text-primary rounded-lg text-xs font-bold uppercase tracking-wider transition"
+                  className="px-4 py-2 bg-surface-hover hover:bg-border text-text-primary rounded-lg text-xs font-bold uppercase tracking-wider transition"
                 >
                   Cancel
                 </button>
@@ -1507,7 +1486,7 @@ export function ShopTab({
                           <td className="py-3.5 px-2">
                             <span className="font-semibold text-accent">{ord.merchName}</span>
                             {ord.isManual && (
-                              <span className="ml-1.5 px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">
+                              <span className="ml-1.5 px-1.5 py-0.5 bg-blue-500/10 text-blue-600 rounded text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">
                                 Cash Manual
                               </span>
                             )}
@@ -1605,7 +1584,7 @@ export function ShopTab({
                 </div>
               )}
               {Object.keys(pendingOrderEdits).length > 0 && (
-                <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 bg-black/90 backdrop-blur border border-accent/60 rounded-xl px-4 py-3 shadow-lg mt-3">
+                <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 bg-surface/95 backdrop-blur border border-accent/60 rounded-xl px-4 py-3 shadow-lg mt-3">
                   <div className="text-xs text-text-primary flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                     <span className="font-bold">
@@ -1617,7 +1596,7 @@ export function ShopTab({
                     <button
                       onClick={discardPendingEdits}
                       disabled={isSavingBulk}
-                      className="rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-2 text-xs font-bold uppercase tracking-widest text-text-primary transition disabled:opacity-50"
+                      className="rounded-lg bg-surface-hover hover:bg-border px-3 py-2 text-xs font-bold uppercase tracking-widest text-text-primary transition disabled:opacity-50"
                     >
                       Discard
                     </button>
@@ -1666,11 +1645,11 @@ export function ShopTab({
                         <div
                           key={merch.id}
                           className={`bg-surface rounded-2xl border overflow-hidden flex flex-col justify-between group hover:border-accent/40 transition-all duration-300 ${
-                            merch.isHidden ? "border-red-900/30 bg-red-950/5" : "border-border"
+                            merch.isHidden ? "border-red-500/30 bg-red-500/5" : "border-border"
                           }`}
                         >
                           {/* Top banner / Image placeholder */}
-                          <div className="h-28 bg-gradient-to-br from-emerald-950/80 to-stone-900/80 p-4 flex flex-col justify-between border-b border-border">
+                          <div className="h-28 bg-gradient-to-br from-accent/10 to-surface-hover p-4 flex flex-col justify-between border-b border-border">
                             <div className="flex justify-between items-start">
                               <div className="flex items-center gap-1.5">
                                 <span className="px-2 py-0.5 bg-accent/20 border border-accent/30 text-accent font-mono text-[9px] uppercase tracking-widest font-black rounded-md">
@@ -1826,11 +1805,11 @@ export function ShopTab({
                     <div
                       key={merch.id}
                       className={`bg-surface rounded-2xl border overflow-hidden flex flex-col justify-between group hover:border-accent/40 transition-all duration-300 ${
-                        merch.isHidden ? "border-red-900/30 bg-red-950/5" : "border-border"
+                        merch.isHidden ? "border-red-500/30 bg-red-500/5" : "border-border"
                       }`}
                     >
                       {/* Top banner / Image placeholder */}
-                      <div className="h-28 bg-gradient-to-br from-emerald-950/80 to-stone-900/80 p-4 flex flex-col justify-between border-b border-border">
+                      <div className="h-28 bg-gradient-to-br from-accent/10 to-surface-hover p-4 flex flex-col justify-between border-b border-border">
                         <div className="flex justify-between items-start">
                           <div className="flex items-center gap-1.5">
                             <span className="px-2 py-0.5 bg-accent/20 border border-accent/30 text-accent font-mono text-[9px] uppercase tracking-widest font-black rounded-md">
@@ -1907,7 +1886,7 @@ export function ShopTab({
                             Order Product
                           </button>
                         ) : (
-                          <div className="text-center py-2 bg-red-950/30 border border-red-900/30 text-red-400 rounded-xl text-xs font-bold uppercase tracking-wider">
+                          <div className="text-center py-2 bg-red-500/10 border border-red-500/30 text-red-600 rounded-xl text-xs font-bold uppercase tracking-wider">
                             Not Accepting New Orders Yet
                           </div>
                         )}
@@ -1987,7 +1966,7 @@ export function ShopTab({
                         ₹{o.price}
                       </td>
                       <td className="py-3.5 px-2 text-center">
-                        <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 rounded-full text-[10px] uppercase font-bold tracking-wider whitespace-nowrap inline-block">
+                        <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 rounded-full text-[10px] uppercase font-bold tracking-wider whitespace-nowrap inline-block">
                           {o.paymentStatus}
                         </span>
                       </td>
@@ -1995,10 +1974,10 @@ export function ShopTab({
                         <span
                           className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 whitespace-nowrap ${
                             o.orderStatus === "Fulfilled"
-                              ? "bg-emerald-950/60 text-emerald-400 border border-emerald-900/50"
+                              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
                               : o.orderStatus === "Ready to Place Order" || o.orderStatus === "Order Received"
-                              ? "bg-blue-950/60 text-blue-400 border border-blue-900/50"
-                              : "bg-amber-950/60 text-amber-400 border border-amber-900/50"
+                              ? "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                              : "bg-amber-500/10 text-amber-600 border border-amber-500/30"
                           }`}
                         >
                           {o.orderStatus === "Fulfilled" && <CheckCircle className="w-3 h-3" />}
@@ -2141,8 +2120,8 @@ export function ShopTab({
                                   <td className="py-2.5 px-1 text-center">
                                     <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider border whitespace-nowrap inline-block ${
                                       ord.paymentStatus === 'Paid'
-                                        ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40'
-                                        : 'bg-amber-950/40 text-amber-400 border-amber-900/40'
+                                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                        : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                                     }`}>
                                       {ord.paymentStatus}
                                     </span>
@@ -2335,7 +2314,7 @@ export function ShopTab({
       {showReportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-surface w-full max-w-lg border border-border rounded-2xl overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-emerald-950 to-neutral-900 px-5 py-4 flex items-center justify-between border-b border-border">
+            <div className="bg-gradient-to-r from-accent/10 to-surface-hover px-5 py-4 flex items-center justify-between border-b border-border">
               <div>
                 <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase font-mono">
                   Vendor Report Generator
@@ -2360,7 +2339,7 @@ export function ShopTab({
               <textarea
                 readOnly
                 value={getWhatsAppReportText()}
-                className="w-full h-80 bg-surface-hover0 border border-border rounded-xl p-3 text-xs font-mono text-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 overflow-y-auto"
+                className="w-full h-80 bg-surface-hover border border-border rounded-xl p-3 text-xs font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-emerald-500 overflow-y-auto"
                 onClick={(e) => (e.target as HTMLTextAreaElement).select()}
               />
 
@@ -2368,7 +2347,7 @@ export function ShopTab({
                 <button
                   type="button"
                   onClick={() => setShowReportModal(false)}
-                  className="w-1/3 bg-surface-hover hover:bg-surface-hover text-text-primary py-2.5 rounded-xl font-bold uppercase tracking-wider text-xs transition border border-border"
+                  className="w-1/3 bg-surface-hover hover:bg-border text-text-primary py-2.5 rounded-xl font-bold uppercase tracking-wider text-xs transition border border-border"
                 >
                   Close
                 </button>
@@ -2391,7 +2370,7 @@ export function ShopTab({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-surface w-full max-w-md border border-border rounded-2xl overflow-hidden shadow-2xl">
             {/* Header */}
-            <div className="bg-gradient-to-r from-emerald-950 to-neutral-900 px-5 py-4 flex items-center justify-between border-b border-border">
+            <div className="bg-gradient-to-r from-accent/10 to-surface-hover px-5 py-4 flex items-center justify-between border-b border-border">
               <div>
                 <span className="text-[9px] font-black tracking-widest text-accent uppercase font-mono">
                   Customise & Checkout

@@ -18,7 +18,7 @@
 | 6 | UI/UX Redesign | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 7 | Financial Logic Overhaul | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 8 | Workflow Simplification | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 9 | Studio & Shop Enhancement | NOT STARTED | — | — |
+| 9 | Studio & Shop Enhancement | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 10 | Testing & Quality Infrastructure | NOT STARTED | — | — |
 | 11 | Performance & Optimization | NOT STARTED | — | — |
 
@@ -274,7 +274,49 @@
 
 ---
 
-## Phases 9–11
+## Phase 9 — Studio & Shop Enhancement
+
+### Audit Findings
+
+| ID | Severity | Finding | Location |
+|----|----------|---------|----------|
+| SS-01 | **HIGH** | Subscription dual-write race: both client handler and webhook compute/write `studioExpiryDate`, causing potential 2x duration extension and duplicate `subscriptionHistory` entries | `StudioTab.tsx` handler + `webhook/route.ts` |
+| SS-02 | **MEDIUM** | Webhook wrote ISO 8601 dates (`toISOString()`) but all client-side parsers expect `YYYY-MM-DD` format — caused `NaN` dates when webhook value was read by StudioTab | `webhook/route.ts:172` |
+| SS-03 | **MEDIUM** | Webhook `subscriptionHistory` schema diverged from client schema (`userId`/`amount`/`startDate` vs `playerId`/`adminId`/`paidAmount`) — made history view show incomplete entries | `webhook/route.ts:174-182` |
+| SS-04 | **MEDIUM** | `getMembershipStatus` in StudioAdminTab used dark-palette `bg-red-900/40`, `bg-red-950/20` colors that rendered as dark muddy tints on light theme | `StudioAdminTab.tsx:327-370` |
+| SS-05 | **LOW** | Same dark-palette status colors in PlayersTab `getMembershipStatus` (`bg-red-950/10`, `bg-amber-950/10`, `bg-emerald-950/10`) | `PlayersTab.tsx:114-158` |
+| SS-06 | **LOW** | Inactive plan border used `border-red-900/30` (dark) | `PlansView.tsx:192` |
+| SS-07 | **LOW** | `<optgroup>` background used `bg-emerald-900` (dark) | `AssignFeesAdmin.tsx:276` |
+
+### Documented (Not Fixed — Requires Product Decision)
+
+| ID | Finding | Reason |
+|----|---------|--------|
+| SS-D1 | ShopTab `finalizeOrderPlacement` and `handleAddManualOrder` duplicate ~80 lines of order logic (MOQ calc, payload construction, sister order updates, email sending) | Refactoring into a shared helper is beneficial but is a structural change that should be tested with real orders |
+| SS-D2 | ShopTab `text-white` on colored buttons (`bg-emerald-600 text-white`, `bg-blue-600 text-white`) | White text on saturated colored buttons is correct for both light and dark themes — no change needed |
+| SS-D3 | `bg-black/80` modal overlays used across all modules | Standard scrim pattern, works on both light and dark themes — no change needed |
+
+### Tasks
+
+| Task | Description | Files Changed | Priority | Status |
+|------|-------------|--------------|----------|--------|
+| 9.1 | Fix subscription dual-write: remove expiry date and subscription history writes from client handler (webhook is single source of truth) | `StudioTab.tsx` | High | COMPLETE |
+| 9.2 | Fix webhook subscription date format: ISO → YYYY-MM-DD, align history schema with client schema | `webhook/route.ts` | Medium | COMPLETE |
+| 9.3 | Fix webhook to also write `studioEndDate` (client code reads both `studioExpiryDate` and `studioEndDate`) | `webhook/route.ts` | Medium | COMPLETE |
+| 9.4 | Fix dark-palette membership status colors in StudioAdminTab | `StudioAdminTab.tsx` | Medium | COMPLETE |
+| 9.5 | Fix dark-palette membership status colors in PlayersTab | `PlayersTab.tsx` | Low | COMPLETE |
+| 9.6 | Fix dark-palette inactive plan border | `PlansView.tsx` | Low | COMPLETE |
+| 9.7 | Fix dark-palette optgroup background | `AssignFeesAdmin.tsx` | Low | COMPLETE |
+
+### Notes
+
+- SS-01 was the highest-impact finding: the Razorpay client `handler` callback and the server webhook BOTH computed and wrote `studioExpiryDate`. If the webhook fired after the client (common timing), it read the already-extended date and extended again — doubling the subscription duration. Fix: client handler now only writes membership status fields (`isStudioMember`, `studioPlan`, `studioStartDate`, `lastPaidDate`, `lastPaidAmount`); expiry calculation and subscription history are handled exclusively by the webhook.
+- This follows the pattern established in Phase 7/8 for match late fees (FinanceTab line 340: "Late fees are created and marked Paid server-side by the webhook").
+- Zero new TypeScript errors introduced (build passes clean)
+
+---
+
+## Phases 10–11
 
 Task breakdowns will be added as each phase is approved.
 

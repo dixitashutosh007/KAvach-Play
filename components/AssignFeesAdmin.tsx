@@ -273,7 +273,7 @@ export function AssignFeesAdmin({
                 <select
                   value={selectedMatch}
                   onChange={(e) => setSelectedMatch(e.target.value)}
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary  [&>optgroup]:bg-emerald-900"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-text-primary  [&>optgroup]:bg-surface"
                   required={feeType === "match"}
                 >
                   <option value="">-- Choose a Match --</option>
