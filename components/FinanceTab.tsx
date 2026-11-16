@@ -298,13 +298,22 @@ export function PlayerFinanceView({
           intentData: {
             type: "finance_dues",
             playerId: mePlayer?.id,
-            items: duesToPay.map(d => ({
-              type: d.type,
-              matchId: d.type === "match" ? d.matchId : null,
-              feeId: d.type === "other" ? d.rawId : null,
-              merchId: d.type === "merch" ? d.rawId : null,
-              paymentId: d.rawId,
-            }))
+            items: duesToPay.map(d => {
+              const isLateFee = d.rawId.startsWith("latefee_");
+              return {
+                type: d.type,
+                matchId: d.type === "match" ? d.matchId : null,
+                feeId: (d.type === "other" && !isLateFee) ? d.rawId : null,
+                merchId: d.type === "merch" ? d.rawId : null,
+                paymentId: d.rawId,
+                ...(isLateFee ? {
+                  isLateFee: true,
+                  lateFeeLabel: d.title,
+                  lateFeeAmount: d.amount,
+                  lateFeeTemplateId: `latefee_${d.matchId}`,
+                } : {}),
+              };
+            })
           }
         }),
       });
@@ -327,19 +336,8 @@ export function PlayerFinanceView({
               const due = dues.find((d) => d.id === dueId);
               if (due) {
                 paidDuesDetails.push(`${due.title} (₹${due.amount})`);
-                const isLateFeeItem = due.rawId.startsWith("latefee_");
-                if (isLateFeeItem && mePlayer) {
-                  updates.push(
-                    (async () => {
-                      const feeId = await store.addOtherFee(mePlayer.id, {
-                        title: due.title,
-                        amount: due.amount,
-                        comment: "Auto-levied late fee penalty",
-                        templateId: `latefee_${due.matchId}`,
-                      });
-                      if (feeId) await store.updateOtherFeeStatus(mePlayer.id, feeId, "Paid", "razorpay");
-                    })(),
-                  );
+                if (due.rawId.startsWith("latefee_")) {
+                  // Late fees are created and marked Paid server-side by the webhook
                 } else if (due.type === "match" && due.matchId) {
                   updates.push(
                     store.updatePaymentStatus(due.rawId, "Paid", due.matchId, undefined, "razorpay"),

@@ -68,18 +68,57 @@ export async function POST(req: NextRequest) {
                        updatedAt: new Date()
                      });
                   }
+                  if (data.lateFeeItems && Array.isArray(data.lateFeeItems)) {
+                    for (const lf of data.lateFeeItems) {
+                      try {
+                        await db.collection("players").doc(lf.playerId).collection("otherFees").add({
+                          id: crypto.randomUUID(),
+                          playerId: lf.playerId,
+                          title: lf.label || "Late Fee",
+                          amount: lf.amount || 0,
+                          comment: "Auto-levied late fee penalty",
+                          templateId: lf.templateId || "",
+                          status: "Paid",
+                          paymentMethod: "razorpay",
+                          createdAt: new Date(),
+                          updatedAt: new Date(),
+                        });
+                      } catch (e) {
+                        console.error(`[webhook] Failed to create late fee doc for player ${lf.playerId}:`, e);
+                      }
+                    }
+                  }
                } else if (data.type === "finance_dues") {
                   const items = data.items || [];
                   for (let i = 0; i < items.length; i++) {
                      const item = items[i];
-                     if (item.matchId && item.paymentId) {
+                     if (item.isLateFee && data.playerId) {
+                         try {
+                           await db.collection("players").doc(data.playerId).collection("otherFees").add({
+                             id: crypto.randomUUID(),
+                             playerId: data.playerId,
+                             title: item.lateFeeLabel || "Late Fee",
+                             amount: item.lateFeeAmount || 0,
+                             comment: "Auto-levied late fee penalty",
+                             templateId: item.lateFeeTemplateId || "",
+                             status: "Paid",
+                             paymentMethod: "razorpay",
+                             createdAt: new Date(),
+                             updatedAt: new Date(),
+                           });
+                         } catch (e) {
+                           console.error(`[webhook] Failed to create late fee for player ${data.playerId}, item ${i}:`, e);
+                         }
+                     } else if (item.matchId && item.paymentId) {
                          try {
                            await db.collection("matches").doc(item.matchId).collection("payments").doc(item.paymentId).update({
                              status: "Paid",
                              paymentMethod: "razorpay",
                              updatedAt: new Date()
                            });
-                         } catch (e) {}
+                         } catch (e) {
+                           console.error(`[webhook] Failed to update match payment ${item.paymentId} for match ${item.matchId}:`, e);
+                         }
                      } else if (item.feeId && data.playerId) {
                          try {
                            await db.collection("players").doc(data.playerId).collection("otherFees").doc(item.feeId).update({
@@ -87,7 +126,9 @@ export async function POST(req: NextRequest) {
                              paymentMethod: "razorpay",
                              updatedAt: new Date()
                            });
-                         } catch(e) {}
+                         } catch (e) {
+                           console.error(`[webhook] Failed to update fee ${item.feeId} for player ${data.playerId}:`, e);
+                         }
                      } else if (item.merchId) {
                          try {
                            await db.collection("merchOrders").doc(item.merchId).update({
@@ -95,7 +136,9 @@ export async function POST(req: NextRequest) {
                              paymentMethod: "razorpay",
                              updatedAt: new Date()
                            });
-                         } catch(e) {}
+                         } catch (e) {
+                           console.error(`[webhook] Failed to update merch order ${item.merchId}:`, e);
+                         }
                      }
                   }
                } else if (data.type === "subscription") {

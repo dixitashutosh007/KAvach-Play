@@ -577,16 +577,24 @@ export function AssignFeesAdmin({
                                         f.status !== "Cancelled",
                                     );
                                     if (!exempted) {
-                                      const mLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
-                                      const fees = computeLateFees(match.date, match.id, fee.playerId, mLabel);
-                                      for (const lf of fees) {
-                                        const feeId = await store.addOtherFee(fee.playerId, {
-                                          title: lf.label,
-                                          amount: lf.amount,
-                                          comment: "Auto-levied late fee penalty (admin marked paid)",
-                                          templateId: `latefee_${match.id}`,
-                                        });
-                                        if (feeId) await store.updateOtherFeeStatus(fee.playerId, feeId, "Paid", "manual");
+                                      const existingLateFee = store.otherFees.some(
+                                        (f: any) =>
+                                          f.playerId === fee.playerId &&
+                                          f.templateId === `latefee_${match.id}` &&
+                                          f.status !== "Cancelled",
+                                      );
+                                      if (!existingLateFee) {
+                                        const mLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+                                        const fees = computeLateFees(match.date, match.id, fee.playerId, mLabel);
+                                        for (const lf of fees) {
+                                          const feeId = await store.addOtherFee(fee.playerId, {
+                                            title: lf.label,
+                                            amount: lf.amount,
+                                            comment: "Auto-levied late fee penalty (admin marked paid)",
+                                            templateId: `latefee_${match.id}`,
+                                          });
+                                          if (feeId) await store.updateOtherFeeStatus(fee.playerId, feeId, "Paid", "manual");
+                                        }
                                       }
                                     }
                                   }}

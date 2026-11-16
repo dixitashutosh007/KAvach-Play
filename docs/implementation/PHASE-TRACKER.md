@@ -16,7 +16,7 @@
 | 4 | Component Decomposition | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 5 | Navigation Rationalisation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 6 | UI/UX Redesign | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 7 | Financial Logic Overhaul | NOT STARTED | — | — |
+| 7 | Financial Logic Overhaul | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 8 | Workflow Simplification | NOT STARTED | — | — |
 | 9 | Studio & Shop Enhancement | NOT STARTED | — | — |
 | 10 | Testing & Quality Infrastructure | NOT STARTED | — | — |
@@ -49,7 +49,7 @@
 | CRIT-04 | YES | `AdminDashboard.tsx` L44, `FinanceTab.tsx` L117, `PayClient.tsx` L23, `DuesAndRemindersTab.tsx` L135 | **FIXED** — Phase 1 |
 | FIN-01 | YES | `MatchesTab.tsx` L1569, L1620 | **FIXED** — Phase 1 |
 | FIN-02 | YES | `FinanceTab.tsx` L1245, L1262 | **FIXED** — Phase 1 |
-| FIN-03 | YES | `FinanceTab.tsx` L329–341 | CONFIRMED — late fee loss on mobile |
+| FIN-03 | YES | `FinanceTab.tsx` L329–341 | **FIXED** — Phase 7 (server-side webhook creation) |
 
 ### Open Decisions
 
@@ -204,7 +204,44 @@
 
 ---
 
-## Phases 7–11
+## Phase 7 — Financial Logic Overhaul
+
+### Audit Findings
+
+| Finding | Severity | Description | Status |
+|---------|----------|-------------|--------|
+| FIN-03 | HIGH | Late fees created in browser callback — lost if user navigates away after Razorpay payment | **FIXED** |
+| FIN-04 | MEDIUM | Webhook silently swallows errors in 3 catch blocks (`catch(e) {}`) | **FIXED** |
+| FIN-05 | MEDIUM | Late fee feeIds in intent are synthetic (not real doc IDs) — webhook can't find them | **FIXED** (by FIN-03 fix) |
+| FIN-08 | LOW | No duplicate guard when admin creates late fee docs repeatedly | **FIXED** |
+| FIN-06 | LOW | Subscription webhook queries player by `where("id", "==", ...)` — fragile | DOCUMENTED |
+| FIN-07 | LOW | Optimistic UI state not reverted on Firestore write failure | DOCUMENTED |
+
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 7.1 | Move late fee creation to server-side webhook (FIN-03) | `app/api/razorpay/webhook/route.ts` | Medium | COMPLETE |
+| 7.2 | Add error logging to webhook catch blocks (FIN-04) | `app/api/razorpay/webhook/route.ts` | Low | COMPLETE |
+| 7.3 | Send late fee metadata in FinanceTab order intent | `components/FinanceTab.tsx` | Low | COMPLETE |
+| 7.4 | Remove client-side late fee creation from FinanceTab handler | `components/FinanceTab.tsx` | Low | COMPLETE |
+| 7.5 | Send late fee metadata in MatchesTab order intent | `components/MatchesTab.tsx` | Low | COMPLETE |
+| 7.6 | Remove client-side late fee creation from MatchesTab handler | `components/MatchesTab.tsx` | Low | COMPLETE |
+| 7.7 | Add duplicate guard for admin late fee creation in MatchesTab | `components/MatchesTab.tsx` | Low | COMPLETE |
+| 7.8 | Add duplicate guard for admin late fee creation in DuesAndRemindersTab | `components/DuesAndRemindersTab.tsx` | Low | COMPLETE |
+| 7.9 | Add duplicate guard for admin late fee creation in AssignFeesAdmin | `components/AssignFeesAdmin.tsx` | Low | COMPLETE |
+
+### Notes
+
+- FIN-03 was the highest-severity open finding from Phase 0 audit. Root cause: `computeLateFees()` runs client-side, fee docs created in Razorpay success callback which can be interrupted by navigation/crash/network failure.
+- Fix strategy: client now sends late fee metadata (label, amount, templateId) in the Razorpay order intent data. The webhook creates and immediately marks the fee docs as "Paid" server-side — no client-side doc creation needed for Razorpay payments.
+- Admin manual-payment flows (MatchesTab status dropdown, DuesAndRemindersTab mark-paid, AssignFeesAdmin mark-paid) still create late fee docs client-side, but now with a duplicate guard checking `templateId`.
+- Webhook error logging now captures item-level context for debugging payment reconciliation failures.
+- Zero new TypeScript errors introduced (build passes clean)
+
+---
+
+## Phases 8–11
 
 Task breakdowns will be added as each phase is approved.
 

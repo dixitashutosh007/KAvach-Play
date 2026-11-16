@@ -1825,7 +1825,13 @@ export function MatchPayments({
             type: "match",
             matchId: match.id,
             paymentId: myPayment.id,
-            playerId: myPayment.playerId
+            playerId: myPayment.playerId,
+            lateFeeItems: myLateFees.map(lf => ({
+              playerId: myPayment.playerId,
+              label: lf.label,
+              amount: lf.amount,
+              templateId: `latefee_${match.id}`,
+            })),
           }
         }),
       });
@@ -1845,15 +1851,7 @@ export function MatchPayments({
         handler: async function (response: any) {
           try {
             await store.updatePaymentStatus(myPayment.id, "Paid", match.id, undefined, "razorpay");
-            for (const lf of myLateFees) {
-              const feeId = await store.addOtherFee(myPayment.playerId, {
-                title: lf.label,
-                amount: lf.amount,
-                comment: "Auto-levied late fee penalty",
-                templateId: `latefee_${match.id}`,
-              });
-              if (feeId) await store.updateOtherFeeStatus(myPayment.playerId, feeId, "Paid", "razorpay");
-            }
+            // Late fees are created and marked Paid server-side by the webhook
             toast("Payment Successful!", "success");
             setIsProcessingPayment(false);
             if (typeof onBack === 'function') onBack();
@@ -2894,16 +2892,24 @@ export function MatchPayments({
                                     f.status !== "Cancelled",
                                 );
                                 if (!exempted) {
-                                  const pLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
-                                  const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
-                                  for (const lf of fees) {
-                                    const feeId = await store.addOtherFee(payment.playerId, {
-                                      title: lf.label,
-                                      amount: lf.amount,
-                                      comment: "Auto-levied late fee penalty (admin marked paid)",
-                                      templateId: `latefee_${match.id}`,
-                                    });
-                                    if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
+                                  const existingLateFee = store.otherFees.some(
+                                    (f: any) =>
+                                      f.playerId === payment.playerId &&
+                                      f.templateId === `latefee_${match.id}` &&
+                                      f.status !== "Cancelled",
+                                  );
+                                  if (!existingLateFee) {
+                                    const pLabel = `vs ${match.opponent || match.title || "Match"} (${formatDate(match.date)})`;
+                                    const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
+                                    for (const lf of fees) {
+                                      const feeId = await store.addOtherFee(payment.playerId, {
+                                        title: lf.label,
+                                        amount: lf.amount,
+                                        comment: "Auto-levied late fee penalty (admin marked paid)",
+                                        templateId: `latefee_${match.id}`,
+                                      });
+                                      if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
+                                    }
                                   }
                                 }
                               }

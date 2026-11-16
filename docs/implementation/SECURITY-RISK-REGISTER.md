@@ -247,19 +247,19 @@ If base fee is ₹800 and a guest is charged ₹1,000 via `feeOverride`, `grossV
 | Field | Detail |
 |-------|--------|
 | **Severity** | P1 — HIGH |
-| **Status** | CONFIRMED |
+| **Status** | **FIXED** — Phase 7 |
 | **Area** | Payment Reliability |
-| **Files** | `components/FinanceTab.tsx` lines 329–341, `app/api/razorpay/webhook/route.ts` |
+| **Files** | `components/FinanceTab.tsx`, `components/MatchesTab.tsx`, `app/api/razorpay/webhook/route.ts` |
 | **Requires Decision** | No |
 
 **Technical Detail**:
 
 1. Dynamic late fees are computed in the browser via `computeLateFees`.
-2. The `otherFees` document is created inside the browser's Razorpay success callback (`store.addOtherFee` at line 333).
-3. The server-side webhook receives the payment but the late fee document doesn't exist yet, so the webhook's update fails silently.
-4. If a mobile user pays and navigates away before line 333 completes, Razorpay collects the money but no fee record is written to Firestore.
+2. ~~The `otherFees` document is created inside the browser's Razorpay success callback (`store.addOtherFee` at line 333).~~
+3. ~~The server-side webhook receives the payment but the late fee document doesn't exist yet, so the webhook's update fails silently.~~
+4. ~~If a mobile user pays and navigates away before line 333 completes, Razorpay collects the money but no fee record is written to Firestore.~~
 
-**Fix**: Pre-create all fee documents server-side, or include late fee intent items in the order generation endpoint.
+**Fix Applied (Phase 7)**: Late fee metadata (label, amount, templateId) is now included in the Razorpay order intent data. The server-side webhook creates the otherFees documents and marks them as "Paid" — eliminating the client-side creation dependency. Admin manual-payment flows retain client-side creation with a duplicate guard.
 
 ---
 

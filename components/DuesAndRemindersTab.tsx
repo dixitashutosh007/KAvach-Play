@@ -1004,13 +1004,21 @@ function MarkPaidModal({
       const methodLabel = MANUAL_METHODS.find((m) => m.key === selectedMethod)?.label || selectedMethod;
 
       if (due.isVirtual && due.isLateFee) {
-        const feeId = await store.addOtherFee(due.playerId, {
-          title: due.desc,
-          amount: due.amount,
-          comment: "Auto-levied late fee penalty (admin marked paid)",
-          templateId: `latefee_${due.matchId}`,
-        });
-        if (feeId) await store.updateOtherFeeStatus(due.playerId, feeId, "Paid", "manual");
+        const existingLateFee = store.otherFees.some(
+          (f: any) =>
+            f.playerId === due.playerId &&
+            f.templateId === `latefee_${due.matchId}` &&
+            f.status !== "Cancelled",
+        );
+        if (!existingLateFee) {
+          const feeId = await store.addOtherFee(due.playerId, {
+            title: due.desc,
+            amount: due.amount,
+            comment: "Auto-levied late fee penalty (admin marked paid)",
+            templateId: `latefee_${due.matchId}`,
+          });
+          if (feeId) await store.updateOtherFeeStatus(due.playerId, feeId, "Paid", "manual");
+        }
       } else if (due.type === "match" && due.matchId) {
         await store.updatePaymentStatus(
           due.uid,
