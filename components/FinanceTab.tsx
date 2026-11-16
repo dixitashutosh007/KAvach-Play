@@ -4,8 +4,7 @@
  * Handles all financial interactions related to matches and other ad-hoc fees.
  * Admins use this to track which players have or haven't paid their match fees,
  * create new fee templates, and assign individual fees. Players use this tab
- * to view their outstanding dues and mark them as paid. Also integrates a secondary
- * `WixFinanceView` for potential external e-commerce hooks.
+ * to view their outstanding dues and mark them as paid.
  */
 import { authedFetch } from "@/lib/authed-fetch";
 import { isMatchBillable } from "@/lib/matchBillable";
@@ -29,7 +28,6 @@ import {
   X,
 } from "lucide-react";
 import { formatDate, normalizeIndianMobile, computeLateFees } from "@/lib/utils";
-import WixFinanceView from "./WixFinanceView";
 import RazorReportView from "./RazorReportView";
 import { CreateFeeAdmin } from "./CreateFeeAdmin";
 import { FeePlansAdmin } from "./FeePlansAdmin";
@@ -1279,7 +1277,6 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           "matches",
           "dues",
           "razor",
-          ...(store.appConfig?.features?.isWixEnabled ? ["wix"] : []),
           "fee",
         ].map((tab) => {
           const active = subTab === tab;
@@ -1628,7 +1625,6 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
       {subTab === "dues" && <DuesAndRemindersTab store={store} isFinanceAdmin={true} isSuperAdmin={isSuperAdmin} />}
       {subTab === "razor" && <RazorReportView store={store} />}
-      {subTab === "wix" && <WixFinanceView store={store} />}
 
       {subTab === "fee" && <FeeManagementView store={store} />}
 

@@ -56,11 +56,11 @@
 | Decision | Status | Required Before |
 |----------|--------|----------------|
 | D-01: Abandoned match billing policy | **DECIDED** — Never bill. Revert existing charges. | Phase 1 |
-| D-02: Dual-identity consolidation strategy | AWAITING PRODUCT OWNER | Phase 3 |
-| D-03: WixFinanceView retirement | AWAITING PRODUCT OWNER | Phase 2 |
-| D-04: Admin-tools page disposition | AWAITING PRODUCT OWNER | Phase 4 |
+| D-02: Dual-identity consolidation strategy | **DECIDED** — Keep both, designate sources of truth, atomic sync. | Phase 3 |
+| D-03: WixFinanceView retirement | **DECIDED** — Retire immediately. Done in Phase 2. | Phase 2 |
+| D-04: Admin-tools page disposition | **DECIDED** — Keep, link from nav in Phase 4. | Phase 4 |
 | D-05: paymentLinks collection future | **DECIDED** — Lock down rules, keep collection. | Phase 1 |
-| D-06: Ghost isDesigner role | AWAITING PRODUCT OWNER | Phase 3 |
+| D-06: isDesigner role | **DECIDED** — Keep. Not a ghost; actively gates Design tab. | N/A |
 
 ---
 
@@ -92,7 +92,7 @@
 | 2.1 | Remove unused class-variance-authority dependency | `package.json` | Low | COMPLETE |
 | 2.2 | Remove unused tw-animate-css dependency | `package.json` | Low | COMPLETE |
 | 2.3 | Lock paymentLinks to admin-only | `firestore.rules` | Low | COMPLETE (done in Phase 1) |
-| 2.4 | WixFinanceView disposition (D-03) | — | — | AWAITING DECISION |
+| 2.4 | Retire WixFinanceView (D-03) | `components/WixFinanceView.tsx`, `components/FinanceTab.tsx`, `components/SettingsTab.tsx`, `lib/types.ts` | Low | COMPLETE |
 | 2.5 | CRIT-03: Scope payment collectionGroup queries for non-admins | `hooks/useStore.ts`, `app/page.tsx` | Medium | COMPLETE |
 | 2.6 | CRIT-03: Scope otherFees collectionGroup queries for non-admins | `hooks/useStore.ts`, `app/page.tsx` | Medium | COMPLETE |
 | 2.7 | CRIT-03: Tighten collection group read rules in Firestore | `firestore.rules` | Low | COMPLETE |

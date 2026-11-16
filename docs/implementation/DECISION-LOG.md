@@ -11,11 +11,11 @@
 | # | Decision | Context | Options | Phase Dependency |
 |---|----------|---------|---------|-----------------|
 | **D-01** | Abandoned match billing policy | CRIT-04: Admin dashboard excludes abandoned matches from dues, but players are billed. 4 files inconsistent. | **DECIDED: Option A** — Never bill abandoned matches. Revert/void any existing charges for abandoned matches. | Phase 1 (P0 fix) |
-| **D-02** | Dual-identity consolidation strategy | `appUsers/{uid}` + `players/{playerId}` have 21 duplicated fields. | **A**: Merge into single collection **B**: Keep both, designate one as source of truth with sync | Phase 3 |
-| **D-03** | WixFinanceView retirement timeline | 1,247-line legacy import tool. Is historical data migration complete? | **A**: Retire immediately **B**: Keep until explicit data migration sign-off | Phase 2 |
-| **D-04** | Admin Tools page disposition | `app/admin-tools/page.tsx` (454 lines) orphaned from navigation. | **A**: Absorb into AdminDashboard **B**: Delete if redundant **C**: Link from nav | Phase 4 |
+| **D-02** | Dual-identity consolidation strategy | `appUsers/{uid}` + `players/{playerId}` have 21 duplicated fields. | **DECIDED: Option B** — Keep both collections. Designate `appUsers` as auth/role source, `players` as gameplay/profile source. Atomic batch writes on duplicated fields, gradual read migration. No login or payment disruption. | Phase 3 |
+| **D-03** | WixFinanceView retirement timeline | 1,247-line legacy import tool. Is historical data migration complete? | **DECIDED: Option A** — Retire immediately. Component deleted, feature flag removed. | Phase 2 |
+| **D-04** | Admin Tools page disposition | `app/admin-tools/page.tsx` (454 lines) orphaned from navigation. | **DECIDED: Option C** — Keep page (Player ID Audit + Ghost Cleanup are useful admin tools). Link from nav. Quick-access widgets for home screen are a separate feature (Phase 6). | Phase 4 |
 | **D-05** | `paymentLinks` collection future | CRIT-02: Rules allow any user to update, but collection is unused. | **DECIDED: Option A** — Lock down rules to admin-only. Keep collection for future use. | Phase 1 |
-| **D-06** | Ghost `isDesigner` role | Defined in security rules but never assigned via UI. | **A**: Remove from rules **B**: Wire up to UI | Phase 3 |
+| **D-06** | `isDesigner` role | Initially flagged as ghost, but actually in active use — gates Design tab access for non-admin players. Toggle exists in Settings → Elevate Player's Role. | **DECIDED: Keep** — Role is functional and actively used. Not a ghost. | N/A |
 
 ---
 
@@ -57,12 +57,12 @@ Source: Product Rationalisation Report, Section 12.
 
 | ID | Feature | Reason |
 |----|---------|--------|
-| RET-01 | WixFinanceView | Legacy import tool, migration-era artifact |
-| RET-02 | `paymentLinks` collection | Unused by application code |
-| RET-03 | `class-variance-authority` dependency | Zero imports |
-| RET-04 | `tw-animate-css` dependency | Zero imports |
-| RET-05 | Ghost `isDesigner` role | Never assigned via UI |
-| RET-06 | Admin-tools orphaned route | Unlinked, potentially redundant |
+| RET-01 | WixFinanceView | **RETIRED** — Phase 2. Component deleted, isWixEnabled flag removed. |
+| RET-02 | `paymentLinks` collection | **LOCKED DOWN** — Phase 1. Rules restricted to admin-only. Collection kept for future use. |
+| RET-03 | `class-variance-authority` dependency | **RETIRED** — Phase 2. Removed from package.json. |
+| RET-04 | `tw-animate-css` dependency | **RETIRED** — Phase 2. Removed from package.json. |
+| RET-05 | ~~Ghost `isDesigner` role~~ | **NOT A GHOST** — Active role gating Design tab. Keeping. (D-06) |
+| RET-06 | Admin-tools orphaned route | **KEEPING** — Useful admin utilities. Will link from nav in Phase 4. (D-04) |
 
 ### MOVE (2 items — 6.2%)
 

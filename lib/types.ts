@@ -61,7 +61,6 @@ export type AppConfig = {
     leaderboard: boolean;
     feed: boolean;
     matches: boolean;
-    isWixEnabled?: boolean;
     shop?: boolean;
     opinion?: boolean;
     pna?: boolean;
