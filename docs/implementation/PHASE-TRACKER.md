@@ -14,7 +14,7 @@
 | 2 | Data Integrity & Schema Cleanup | **COMPLETE** | 2026-11-15 | 2026-11-15 |
 | 3 | Identity Consolidation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
 | 4 | Component Decomposition | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 5 | Navigation Rationalisation | NOT STARTED | — | — |
+| 5 | Navigation Rationalisation | **IN PROGRESS** | 2026-11-16 | — |
 | 6 | UI/UX Redesign | NOT STARTED | — | — |
 | 7 | Financial Logic Overhaul | NOT STARTED | — | — |
 | 8 | Workflow Simplification | NOT STARTED | — | — |
@@ -142,7 +142,38 @@
 
 ---
 
-## Phases 5–11
+## Phase 5 — Navigation Rationalisation
+
+### Tasks
+
+| # | Task | File(s) | Complexity | Status |
+|---|------|---------|-----------|--------|
+| 5.1 | Confirm navigation structure (D-07) | `DECISION-LOG.md` | Low | COMPLETE |
+| 5.2 | Create MoreDrawer bottom-sheet component | `components/layout/MoreDrawer.tsx` (new) | Medium | COMPLETE |
+| 5.3 | Restructure player mobile bottom nav (5 items) | `components/layout/MobileBottomNav.tsx` | Medium | COMPLETE |
+| 5.4 | Add slide-up animation for MoreDrawer | `app/globals.css` | Low | COMPLETE |
+| 5.5 | Restructure player desktop sidebar (primary + More section) | `app/page.tsx` | Medium | COMPLETE |
+| 5.6 | Add player finance tab rendering | `app/page.tsx` | Low | COMPLETE |
+| 5.7 | Replace admin desktop sidebar with 7 command hubs | `app/page.tsx` | Medium | COMPLETE |
+| 5.8 | Replace admin mobile `<select>` with pill nav | `app/page.tsx` | Medium | COMPLETE |
+| 5.9 | Add Design tab to admin content rendering | `app/page.tsx` | Low | COMPLETE |
+| 5.10 | Update PHASE-READINESS.md prerequisite | `docs/implementation/PHASE-READINESS.md` | Low | COMPLETE |
+
+### Notes
+
+- Player nav: 5-item bottom nav (Home, My Finance, Pay, Profile, More) with overflow drawer
+- Pay button: prominent accent-colored FAB-style on mobile, "Pay Now" link on desktop sidebar
+- Pay action navigates to standalone `/pay/{playerId}` route
+- My Finance renders FinanceTab with persona="player" (PlayerFinanceView)
+- More drawer contains: Matches, Leaderboard, Studio, Shop, Design (all feature-gated)
+- Admin nav: 7 command hubs (Dashboard Hub, Match Centre, Finance Command, People & Teams, Design Studio, Club Settings, Studio/Coaching)
+- Admin mobile: replaced `<select>` dropdown with pill-button row
+- Design tab now accessible to admins who have canDesign permission
+- Zero new TypeScript errors introduced (14 pre-existing unchanged)
+
+---
+
+## Phases 6–11
 
 Task breakdowns will be added as each phase is approved.
 

@@ -31,6 +31,8 @@ import {
   ShoppingBag,
   X,
   ImageIcon,
+  Wallet,
+  CreditCard,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
@@ -858,93 +860,35 @@ export default function Home() {
                       }`}
                     >
                       <span className="flex items-center gap-3">
-                        <HomeIcon className="w-4.5 h-4.5 shrink-0" /> Club Feed
+                        <HomeIcon className="w-4.5 h-4.5 shrink-0" /> Home
                       </span>
                       <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                     </button>
                   )}
 
-                  {isFeatureEnabled("matches") && (
-                    <button
-                      onClick={() => setActiveTab("matches")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "matches"
-                          ? "bg-accent text-black"
-                          : "text-white/70 hover:bg-white/5"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <CalendarDays className="w-4.5 h-4.5 shrink-0" />{" "}
-                        Matches
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setActiveTab("finance")}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                      activeTab === "finance"
+                        ? "bg-accent text-black"
+                        : "text-white/70 hover:bg-white/5"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Wallet className="w-4.5 h-4.5 shrink-0" /> My Finance
+                    </span>
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                  </button>
 
-                  {isFeatureEnabled("leaderboard") && (
-                    <button
-                      onClick={() => setActiveTab("leaderboard")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "leaderboard"
-                          ? "bg-accent text-black"
-                          : "text-white/70 hover:bg-white/5"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <Trophy className="w-4.5 h-4.5 shrink-0" /> Leaderboard
-                        Stats
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  {isFeatureEnabled("studio") && (
-                    <button
-                      onClick={() => setActiveTab("studio")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "studio"
-                          ? "bg-accent text-black"
-                          : "text-white/70 hover:bg-white/5"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <Video className="w-4.5 h-4.5 shrink-0" /> Studio
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  {isFeatureEnabled("shop") && (
-                    <button
-                      onClick={() => setActiveTab("shop")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "shop"
-                          ? "bg-accent text-black"
-                          : "text-white/70 hover:bg-white/5"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <ShoppingBag className="w-4.5 h-4.5 shrink-0" /> Shop
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  {canDesign && (
-                    <button
-                      onClick={() => setActiveTab("design")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "design"
-                          ? "bg-accent text-black"
-                          : "text-white/70 hover:bg-white/5"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <ImageIcon className="w-4.5 h-4.5 shrink-0" /> Design
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
+                  <a
+                    href={`/pay/${player?.id || user?.uid}`}
+                    className="w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer text-accent hover:bg-accent/10"
+                  >
+                    <span className="flex items-center gap-3">
+                      <CreditCard className="w-4.5 h-4.5 shrink-0" /> Pay Now
+                    </span>
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                  </a>
 
                   <button
                     onClick={() => setActiveTab("profile")}
@@ -959,54 +903,84 @@ export default function Home() {
                     </span>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                   </button>
+
+                  <div className="border-t border-white/5 mt-2 pt-2">
+                    <div className="text-[9px] text-white/30 uppercase font-black tracking-wider px-3 mb-1.5">
+                      More
+                    </div>
+                    {isFeatureEnabled("matches") && (
+                      <button
+                        onClick={() => setActiveTab("matches")}
+                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
+                          activeTab === "matches" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                        }`}
+                      >
+                        <CalendarDays className="w-4 h-4 shrink-0" /> Matches
+                      </button>
+                    )}
+                    {isFeatureEnabled("leaderboard") && (
+                      <button
+                        onClick={() => setActiveTab("leaderboard")}
+                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
+                          activeTab === "leaderboard" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                        }`}
+                      >
+                        <Trophy className="w-4 h-4 shrink-0" /> Leaderboard
+                      </button>
+                    )}
+                    {isFeatureEnabled("studio") && (
+                      <button
+                        onClick={() => setActiveTab("studio")}
+                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
+                          activeTab === "studio" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                        }`}
+                      >
+                        <Video className="w-4 h-4 shrink-0" /> Studio
+                      </button>
+                    )}
+                    {isFeatureEnabled("shop") && (
+                      <button
+                        onClick={() => setActiveTab("shop")}
+                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
+                          activeTab === "shop" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                        }`}
+                      >
+                        <ShoppingBag className="w-4 h-4 shrink-0" /> Shop
+                      </button>
+                    )}
+                    {canDesign && (
+                      <button
+                        onClick={() => setActiveTab("design")}
+                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
+                          activeTab === "design" ? "bg-accent text-black" : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                        }`}
+                      >
+                        <ImageIcon className="w-4 h-4 shrink-0" /> Design
+                      </button>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div className="space-y-1">
-                  {[
-                    "home",
-                    "finance",
-                    "matches",
-                    "studio",
-                    "club",
-                    "settings",
-                  ]
-                    .filter((tab) => {
-                      if (tab === "finance")
-                        return isFinanceAdmin;
-                      if (tab === "matches")
-                        return isMatchAdmin;
-                      if (tab === "studio")
-                        return isStudioAdmin;
-                      if (tab === "club")
-                        return isClubAdmin;
-                      if (tab === "settings") return isSuperAdmin;
-                      return true;
-                    })
-                    .map((tab) => {
-                      const iconMap: Record<string, any> = {
-                        home: HomeIcon,
-                        finance: Shield,
-                        matches: CalendarDays,
-                        studio: Video,
-                        club: Users,
-                        settings: SettingsIcon,
-                      };
-                      const IconComp = iconMap[tab] || Trophy;
-                      const uppercaseLabels: Record<string, string> = {
-                        home: "Admin Home",
-                        finance: "Finance",
-                        matches: "Matches",
-                        studio: "Studio",
-                        club: "Club",
-                        settings: "Settings",
-                      };
+                  {([
+                    { tab: "home", label: "Dashboard Hub", icon: HomeIcon, show: true },
+                    { tab: "matches", label: "Match Centre", icon: CalendarDays, show: isMatchAdmin },
+                    { tab: "finance", label: "Finance Command", icon: Shield, show: isFinanceAdmin },
+                    { tab: "club", label: "People & Teams", icon: Users, show: isClubAdmin },
+                    { tab: "design", label: "Design Studio", icon: ImageIcon, show: canDesign },
+                    { tab: "settings", label: "Club Settings", icon: SettingsIcon, show: isSuperAdmin },
+                    { tab: "studio", label: "Studio / Coaching", icon: Video, show: isStudioAdmin },
+                  ] as const)
+                    .filter((item) => item.show)
+                    .map((item) => {
+                      const IconComp = item.icon;
                       return (
                         <button
-                          key={tab}
-                          data-testid={`sidebar-tab-${tab}`}
-                          onClick={() => setActiveTab(tab as any)}
+                          key={item.tab}
+                          data-testid={`sidebar-tab-${item.tab}`}
+                          onClick={() => setActiveTab(item.tab as any)}
                           className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                            activeTab === tab
+                            activeTab === item.tab
                               ? "bg-accent text-black"
                               : "text-white/70 hover:bg-white/5"
                           }`}
@@ -1015,12 +989,12 @@ export default function Home() {
                             <IconComp
                               className="w-4 h-4 text-accent group-hover:scale-110 transition-transform"
                               style={
-                                activeTab === tab
+                                activeTab === item.tab
                                   ? { color: "#000" }
                                   : undefined
                               }
                             />
-                            {uppercaseLabels[tab]}
+                            {item.label}
                           </span>
                           <ChevronRight className="w-3.5 h-3.5 opacity-40 group-hover:translate-x-1 transition-transform" />
                         </button>
@@ -1165,6 +1139,14 @@ export default function Home() {
                       defaultAction={tabAction}
                     />
                   )}
+                  {activeTab === "finance" && (
+                    <FinanceTab
+                      store={store}
+                      persona={persona}
+                      isFinanceAdmin={false}
+                      isSuperAdmin={false}
+                    />
+                  )}
                   {activeTab === "leaderboard" && (
                     <LeaderboardTab store={store} persona={persona} />
                   )}
@@ -1183,33 +1165,37 @@ export default function Home() {
               </AnimatePresence>
             ) : (
               <div className="space-y-6">
-                {/* Mobile Tab Pill Controls (Only visible on Mobile when Admin menu is up) */}
-                <div className="md:hidden relative mb-4">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-accent">
-                    <Check className="w-4 h-4" />
-                  </div>
-                  <select
-                    data-testid="admin-tab-select"
-                    value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as any)}
-                    className="w-full appearance-none bg-black/40 border border-glass-border rounded-xl px-4 py-3 pl-9 text-sm font-bold uppercase tracking-widest text-white focus:outline-none focus:border-accent [&>option]:bg-emerald-950"
-                  >
-                    <option value="home">Admin Home</option>
-                    {isFinanceAdmin && (
-                      <option value="finance">Finance</option>
-                    )}
-                    {isMatchAdmin && (
-                      <option value="matches">Matches</option>
-                    )}
-                    {isStudioAdmin && (
-                      <option value="studio">Studio</option>
-                    )}
-                    {isClubAdmin && <option value="club">Club</option>}
-                    {isSuperAdmin && <option value="settings">Settings</option>}
-                  </select>
-                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/50">
-                    <ChevronRight className="w-4 h-4 rotate-90" />
-                  </div>
+                {/* Mobile Admin Hub Navigation */}
+                <div className="md:hidden mb-4 flex flex-wrap gap-1.5">
+                  {([
+                    { tab: "home", label: "Dashboard", icon: HomeIcon, show: true },
+                    { tab: "matches", label: "Matches", icon: CalendarDays, show: isMatchAdmin },
+                    { tab: "finance", label: "Finance", icon: Shield, show: isFinanceAdmin },
+                    { tab: "club", label: "People", icon: Users, show: isClubAdmin },
+                    { tab: "design", label: "Design", icon: ImageIcon, show: canDesign },
+                    { tab: "settings", label: "Settings", icon: SettingsIcon, show: isSuperAdmin },
+                    { tab: "studio", label: "Studio", icon: Video, show: isStudioAdmin },
+                  ] as const)
+                    .filter((item) => item.show)
+                    .map((item) => {
+                      const IconComp = item.icon;
+                      const isActive = activeTab === item.tab;
+                      return (
+                        <button
+                          key={item.tab}
+                          data-testid={`admin-mobile-tab-${item.tab}`}
+                          onClick={() => setActiveTab(item.tab as any)}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+                            isActive
+                              ? "bg-accent text-black shadow-lg shadow-accent/20"
+                              : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          <IconComp className="w-3.5 h-3.5" />
+                          {item.label}
+                        </button>
+                      );
+                    })}
                 </div>
 
                 <AnimatePresence mode="wait">
@@ -1269,6 +1255,9 @@ export default function Home() {
                     {activeTab === "notifications" && (
                       <NotificationsTab store={store} persona={persona} />
                     )}
+                    {activeTab === "design" && canDesign && (
+                      <DesignTab store={store} />
+                    )}
                     {activeTab === "settings" && <SettingsTab store={store} setPreviewTheme={setPreviewThemeId} />}
                     {activeTab === "profile" && <ProfileTab store={store} />}
                     {activeTab === "finance" && (
@@ -1294,6 +1283,8 @@ export default function Home() {
         isFeatureEnabled={isFeatureEnabled}
         persona={persona}
         hasMissingMandatory={hasMissingMandatory}
+        canDesign={canDesign}
+        currentPlayerId={player?.id || user?.uid}
       />
     </div>
   );

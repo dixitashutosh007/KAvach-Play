@@ -1,14 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import {
   Home as HomeIcon,
-  Trophy,
-  CalendarDays,
+  Wallet,
+  CreditCard,
   Users,
-  Video,
-  ShoppingBag,
+  MoreHorizontal,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
+import { MoreDrawer } from "./MoreDrawer";
 
 type Tab =
   | "home"
@@ -24,30 +25,34 @@ type Tab =
   | "dues_and_reminders"
   | "shop"
   | "opinion"
-  | "design";
+  | "design"
+  | "club";
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
-/**
- * Bottom navigation for players on mobile. Only rendered when the player
- * is fully onboarded (hasMissingMandatory is false) and in the "player"
- * persona; admins get the desktop sidebar. Each button is gated by the
- * relevant feature flag.
- */
 export function MobileBottomNav({
   activeTab,
   onSelectTab,
   isFeatureEnabled,
   persona,
   hasMissingMandatory,
+  canDesign,
+  currentPlayerId,
 }: {
   activeTab: Tab;
   onSelectTab: (tab: Tab) => void;
   isFeatureEnabled: (key: Feature) => boolean;
   persona: "admin" | "player";
   hasMissingMandatory: boolean;
+  canDesign?: boolean;
+  currentPlayerId?: string;
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+
   if (hasMissingMandatory || persona !== "player") return null;
+
+  const OVERFLOW_TABS: Tab[] = ["matches", "leaderboard", "studio", "shop", "design"];
+  const isMoreActive = OVERFLOW_TABS.includes(activeTab);
 
   const btnCls = (isActive: boolean) =>
     `flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer transition ${
@@ -58,41 +63,49 @@ export function MobileBottomNav({
   const labelCls = "text-[9px] font-bold uppercase tracking-wider";
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 w-full glass !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-2xl justify-around bg-black/85 backdrop-blur-2xl px-1">
-      {isFeatureEnabled("feed") && (
+    <>
+      <MoreDrawer
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        onSelectTab={onSelectTab}
+        activeTab={activeTab}
+        isFeatureEnabled={isFeatureEnabled}
+        canDesign={canDesign ?? false}
+      />
+      <nav className="fixed bottom-0 left-0 right-0 w-full glass !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-2xl justify-around bg-black/85 backdrop-blur-2xl px-1">
         <button onClick={() => onSelectTab("home")} className={btnCls(activeTab === "home")}>
           <HomeIcon className="w-5 h-5" />
-          <span className={labelCls}>Feed</span>
+          <span className={labelCls}>Home</span>
         </button>
-      )}
-      {isFeatureEnabled("matches") && (
-        <button onClick={() => onSelectTab("matches")} className={btnCls(activeTab === "matches")}>
-          <CalendarDays className="w-5 h-5" />
-          <span className={`${labelCls} text-center leading-tight`}>Matches</span>
+        <button onClick={() => onSelectTab("finance")} className={btnCls(activeTab === "finance")}>
+          <Wallet className="w-5 h-5" />
+          <span className={labelCls}>Finance</span>
         </button>
-      )}
-      {isFeatureEnabled("leaderboard") && (
-        <button onClick={() => onSelectTab("leaderboard")} className={btnCls(activeTab === "leaderboard")}>
-          <Trophy className="w-5 h-5" />
-          <span className={labelCls}>Stats</span>
+        {currentPlayerId ? (
+          <a
+            href={`/pay/${currentPlayerId}`}
+            className="flex-1 py-2.5 flex flex-col items-center gap-1 cursor-pointer text-accent hover:text-accent/80 transition"
+          >
+            <span className="w-10 h-10 rounded-full bg-accent flex items-center justify-center shadow-lg shadow-accent/30 -mt-4">
+              <CreditCard className="w-5 h-5 text-black" />
+            </span>
+            <span className={`${labelCls} text-accent`}>Pay</span>
+          </a>
+        ) : (
+          <button onClick={() => onSelectTab("finance")} className={btnCls(false)}>
+            <CreditCard className="w-5 h-5" />
+            <span className={labelCls}>Pay</span>
+          </button>
+        )}
+        <button onClick={() => onSelectTab("profile")} className={btnCls(activeTab === "profile")}>
+          <Users className="w-5 h-5" />
+          <span className={labelCls}>Profile</span>
         </button>
-      )}
-      {isFeatureEnabled("studio") && (
-        <button onClick={() => onSelectTab("studio")} className={btnCls(activeTab === "studio")}>
-          <Video className="w-5 h-5" />
-          <span className={labelCls}>Studio</span>
+        <button onClick={() => setMoreOpen(true)} className={btnCls(isMoreActive)}>
+          <MoreHorizontal className="w-5 h-5" />
+          <span className={labelCls}>More</span>
         </button>
-      )}
-      {isFeatureEnabled("shop") && (
-        <button onClick={() => onSelectTab("shop")} className={btnCls(activeTab === "shop")}>
-          <ShoppingBag className="w-5 h-5" />
-          <span className={labelCls}>Shop</span>
-        </button>
-      )}
-      <button onClick={() => onSelectTab("profile")} className={btnCls(activeTab === "profile")}>
-        <Users className="w-5 h-5" />
-        <span className={labelCls}>Profile</span>
-      </button>
-    </nav>
+      </nav>
+    </>
   );
 }

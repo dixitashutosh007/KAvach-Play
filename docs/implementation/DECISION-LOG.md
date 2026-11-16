@@ -144,4 +144,4 @@ Source: Product Rationalisation Report, Section 12.
 6. Club Settings
 7. Studio/Coaching
 
-**Decision Required**: Confirm navigation structure before Phase 5 implementation.
+**DECIDED**: Both structures confirmed by product owner. Implemented in Phase 5.
