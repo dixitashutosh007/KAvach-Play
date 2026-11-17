@@ -4,7 +4,7 @@
  *
  * Verifies directly against production requireAdmin() in lib/server-auth.ts (QA-001 Compliant):
  * 1. requireAdmin strictly enforces custom claim { admin: true } as the sole authority.
- * 2. verifyIdToken(token, true) is invoked with checkRevoked: true on every call.
+ * 2. verifyIdToken(token, true) is invoked with checkRevoked: true (explicitly asserted in legitimate-admin and revoked-token test scenarios).
  * 3. Ordinary authenticated users without custom claim receive 403 Forbidden.
  * 4. Callers with forged role == 'admin' in Firestore receive 403 Forbidden.
  * 5. Callers with demoted admin claim (admin: false) receive 403 Forbidden.

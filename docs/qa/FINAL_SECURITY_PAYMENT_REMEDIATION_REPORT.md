@@ -49,7 +49,7 @@ No production Firestore rules, production environment variables, Firebase claims
   - `app/api/whatsapp/send/route.ts`: invokes `requireAdmin(req)` -> enforces `decoded.admin === true`.
   - `app/api/whatsapp/remind-studio/route.ts`: invokes `requireAdmin(req)` -> enforces `decoded.admin === true`.
   - `app/api/razorpay/order/route.ts`: validates authenticated user token via `getAuth().verifyIdToken()`.
-  - `app/api/razorpay/webhook/route.ts`: validates HMAC SHA256 webhook signature over raw payload and verifies intent ownership.
+  - `app/api/razorpay/webhook/route.ts`: implements timing-safe HMAC SHA-256 webhook signature verification over raw payload (inspected in source code; route-level HTTP integration testing remains a separate QA gap).
 
 ---
 
@@ -85,8 +85,8 @@ No production Firestore rules, production environment variables, Firebase claims
 - **Test Architecture & Scope Distinction:**
   > **IMPORTANT:** 
   > - **Emulator Concurrency Tests:** `tests/emulator-webhook-concurrency.test.mjs` directly executes the transaction function invoking `processWebhookIntentTransaction(db, details)` (2 arguments, without `payload`) against the live Firestore Emulator. This exercises and proves database-level transaction isolation, atomic locking, and duplicate-write prevention under high concurrency.
-  > - **Production HTTP Route Handling:** The production webhook route (`app/api/razorpay/webhook/route.ts`) performs raw-body signature verification via timing-safe HMAC SHA256 comparison, parses the JSON payload, extracts `details`, and invokes `processWebhookIntentTransaction(db, details, payload)` with the 3rd argument.
-  > - **Untested HTTP Integration Scenarios:** The emulator concurrency suite does NOT execute full end-to-end HTTP network route tests against a running Next.js server, nor does it test raw-payload storage/persistence over the wire. Route-level HMAC signature checks and negative payload structures are separately validated in unit/negative tests (`tests/razorpay-webhook-negative.test.mjs`), while database concurrency is tested directly at the transaction function level.
+  > - **Production HTTP Route Handling & Source Inspection:** Source-code inspection of `app/api/razorpay/webhook/route.ts` confirms that the production HTTP route implements raw-body HMAC SHA-256 signature verification using timing-safe comparison (`crypto.timingSafeEqual`) before payload parsing and invokes `processWebhookIntentTransaction(db, details, payload)` with the 3rd argument.
+  > - **HMAC & HTTP Route QA Boundary:** Existing negative tests (`tests/razorpay-webhook-negative.test.mjs`) exercise the library functions (`extractWebhookEventDetails()`, `validateWebhookTransaction()`, `processWebhookIntentTransaction()`) directly; they do **not** invoke the production HTTP route and do **not** test its HMAC signature verification. Route-level HMAC integration testing (sending live or mocked HTTP requests with valid/invalid signatures to an active Next.js server endpoint) and raw-payload storage persistence remain a separate QA gap, not completed automated tests.
 - **Concurrency & Race Scenarios Tested Against Live Emulator (4/4 Passed):**
   1. **Simultaneous `payment.captured` & `order.paid` for Match + Late Fee:**
      - Two concurrent `processWebhookIntentTransaction(db, details)` workers fired concurrently via `Promise.all`.
