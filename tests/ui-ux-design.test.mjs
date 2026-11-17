@@ -111,3 +111,30 @@ test("UX-P0-03: Player MobileBottomNav renders the 5 approved primary items", ()
   assert.ok(navCode.includes('<span className={labelCls}>Performance</span>'), "Nav must include Performance");
   assert.ok(navCode.includes('<span className={labelCls}>Club</span>'), "Nav must include Club");
 });
+
+test("UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View", () => {
+  const pageCode = fs.readFileSync(path.resolve("app/page.tsx"), "utf-8");
+
+  // Verify that the redundant top horizontal pill buttons are eliminated
+  assert.equal(
+    pageCode.includes("data-testid=\"admin-mobile-tab-"),
+    false,
+    "Top duplicate mobile pill buttons must be eliminated",
+  );
+
+  // Verify admin hub context banner is rendered
+  assert.ok(
+    pageCode.includes("data-testid=\"admin-hub-context-banner\""),
+    "Admin hub context banner must be present",
+  );
+
+  // Verify Return to Player View action is available
+  assert.ok(
+    pageCode.includes("title=\"Return to Player View\""),
+    "Context banner must provide Return to Player View button",
+  );
+  assert.ok(
+    pageCode.includes("Return to Player View"),
+    "Desktop sidebar must provide Return to Player View button",
+  );
+});

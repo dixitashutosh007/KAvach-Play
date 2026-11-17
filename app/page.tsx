@@ -999,6 +999,19 @@ export default function Home() {
                         </button>
                       );
                     })}
+                  <div className="pt-2 border-t border-border mt-2">
+                    <button
+                      onClick={() => {
+                        setPersona("player");
+                        setActiveTab("home");
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer text-text-muted hover:text-brand hover:bg-brand/5"
+                    >
+                      <span className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-wider">
+                        <ArrowRight className="w-3.5 h-3.5 rotate-180" /> Return to Player View
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1178,37 +1191,37 @@ export default function Home() {
               </AnimatePresence>
             ) : (
               <div className="space-y-6">
-                {/* Mobile Admin Hub Navigation */}
-                <div className="md:hidden mb-4 flex flex-wrap gap-1.5">
-                  {([
-                    { tab: "home", label: "Dashboard", icon: HomeIcon, show: true },
-                    { tab: "matches", label: "Matches", icon: CalendarDays, show: isMatchAdmin },
-                    { tab: "finance", label: "Finance", icon: Shield, show: isFinanceAdmin },
-                    { tab: "club", label: "People", icon: Users, show: isClubAdmin },
-                    { tab: "design", label: "Design", icon: ImageIcon, show: canDesign },
-                    { tab: "settings", label: "Settings", icon: SettingsIcon, show: isSuperAdmin },
-                    { tab: "studio", label: "Studio", icon: Video, show: isStudioAdmin },
-                  ] as const)
-                    .filter((item) => item.show)
-                    .map((item) => {
-                      const IconComp = item.icon;
-                      const isActive = activeTab === item.tab;
-                      return (
-                        <button
-                          key={item.tab}
-                          data-testid={`admin-mobile-tab-${item.tab}`}
-                          onClick={() => setActiveTab(item.tab as any)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
-                            isActive
-                              ? "bg-accent text-text-accent shadow-lg shadow-accent/20"
-                              : "bg-surface-hover text-text-secondary hover:bg-surface-hover hover:text-text-primary"
-                          }`}
-                        >
-                          <IconComp className="w-3.5 h-3.5" />
-                          {item.label}
-                        </button>
-                      );
-                    })}
+                {/* Admin Hub Context Banner (replaces redundant mobile pill bar UX-P1-01) */}
+                <div
+                  data-testid="admin-hub-context-banner"
+                  className="flex items-center justify-between bg-surface border border-brand/20 rounded-xl px-3 sm:px-4 py-2.5 shadow-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-brand animate-pulse shrink-0" />
+                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-brand truncate">
+                      Admin Console · {
+                        activeTab === "home" ? "Overview" :
+                        activeTab === "matches" ? "Match Centre" :
+                        activeTab === "finance" ? "Finance & Dues" :
+                        activeTab === "club" ? "Player Roster" :
+                        activeTab === "studio" ? "Studio & Nets" :
+                        activeTab === "design" ? "Design Studio" :
+                        activeTab === "settings" ? "Settings & Access" :
+                        "Workspace"
+                      }
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPersona("player");
+                      setActiveTab("home");
+                    }}
+                    className="text-[10px] font-bold uppercase tracking-wider text-text-secondary hover:text-brand transition flex items-center gap-1 cursor-pointer shrink-0 ml-2"
+                    title="Return to Player View"
+                  >
+                    <span>Player View</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
                 <AnimatePresence mode="wait">
