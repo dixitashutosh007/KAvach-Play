@@ -492,51 +492,66 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
     assert.equal(recPaid.canRetry, false);
 
     // Case B: Gateway status is 'created' / 'attempted' (still payable) -> extends lease and reuses order
+    const reservationKeyB = "res_match_expired_active_b";
+    const resB1 = await acquirePaymentReservation(mockDb, reservationKeyB, authUid, 500, "INR");
+    await activatePaymentReservation(mockDb, reservationKeyB, resB1.reservationToken, "order_rzp_expired_b", "intent_b");
+    await mockDb.collection("paymentReservations").doc(reservationKeyB).update({ expiresAt: twentyMinsAgo });
+
     const mockRzpPayable = {
       orders: {
         fetch: async (id) => ({ id, status: "created", amount: 50000, currency: "INR" }),
       },
     };
-    const recPayable = await reconcileAmbiguousReservation(mockRzpPayable, mockDb, reservationKey, authUid, 500, "INR");
+    const recPayable = await reconcileAmbiguousReservation(mockRzpPayable, mockDb, reservationKeyB, authUid, 500, "INR");
     assert.equal(recPayable.reconciled, true);
-    assert.equal(recPayable.existingOrder?.orderId, "order_rzp_expired_1");
+    assert.equal(recPayable.existingOrder?.orderId, "order_rzp_expired_b");
     // Verify reservation lease was extended
-    const snapPayable = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    const snapPayable = await mockDb.collection("paymentReservations").doc(reservationKeyB).get();
     assert.equal(snapPayable.data()?.status, "active");
     assert.ok(new Date(snapPayable.data()?.expiresAt).getTime() > Date.now());
 
     // Case C: Unsupported order status (e.g. 'expired' or 'cancelled') is rejected per Razorpay Orders contract
     // Razorpay Orders strictly support only 'created', 'attempted', and 'paid'. Unsupported statuses retain safe blocking.
+    const reservationKeyC = "res_match_expired_active_c";
+    const resC1 = await acquirePaymentReservation(mockDb, reservationKeyC, authUid, 500, "INR");
+    await activatePaymentReservation(mockDb, reservationKeyC, resC1.reservationToken, "order_rzp_expired_c", "intent_c");
+    await mockDb.collection("paymentReservations").doc(reservationKeyC).update({ expiresAt: twentyMinsAgo });
+
     const mockRzpCancelled = {
       orders: {
         fetch: async (id) => ({ id, status: "cancelled", amount: 50000, currency: "INR" }),
       },
     };
-    const recCancelled = await reconcileAmbiguousReservation(mockRzpCancelled, mockDb, reservationKey, authUid, 500, "INR");
+    const recCancelled = await reconcileAmbiguousReservation(mockRzpCancelled, mockDb, reservationKeyC, authUid, 500, "INR");
     assert.equal(recCancelled.reconciled, false);
     assert.equal(recCancelled.canRetry, false);
     assert.match(recCancelled.error, /Unrecognized or unsupported Razorpay order status/);
 
-    const snapCancelled = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    const snapCancelled = await mockDb.collection("paymentReservations").doc(reservationKeyC).get();
     assert.equal(snapCancelled.data()?.status, "reconciliation_failed");
 
     // Lock takeover is safely blocked
-    const resBlocked = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    const resBlocked = await acquirePaymentReservation(mockDb, reservationKeyC, authUid, 500, "INR");
     assert.equal(resBlocked.acquired, false);
     assert.equal(resBlocked.needsReconciliation, true);
 
     // Case D: External status unavailable (network/gateway failure) -> retains safe blocked state
+    const reservationKeyD = "res_match_expired_active_d";
+    const resD1 = await acquirePaymentReservation(mockDb, reservationKeyD, authUid, 500, "INR");
+    await activatePaymentReservation(mockDb, reservationKeyD, resD1.reservationToken, "order_rzp_expired_d", "intent_d");
+    await mockDb.collection("paymentReservations").doc(reservationKeyD).update({ expiresAt: twentyMinsAgo });
+
     const mockRzpError = {
       orders: {
         fetch: async () => { throw new Error("Gateway connection reset"); },
       },
     };
-    const recError = await reconcileAmbiguousReservation(mockRzpError, mockDb, reservationKey, authUid, 500, "INR");
+    const recError = await reconcileAmbiguousReservation(mockRzpError, mockDb, reservationKeyD, authUid, 500, "INR");
     assert.equal(recError.reconciled, false);
     assert.equal(recError.canRetry, false);
     assert.match(recError.error, /External status unavailable/);
 
-    const snapError = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    const snapError = await mockDb.collection("paymentReservations").doc(reservationKeyD).get();
     assert.equal(snapError.data()?.status, "reconciliation_failed");
   });
 
@@ -812,5 +827,98 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
 
     const res2 = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
     assert.equal(res2.acquired, true);
+  });
+
+  // ── 9. Paid-State Protection: Persisted Paid Reservation Must Never Reach Checkout ──
+  describe("Paid-State Protection at Acquisition & Lifecycle", () => {
+    it("acquirePaymentReservation returns conflict with isPaid: true and no existingOrder when doc is isPaid: true", async () => {
+      const mockDb = createMockDb();
+      const reservationKey = "res_paid_test_1";
+      const authUid = "user_paid_123";
+
+      // Seed an active reservation already marked paid
+      await mockDb.collection("paymentReservations").doc(reservationKey).set({
+        reservationKey,
+        status: "active",
+        orderId: "order_paid_already_111",
+        intentId: "intent_paid_222",
+        userId: authUid,
+        amount: 800,
+        currency: "INR",
+        isPaid: true,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // unexpired!
+      });
+
+      const res = await acquirePaymentReservation(mockDb, reservationKey, authUid, 800, "INR");
+      assert.equal(res.acquired, false);
+      assert.equal(res.conflict, true);
+      assert.equal(res.isPaid, true);
+      assert.equal(res.orderId, "order_paid_already_111");
+      assert.equal(res.existingOrder, undefined, "Paid reservation must NEVER be returned as existingOrder");
+      assert.match(res.error, /Obligation has already been paid via order order_paid_already_111/);
+    });
+
+    it("validateReservationForReuse rejects checkout reuse when isPaid is true", () => {
+      const result = validateReservationForReuse(
+        {
+          reservationKey: "res_key_1",
+          userId: "user_abc",
+          orderId: "order_paid_999",
+          intentId: "intent_999",
+          amount: 500,
+          currency: "INR",
+          isPaid: true,
+        },
+        "res_key_1",
+        "user_abc",
+        500,
+        "INR",
+      );
+
+      assert.equal(result.valid, false);
+      assert.equal(result.conflict, true);
+      assert.equal(result.isPaid, true);
+      assert.match(result.reason, /Obligation has already been paid via order order_paid_999/);
+    });
+
+    it("lifecycle operations (renew, activate, release) protect isPaid from being reset", async () => {
+      const mockDb = createMockDb();
+      const reservationKey = "res_paid_protect_1";
+      const token = "tok_123";
+
+      await mockDb.collection("paymentReservations").doc(reservationKey).set({
+        reservationKey,
+        reservationToken: token,
+        status: "active",
+        orderId: "order_protected_555",
+        isPaid: true,
+      });
+
+      // Renew should fail
+      const renewRes = await renewReservationLease(mockDb, reservationKey, token);
+      assert.equal(renewRes.renewed, false);
+      assert.match(renewRes.error, /Cannot renew lease: obligation is already marked paid/);
+
+      // Activate should throw
+      await assert.rejects(
+        async () => {
+          await activatePaymentReservation(mockDb, reservationKey, token, "order_new", "intent_new");
+        },
+        /Cannot activate reservation: obligation is already marked paid/,
+      );
+
+      // Release should throw
+      await assert.rejects(
+        async () => {
+          await releasePaymentReservation(mockDb, reservationKey, token);
+        },
+        /Cannot release reservation: obligation is already marked paid/,
+      );
+
+      // Doc must remain isPaid: true
+      const snap = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+      assert.equal(snap.data()?.isPaid, true);
+      assert.equal(snap.data()?.orderId, "order_protected_555");
+    });
   });
 });

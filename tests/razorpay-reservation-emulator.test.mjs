@@ -625,51 +625,69 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     assert.equal(recPaid.canRetry, false);
 
     // Case B: Gateway status is 'created' (payable) -> extends lease and reuses order
+    const keyB = `res_em_exp_active_b_${Date.now()}`;
+    const externalOrderIdB = `order_exp_b_${Date.now()}`;
+    const resB1 = await acquirePaymentReservation(db, keyB, user, 500, "INR", 30000);
+    await activatePaymentReservation(db, keyB, resB1.reservationToken, externalOrderIdB, intentRef.id);
+    await db.collection("paymentReservations").doc(keyB).update({ expiresAt: twentyMinsAgo });
+
     const mockRzpPayable = {
       orders: {
         fetch: async (id) => ({ id, status: "created", amount: 50000, currency: "INR" }),
       },
     };
-    const recPayable = await reconcileAmbiguousReservation(mockRzpPayable, db, key, user, 500, "INR");
+    const recPayable = await reconcileAmbiguousReservation(mockRzpPayable, db, keyB, user, 500, "INR");
     assert.equal(recPayable.reconciled, true);
-    assert.equal(recPayable.existingOrder?.orderId, externalOrderId);
-    const snapPayable = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(recPayable.existingOrder?.orderId, externalOrderIdB);
+    const snapPayable = await db.collection("paymentReservations").doc(keyB).get();
     assert.equal(snapPayable.data()?.status, "active");
     assert.ok(snapPayable.data()?.expiresAt.toDate().getTime() > Date.now());
 
     // Case C: Unsupported order status (e.g. 'expired' or 'cancelled') is rejected per Razorpay Orders contract
     // Per official Razorpay Orders API contract, Order entities strictly possess only 'created', 'attempted', and 'paid'.
     // Unsupported statuses remain safely blocked in 'reconciliation_failed' to prevent duplicate orders.
+    const keyC = `res_em_exp_active_c_${Date.now()}`;
+    const externalOrderIdC = `order_exp_c_${Date.now()}`;
+    const resC1 = await acquirePaymentReservation(db, keyC, user, 500, "INR", 30000);
+    await activatePaymentReservation(db, keyC, resC1.reservationToken, externalOrderIdC, intentRef.id);
+    await db.collection("paymentReservations").doc(keyC).update({ expiresAt: twentyMinsAgo });
+
     const mockRzpExpired = {
       orders: {
         fetch: async (id) => ({ id, status: "expired", amount: 50000, currency: "INR" }),
       },
     };
-    const recExpired = await reconcileAmbiguousReservation(mockRzpExpired, db, key, user, 500, "INR");
+    const recExpired = await reconcileAmbiguousReservation(mockRzpExpired, db, keyC, user, 500, "INR");
     assert.equal(recExpired.reconciled, false);
     assert.equal(recExpired.canRetry, false);
     assert.match(recExpired.error, /Unrecognized or unsupported Razorpay order status/);
 
-    const snapBlocked = await db.collection("paymentReservations").doc(key).get();
+    const snapBlocked = await db.collection("paymentReservations").doc(keyC).get();
     assert.equal(snapBlocked.data()?.status, "reconciliation_failed");
 
     // Lock takeover is safely blocked
-    const resBlocked = await acquirePaymentReservation(db, key, user, 500, "INR");
+    const resBlocked = await acquirePaymentReservation(db, keyC, user, 500, "INR");
     assert.equal(resBlocked.acquired, false);
     assert.equal(resBlocked.needsReconciliation, true);
 
     // Case D: External status unavailable (network failure) -> retains safe blocked state
+    const keyD = `res_em_exp_active_d_${Date.now()}`;
+    const externalOrderIdD = `order_exp_d_${Date.now()}`;
+    const resD1 = await acquirePaymentReservation(db, keyD, user, 500, "INR", 30000);
+    await activatePaymentReservation(db, keyD, resD1.reservationToken, externalOrderIdD, intentRef.id);
+    await db.collection("paymentReservations").doc(keyD).update({ expiresAt: twentyMinsAgo });
+
     const mockRzpErr = {
       orders: {
         fetch: async () => { throw new Error("Gateway connection reset by peer"); },
       },
     };
-    const recErr = await reconcileAmbiguousReservation(mockRzpErr, db, key, user, 500, "INR");
+    const recErr = await reconcileAmbiguousReservation(mockRzpErr, db, keyD, user, 500, "INR");
     assert.equal(recErr.reconciled, false);
     assert.equal(recErr.canRetry, false);
     assert.match(recErr.error, /External status unavailable/);
 
-    const snapErr = await db.collection("paymentReservations").doc(key).get();
+    const snapErr = await db.collection("paymentReservations").doc(keyD).get();
     assert.equal(snapErr.data()?.status, "reconciliation_failed");
   });
 
@@ -1063,8 +1081,103 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
       const resBody = await res.json();
       assert.match(resBody.error, /Obligation has already been paid via order/);
       assert.match(resBody.error, new RegExp(externalOrderId));
+
+      // Verify Firestore reservation doc persisted isPaid: true, status: "active", orderId
+      const snapAfterRoute = await db.collection("paymentReservations").doc(reservationKey).get();
+      assert.equal(snapAfterRoute.data()?.status, "active");
+      assert.equal(snapAfterRoute.data()?.isPaid, true);
+      assert.equal(snapAfterRoute.data()?.orderId, externalOrderId);
+
+      // 3. Second actual route call: reservation is now in status "active", isPaid: true, orderId: externalOrderId
+      // Must NEVER return HTTP 200 checkout opportunity! Must return HTTP 409 Conflict.
+      const req2 = new Request("http://localhost:3000/api/razorpay/order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-uid": user,
+        },
+        body: JSON.stringify({
+          intentData: {
+            type: "subscription",
+            planId,
+          },
+        }),
+      });
+
+      const postRes2 = await orderPOST(req2);
+      assert.equal(postRes2.status, 409, "Second route call on paid reservation must return 409");
+      const postRes2Body = await postRes2.json();
+      assert.match(postRes2Body.error, /Obligation has already been paid via order/);
+      assert.match(postRes2Body.error, new RegExp(externalOrderId));
+
+      // Verify reservation doc in Firestore remains isPaid: true and orderId unchanged
+      const snapAfterReq2 = await db.collection("paymentReservations").doc(reservationKey).get();
+      assert.equal(snapAfterReq2.data()?.isPaid, true);
+      assert.equal(snapAfterReq2.data()?.orderId, externalOrderId);
+      assert.equal(snapAfterReq2.data()?.status, "active");
+
+      // 4. Focused test for direct acquirePaymentReservation against an existing active, unexpired, paid reservation
+      const directAcquire = await acquirePaymentReservation(db, reservationKey, user, 1200, "INR", 30000);
+      assert.equal(directAcquire.acquired, false);
+      assert.equal(directAcquire.conflict, true);
+      assert.equal(directAcquire.isPaid, true);
+      assert.equal(directAcquire.orderId, externalOrderId);
+      assert.equal(directAcquire.existingOrder, undefined);
+      assert.match(directAcquire.error, /Obligation has already been paid via order/);
+      assert.match(directAcquire.error, new RegExp(externalOrderId));
     } finally {
       apiProto.get = origGet;
     }
+  });
+
+  // ── Scenario 18 (Regression): Concurrent Waiting Order Becoming Paid During Polling ──
+  it("Scenario 18: Payment becoming paid during concurrent polling returns HTTP 409 Conflict instead of checkout", async () => {
+    const user = `user_wait_paid_${Date.now()}`;
+    const planId = `plan_wait_paid_${Date.now()}`;
+    const paidOrderId = `order_wait_paid_${Date.now()}`;
+
+    await db.collection("subscriptionPlans").doc(planId).set({
+      title: "Monthly Membership",
+      fee: 600,
+      durationDays: 30,
+    });
+
+    const reservationKey = generateReservationKey({ type: "subscription", planId }, user);
+
+    // Initial request acquires reservation in status "reserving"
+    const res1 = await acquirePaymentReservation(db, reservationKey, user, 600, "INR", 30000);
+    assert.equal(res1.acquired, true);
+
+    // Schedule background update: 800ms later (during orderPOST polling loop),
+    // another worker marks the reservation active, isPaid: true, orderId: paidOrderId
+    setTimeout(async () => {
+      await db.collection("paymentReservations").doc(reservationKey).update({
+        status: "active",
+        isPaid: true,
+        orderId: paidOrderId,
+        updatedAt: new Date(),
+      });
+    }, 800);
+
+    const req = new Request("http://localhost:3000/api/razorpay/order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-uid": user,
+      },
+      body: JSON.stringify({
+        intentData: {
+          type: "subscription",
+          planId,
+        },
+      }),
+    });
+
+    const res = await orderPOST(req);
+    // Polling request must detect isPaid: true and return HTTP 409 Conflict, NEVER HTTP 200
+    assert.equal(res.status, 409);
+    const resBody = await res.json();
+    assert.match(resBody.error, /Obligation has already been paid via order/);
+    assert.match(resBody.error, new RegExp(paidOrderId));
   });
 });

@@ -116,6 +116,13 @@ export async function POST(req: Request) {
         currency,
       );
 
+      if (resResult.isPaid) {
+        return NextResponse.json(
+          { error: resResult.error || `Obligation has already been paid via order ${resResult.orderId || ""}.` },
+          { status: 409 },
+        );
+      }
+
       if (resResult.conflict) {
         return NextResponse.json(
           { error: resResult.error || "Payment reservation conflict." },
@@ -124,6 +131,13 @@ export async function POST(req: Request) {
       }
 
       if (resResult.existingOrder && resResult.existingOrder.orderId) {
+        if (resResult.existingOrder.isPaid) {
+          return NextResponse.json(
+            { error: `Obligation has already been paid via order ${resResult.existingOrder.orderId}.` },
+            { status: 409 },
+          );
+        }
+
         // Verify and repair intent consistency before returning existing order (FIN-001)
         const repairRes = await verifyAndRepairIntent(
           db,
@@ -177,6 +191,13 @@ export async function POST(req: Request) {
         }
 
         if (recResult.existingOrder && recResult.existingOrder.orderId) {
+          if (recResult.existingOrder.isPaid) {
+            return NextResponse.json(
+              { error: `Obligation has already been paid via order ${recResult.existingOrder.orderId}.` },
+              { status: 409 },
+            );
+          }
+
           // Verify and repair intent consistency before returning reconciled order (FIN-001)
           const repairRes = await verifyAndRepairIntent(
             db,
@@ -207,43 +228,10 @@ export async function POST(req: Request) {
           });
         }
 
-        if (recResult.isExpired && recResult.canRetry) {
-          // Order was confirmed expired or cancelled at Razorpay, and obligation is still unpaid.
-          // Safely reacquire reservation through a new atomic transaction.
-          const retryRes = await acquirePaymentReservation(
-            db,
-            reservationKey,
-            auth.uid,
-            payableAmount,
-            currency,
-          );
-          if (retryRes.conflict) {
-            return NextResponse.json(
-              { error: retryRes.error || "Payment reservation conflict." },
-              { status: 409 },
-            );
-          }
-          if (retryRes.needsReconciliation || retryRes.isWaiting) {
-            return NextResponse.json(
-              { error: "Order re-acquisition in progress. Please retry." },
-              { status: 503 },
-            );
-          }
-          if (retryRes.acquired) {
-            reservationAcquired = true;
-            reservationToken = retryRes.reservationToken;
-          } else {
-            return NextResponse.json(
-              { error: "Unable to reacquire reservation after order expiration. Please retry." },
-              { status: 409 },
-            );
-          }
-        } else {
-          return NextResponse.json(
-            { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
-            { status: 503 },
-          );
-        }
+        return NextResponse.json(
+          { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
+          { status: 503 },
+        );
       }
 
       if (resResult.isWaiting) {
@@ -258,6 +246,13 @@ export async function POST(req: Request) {
           const docSnap = await db.collection("paymentReservations").doc(reservationKey).get();
           if (docSnap.exists) {
             const data = docSnap.data() || {};
+            // Regression check: payment became paid during polling
+            if (data.isPaid === true || data.status === "paid") {
+              return NextResponse.json(
+                { error: `Obligation has already been paid via order ${data.orderId || ""}.` },
+                { status: 409 },
+              );
+            }
             if ((data.status === "active" || data.status === "activation_failed") && data.orderId) {
               waitOrder = data;
               break;
@@ -274,6 +269,13 @@ export async function POST(req: Request) {
         }
 
         if (waitOrder && waitOrder.orderId) {
+          if (waitOrder.isPaid === true || waitOrder.status === "paid") {
+            return NextResponse.json(
+              { error: `Obligation has already been paid via order ${waitOrder.orderId}.` },
+              { status: 409 },
+            );
+          }
+
           // Strictly validate identity and amount before reusing order (FIN-001)
           const validation = validateReservationForReuse(
             waitOrder,
@@ -342,6 +344,13 @@ export async function POST(req: Request) {
           }
 
           if (recResult.existingOrder && recResult.existingOrder.orderId) {
+            if (recResult.existingOrder.isPaid) {
+              return NextResponse.json(
+                { error: `Obligation has already been paid via order ${recResult.existingOrder.orderId}.` },
+                { status: 409 },
+              );
+            }
+
             const repairRes = await verifyAndRepairIntent(
               db,
               recResult.existingOrder.intentId,
@@ -390,6 +399,13 @@ export async function POST(req: Request) {
             currency,
           );
 
+          if (retryRes.isPaid) {
+            return NextResponse.json(
+              { error: retryRes.error || `Obligation has already been paid via order ${retryRes.orderId || ""}.` },
+              { status: 409 },
+            );
+          }
+
           if (retryRes.conflict) {
             return NextResponse.json(
               { error: retryRes.error || "Payment reservation conflict." },
@@ -398,6 +414,13 @@ export async function POST(req: Request) {
           }
 
           if (retryRes.existingOrder && retryRes.existingOrder.orderId) {
+            if (retryRes.existingOrder.isPaid) {
+              return NextResponse.json(
+                { error: `Obligation has already been paid via order ${retryRes.existingOrder.orderId}.` },
+                { status: 409 },
+              );
+            }
+
             const repairRes = await verifyAndRepairIntent(
               db,
               retryRes.existingOrder.intentId,

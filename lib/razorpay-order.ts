@@ -89,6 +89,8 @@ export interface PaymentReservationResult {
   receipt?: string;
   isWaiting?: boolean;
   conflict?: boolean;
+  isPaid?: boolean;
+  orderId?: string;
   needsReconciliation?: boolean;
   error?: string;
   existingOrder?: {
@@ -96,12 +98,14 @@ export interface PaymentReservationResult {
     intentId: string;
     amount: number;
     currency: string;
+    isPaid?: boolean;
   };
 }
 
 export interface ReservationValidationResult {
   valid: boolean;
   conflict?: boolean;
+  isPaid?: boolean;
   reason?: string;
 }
 
@@ -119,6 +123,16 @@ export function validateReservationForReuse(
 ): ReservationValidationResult {
   if (!reservationData || typeof reservationData !== "object") {
     return { valid: false, conflict: true, reason: "Reservation record is missing or invalid." };
+  }
+
+  // 0. Paid-state protection: a reservation marked paid must never be reused for checkout
+  if (reservationData.isPaid === true || reservationData.status === "paid") {
+    return {
+      valid: false,
+      conflict: true,
+      isPaid: true,
+      reason: `Obligation has already been paid via order ${reservationData.orderId || "unknown"}.`,
+    };
   }
 
   // 1. Validate reservation key
@@ -195,6 +209,9 @@ export async function setReservationIntentId(
     const snap = await transaction.get(reservationRef);
     if (!snap.exists) return;
     const data = snap.data() || {};
+    if (data.isPaid === true) {
+      throw new Error("Cannot set intentId: obligation is already marked paid.");
+    }
     if (data.reservationToken !== reservationToken) {
       throw new Error("Fencing conflict: reservation token mismatch when storing intentId.");
     }
@@ -310,6 +327,18 @@ export async function acquirePaymentReservation(
     if (snap.exists) {
       const data = snap.data() || {};
 
+      // P1: Paid-state protection: an obligation marked as paid must NEVER be reacquired,
+      // renewed, or returned as a payable existingOrder!
+      if (data.isPaid === true || data.status === "paid") {
+        return {
+          acquired: false,
+          conflict: true,
+          isPaid: true,
+          orderId: data.orderId,
+          error: `Obligation has already been paid via order ${data.orderId || "unknown"}.`,
+        };
+      }
+
       // P0: reconciliation_required and reconciliation_failed MUST remain blocked regardless of expiresAt!
       // Do not allow automatic lock takeover simply because a reconciliation hold expires.
       if (data.status === "reconciliation_required" || data.status === "reconciliation_failed") {
@@ -343,6 +372,8 @@ export async function acquirePaymentReservation(
             return {
               acquired: false,
               conflict: true,
+              isPaid: validation.isPaid,
+              orderId: data.orderId,
               error: validation.reason,
             };
           }
@@ -448,6 +479,12 @@ export async function renewReservationLease(
       throw new Error("Reservation not found for lease renewal.");
     }
     const data = snap.data() || {};
+    if (data.isPaid === true || data.status === "paid") {
+      return {
+        renewed: false,
+        error: "Cannot renew lease: obligation is already marked paid.",
+      };
+    }
     if (data.reservationToken !== reservationToken) {
       return {
         renewed: false,
@@ -493,6 +530,10 @@ export async function activatePaymentReservation(
     }
     const data = snap.data() || {};
 
+    if (data.isPaid === true) {
+      throw new Error(`Cannot activate reservation: obligation is already marked paid via order ${data.orderId || orderId}.`);
+    }
+
     if (data.reservationToken !== reservationToken) {
       throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot activate reservation.");
     }
@@ -533,6 +574,9 @@ export async function recordActivationFailure(
       throw new Error(`Reservation not found for recording activation failure: ${reservationKey}`);
     }
     const data = snap.data() || {};
+    if (data.isPaid === true) {
+      return; // Do not overwrite paid reservation with activation_failed
+    }
     if (data.reservationToken !== reservationToken) {
       throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot update reservation.");
     }
@@ -577,6 +621,9 @@ export async function recordReconciliationRequired(
       throw new Error(`Reservation not found for reconciliation record: ${reservationKey}`);
     }
     const data = snap.data() || {};
+    if (data.isPaid === true) {
+      return; // Do not overwrite paid reservation with reconciliation_required
+    }
     if (data.reservationToken !== reservationToken) {
       throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot update reservation.");
     }
@@ -626,6 +673,21 @@ export async function reconcileAmbiguousReservation(
   // Validate ownership before attempting reconciliation
   if (data.userId && data.userId !== authUid) {
     return { reconciled: false, error: "Reservation belongs to a different user." };
+  }
+
+  // If already marked isPaid, return isPaid: true immediately without making external gateway calls
+  if (data.isPaid === true || data.status === "paid") {
+    return {
+      reconciled: true,
+      isPaid: true,
+      canRetry: false,
+      existingOrder: {
+        orderId: data.orderId,
+        intentId: data.intentId,
+        amount: data.amount || payableAmount,
+        currency: data.currency || currency,
+      },
+    };
   }
 
   const receipt = data.receipt || generateAuthoritativeReceipt(reservationKey);
@@ -1019,6 +1081,9 @@ export async function releasePaymentReservation(
       return;
     }
     const data = snap.data() || {};
+    if (data.isPaid === true) {
+      throw new Error("Cannot release reservation: obligation is already marked paid.");
+    }
     if (data.reservationToken !== reservationToken) {
       throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot release reservation.");
     }

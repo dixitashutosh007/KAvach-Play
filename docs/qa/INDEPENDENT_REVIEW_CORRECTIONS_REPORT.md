@@ -57,6 +57,21 @@ This report documents the resolution, contract analysis, and emulator verificati
   - A replay of the webhook does not duplicate fulfilment records.
 - **Verification Delivered:** Implemented in `Scenario 16` of `tests/razorpay-reservation-emulator.test.mjs` against the live Cloud Firestore Emulator, executing full route POST handlers without mocks. Passed cleanly.
 
+### 1.4 Item 4 (P1) — Persisted Paid Reservation Must Never Reach Checkout
+- **Defect Identified:** In commit `059749a`, `reconcileAmbiguousReservation()` correctly persisted `isPaid: true` and returned `HTTP 409 Conflict` on the first request. However, on subsequent requests, `acquirePaymentReservation()` encountered an unexpired reservation with `status: "active"` and `orderId`, and returned `existingOrder` without verifying `data.isPaid`. The order route then returned that already-paid order as a checkout opportunity with `HTTP 200`.
+- **Correction Applied:**
+  1. **Paid-State Protection at Acquisition:** In `lib/razorpay-order.ts`, `acquirePaymentReservation()` checks `if (data.isPaid === true || data.status === "paid")` before any other status or expiry checks. It returns `{ acquired: false, conflict: true, isPaid: true, orderId: data.orderId, error: "Obligation has already been paid via order..." }` and **never** returns `existingOrder`.
+  2. **Paid-State Check in Helper:** In `validateReservationForReuse()`, `reservationData.isPaid === true` returns `{ valid: false, conflict: true, isPaid: true, reason: ... }`.
+  3. **Lifecycle Protection:** In `renewReservationLease`, `activatePaymentReservation`, `recordActivationFailure`, `recordReconciliationRequired`, and `releasePaymentReservation`, operations reject or avoid overwriting if the reservation is already marked `isPaid: true`.
+  4. **Route-Level Exhaustive Guard:** In `app/api/razorpay/order/route.ts`, checked `isPaid` on all 8 return paths (direct acquisition, existing order reuse, reconciliation result, reconciliation existing order, concurrent waiting loop polling, waiting order reuse, waiting reconciliation, and failed-lock retry). None can return an already-paid order for checkout.
+  5. **Webhook Merging:** In `lib/razorpay-webhook.ts`, when an intent is marked paid, the corresponding reservation document in `paymentReservations` is also atomically merged with `{ status: "active", isPaid: true, paidAt: now, razorpayPaymentId }`.
+  6. **Obsolete Logic Cleanup:** Removed obsolete `isExpired` order route branch to prevent dead code paths.
+  7. **Emulator & Unit Verification:**
+     - Extended `Scenario 17` in `tests/razorpay-reservation-emulator.test.mjs`: verified second actual route call returns `HTTP 409 Conflict`, identifies the paid order, and leaves Firestore reservation doc intact.
+     - Direct `acquirePaymentReservation` test asserting `isPaid: true`, `existingOrder: undefined`, and `conflict: true`.
+     - Added `Scenario 18`: concurrent polling regression test verifying that an order becoming paid during polling immediately aborts with `HTTP 409 Conflict` instead of `HTTP 200`.
+     - Unit tests in `tests/razorpay-concurrent-orders.test.mjs` verifying acquisition denial, validation failure, and lifecycle immutability for paid reservations.
+
 ---
 
 ## 2. Requirements Traceability Matrix
@@ -70,6 +85,7 @@ This report documents the resolution, contract analysis, and emulator verificati
 | **FIN-001-E** | Full API-to-webhook recovery integration | Finding 5 (P1) | [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts) & [app/api/razorpay/webhook/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/webhook/route.ts) | N/A (Integration) | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 16) | **PENDING** |
 | **FIN-001-F** | Paid orders in receipt reconciliation (HTTP 409) | Review Item 1 (P1)| [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L930-L955) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 17) | **PENDING** |
 | **FIN-001-G** | Orders API status contract (no expired/cancelled) | Review Item 2 (P1)| [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L710-L730) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 7, 13) | **PENDING** |
+| **FIN-001-H** | Persisted Paid Reservation Never Reaches Checkout| Review Item 4 (P1)| [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts), [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts) | `tests/razorpay-concurrent-orders.test.mjs` (Suite 9) | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenarios 17 & 18) | **PENDING** |
 | **P0-LIFECYCLE-1**| Periodic lease renewal in order route | Prior P0 | [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts#L496-L525) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenario 1) | **PENDING** |
 | **P0-LIFECYCLE-2**| Permanent block on reconciliation hold | Prior P0 | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L312-L321) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenario 2) | **PENDING** |
 | **P0-RECON-1** | Atomic, fenced reconciliation transactions | Prior P0 | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L650-L760) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenarios 3, 4, 11) | **PENDING** |
@@ -109,7 +125,9 @@ stateDiagram-v2
   reconciliation_required --> reconciliation_failed: orders.all({receipt}) returns 0 (unproven absence)
   reconciliation_required --> reconciliation_failed: multiple orders found or amount/currency mismatch
   active --> active: hold expires + orders.fetch(orderId) returns created/attempted [lease extended]
+  active --> active_paid: orders.fetch(orderId) returns paid [persists isPaid: true, blocks checkout]
   active --> reconciliation_failed: hold expires + orders.fetch(orderId) fails / network down / unsupported status [safely blocked]
+  active_paid --> [*]: permanently blocks checkout (HTTP 409 Conflict)
   reserving --> failed: definitive 4xx rejection + releasePaymentReservation()
   failed --> reserving: safe fresh reacquisition
 ```
@@ -143,12 +161,16 @@ stateDiagram-v2
 ✔ Finding 3: verifyAndRepairIntent strict validation (8 tests pass)
 ✔ Finding 4: Does not assume empty list API proves absence; keeps reservation safely blocked
 ✔ Item 1: receipt-only reconciliation persists paid state and returns isPaid: true without checkout opportunity
+✔ Suite 9: Paid-State Protection at Acquisition & Lifecycle (3 tests pass)
+  ✔ acquirePaymentReservation returns conflict with isPaid: true and no existingOrder when doc is isPaid: true
+  ✔ validateReservationForReuse rejects checkout reuse when isPaid is true
+  ✔ lifecycle operations (renew, activate, release) protect isPaid from being reset
 
-ℹ tests 181
-ℹ suites 39
-ℹ pass 181
+ℹ tests 184
+ℹ suites 40
+ℹ pass 184
 ℹ fail 0
-ℹ duration_ms 762.35
+ℹ duration_ms 702.06
 ```
 
 ### 4.2 Live Cloud Firestore Emulator Integration Tests (`npm run test:emulator`)
@@ -179,13 +201,14 @@ stateDiagram-v2
   ✔ Scenario 14 (Finding 2): Strict currency validation during reconciliation rejects missing or invalid currency
   ✔ Scenario 15 (Finding 4): Empty response from orders.all({ receipt }) keeps reservation safely blocked
   ✔ Scenario 16 (Finding 5): Complete API-to-webhook recovery integration: activation failure -> retry repair -> webhook fulfilment -> replay idempotency
-  ✔ Scenario 17 (Item 1): Paid order discovered through receipt-only reconciliation persists isPaid: true and blocks checkout with HTTP 409
+  ✔ Scenario 17 (Item 1 & Item 4): Paid order discovered through receipt-only reconciliation persists isPaid: true, blocks checkout on initial call and all subsequent calls with HTTP 409, and direct acquisition denies order reuse
+  ✔ Scenario 18 (Regression): Payment becoming paid during concurrent polling returns HTTP 409 Conflict instead of checkout
 
-ℹ tests 33
+ℹ tests 34
 ℹ suites 4
-ℹ pass 33
+ℹ pass 34
 ℹ fail 0
-ℹ duration_ms 8630.90
+ℹ duration_ms 10327.18
 ✔ Script exited successfully (code 0)
 ```
 

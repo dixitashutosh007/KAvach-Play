@@ -391,6 +391,21 @@ export async function processWebhookIntentTransaction(
       updatedAt: now,
     });
 
+    if (intent.reservationKey) {
+      const reservationRef = db.collection("paymentReservations").doc(intent.reservationKey);
+      transaction.set(
+        reservationRef,
+        {
+          status: "active",
+          isPaid: true,
+          paidAt: now,
+          razorpayPaymentId: details.paymentId,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+    }
+
     return { success: true };
   });
 }
