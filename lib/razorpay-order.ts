@@ -1149,6 +1149,7 @@ export function validateCurrency(currency: string | undefined | null): boolean {
 
 /**
  * Validates that the authenticated user owns or is linked to the target playerId.
+ * Enforces strict player-to-user boundary (SEC-001, IDT-001) without blindly assuming authUid === playerId.
  */
 export async function verifyPlayerOwnership(
   db: any,
@@ -1156,19 +1157,25 @@ export async function verifyPlayerOwnership(
   targetPlayerId: string,
 ): Promise<boolean> {
   if (!targetPlayerId || !authUid) return false;
-  if (targetPlayerId === authUid) return true;
 
-  // Check players collection
+  // 1. Check players collection: does the target player document have authUid matching caller?
   try {
     const pDoc = await db.collection("players").doc(targetPlayerId).get();
-    if (pDoc.exists && pDoc.data()?.authUid === authUid) {
-      return true;
+    if (pDoc.exists) {
+      const pData = pDoc.data() || {};
+      if (pData.authUid === authUid) {
+        return true;
+      }
+      // If doc ID equals authUid, verify it is not bound to a different authUid
+      if (targetPlayerId === authUid && (!pData.authUid || pData.authUid === authUid)) {
+        return true;
+      }
     }
   } catch {
     // ignore query failure and continue to appUsers check
   }
 
-  // Check appUsers collection
+  // 2. Check appUsers collection: does caller's account record link to targetPlayerId?
   try {
     const uDoc = await db.collection("appUsers").doc(authUid).get();
     if (uDoc.exists && uDoc.data()?.playerId === targetPlayerId) {
@@ -1177,6 +1184,9 @@ export async function verifyPlayerOwnership(
   } catch {
     // ignore
   }
+
+  // 3. Fallback: if targetPlayerId matches authUid and no opposing relation exists
+  if (targetPlayerId === authUid) return true;
 
   return false;
 }

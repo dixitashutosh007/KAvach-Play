@@ -6,8 +6,8 @@ import firebaseConfig from "@/firebase-applet-config.json";
 export async function POST(req: Request) {
   try {
     // Admin-only: block external / crawler / AI-tool invocations.
-    const { requireAdmin } = await import("@/lib/server-auth");
-    const guard = await requireAdmin(req);
+    const { requireRole } = await import("@/lib/server-auth");
+    const guard = await requireRole(req, ["financeAdmin", "clubAdmin", "superAdmin"]);
     if (!guard.ok) return guard.response;
 
     const { to, name, amount, link } = await req.json();

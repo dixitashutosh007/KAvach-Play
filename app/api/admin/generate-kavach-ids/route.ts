@@ -13,8 +13,8 @@ const SEED_MAP: Record<string, string> = {
 
 export async function POST(req: Request) {
   try {
-    const { requireAdmin } = await import("@/lib/server-auth");
-    const guard = await requireAdmin(req);
+    const { requireClubAdmin } = await import("@/lib/server-auth");
+    const guard = await requireClubAdmin(req);
     if (!guard.ok) return guard.response;
 
     const apps = getApps();

@@ -7,6 +7,13 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    // Only signed-in admins can trigger email sends. This closes the
+    // external-callable surface that link-preview crawlers were hitting.
+    // Auth guard is evaluated FIRST before reading body or database (Phase 5).
+    const { requireClubAdmin } = await import("@/lib/server-auth");
+    const guard = await requireClubAdmin(req);
+    if (!guard.ok) return guard.response;
+
     const { to, subject, text, html, apiKey, config } = await req.json();
 
     let activeConfig = config;
@@ -35,12 +42,6 @@ export async function POST(req: Request) {
         error: "No recipients specified."
       }, { status: 400 });
     }
-
-    // Only signed-in admins can trigger email sends. This closes the
-    // external-callable surface that link-preview crawlers were hitting.
-    const { requireAdmin } = await import("@/lib/server-auth");
-    const guard = await requireAdmin(req);
-    if (!guard.ok) return guard.response;
 
     if (provider === "resend") {
       // Secret is server-side only (env var). Never trust a key that came

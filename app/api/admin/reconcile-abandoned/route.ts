@@ -19,7 +19,7 @@ import { NextResponse } from "next/server";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import firebaseConfig from "@/firebase-applet-config.json";
-import { requireAdmin } from "@/lib/server-auth";
+import { requireFinanceAdmin } from "@/lib/server-auth";
 
 function ensureAdminApp() {
   const apps = getApps();
@@ -43,7 +43,7 @@ function getDb() {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireAdmin(req);
+  const guard = await requireFinanceAdmin(req);
   if (!guard.ok) return guard.response;
 
   try {

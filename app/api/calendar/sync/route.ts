@@ -72,8 +72,8 @@ async function buildContext(db: FirebaseFirestore.Firestore, match: Match): Prom
 
 export async function POST(req: Request) {
   try {
-    const { requireAdmin } = await import("@/lib/server-auth");
-    const guard = await requireAdmin(req);
+    const { requireMatchAdmin } = await import("@/lib/server-auth");
+    const guard = await requireMatchAdmin(req);
     if (!guard.ok) return guard.response;
 
     const body = await req.json().catch(() => ({}));
