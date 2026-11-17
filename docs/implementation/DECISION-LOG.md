@@ -17,6 +17,8 @@
 | **D-05** | `paymentLinks` collection future | CRIT-02: Rules allow any user to update, but collection is unused. | **DECIDED: Option A** — Lock down rules to admin-only. Keep collection for future use. | Phase 1 |
 | **D-06** | `isDesigner` role | Initially flagged as ghost, but actually in active use — gates Design tab access for non-admin players. Toggle exists in Settings → Elevate Player's Role. | **DECIDED: Keep** — Role is functional and actively used. Not a ghost. | N/A |
 | **D-07** | **Phase 3 Product Rationalisation & UX Discovery Sign-Off** | Comprehensive product, navigation, and UX/UI audit of existing application on branch `mig-mov`. | **DECIDED: Approved by Product Owner** (2026-11-17). Authorizes implementation of Phase 4 roadmap: 5-item Player Navigation, 7-hub Admin Console, and resolution of UX-P0-01, UX-P0-02, UX-P0-03. See `PRODUCT_RATIONALISATION_AND_UX_DISCOVERY.md`. | Phase 4 |
+| **D-08** | **Granular Roles & Permissions Governance** | Legacy draft proposed 3-tier collapse (`Team & Match Manager` absorbing matchAdmin, financeAdmin, clubAdmin). | **DECIDED: Retain Granular Capabilities** per `AGENTS.md` Section 4. Enforce Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin, and Designer independently. Simplify assignment UI, not enforcement boundaries. Unapproved 3-tier collapse rejected. | Governance |
+| **D-09** | **Authoritative Information Architecture Reconciliation** | Legacy draft retained `Home, My Finance, Pay, Profile, More` vs `AGENTS.md` standard. | **DECIDED: Authoritative Direction Enforced** per `AGENTS.md` and Phase 3 Sign-Off. Player Nav = `Home, Matches, Payments, Performance, Club`. Admin Hubs = `Overview, Match Centre, Player Roster, Finance & Dues, Studio & Nets, Club Operations, Settings & Access`. Legacy draft formally superseded. | Phase 4 / 5 |
 
 ---
 
@@ -93,56 +95,42 @@ Source: Product Rationalisation Report, Section 12.
 
 ---
 
-## Role Consolidation Register
+## Role Consolidation & Permissions Register
 
-### Current Roles (6)
+### Authoritative Club Roles (Enforced in Rules & Server Authority)
 
-| Role | Function | Security Rules |
-|------|----------|---------------|
-| `superAdmin` | Full access | `isSuperAdmin()` |
-| `matchAdmin` | Match management | `isMatchAdmin()` |
-| `financeAdmin` | Finance & payments | `isFinanceAdmin()` |
-| `clubAdmin` | Club & player management | `isClubAdmin()` |
-| `studioAdmin` | Studio/coaching management | `isStudioAdmin()` |
-| `isDesigner` | Undefined (ghost role) | Exists in rules, never assigned |
+| Role | Operational Scope | Firestore Security Guard | Authority Boundary |
+|------|-------------------|--------------------------|-------------------|
+| `superAdmin` | Complete club administration, settings, sensitive financials, role assignment | `isSuperAdmin()` | Cryptographic Firebase custom claim (`decoded.admin === true`) |
+| `clubAdmin` | Player verification, club announcements, roster management | `isClubAdmin()` | Custom claim / token role |
+| `matchAdmin` | Fixture scheduling, squad selection, pitch-side attendance & cash | `isMatchAdmin()` | Restricted strictly to assigned matches; no general finance authority |
+| `financeAdmin` | Match fee accounting, ad-hoc fee generation, transaction reconciliation | `isFinanceAdmin()` | Dedicated financial ledger authority |
+| `studioAdmin` | Studio & nets pass management, duration extension, slot allocation | `isStudioAdmin()` | Studio facility records |
+| `isDesigner` | Canvas social graphics, match flyer generation | `isDesigner()` / `canDesign` | Design Studio feature access |
+| `player` | Personal RSVP, dues settlement, profile, scorecard access | Default authenticated user | Least-privilege player access |
 
-### Proposed Consolidation (3 + 1 Specialist)
-
-| Tier | Role | Absorbs |
-|------|------|---------|
-| Tier 1 | **Super Admin** | superAdmin (unchanged) |
-| Tier 2 | **Team & Match Manager** | matchAdmin + financeAdmin + clubAdmin |
-| Tier 3 | **Player** | Default authenticated user |
-| Specialist | **Studio Specialist** | studioAdmin (optional, for coaching features) |
-
-**Decision Required**: Confirm role consolidation before Phase 3 implementation.
+**Reconciliation Decision (D-08):** Unapproved legacy drafts proposing a 3-tier collapse (`Team & Match Manager` absorbing matchAdmin + financeAdmin + clubAdmin) are **REJECTED**. Per `AGENTS.md` Section 4, granular capabilities are strictly retained. Pitch-side cash capabilities remain scoped exclusively to assigned matches and explicitly approved actions.
 
 ---
 
-## Navigation Rationalisation Register
+## Navigation & Information Architecture Register
 
-### Current Navigation
+### Authoritative Architecture (Approved in Phase 3 Sign-Off & AGENTS.md)
 
-- **Admin**: 14+ tabs in horizontal scrollable bar
-- **Player**: 5+ tabs with limited discoverability
-- **No "Pay" shortcut**: Payment requires navigating through Finance tab
+**Player Primary Navigation (5 Items)**:
+1. **Home** — Next match countdown, 1-tap RSVP, dues alert card, club feed, announcements.
+2. **Matches** — Upcoming fixtures, past scorecards, innings breakdown, stunning/dropped catches.
+3. **Payments** — Outstanding dues, line-item obligations, late fee notices, Razorpay checkout, receipts.
+4. **Performance** — Runs/wickets leaderboards, player stats, MVP honors, badge showcase.
+5. **Club** — Digital player card/profile, studio & nets passes, merchandise shop, member pulse polls, directory.
 
-### Proposed Navigation
+**Admin Operational Command Hubs (7 Hubs)**:
+1. **Overview** (`dashboard`) — Operations KPIs, urgent action queue, quick action launchpad.
+2. **Match Centre** (`matches`) — Scheduler, squad selection, pitch-side collections, scorecard entry, abandoned match waivers.
+3. **Player Roster** (`people`) — Player directory, verification queue, ghost profile merger, SMS/WhatsApp invites.
+4. **Finance & Dues** (`finance`) — Match fee accounting ledger, debtor aging, ad-hoc fees, Razorpay reconciliation.
+5. **Studio & Nets** (`studio`) — Member roster, pass extensions, attendance, facility CRM.
+6. **Club Operations** (`design`) — Merchandise catalog, poll manager, badge awards, social graphics.
+7. **Settings & Access** (`settings`) — Role delegation, branding, notifications, audit trail.
 
-**Player Bottom Nav (5 items)**:
-1. Home (matches, scores)
-2. My Finance (dues, payments)
-3. Pay (1-tap payment action)
-4. Profile (stats, badges)
-5. More (shop, studio, tournaments)
-
-**Admin Command Hubs (7)**:
-1. Dashboard Hub
-2. Match Centre
-3. Finance Command
-4. People & Teams
-5. Design Studio
-6. Club Settings
-7. Studio/Coaching
-
-**DECIDED**: Both structures confirmed by product owner. Implemented in Phase 5.
+**Reconciliation Decision (D-09):** The legacy pre-audit draft proposing `Home, My Finance, Pay, Profile, More` is **FORMALLY SUPERSEDED**. The authoritative 5-item Player Navigation and 7 Admin Command Hubs defined above govern all Phase 4 designs and future implementations. Admin mode is accessible via an authorized Admin Console banner/entry point, preserving the player view first.
