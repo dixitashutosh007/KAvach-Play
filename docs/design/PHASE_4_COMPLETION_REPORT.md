@@ -61,13 +61,14 @@ The following capabilities are interactively demonstrated in the isolated sandbo
 12. **Admin Settings & Access (MOD-01, MOD-09):** Granular 6-role capability matrix, timezone enforcement display (`Asia/Kolkata`).
 
 ### Explicitly Deferred to Production Implementation Phases (Phases 5 – 12)
-- **Phase 5 (Financial Integrity & Server-Side Security):** Authoritative server-side Razorpay order generation (FIN-001), raw webhook signature verification (FIN-003), server-side fee calculation, and idempotent transaction processing.
-- **Phase 6 (Rules & UI Implementation):** Hardened Firestore security rules with `@firebase/rules-unit-testing` emulator test suite; production connection of Player UI screens.
-- **Phase 7 (Payments & Finance):** Live Razorpay integration, authoritative financial ledger mutations, digital receipt generation from persisted collections.
-- **Phase 8 (Match Operations):** Persisted match scheduling, live attendance recording, and automatic late-fee triggers.
-- **Phase 9 (Roster & Identity):** Atomic registration approval batch linking `appUsers` and `players`, relational duplicate player merge reparenting `players` and updating `appUsers.playerId`.
-- **Phase 10 (Studio & Performance):** Live multi-lane net booking, pass balance debit transactions, automated career stats compilation from validated scorecards.
-- **Phase 11 (Operations & Hardening):** Production merchandise order processing, live member polls, and WCAG AA accessibility certification.
+- **Phase 5 (Core Auth & Server-Side Security):** Authoritative server-side Razorpay order generation (FIN-001), raw webhook signature verification (FIN-003), server-side fee calculation, and idempotent transaction processing.
+- **Phase 6 (UI Implementation & Match Display):** Hardened Firestore security rules with `@firebase/rules-unit-testing` emulator test suite; production connection of Player UI screens.
+- **Phase 7 (Payments, Finance & Authoritative Ledger):** Live Razorpay integration, authoritative financial ledger mutations, digital receipt generation from persisted collections.
+- **Phase 8 (Match Operations & Admin Hubs):** Persisted match scheduling, live attendance recording, and automatic late-fee triggers.
+- **Phase 9 (Roster, Identity & Approval Workflows):** Atomic registration approval batch linking `appUsers` and `players`, relational duplicate player merge reparenting `players` and updating `appUsers.playerId`.
+- **Phase 10 (Performance, Studio & Nets, Player Profile):** Live multi-lane net booking, pass balance debit transactions, automated career stats compilation from validated scorecards, and digital player cards.
+- **Phase 11 (Club Operations, Shop, Polling & Hardening):** Production merchandise order processing, live member polls, and WCAG AA accessibility certification.
+- **Phase 12 (Production Verification, Audit & Cutover):** Final production readiness audit, live staging verification, and controlled owner-approved cutover.
 
 ---
 
@@ -88,25 +89,31 @@ In this remediation:
 
 ## 5. Verification and Automated Test Evidence
 
-### 1. Automated Playwright Responsive & Capabilities Suite (`e2e/prototype-responsive.spec.ts`)
-Executed against both official Playwright projects:
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **12/12 passed** (13.6s, 0 failed, 0 skipped).
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **12/12 passed** (19.4s, 0 failed, 0 skipped).
-- **Combined Total:** **24/24 passed (0 failures, 0 skipped)**.
+### 1. Developer Automated Test Suite vs. Independent QA Boundary
+In accordance with `AGENTS.md` and the governance principles of this project:
+- **Developer Automated Verification:** The test results documented below represent automated developer-executed regression and compliance suites (`tsc`, `lint`, `test:functional`, `build`, and Playwright end-to-end tests) verifying that all code compiles without errors, units pass cleanly, and interactive prototype behavior adheres to specifications across viewports.
+- **Independent QA Acceptance Boundary:** These internal developer verification results do not constitute self-certified acceptance or independent QA approval. Formal verification of running artifacts and staging behavior remains the duty of an independent read-only QA review session and the Product Owner.
 
-Tests executed in each project:
-1. **Viewport 360×800:** `renders at 360x800 (360x800) without horizontal overflow` — **PASS**
-2. **Viewport 390×844:** `renders at 390x844 (390x844) without horizontal overflow` — **PASS**
-3. **Viewport 430×932:** `renders at 430x932 (430x932) without horizontal overflow` — **PASS**
-4. **Viewport 768×1024:** `renders at 768x1024 (768x1024) without horizontal overflow` — **PASS**
-5. **Viewport 1280×800:** `renders at 1280x800 (1280x800) without horizontal overflow` — **PASS**
-6. **Viewport 1440×900:** `renders at 1440x900 (1440x900) without horizontal overflow` — **PASS**
+### 2. Automated Playwright Responsive & Capabilities Suite (`e2e/prototype-responsive.spec.ts`)
+Executed against both official Playwright projects:
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **13/13 passed** (16.7s, 0 failed, 0 skipped).
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **13/13 passed** (20.9s, 0 failed, 0 skipped).
+- **Combined Total:** **26/26 passed (0 failures, 0 skipped)**.
+
+Tests executed in each project across all 6 target viewports:
+1. **Viewport 360×800:** `renders at 360x800 (360x800) with valid layout, navigation, touch targets, and modals` — **PASS**
+2. **Viewport 390×844:** `renders at 390x844 (390x844) with valid layout, navigation, touch targets, and modals` — **PASS**
+3. **Viewport 430×932:** `renders at 430x932 (430x932) with valid layout, navigation, touch targets, and modals` — **PASS**
+4. **Viewport 768×1024:** `renders at 768x1024 (768x1024) with valid layout, navigation, touch targets, and modals` — **PASS**
+5. **Viewport 1280×800:** `renders at 1280x800 (1280x800) with valid layout, navigation, touch targets, and modals` — **PASS**
+6. **Viewport 1440×900:** `renders at 1440x900 (1440x900) with valid layout, navigation, touch targets, and modals` — **PASS**
 7. **Player Navigation:** `verifies all 5 player navigation destinations across tabs` (`Home`, `Matches`, `Payments`, `Performance`, `Club`) — **PASS**
 8. **Admin Command Hubs:** `verifies all 7 administrator command hubs and sub-tabs` (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`) plus sub-tabs (Grounds, Tournaments) — **PASS**
 9. **Drawers & Modals:** `verifies opening and closing major drawers and modals cleanly` (match details drawer, create match modal, record pitch cash modal, merge duplicate modal) — **PASS**
-10. **Checkout Simulation Clarity:** `verifies checkout simulation clarity and explicit simulation labeling` (verifies `Payment Checkout — Prototype Simulation` heading, toast disclaimers, auto-dismiss) — **PASS**
+10. **Mandatory Checkout Simulation:** `verifies mandatory checkout workflow, heading clarity, and simulation notification` (asserts visible entry point without conditionals, verifies `Payment Checkout — Prototype Simulation` heading, toast disclaimers, auto-dismiss) — **PASS**
 11. **Design Studio Generator:** `verifies interactive Design Studio generator and live SVG canvas` (template switching, POTM layout, high-res graphic download simulation) — **PASS**
-12. **Keyboard Accessibility:** `verifies keyboard accessibility and focus navigation` (focus ring on active control, Tab keyboard navigation) — **PASS**
+12. **Keyboard Accessibility & Focus:** `verifies keyboard navigation and focus visibility across primary player navigation` (focus ring on active control, Tab keyboard navigation) — **PASS**
+13. **Modal Keyboard & Escape Dismissal:** `verifies modal keyboard interaction, Escape-key dismissal, and focus containment` (asserts `role="dialog"`, `aria-modal="true"`, Enter key opening, and Escape key dismissal across modals and drawers) — **PASS**
 
 Screenshots captured and stored under `docs/qa/screenshots/`:
 - `prototype-360x800.png`
@@ -118,15 +125,15 @@ Screenshots captured and stored under `docs/qa/screenshots/`:
 
 *Tests Not Run:* Live Firebase Emulator rules testing and end-to-end payment gateway settlement tests were not executed in Phase 4 because the prototype operates in an isolated client sandbox. These suites are scheduled for Phase 5 and Phase 6.
 
-### 2. Functional & Accounting Unit Test Suite
+### 3. Functional & Accounting Unit Test Suite
 Executed via `npm run test:functional`:
 - **Result:** **198/198 passed** across 40 test suites (0 failures, 0 skipped).
 
-### 3. TypeScript Compilation
+### 4. TypeScript Compilation
 Executed via `npx tsc --noEmit`:
 - **Result:** **0 errors**.
 
-### 4. Next.js Production Build
+### 5. Next.js Production Build
 Executed via `npm run build`:
 - **Result:** All **18 static and dynamic routes compiled and optimized cleanly**.
 
@@ -134,25 +141,24 @@ Executed via `npm run build`:
 
 ## 6. Accessibility & Touch Target Standards
 
-The following accessibility and ergonomics standards were audited and verified in `components/prototype/PlayerHomePrototype.tsx`:
-- **44×44px Touch Target Audit:** Conducted a comprehensive audit of all interactive elements. Buttons, tabs, modal close controls, and filter pills previously using `min-h-[32px]`, `min-h-[36px]`, `min-h-[38px]`, or `min-h-[40px]` were updated to `min-h-[44px] px-3.5 py-2` or given `min-w-[44px] min-h-[44px]` bounding boxes.
+The following accessibility, ergonomics, and touch target standards were audited and verified in `components/prototype/PlayerHomePrototype.tsx`:
+- **Comprehensive 44×44px Touch Target Audit:** Conducted an exhaustive AST and DOM-based audit across all interactive elements. Every one of the **115 `<button>` elements** strictly satisfies the $\ge 44\text{px} \times 44\text{px}$ minimum clickable area, including:
+  - Mobile bottom navigation items (Home, Matches, Payments, Performance, Club): `min-h-[44px] min-w-[44px]`
+  - Match details sub-tab navigation (Squad & Info, Scorecard, Fielding & Catches): `min-h-[44px] px-3.5`
+  - Pitch attendance toggle buttons (Present, Late, Absent): `min-h-[44px] min-w-[76px]`
+  - Pitch cash collection buttons: `min-h-[44px] min-w-[68px]`
+  - Feed post action buttons (Like, Comments, Share): `min-h-[44px] min-w-[44px] px-2`
+  - Modal and slide-over close buttons: `min-h-[44px] min-w-[44px]`
+  - Toast notification dismiss button: `min-h-[44px] min-w-[44px]`
+- **Interactive Non-Button Elements:** Match card `<article>` containers and poll option `<div>` controls were upgraded with `role="button"`, `tabIndex={0}`, descriptive `aria-label`, visible focus indicators, and keyboard Enter/Space event handlers.
+- **Dialog & Modal Standards:** All 13 modal dialogues and slide-over drawers include `role="dialog"`, `aria-modal="true"`, scrollable constraints (`max-h-[90vh] overflow-y-auto`), and prominent `min-h-[44px] min-w-[44px]` close buttons.
+- **Escape Key Listener:** Added a global `Escape` key event listener in `useEffect` that immediately dismisses any active modal, slide-over drawer, or simulation toast.
 - **Justified Exceptions:** Non-interactive status badges (e.g. `UPCOMING`, `PLAYED`, `CONFIRMED`), decorative indicators, and table header labels remain compact by design because they are informational displays without click handlers.
 - **Accessible Names:** Added explicit `aria-label` attributes to icon-only controls (e.g. `aria-label="Close Checkout"`, `aria-label="Close match details"`, `aria-label="Close modal"`).
 - **Visible Focus States:** Focusable elements include high-contrast focus rings (`focus:ring-2 focus:ring-[#D51F43]/40`).
 - **Semantic Roles:** Navigation bars use `<nav>`, modal headers use `<h3 role="heading">`, and articles use `<article>`.
 - **Simulation Transparency:** Replaced all blocking `window.alert` calls with accessible, non-blocking `[PROTOTYPE SIMULATION]` toast notifications that clearly state no live database mutation or payment gateway call has occurred.
 - **Certification Note:** Structural AA patterns (contrast ratios > 4.5:1, 44px interactive targets, semantic HTML) are implemented. Formal external WCAG 2.1 AA screen-reader audit and axe automated certification are scheduled for the dedicated QA & Hardening phase (Phase 11).
-
----
-
-## 7. Scope Controls Confirmation
-
-- **Repository Branch:** `mig-mov`
-- **Application Code:** Production application code (`app/page.tsx`, `firestore.rules`, `lib/server-auth.ts`, etc.) remains 100% untouched.
-- **Data & Gateway Safety:** No live Firebase reads/writes, no real Razorpay transactions.
-- **Phase Boundary:** Phase 5 (Financial Integrity & Server-Side Payment Security) has **NOT** been started.
-
-Phase 4 is complete and ready for independent review.
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Calendar,
   Clock,
@@ -826,6 +826,47 @@ export default function PlayerHomePrototype() {
     return true;
   });
 
+  // Keyboard Accessibility: Close active modal or drawer on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (paymentModalOpen) setPaymentModalOpen(false);
+        else if (selectedMatch) setSelectedMatch(null);
+        else if (selectedReceipt) setSelectedReceipt(null);
+        else if (createMatchModalOpen) setCreateMatchModalOpen(false);
+        else if (recordCashModalOpen) setRecordCashModalOpen(false);
+        else if (mergeModalOpen) setMergeModalOpen(false);
+        else if (adHocFeeModalOpen) setAdHocFeeModalOpen(false);
+        else if (selectedAuditTx) setSelectedAuditTx(null);
+        else if (bookSlotModalOpen) setBookSlotModalOpen(false);
+        else if (shopItemOrderModal) setShopItemOrderModal(null);
+        else if (selectedPlayerProfile) setSelectedPlayerProfile(null);
+        else if (adminMatchSquadDrawer) setAdminMatchSquadDrawer(null);
+        else if (notificationsOpen) setNotificationsOpen(false);
+        else if (designStudioModal) setDesignStudioModal(false);
+        else if (simulationToast) setSimulationToast(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    paymentModalOpen,
+    selectedMatch,
+    selectedReceipt,
+    createMatchModalOpen,
+    recordCashModalOpen,
+    mergeModalOpen,
+    adHocFeeModalOpen,
+    selectedAuditTx,
+    bookSlotModalOpen,
+    shopItemOrderModal,
+    selectedPlayerProfile,
+    adminMatchSquadDrawer,
+    notificationsOpen,
+    designStudioModal,
+    simulationToast,
+  ]);
+
   // Toggle Like on feed
   const toggleLike = (postId: string) => {
     setPosts(prev => prev.map(p => {
@@ -1061,7 +1102,8 @@ export default function PlayerHomePrototype() {
             </div>
             <button
               onClick={() => setSimulationToast(null)}
-              className="text-gray-400 hover:text-white shrink-0 p-1"
+              aria-label="Dismiss notification toast"
+              className="text-gray-400 hover:text-white shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40"
             >
               <X className="w-4 h-4" />
             </button>
@@ -2249,8 +2291,17 @@ export default function PlayerHomePrototype() {
                     {pollData.options.map((opt) => (
                       <div
                         key={opt.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Vote for ${opt.label}, currently ${opt.percentage}% with ${opt.votes} votes`}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (!hasVotedPoll) setSelectedPollOption(opt.id);
+                          }
+                        }}
                         onClick={() => !hasVotedPoll && setSelectedPollOption(opt.id)}
-                        className={`p-3 rounded-xl border transition cursor-pointer ${
+                        className={`p-3 min-h-[44px] rounded-xl border transition cursor-pointer flex flex-col justify-center focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 ${
                           selectedPollOption === opt.id
                             ? "border-[#D51F43] bg-rose-50/50"
                             : "border-gray-200 hover:bg-gray-50"
@@ -2782,10 +2833,11 @@ export default function PlayerHomePrototype() {
                         {post.content}
                       </p>
 
-                      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-4 text-xs font-medium text-[#667085]">
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2 sm:gap-4 text-xs font-medium text-[#667085]">
                         <button
                           onClick={() => toggleLike(post.id)}
-                          className={`min-h-[44px] flex items-center gap-1.5 transition ${
+                          aria-label={`Like post, currently ${post.likesCount} likes`}
+                          className={`min-h-[44px] min-w-[44px] px-2 flex items-center justify-center gap-1.5 transition ${
                             post.isLiked ? "text-[#D51F43] font-bold" : "hover:text-[#171C26]"
                           }`}
                         >
@@ -2793,12 +2845,18 @@ export default function PlayerHomePrototype() {
                           <span>{post.likesCount}</span>
                         </button>
 
-                        <button className="min-h-[44px] flex items-center gap-1.5 hover:text-[#171C26] transition">
+                        <button
+                          aria-label={`View comments, currently ${post.commentsCount} comments`}
+                          className="min-h-[44px] min-w-[44px] px-2 flex items-center justify-center gap-1.5 hover:text-[#171C26] transition"
+                        >
                           <MessageSquare className="w-4 h-4" />
                           <span>{post.commentsCount} Comments</span>
                         </button>
 
-                        <button className="min-h-[44px] ml-auto flex items-center gap-1.5 hover:text-[#171C26] transition">
+                        <button
+                          aria-label="Share post"
+                          className="min-h-[44px] min-w-[44px] px-2 ml-auto flex items-center justify-center gap-1.5 hover:text-[#171C26] transition"
+                        >
                           <Share2 className="w-4 h-4" />
                           <span className="hidden sm:inline">Share</span>
                         </button>
@@ -2864,8 +2922,17 @@ export default function PlayerHomePrototype() {
                   {filteredMatches.map((m) => (
                     <article
                       key={m.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View match details: ${m.title}, format ${m.format}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedMatch(m);
+                        }
+                      }}
                       onClick={() => setSelectedMatch(m)}
-                      className="bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#D51F43]/40 p-4 sm:p-5 shadow-xs transition hover:shadow-md cursor-pointer relative overflow-hidden"
+                      className="bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#D51F43]/40 p-4 sm:p-5 shadow-xs transition hover:shadow-md cursor-pointer relative overflow-hidden focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40"
                     >
                       {m.status === "past" && (
                         <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${m.isWin ? "bg-emerald-500" : "bg-rose-500"}`} />
@@ -3644,8 +3711,17 @@ export default function PlayerHomePrototype() {
                         {pollData.options.map((opt) => (
                           <div
                             key={opt.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Vote for ${opt.label}, currently ${opt.percentage}% with ${opt.votes} votes`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                if (!hasVotedPoll) setSelectedPollOption(opt.id);
+                              }
+                            }}
                             onClick={() => !hasVotedPoll && setSelectedPollOption(opt.id)}
-                            className={`p-3.5 rounded-xl border transition cursor-pointer ${
+                            className={`p-3.5 min-h-[44px] rounded-xl border transition cursor-pointer flex flex-col justify-center focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 ${
                               selectedPollOption === opt.id ? "border-[#D51F43] bg-rose-50/50" : "border-gray-200 hover:bg-gray-50"
                             }`}
                           >
@@ -3777,7 +3853,7 @@ export default function PlayerHomePrototype() {
             >
               <button
                 onClick={() => setActiveTab("home")}
-                className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
+                className={`flex-1 h-full min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 rounded-lg ${
                   activeTab === "home" ? "text-[#D51F43] font-black" : "text-[#667085] font-medium"
                 }`}
               >
@@ -3789,7 +3865,7 @@ export default function PlayerHomePrototype() {
 
               <button
                 onClick={() => setActiveTab("matches")}
-                className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
+                className={`flex-1 h-full min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 rounded-lg ${
                   activeTab === "matches" ? "text-[#D51F43] font-black" : "text-[#667085] font-medium"
                 }`}
               >
@@ -3801,7 +3877,7 @@ export default function PlayerHomePrototype() {
 
               <button
                 onClick={() => setActiveTab("payments")}
-                className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
+                className={`flex-1 h-full min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 rounded-lg ${
                   activeTab === "payments" ? "text-[#D51F43] font-black" : "text-[#667085] font-medium"
                 }`}
               >
@@ -3813,7 +3889,7 @@ export default function PlayerHomePrototype() {
 
               <button
                 onClick={() => setActiveTab("performance")}
-                className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
+                className={`flex-1 h-full min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 rounded-lg ${
                   activeTab === "performance" ? "text-[#D51F43] font-black" : "text-[#667085] font-medium"
                 }`}
               >
@@ -3825,7 +3901,7 @@ export default function PlayerHomePrototype() {
 
               <button
                 onClick={() => setActiveTab("club")}
-                className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
+                className={`flex-1 h-full min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 rounded-lg ${
                   activeTab === "club" ? "text-[#D51F43] font-black" : "text-[#667085] font-medium"
                 }`}
               >
@@ -3842,16 +3918,22 @@ export default function PlayerHomePrototype() {
           {/* ========================================================================= */}
           {adminMatchSquadDrawer && (
             <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
-              <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs">
+              <div
+                className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="squad-drawer-title"
+              >
                 <div className="p-4 bg-[#A30F2D] text-white flex items-center justify-between sticky top-0 z-10">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
                       Match Centre Squad Management
                     </span>
-                    <h3 className="text-sm sm:text-base font-black truncate">{adminMatchSquadDrawer.title}</h3>
+                    <h3 id="squad-drawer-title" className="text-sm sm:text-base font-black truncate">{adminMatchSquadDrawer.title}</h3>
                   </div>
                   <button
                     onClick={() => setAdminMatchSquadDrawer(null)}
+                    aria-label="Close squad management"
                     className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
                   >
                     <X className="w-5 h-5" />
@@ -3886,7 +3968,8 @@ export default function PlayerHomePrototype() {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleToggleAttendance(pl.name)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                              aria-label={`Toggle attendance for ${pl.name}, currently ${pl.attendance}`}
+                              className={`min-h-[44px] min-w-[76px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center justify-center transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 ${
                                 pl.attendance === "Present"
                                   ? "bg-emerald-100 text-emerald-800"
                                   : pl.attendance === "Late"
@@ -3900,7 +3983,8 @@ export default function PlayerHomePrototype() {
                             {!pl.feePaid && (
                               <button
                                 onClick={() => setRecordCashModalOpen(true)}
-                                className="px-2.5 py-1.5 rounded-lg bg-[#D51F43] text-white text-[11px] font-bold"
+                                aria-label={`Collect pitch cash for ${pl.name}`}
+                                className="min-h-[44px] min-w-[68px] px-3.5 py-2 rounded-lg bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold flex items-center justify-center transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40"
                               >
                                 Collect
                               </button>
@@ -3932,7 +4016,12 @@ export default function PlayerHomePrototype() {
           {/* ========================================================================= */}
           {selectedPlayerProfile && (
             <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
-              <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs">
+              <div
+                className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Edit Player Profile & Roles"
+              >
                 <div className="p-4 bg-[#A30F2D] text-white flex items-center justify-between sticky top-0 z-10">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
@@ -3942,6 +4031,7 @@ export default function PlayerHomePrototype() {
                   </div>
                   <button
                     onClick={() => setSelectedPlayerProfile(null)}
+                    aria-label="Close player profile"
                     className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
                   >
                     <X className="w-5 h-5" />
@@ -4055,11 +4145,16 @@ export default function PlayerHomePrototype() {
           {/* ========================================================================= */}
           {mergeModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
-                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+              <div
+                className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs max-h-[90vh] flex flex-col"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="merge-modal-title"
+              >
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <GitMerge className="w-4 h-4 text-amber-300" />
-                    <h3 className="text-sm font-black uppercase">Merge Duplicate Players</h3>
+                    <h3 id="merge-modal-title" className="text-sm font-black uppercase">Merge Duplicate Players</h3>
                   </div>
                   <button
                     onClick={() => setMergeModalOpen(false)}
@@ -4070,7 +4165,7 @@ export default function PlayerHomePrototype() {
                   </button>
                 </div>
 
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
                     <span className="font-bold">IDT-001 Safeguard:</span> Merging reparents all matches, scorecards, and payments from the duplicate player to the primary player, and updates <code className="font-mono bg-white px-1 rounded">appUsers.playerId</code>.
                   </div>
@@ -4117,11 +4212,16 @@ export default function PlayerHomePrototype() {
           {/* CREATE MATCH MODAL */}
           {createMatchModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
-                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+              <div
+                className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs max-h-[90vh] flex flex-col"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="create-match-title"
+              >
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <Trophy className="w-4 h-4 text-amber-300" />
-                    <h3 className="text-sm font-black uppercase">Schedule New Match</h3>
+                    <h3 id="create-match-title" className="text-sm font-black uppercase">Schedule New Match</h3>
                   </div>
                   <button
                     onClick={() => setCreateMatchModalOpen(false)}
@@ -4132,7 +4232,7 @@ export default function PlayerHomePrototype() {
                   </button>
                 </div>
 
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Opposition Club Name</label>
                     <input
@@ -4189,11 +4289,16 @@ export default function PlayerHomePrototype() {
           {/* RECORD CASH MODAL */}
           {recordCashModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
-                <div className="bg-emerald-700 text-white p-4 flex items-center justify-between">
+              <div
+                className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs max-h-[90vh] flex flex-col"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="record-cash-title"
+              >
+                <div className="bg-emerald-700 text-white p-4 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-white" />
-                    <h3 className="text-sm font-black uppercase">Record Pitch-Side Cash</h3>
+                    <h3 id="record-cash-title" className="text-sm font-black uppercase">Record Pitch-Side Cash</h3>
                   </div>
                   <button
                     onClick={() => setRecordCashModalOpen(false)}
@@ -4204,7 +4309,7 @@ export default function PlayerHomePrototype() {
                   </button>
                 </div>
 
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Select Player</label>
                     <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
@@ -4242,13 +4347,18 @@ export default function PlayerHomePrototype() {
           {/* MATCH DETAILS SLIDE-OVER DRAWER */}
           {selectedMatch && (
             <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
-              <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto">
+              <div
+                className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="match-details-title"
+              >
                 <div className="p-4 bg-[#A30F2D] text-white flex items-center justify-between sticky top-0 z-10">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
                       {selectedMatch.format}
                     </span>
-                    <h3 className="text-sm sm:text-base font-black truncate">{selectedMatch.title}</h3>
+                    <h3 id="match-details-title" className="text-sm sm:text-base font-black truncate">{selectedMatch.title}</h3>
                   </div>
                   <button
                     onClick={() => setSelectedMatch(null)}
@@ -4262,7 +4372,7 @@ export default function PlayerHomePrototype() {
                 <div className="flex border-b border-gray-100 bg-gray-50 text-xs font-bold px-4">
                   <button
                     onClick={() => setSelectedMatchSubTab("overview")}
-                    className={`py-3 px-3 border-b-2 transition ${
+                    className={`min-h-[44px] px-3 border-b-2 flex items-center justify-center transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 ${
                       selectedMatchSubTab === "overview"
                         ? "border-[#D51F43] text-[#D51F43]"
                         : "border-transparent text-gray-500 hover:text-gray-900"
@@ -4273,7 +4383,7 @@ export default function PlayerHomePrototype() {
                   {selectedMatch.scorecard && (
                     <button
                       onClick={() => setSelectedMatchSubTab("scorecard")}
-                      className={`py-3 px-3 border-b-2 transition ${
+                      className={`min-h-[44px] px-3 border-b-2 flex items-center justify-center transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 ${
                         selectedMatchSubTab === "scorecard"
                           ? "border-[#D51F43] text-[#D51F43]"
                           : "border-transparent text-gray-500 hover:text-gray-900"
@@ -4285,7 +4395,7 @@ export default function PlayerHomePrototype() {
                   {selectedMatch.scorecard?.catches && (
                     <button
                       onClick={() => setSelectedMatchSubTab("catches")}
-                      className={`py-3 px-3 border-b-2 transition ${
+                      className={`min-h-[44px] px-3 border-b-2 flex items-center justify-center transition focus:outline-hidden focus:ring-2 focus:ring-[#D51F43]/40 ${
                         selectedMatchSubTab === "catches"
                           ? "border-[#D51F43] text-[#D51F43]"
                           : "border-transparent text-gray-500 hover:text-gray-900"
@@ -4418,7 +4528,12 @@ export default function PlayerHomePrototype() {
           {/* DIGITAL RECEIPT MODAL */}
           {selectedReceipt && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+              <div
+                className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="receipt-modal-title"
+              >
                 <div className="bg-[#A30F2D] text-white p-4 text-center relative">
                   <button
                     onClick={() => setSelectedReceipt(null)}
@@ -4480,13 +4595,22 @@ export default function PlayerHomePrototype() {
           {/* NOTIFICATIONS DRAWER */}
           {notificationsOpen && (
             <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
-              <div className="w-full max-w-sm bg-white h-full shadow-2xl flex flex-col">
+              <div
+                className="w-full max-w-sm bg-white h-full shadow-2xl flex flex-col"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="notifications-drawer-title"
+              >
                 <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Bell className="w-5 h-5 text-[#D51F43]" />
-                    <h3 className="text-sm font-black uppercase text-[#171C26]">Club Notifications</h3>
+                    <h3 id="notifications-drawer-title" className="text-sm font-black uppercase text-[#171C26]">Club Notifications</h3>
                   </div>
-                  <button onClick={() => setNotificationsOpen(false)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-gray-700">
+                  <button
+                    onClick={() => setNotificationsOpen(false)}
+                    aria-label="Close notifications"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-gray-700"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4518,11 +4642,16 @@ export default function PlayerHomePrototype() {
           {/* STAGE 5: LEVY AD-HOC FEE MODAL */}
           {adHocFeeModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+              <div
+                className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="adhoc-fee-title"
+              >
                 <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Plus className="w-4 h-4 text-white" />
-                    <h3 className="text-sm font-black uppercase">Levy Member Ad-hoc Fee</h3>
+                    <h3 id="adhoc-fee-title" className="text-sm font-black uppercase">Levy Member Ad-hoc Fee</h3>
                   </div>
                   <button
                     onClick={() => setAdHocFeeModalOpen(false)}
@@ -4590,11 +4719,16 @@ export default function PlayerHomePrototype() {
           {/* STAGE 5: FINANCIAL AUDIT TRAIL MODAL */}
           {selectedAuditTx && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+              <div
+                className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="audit-record-title"
+              >
                 <div className="bg-[#171C26] text-white p-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-emerald-400" />
-                    <h3 className="text-sm font-black uppercase">Transaction Audit Record</h3>
+                    <h3 id="audit-record-title" className="text-sm font-black uppercase">Transaction Audit Record</h3>
                   </div>
                   <button
                     onClick={() => setSelectedAuditTx(null)}
@@ -4655,11 +4789,16 @@ export default function PlayerHomePrototype() {
           {/* STAGE 5: BOOK NET SLOT MODAL */}
           {bookSlotModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+              <div
+                className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="reserve-lane-title"
+              >
                 <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-300" />
-                    <h3 className="text-sm font-black uppercase">Reserve Net Lane</h3>
+                    <h3 id="reserve-lane-title" className="text-sm font-black uppercase">Reserve Net Lane</h3>
                   </div>
                   <button
                     onClick={() => setBookSlotModalOpen(false)}
@@ -4718,11 +4857,16 @@ export default function PlayerHomePrototype() {
           {/* MOCK PAYMENT CHECKOUT MODAL */}
           {paymentModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+              <div
+                className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="checkout-modal-title"
+              >
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-amber-300" />
-                    <h3 className="text-sm font-black uppercase">Payment Checkout — Prototype Simulation</h3>
+                    <h3 id="checkout-modal-title" className="text-sm font-black uppercase">Payment Checkout — Prototype Simulation</h3>
                   </div>
                   <button
                     onClick={() => setPaymentModalOpen(false)}
@@ -4733,7 +4877,7 @@ export default function PlayerHomePrototype() {
                   </button>
                 </div>
 
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
                   <div className="text-center py-2 border-b border-gray-100">
                     <span className="text-xs text-[#667085] uppercase font-bold tracking-wider">Amount Payable</span>
                     <div className="text-3xl font-black text-[#171C26] mt-1">₹{duesState.total}</div>
@@ -4776,11 +4920,16 @@ export default function PlayerHomePrototype() {
           {/* STAGE 6 REMEDIATION: CLUB SHOP ITEM ORDER MODAL */}
           {shopItemOrderModal && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+              <div
+                className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="shop-item-modal-title"
+              >
                 <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ShoppingBag className="w-4 h-4 text-white" />
-                    <h3 className="text-sm font-black uppercase">Order Club Merchandise</h3>
+                    <h3 id="shop-item-modal-title" className="text-sm font-black uppercase">Order Club Merchandise</h3>
                   </div>
                   <button
                     onClick={() => setShopItemOrderModal(null)}
