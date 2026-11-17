@@ -29,7 +29,7 @@ test.describe("KAvach Play — Responsive Ergonomics, Layout & Overflow Suite", 
       // =======================================================================
       // 1. PLAYER MODE VALIDATION
       // =======================================================================
-      await page.locator("button:visible", { hasText: "View Player" }).first().click();
+      await page.locator("button:visible", { hasText: "Player View" }).first().click();
 
       // 1A. Brand Header visibility and non-overlap
       const brandHeading = page.locator("h1", { hasText: "KAvach Play" });
@@ -66,25 +66,29 @@ test.describe("KAvach Play — Responsive Ergonomics, Layout & Overflow Suite", 
         }
       }
 
-      // 1F. Touch Target Size Compliance: all visible interactive buttons >= 43px
-      const undersizedButtons = await page.evaluate(() => {
-        const interactive = Array.from(document.querySelectorAll("button:not([hidden])"));
-        const fails: { text: string; width: number; height: number }[] = [];
+      // 1F. Touch Target Size Compliance: all visible interactive controls (buttons, custom role=button, inputs, selects) >= 44px
+      const undersizedControls = await page.evaluate(() => {
+        const selector = "button:not([hidden]), [role='button']:not([hidden]), input:not([type='hidden']), select:not([hidden])";
+        const interactive = Array.from(document.querySelectorAll(selector));
+        const fails: { tag: string; text: string; width: number; height: number }[] = [];
         for (const el of interactive) {
           const rect = el.getBoundingClientRect();
           if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight) {
-            if (rect.height < 43 || rect.width < 43) {
+            const roundedWidth = Math.round(rect.width);
+            const roundedHeight = Math.round(rect.height);
+            if (roundedWidth < 44 || roundedHeight < 44) {
               fails.push({
-                text: (el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 30),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
+                tag: el.tagName.toLowerCase(),
+                text: (el.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder") || "").trim().slice(0, 30),
+                width: roundedWidth,
+                height: roundedHeight,
               });
             }
           }
         }
         return fails;
       });
-      expect(undersizedButtons).toEqual([]);
+      expect(undersizedControls).toEqual([]);
 
       // 1G. Important content visible and unclipped
       await expect(page.getByText("Next Fixture").first()).toBeVisible();
@@ -92,7 +96,7 @@ test.describe("KAvach Play — Responsive Ergonomics, Layout & Overflow Suite", 
       // =======================================================================
       // 2. ADMIN MODE VALIDATION
       // =======================================================================
-      await page.locator("button:visible", { hasText: "View Admin (Console)" }).first().click();
+      await page.locator("button:visible", { hasText: "Admin Console" }).first().click();
 
       // 2A. No horizontal overflow in Admin mode
       const isOverflowingAdmin = await page.evaluate(() => {
@@ -111,7 +115,7 @@ test.describe("KAvach Play — Responsive Ergonomics, Layout & Overflow Suite", 
         const returnBtn = page.locator("button:visible", { hasText: "Return to Player View" }).first();
         await expect(returnBtn).toBeVisible();
         const returnBox = await returnBtn.boundingBox();
-        expect(returnBox?.height).toBeGreaterThanOrEqual(43);
+        expect(returnBox?.height).toBeGreaterThanOrEqual(44);
       }
 
       // 2C. Admin overview command KPIs visible
@@ -153,7 +157,7 @@ test.describe("KAvach Play — Responsive Ergonomics, Layout & Overflow Suite", 
 test.describe("KAvach Play — Player & Admin Navigation Suite", () => {
   test("verifies all 5 player navigation destinations across tabs", async ({ page }) => {
     await page.goto("/prototype");
-    await page.locator("button:visible", { hasText: "View Player" }).first().click();
+    await page.locator("button:visible", { hasText: "Player View" }).first().click();
 
     const playerNav = page.locator('nav[aria-label="Player Primary Navigation"], nav[aria-label="Desktop Player Navigation"]');
 
@@ -184,7 +188,7 @@ test.describe("KAvach Play — Player & Admin Navigation Suite", () => {
 
   test("verifies all 7 administrator command hubs and sub-tabs", async ({ page }) => {
     await page.goto("/prototype");
-    await page.locator("button:visible", { hasText: "View Admin (Console)" }).first().click();
+    await page.locator("button:visible", { hasText: "Admin Console" }).first().click();
 
     // 1. Overview Hub
     await page.locator("button:visible", { hasText: "Overview" }).first().click();
@@ -237,7 +241,7 @@ test.describe("KAvach Play — Interactive Drawers, Modals & Mandatory Checkout"
     await expect(page.locator('button[aria-label="Close match details"]')).not.toBeVisible();
 
     // 2. Switch to Admin mode and test Create Match Modal
-    await page.locator("button:visible", { hasText: "View Admin (Console)" }).first().click();
+    await page.locator("button:visible", { hasText: "Admin Console" }).first().click();
     await page.locator("button:visible", { hasText: "Create Match" }).first().click();
     await expect(page.locator("text=Schedule New Match")).toBeVisible();
     await page.locator('button[aria-label="Close modal"]').first().click();
@@ -259,7 +263,7 @@ test.describe("KAvach Play — Interactive Drawers, Modals & Mandatory Checkout"
 
   test("verifies mandatory checkout workflow, heading clarity, and simulation notification", async ({ page }) => {
     await page.goto("/prototype");
-    await page.locator("button:visible", { hasText: "View Player" }).first().click();
+    await page.locator("button:visible", { hasText: "Player View" }).first().click();
 
     const playerNav = page.locator('nav[aria-label="Player Primary Navigation"], nav[aria-label="Desktop Player Navigation"]');
     await playerNav.locator("button:visible", { hasText: "Payments" }).first().click();
@@ -287,7 +291,7 @@ test.describe("KAvach Play — Interactive Drawers, Modals & Mandatory Checkout"
 
   test("verifies interactive Design Studio generator and live SVG canvas", async ({ page }) => {
     await page.goto("/prototype");
-    await page.locator("button:visible", { hasText: "View Admin (Console)" }).first().click();
+    await page.locator("button:visible", { hasText: "Admin Console" }).first().click();
     await page.locator("button:visible", { hasText: "Club Operations" }).first().click();
 
     // Open Design Studio section
@@ -307,7 +311,7 @@ test.describe("KAvach Play — Interactive Drawers, Modals & Mandatory Checkout"
 test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () => {
   test("verifies keyboard navigation and focus visibility across primary player navigation", async ({ page }) => {
     await page.goto("/prototype");
-    await page.locator("button:visible", { hasText: "View Player" }).first().click();
+    await page.locator("button:visible", { hasText: "Player View" }).first().click();
 
     const playerNav = page.locator('nav[aria-label="Player Primary Navigation"], nav[aria-label="Desktop Player Navigation"]').filter({ visible: true });
     const navButtons = playerNav.locator("button:visible");
@@ -335,29 +339,49 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
     expect(["BUTTON", "A", "INPUT", "SELECT"]).toContain(activeEl);
   });
 
-  test("verifies modal keyboard interaction, Escape-key dismissal, and focus containment", async ({ page }) => {
+  test("verifies modal focus containment, keyboard interaction, Escape-key dismissal, and focus restoration", async ({ page }) => {
     await page.goto("/prototype");
 
-    // Open Schedule New Match modal
-    await page.locator("button:visible", { hasText: "View Admin (Console)" }).first().click();
-    await page.locator("button:visible", { hasText: "Create Match" }).first().click();
+    // Open Admin Console
+    await page.locator("button:visible", { hasText: "Admin Console" }).first().click();
 
-    // Assert modal is open with proper ARIA dialog attributes
+    // Focus trigger button to open Create Match modal
+    const createMatchBtn = page.locator("button:visible", { hasText: "Create Match" }).first();
+    await createMatchBtn.focus();
+    await expect(createMatchBtn).toBeFocused();
+
+    // Open modal via Enter key
+    await page.keyboard.press("Enter");
+
+    // 1. Assert modal is open with proper ARIA dialog attributes
     const modal = page.locator('div[role="dialog"]').first();
     await expect(modal).toBeVisible();
     await expect(modal).toHaveAttribute("aria-modal", "true");
 
-    // Focus close button via keyboard
-    const closeBtn = modal.locator('button[aria-label="Close modal"]').first();
-    await closeBtn.focus();
-    await expect(closeBtn).toBeFocused();
+    // 2. Focus containment: Verify initial focus is inside modal
+    const initialInside = await page.evaluate(() => {
+      const modalEl = document.querySelector('div[role="dialog"]');
+      return modalEl ? modalEl.contains(document.activeElement) : false;
+    });
+    expect(initialInside).toBeTruthy();
 
-    // Verify Escape key dismisses modal
+    // 3. Tab focus containment cycling: Tab multiple times and verify focus NEVER escapes modal
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press("Tab");
+      const isStillInside = await page.evaluate(() => {
+        const modalEl = document.querySelector('div[role="dialog"]');
+        return modalEl ? modalEl.contains(document.activeElement) : false;
+      });
+      expect(isStillInside).toBeTruthy();
+    }
+
+    // 4. Focus restoration: Dismiss modal via Escape key and assert focus returns to trigger button
     await page.keyboard.press("Escape");
     await expect(modal).not.toBeVisible();
+    await expect(createMatchBtn).toBeFocused();
 
-    // Reopen Match Details drawer in Player mode
-    await page.locator("button:visible", { hasText: "View Player" }).first().click();
+    // 5. Player mode drawer interaction and restoration
+    await page.locator("button:visible", { hasText: "Player View" }).first().click();
     const playerNav = page.locator('nav[aria-label="Player Primary Navigation"], nav[aria-label="Desktop Player Navigation"]').filter({ visible: true });
     await playerNav.locator("button:visible", { hasText: "Matches" }).first().click();
 
@@ -372,8 +396,16 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
     await expect(matchDrawer).toBeVisible();
     await expect(page.getByText("Squad & Info").first()).toBeVisible();
 
-    // Dismiss drawer via Escape key
+    // Verify focus is inside drawer
+    const drawerInside = await page.evaluate(() => {
+      const drawerEl = document.querySelector('div[role="dialog"]');
+      return drawerEl ? drawerEl.contains(document.activeElement) : false;
+    });
+    expect(drawerInside).toBeTruthy();
+
+    // Dismiss drawer via Escape key and assert focus returns to matchCard
     await page.keyboard.press("Escape");
     await expect(matchDrawer).not.toBeVisible();
+    await expect(matchCard).toBeFocused();
   });
 });

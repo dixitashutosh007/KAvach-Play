@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Calendar,
   Clock,
@@ -826,7 +826,53 @@ export default function PlayerHomePrototype() {
     return true;
   });
 
-  // Keyboard Accessibility: Close active modal or drawer on Escape key
+  // Focus restoration & modal trap
+  const lastActiveElementRef = useRef<HTMLElement | null>(null);
+
+  const isAnyModalOpen = Boolean(
+    paymentModalOpen ||
+    selectedMatch ||
+    selectedReceipt ||
+    createMatchModalOpen ||
+    recordCashModalOpen ||
+    mergeModalOpen ||
+    adHocFeeModalOpen ||
+    selectedAuditTx ||
+    bookSlotModalOpen ||
+    shopItemOrderModal ||
+    selectedPlayerProfile ||
+    adminMatchSquadDrawer ||
+    notificationsOpen ||
+    designStudioModal
+  );
+
+  const prevIsAnyModalOpen = useRef(isAnyModalOpen);
+
+  useEffect(() => {
+    if (isAnyModalOpen && !prevIsAnyModalOpen.current) {
+      lastActiveElementRef.current = document.activeElement as HTMLElement;
+      // Focus first focusable element inside the modal
+      requestAnimationFrame(() => {
+        const dialog = document.querySelector('div[role="dialog"]');
+        if (dialog) {
+          const focusable = dialog.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          );
+          if (focusable.length > 0) {
+            focusable[0].focus();
+          }
+        }
+      });
+    } else if (!isAnyModalOpen && prevIsAnyModalOpen.current) {
+      // Modal just closed: restore focus to trigger
+      if (lastActiveElementRef.current && typeof lastActiveElementRef.current.focus === "function") {
+        lastActiveElementRef.current.focus();
+      }
+    }
+    prevIsAnyModalOpen.current = isAnyModalOpen;
+  }, [isAnyModalOpen]);
+
+  // Keyboard Accessibility: Escape key dismissal & Modal Tab Focus Containment
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -845,6 +891,28 @@ export default function PlayerHomePrototype() {
         else if (notificationsOpen) setNotificationsOpen(false);
         else if (designStudioModal) setDesignStudioModal(false);
         else if (simulationToast) setSimulationToast(null);
+      } else if (e.key === "Tab") {
+        const dialog = document.querySelector('div[role="dialog"]');
+        if (dialog) {
+          const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )).filter((el) => el.offsetParent !== null || el.getBoundingClientRect().width > 0);
+
+          if (focusable.length > 0) {
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            } else if (!dialog.contains(document.activeElement)) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1032,29 +1100,29 @@ export default function PlayerHomePrototype() {
           <span className="font-semibold text-gray-200">Phase 4: Complete UX Blueprint & Navigable Prototypes (Remediated)</span>
         </div>
 
-        {/* Viewport Frame Mode Controls & Prominent Persona Switcher */}
+        {/* Viewport Frame Mode Controls & Authorised Admin Console Entry */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Explicit Dual Persona Switcher */}
+          {/* Navigation Model: Player View as Default with Authorised Admin Console Entry */}
           <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700">
             <button
               onClick={() => setPersona("player")}
               className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
                 persona === "player" ? "bg-[#D51F43] text-white shadow-xs" : "text-gray-300 hover:text-white"
               }`}
-              title="Switch to Player View"
+              title="Player Experience (Default for all club members, including administrators)"
             >
               <User className="w-4 h-4" />
-              <span>View Player</span>
+              <span>Player View</span>
             </button>
             <button
               onClick={() => setPersona("admin")}
               className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
                 persona === "admin" ? "bg-[#A30F2D] text-white shadow-xs" : "text-gray-300 hover:text-white"
               }`}
-              title="Switch to Admin Console"
+              title="Authorised Admin Console (Restricted to club administrators)"
             >
               <Shield className="w-4 h-4" />
-              <span>View Admin (Console)</span>
+              <span>Admin Console</span>
             </button>
           </div>
 
@@ -1141,22 +1209,22 @@ export default function PlayerHomePrototype() {
 
             {/* Right: Actions */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Persona Switcher Shield Button */}
+              {/* Authorised Admin Console Entry (Strictly gated to authorized administrators) */}
               {MOCK_CURRENT_PLAYER.isAdmin && (
                 <button
                   onClick={() => setPersona(persona === "player" ? "admin" : "player")}
-                  className={`min-h-[44px] px-3 rounded-xl border transition flex items-center gap-1.5 text-xs font-bold ${
+                  className={`min-h-[44px] px-3.5 rounded-xl border transition flex items-center gap-1.5 text-xs font-bold ${
                     persona === "admin"
                       ? "bg-[#A30F2D] text-white border-[#A30F2D] shadow-xs"
                       : "bg-[#FCE8ED]/50 hover:bg-[#FCE8ED] text-[#A30F2D] border-[#A30F2D]/20"
                   }`}
-                  title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
+                  title={persona === "admin" ? "Return to Player View" : "Enter Authorised Admin Console"}
                 >
                   <Shield className="w-4 h-4" />
                   <span className="hidden sm:inline">
-                    {persona === "admin" ? "Switch: View Player" : "Switch: Admin Console"}
+                    {persona === "admin" ? "Return to Player View" : "Admin Console"}
                   </span>
-                  <span className="sm:hidden">{persona === "admin" ? "To Player" : "To Admin"}</span>
+                  <span className="sm:hidden">{persona === "admin" ? "To Player" : "Admin Console"}</span>
                 </button>
               )}
 
@@ -1338,7 +1406,7 @@ export default function PlayerHomePrototype() {
                   }`}
                 >
                   <Shield className="w-4 h-4" />
-                  <span>{persona === "player" ? "Switch: Admin Console" : "Switch: View Player"}</span>
+                  <span>{persona === "player" ? "Admin Console" : "Return to Player View"}</span>
                 </button>
 
                 <div className="flex items-center gap-2.5 p-2 rounded-xl bg-gray-50 border border-gray-100">
@@ -1790,7 +1858,7 @@ export default function PlayerHomePrototype() {
                         placeholder="Search name, KAV-ID, jersey..."
                         value={rosterSearch}
                         onChange={(e) => setRosterSearch(e.target.value)}
-                        className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none"
+                        className="w-full min-h-[44px] text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none"
                       />
                     </div>
                   </div>
@@ -2749,7 +2817,7 @@ export default function PlayerHomePrototype() {
                             value={rsvpNote}
                             onChange={(e) => setRsvpNote(e.target.value)}
                             placeholder="e.g. Arriving 15m early / bat top order..."
-                            className="w-full text-xs px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
+                            className="w-full min-h-[44px] text-xs px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
                           />
                         </div>
                       )}
@@ -2913,7 +2981,7 @@ export default function PlayerHomePrototype() {
                       placeholder="Search opponent or venue..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
+                      className="w-full min-h-[44px] text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
                     />
                   </div>
                 </div>
@@ -4044,7 +4112,7 @@ export default function PlayerHomePrototype() {
                     <input
                       type="text"
                       defaultValue={selectedPlayerProfile.name}
-                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                      className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300"
                     />
                   </div>
 
@@ -4056,7 +4124,7 @@ export default function PlayerHomePrototype() {
                       type="text"
                       value={selectedPlayerProfile.jerseyNumber}
                       onChange={(e) => handleJerseyChange(e.target.value)}
-                      className={`w-full text-xs p-2.5 rounded-xl border ${
+                      className={`w-full min-h-[44px] text-xs p-2.5 rounded-xl border ${
                         jerseyValidationWarning ? "border-rose-500 bg-rose-50/30" : "border-gray-300"
                       }`}
                     />
@@ -4073,7 +4141,7 @@ export default function PlayerHomePrototype() {
                       <label className="font-bold text-gray-700 block mb-1">Batting Style</label>
                       <select
                         defaultValue={selectedPlayerProfile.battingStyle}
-                        className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white"
+                        className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white"
                       >
                         <option>Right-hand bat</option>
                         <option>Left-hand bat</option>
@@ -4083,7 +4151,7 @@ export default function PlayerHomePrototype() {
                       <label className="font-bold text-gray-700 block mb-1">Kit T-Shirt</label>
                       <select
                         defaultValue={selectedPlayerProfile.tshirtSize}
-                        className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white"
+                        className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white"
                       >
                         <option>M</option>
                         <option>L</option>
@@ -4107,11 +4175,11 @@ export default function PlayerHomePrototype() {
                       ].map((item) => {
                         const hasRole = selectedPlayerProfile.roles.includes(item.role);
                         return (
-                          <label key={item.role} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200 cursor-pointer">
+                          <label key={item.role} className="flex items-center gap-2 p-2 min-h-[44px] rounded-lg bg-gray-50 border border-gray-200 cursor-pointer">
                             <input
                               type="checkbox"
                               defaultChecked={hasRole}
-                              className="rounded text-[#D51F43] focus:ring-[#D51F43]"
+                              className="w-4 h-4 rounded text-[#D51F43] focus:ring-[#D51F43]"
                             />
                             <span className="text-xs font-semibold text-gray-700">{item.label}</span>
                           </label>
@@ -4172,7 +4240,7 @@ export default function PlayerHomePrototype() {
 
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Source Duplicate Player (To be disabled)</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Ashutosh D (Ghost Profile - No KAV-ID)</option>
                       <option>Vikram S (Unverified)</option>
                     </select>
@@ -4180,7 +4248,7 @@ export default function PlayerHomePrototype() {
 
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Target Primary Player (Preserved Record)</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Ashutosh Dixit (KAV-007) - Authoritative</option>
                       <option>Vikram Sharma (KAV-001)</option>
                     </select>
@@ -4238,14 +4306,14 @@ export default function PlayerHomePrototype() {
                     <input
                       type="text"
                       defaultValue="Titan CC"
-                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                      className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="font-bold text-gray-700 block mb-1">Match Format</label>
-                      <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                         <option>20 Overs T20</option>
                         <option>35 Overs Leather Ball</option>
                         <option>Net Practice Match</option>
@@ -4256,7 +4324,7 @@ export default function PlayerHomePrototype() {
                       <input
                         type="number"
                         defaultValue="500"
-                        className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                        className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300"
                       />
                     </div>
                   </div>
@@ -4266,7 +4334,7 @@ export default function PlayerHomePrototype() {
                     <input
                       type="text"
                       defaultValue="Kavach Arena Ground 1"
-                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                      className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300"
                     />
                   </div>
 
@@ -4312,7 +4380,7 @@ export default function PlayerHomePrototype() {
                 <div className="p-5 space-y-4 overflow-y-auto flex-1">
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Select Player</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Vikram Sharma (KAV-001)</option>
                       <option>Rahul Verma (KAV-012)</option>
                       <option>Sameer Khan (KAV-018)</option>
@@ -4324,7 +4392,7 @@ export default function PlayerHomePrototype() {
                     <input
                       type="number"
                       defaultValue="500"
-                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300 text-sm font-black"
+                      className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 text-sm font-black"
                     />
                   </div>
 
@@ -4665,7 +4733,7 @@ export default function PlayerHomePrototype() {
                 <div className="p-5 space-y-4">
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Select Player</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Rohan Mehta (KAV-007)</option>
                       <option>Kunal Roy (KAV-021)</option>
                       <option>Devendra Joshi (KAV-033)</option>
@@ -4674,7 +4742,7 @@ export default function PlayerHomePrototype() {
 
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Fee Category</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Late-Withdrawal Penalty</option>
                       <option>Practice Gear / Equipment Damage</option>
                       <option>Custom Kit Printing Levy</option>
@@ -4687,7 +4755,7 @@ export default function PlayerHomePrototype() {
                     <input
                       type="number"
                       defaultValue="300"
-                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300 font-bold"
+                      className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 font-bold"
                     />
                   </div>
 
@@ -4696,7 +4764,7 @@ export default function PlayerHomePrototype() {
                     <input
                       type="date"
                       defaultValue="2026-11-25"
-                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                      className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300"
                     />
                   </div>
 
@@ -4812,7 +4880,7 @@ export default function PlayerHomePrototype() {
                 <div className="p-5 space-y-4">
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Select Lane</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Lane 1: Fast Bowling Turf</option>
                       <option>Lane 2: Spin / Multi-Turf</option>
                       <option>Lane 3: Bowling Machine</option>
@@ -4821,7 +4889,7 @@ export default function PlayerHomePrototype() {
 
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Time Slot (60 min)</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>06:00 AM - 07:00 AM</option>
                       <option>07:00 AM - 08:00 AM</option>
                       <option>06:00 PM - 07:00 PM</option>
@@ -4831,7 +4899,7 @@ export default function PlayerHomePrototype() {
 
                   <div>
                     <label className="font-bold text-gray-700 block mb-1">Book For Member</label>
-                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                    <select className="w-full min-h-[44px] text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
                       <option>Ashutosh Dixit (KAV-002) - Active Pass (7 credits)</option>
                       <option>Rohan Mehta (KAV-007) - Monthly Unlimited</option>
                       <option>Kunal Roy (KAV-021) - Drop-in Voucher</option>

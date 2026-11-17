@@ -5,39 +5,65 @@
 **Phase:** Phase 4 — UX Blueprint, High-Fidelity Design & Prototypes  
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
-**Stage 6 Specification Commit:** `c12b7a6`  
-**Phase 3/4 Independent Review Remediation Commit:** *Current working tree*  
-**Authoritative References:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09), Phase 3 Architecture Sign-off (`91811ed`), Feature Traceability Matrix (`docs/implementation/REQUIREMENTS_TRACEABILITY.md`).
+**Current Milestone Commit:** *Current working tree (reconciled)*  
+**Authoritative References:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09, D-10), Phase 3 Architecture Sign-off (`91811ed`), Feature Traceability Matrix (`docs/implementation/REQUIREMENTS_TRACEABILITY.md`).  
+**Status:** Developer Verified — **Pending Independent QA Review & Owner Acceptance** (Not Self-Certified)
 
 ---
 
 ## 1. Executive Summary
 
-Phase 4 of the KAvach Play modernisation plan has been completed and verified following the Phase 3/4 Independent Review Remediation. 
+Phase 4 of the KAvach Play modernisation plan has been completed and verified following the Phase 3/4 Independent Review Remediation and closure findings. 
 
-Rather than static mockups alone, Phase 4 delivers a **comprehensive, interactive, navigable prototype** housed in an isolated sandbox at `/prototype` (powered by `components/prototype/PlayerHomePrototype.tsx`), accompanied by detailed architectural specifications for all 6 approved stages and an automated Playwright responsive verification suite (`e2e/prototype-responsive.spec.ts`).
+Rather than static mockups alone, Phase 4 delivers a **comprehensive, interactive, navigable prototype** housed in an isolated sandbox at `/prototype` (powered by `components/prototype/PlayerHomePrototype.tsx` and `app/prototype/page.tsx`), accompanied by detailed architectural specifications for all 6 approved stages (`docs/design/STAGE_1_...` through `STAGE_6_...`) and an automated Playwright responsive verification suite (`e2e/prototype-responsive.spec.ts`).
 
 ### Key Delivery Highlights
-- **Player Navigation (5 Approved Tabs):** Fully navigable interactive screens for `Home`, `Matches`, `Payments`, `Performance`, and `Club` using realistic synthetic data.
+- **Player Navigation (5 Approved Destinations):** Fully navigable interactive screens for `Home`, `Matches`, `Payments`, `Performance`, and `Club` using realistic synthetic fixtures.
 - **Admin Command Center (7 Approved Hubs):** Fully interactive operational hubs for `Overview`, `Match Centre` (including Grounds & Tournaments), `Player Roster` (with member approval and duplicate merge preview), `Finance & Dues` (with Option A abandoned match accounting and ad-hoc fee levy), `Studio & Nets` (with 3-lane schedule and booking simulation), `Club Operations` (including kit pipeline, member poll, and interactive Design Studio banner generator), and `Settings & Access` (with 6-role RBAC capability matrix and timezone lock).
+- **Unified Player Experience with Authorised Admin Console Entry:** In accordance with `AGENTS.md` and Decision `D-10`, administrators experience the normal player view first. Admin Console is an authorised entry point into administrative functionality (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`), eliminating any separate global player/admin persona-switching paradigm.
 - **Responsive Ergonomics & Desktop Layout:** Dedicated desktop sidebar and contextual panels (not merely padded mobile frames), verified across 6 viewports (`360×800`, `390×844`, `430×932`, `768×1024`, `1280×800`, `1440×900`).
 - **Design Tokens:** Strict adherence to the light-first sports-tech scarlet-led palette (`#A30F2D` primary brand, `#D51F43` primary action, `#FCE8ED` light surface, `#171C26` typography).
-- **Persona Switcher:** Highly visible, dedicated dual-pill segmented control (`[ 👤 View Player ]  [ 🛡️ View Admin (Console) ]`) in the sticky prototype control bar, synchronized with header controls and desktop navigation rails.
 - **Strict Sandbox Isolation:** Zero modifications to production application code (`app/page.tsx`, `firestore.rules`, etc.), zero live Firebase mutations, and zero real Razorpay transactions. All interactive simulations display unambiguous `[PROTOTYPE SIMULATION]` toast notifications.
 
 ---
 
 ## 2. Stage-by-Stage Delivery & Git Evidence
 
-| Stage # | Stage Name | Specification Document | Key Capabilities Delivered | Commit SHA | Status |
-|---|---|---|---|---|---|
-| **Stage 1** | **Player Navigation & Home** | `docs/design/STAGE_1_PLAYER_NAV_AND_HOME_SPEC.md` | Persona toggle, device frame switcher, Next Fixture hero card, 1-tap RSVP, actionable dues alert banner, notification drawer, club community feed. | `5f0c7a5` | Verified |
-| **Stage 2** | **Player Matches & Payments** | `docs/design/STAGE_2_PLAYER_MATCHES_AND_PAYMENTS_SPEC.md` | Searchable/filterable matches tab (Upcoming, Past, Abandoned), match detail slide-over drawer (playing XI, scorecard, catches), Payments tab with Option A abandoned match waiver display, itemized checkout simulation, digital receipt modal with QR verification. | `624810f` | Verified |
-| **Stage 3** | **Admin Navigation & Overview** | `docs/design/STAGE_3_ADMIN_NAV_AND_OVERVIEW_SPEC.md` | High-contrast dual-pill persona switcher, 7 command hubs selector, 4 operations KPI cards (collected, dues, attendance, studio utilization), urgent action queue. | `0c60a1f` | Verified |
-| **Stage 4** | **Admin Match Centre & Player Roster** | `docs/design/STAGE_4_ADMIN_MATCH_CENTRE_AND_ROSTER_SPEC.md` | Match Centre with Grounds & Venues (MOD-10) and Tournaments (MOD-17) management sub-tabs, 3-step Create Match Wizard modal, Squad Builder & Pitch Attendance drawer, Player Roster with pending approval queue, Player Profile & RBAC drawer (#10 jersey validation), duplicate player merge modal with IDT-001 audit summary. | `762b73c` | Verified |
-| **Stage 5** | **Admin Finance, Studio & Club Operations** | `docs/design/STAGE_5_ADMIN_FINANCE_STUDIO_OPS_SPEC.md` | Finance Hub with collections ledger, debtor aging list, record pitch cash modal, levy ad-hoc fee modal, transaction audit drawer; Studio & Nets Hub with 3-lane schedule, slot booking modal, pass credit ledger, CRM leads; Club Operations Hub with kit order pipeline, member poll, interactive Design Studio banner generator (MOD-13); Settings Hub with 6-role RBAC capability matrix and timezone lock (`Asia/Kolkata`). | `a9f013c` | Verified |
-| **Stage 6** | **Shared Design System & Components** | `docs/design/STAGE_6_DESIGN_SYSTEM_AND_COMPONENT_SPEC.md` | Complete token dictionary, typography scale (Inter), spacing/elevation scale, touch target guidelines (min 44px), component architecture catalog, 19-screen inventory matrix, WCAG AA compliance criteria. | `c12b7a6` | Verified |
-| **Remediation** | **Review Remediation & Full Prototype Coverage** | `docs/implementation/REQUIREMENTS_TRACEABILITY.md` | Added complete Player Performance and Club tabs, desktop sidebar and contextual layout, Design Studio SVG canvas generator, Grounds and Tournaments sub-tabs, 44px touch targets, aria-labels, replaced alerts with simulation toasts, Playwright test suite for all 6 viewports. | *Current* | Verified |
+### Implementation Commits
+
+| Commit SHA | Stage / Scope | Description |
+|---|---|---|
+| `5f0c7a5` | Stage 1 | Player Navigation & Home blueprint and navigable prototype |
+| `624810f` | Stage 2 | Player Matches & Payments blueprint and prototype |
+| `0c60a1f` | Stage 3 | Admin Navigation & Overview blueprint and prototype |
+| `762b73c` | Stage 4 | Admin Match Centre & Player Roster blueprint and prototype |
+| `a9f013c` | Stage 5 | Admin Finance, Studio & Operations blueprints and prototype |
+| `c12b7a6` | Stage 6 | Shared Design System specification and Phase 4 completion report |
+| `55cac20` | Remediation | Phase 3/4 review remediation and complete prototype coverage |
+| `fed6936` | Remediation | Touch target audit, test coverage, and traceability distinctions |
+| `6b430fb` | Remediation | 44px touch targets, responsive assertions, and report reconciliation |
+| `bcfad69` | Config | Owner Super Admin custom claim and allowlist configuration |
+| *Current* | Closure | Reconcile navigation model, phase tracker, and modal focus containment |
+
+### Deliverable Artifacts & Specification Files
+
+- **Prototype Application Files:**
+  - `components/prototype/PlayerHomePrototype.tsx` (Complete interactive prototype component)
+  - `app/prototype/page.tsx` (Isolated sandbox route for prototype preview)
+- **Design & Architecture Specification Files:**
+  - `docs/design/STAGE_1_PLAYER_NAV_AND_HOME_SPEC.md`
+  - `docs/design/STAGE_2_PLAYER_MATCHES_AND_PAYMENTS_SPEC.md`
+  - `docs/design/STAGE_3_ADMIN_NAV_AND_OVERVIEW_SPEC.md`
+  - `docs/design/STAGE_4_ADMIN_MATCH_CENTRE_AND_ROSTER_SPEC.md`
+  - `docs/design/STAGE_5_ADMIN_FINANCE_STUDIO_OPS_SPEC.md`
+  - `docs/design/STAGE_6_DESIGN_SYSTEM_AND_COMPONENT_SPEC.md`
+- **Governance & Traceability Documents:**
+  - `docs/implementation/DECISION-LOG.md` (Decisions D-01 through D-10)
+  - `docs/implementation/REQUIREMENTS_TRACEABILITY.md` (Requirements-to-prototype mapping)
+  - `docs/implementation/PHASE-TRACKER.md` (Active Master Plan Track vs Historical Audit Baseline)
+- **Automated Verification Suites:**
+  - `e2e/prototype-responsive.spec.ts` (Playwright responsive and capabilities suite)
+  - `docs/qa/screenshots/prototype-*.png` (Visual capture across all 6 viewports)
 
 ---
 
@@ -72,18 +98,16 @@ The following capabilities are interactively demonstrated in the isolated sandbo
 
 ---
 
-## 4. Persona Switcher Architecture & Visibility
+## 4. Unified Player Experience & Authorised Admin Console Entry
 
-**Resolution of Persona Switcher Invisibility:**
-In earlier iterations, switching between Player and Admin modes was confined to a small header icon button (`Shield`), which condensed to an ambiguous "Console" button on mobile viewports.
+**Reconciliation with Approved Product Architecture (D-10):**
+In accordance with `AGENTS.md` and Decision `D-10`, the platform does not employ a disconnected dual-persona system or global persona-switcher. Instead, club administrators retain their standard player experience first, with an authorised entry point into administrative functionality.
 
-In this remediation:
-1. **Prominent Top Bar Segment Control:** A high-contrast segmented pill control is positioned directly in the sticky prototype preview bar:
-   - `[ 👤 View Player ]` (active: white text on charcoal background)
-   - `[ 🛡️ View Admin (Console) ]` (active: white text on scarlet `#A30F2D`)
-2. **Synchronized Header Action:** The header toggle displays explicit descriptive text: `Switch: Admin Console` (in player mode) and `Switch: View Player` (in admin mode).
-3. **Desktop Sidebar Quick Toggle:** Both the Desktop Player Sidebar and Admin Command Rail feature dedicated switcher buttons at the bottom of the navigation stack.
-4. **Instant In-Memory Mode Switching:** Clicking either control immediately shifts the layout between the 5 Player destinations and 7 Admin command hubs with clear visual state changes.
+In the prototype:
+1. **Clear Header Entry Point:** When an authorized administrator views the application, a prominent `Admin Console` action is available in the header and navigation controls. Clicking it transitions into administrative mode (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`).
+2. **Seamless Return to Player View:** When inside the Admin Console, a clear `Return to Player View` control is persistently available in the header, desktop command rail, and top preview bar, immediately returning the user to their standard player dashboard.
+3. **Synchronized Prototype Preview Bar:** For design inspection purposes, the sticky top preview bar provides a clear indicator: `Unified Player Experience with Authorised Admin Console Entry` with `[ 👤 Player View ]` and `[ 🛡️ Admin Console ]` pills, visually highlighting the current mode without fracturing identity or session data.
+4. **Granular RBAC Preserved:** Administrative capabilities remain partitioned across the 6 authoritative roles (Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin, Designer) with least-privilege scoping.
 
 ---
 
@@ -96,8 +120,8 @@ In accordance with `AGENTS.md` and the governance principles of this project:
 
 ### 2. Automated Playwright Responsive & Capabilities Suite (`e2e/prototype-responsive.spec.ts`)
 Executed against both official Playwright projects:
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **13/13 passed** (16.7s, 0 failed, 0 skipped).
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **13/13 passed** (20.9s, 0 failed, 0 skipped).
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **13/13 passed** (17.0s, 0 failed, 0 skipped).
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **13/13 passed** (22.0s, 0 failed, 0 skipped).
 - **Combined Total:** **26/26 passed (0 failures, 0 skipped)**.
 
 Tests executed in each project across all 6 target viewports:
@@ -113,7 +137,7 @@ Tests executed in each project across all 6 target viewports:
 10. **Mandatory Checkout Simulation:** `verifies mandatory checkout workflow, heading clarity, and simulation notification` (asserts visible entry point without conditionals, verifies `Payment Checkout — Prototype Simulation` heading, toast disclaimers, auto-dismiss) — **PASS**
 11. **Design Studio Generator:** `verifies interactive Design Studio generator and live SVG canvas` (template switching, POTM layout, high-res graphic download simulation) — **PASS**
 12. **Keyboard Accessibility & Focus:** `verifies keyboard navigation and focus visibility across primary player navigation` (focus ring on active control, Tab keyboard navigation) — **PASS**
-13. **Modal Keyboard & Escape Dismissal:** `verifies modal keyboard interaction, Escape-key dismissal, and focus containment` (asserts `role="dialog"`, `aria-modal="true"`, Enter key opening, and Escape key dismissal across modals and drawers) — **PASS**
+13. **Modal Focus Containment & Restoration:** `verifies modal focus containment, keyboard interaction, Escape-key dismissal, and focus restoration` (asserts focus trapped within `div[role="dialog"]` during Tab cycles, Escape key dismissal, and restoration of focus to the triggering element) — **PASS**
 
 Screenshots captured and stored under `docs/qa/screenshots/`:
 - `prototype-360x800.png`
@@ -123,7 +147,9 @@ Screenshots captured and stored under `docs/qa/screenshots/`:
 - `prototype-1280x800.png`
 - `prototype-1440x900.png`
 
-*Tests Not Run:* Live Firebase Emulator rules testing and end-to-end payment gateway settlement tests were not executed in Phase 4 because the prototype operates in an isolated client sandbox. These suites are scheduled for Phase 5 and Phase 6.
+*Tests Not Run (Explicitly Deferred):*
+- Live Firebase Emulator security rules test suite (`@firebase/rules-unit-testing`) is deferred to Phase 6 (UI Implementation & Hardened Rules).
+- Live Razorpay payment gateway API integration and webhook verification tests are deferred to Phase 5 (Core Auth & Server-Side Security) and Phase 7 (Payments & Finance).
 
 ### 3. Functional & Accounting Unit Test Suite
 Executed via `npm run test:functional`:
@@ -142,7 +168,7 @@ Executed via `npm run build`:
 ## 6. Accessibility & Touch Target Standards
 
 The following accessibility, ergonomics, and touch target standards were audited and verified in `components/prototype/PlayerHomePrototype.tsx`:
-- **Comprehensive 44×44px Touch Target Audit:** Conducted an exhaustive AST and DOM-based audit across all interactive elements. Every one of the **115 `<button>` elements** strictly satisfies the $\ge 44\text{px} \times 44\text{px}$ minimum clickable area, including:
+- **Strict 44×44px Touch Target Standard:** Enforced strict $\ge 44\text{px} \times 44\text{px}$ minimum clickable area across all interactive controls (`button`, `[role="button"]`, `input`, `select`), verified by Playwright:
   - Mobile bottom navigation items (Home, Matches, Payments, Performance, Club): `min-h-[44px] min-w-[44px]`
   - Match details sub-tab navigation (Squad & Info, Scorecard, Fielding & Catches): `min-h-[44px] px-3.5`
   - Pitch attendance toggle buttons (Present, Late, Absent): `min-h-[44px] min-w-[76px]`
@@ -150,15 +176,17 @@ The following accessibility, ergonomics, and touch target standards were audited
   - Feed post action buttons (Like, Comments, Share): `min-h-[44px] min-w-[44px] px-2`
   - Modal and slide-over close buttons: `min-h-[44px] min-w-[44px]`
   - Toast notification dismiss button: `min-h-[44px] min-w-[44px]`
-- **Interactive Non-Button Elements:** Match card `<article>` containers and poll option `<div>` controls were upgraded with `role="button"`, `tabIndex={0}`, descriptive `aria-label`, visible focus indicators, and keyboard Enter/Space event handlers.
+  - All form `<input>` and `<select>` controls: `min-h-[44px]`
+- **Modal Focus Containment & Restoration:**
+  - Implemented keyboard focus trap inside all active dialogs/drawers (`div[role="dialog"]`), trapping `Tab` and `Shift+Tab` within the modal.
+  - Implemented focus restoration using `lastActiveElementRef` so that upon closing any modal or drawer, keyboard focus returns to the exact element that opened it.
 - **Dialog & Modal Standards:** All 13 modal dialogues and slide-over drawers include `role="dialog"`, `aria-modal="true"`, scrollable constraints (`max-h-[90vh] overflow-y-auto`), and prominent `min-h-[44px] min-w-[44px]` close buttons.
-- **Escape Key Listener:** Added a global `Escape` key event listener in `useEffect` that immediately dismisses any active modal, slide-over drawer, or simulation toast.
+- **Escape Key Listener:** Global `Escape` key event listener in `useEffect` immediately dismisses any active modal, slide-over drawer, or simulation toast.
 - **Justified Exceptions:** Non-interactive status badges (e.g. `UPCOMING`, `PLAYED`, `CONFIRMED`), decorative indicators, and table header labels remain compact by design because they are informational displays without click handlers.
-- **Accessible Names:** Added explicit `aria-label` attributes to icon-only controls (e.g. `aria-label="Close Checkout"`, `aria-label="Close match details"`, `aria-label="Close modal"`).
+- **Accessible Names:** Explicit `aria-label` attributes on icon-only controls (e.g. `aria-label="Close Checkout"`, `aria-label="Close match details"`, `aria-label="Close modal"`).
 - **Visible Focus States:** Focusable elements include high-contrast focus rings (`focus:ring-2 focus:ring-[#D51F43]/40`).
 - **Semantic Roles:** Navigation bars use `<nav>`, modal headers use `<h3 role="heading">`, and articles use `<article>`.
 - **Simulation Transparency:** Replaced all blocking `window.alert` calls with accessible, non-blocking `[PROTOTYPE SIMULATION]` toast notifications that clearly state no live database mutation or payment gateway call has occurred.
-- **Certification Note:** Structural AA patterns (contrast ratios > 4.5:1, 44px interactive targets, semantic HTML) are implemented. Formal external WCAG 2.1 AA screen-reader audit and axe automated certification are scheduled for the dedicated QA & Hardening phase (Phase 11).
 
 ---
 
@@ -167,6 +195,13 @@ The following accessibility, ergonomics, and touch target standards were audited
 - **Repository Branch:** `mig-mov`
 - **Application Code:** Production application code (`app/page.tsx`, `firestore.rules`, `lib/server-auth.ts`, etc.) remains 100% untouched.
 - **Data & Gateway Safety:** No live Firebase reads/writes, no real Razorpay transactions.
-- **Phase Boundary:** Phase 5 (Financial Integrity & Server-Side Payment Security) has **NOT** been started.
+- **Phase Boundary:** Phase 5 (Core Auth & Server-Side Security) has **NOT** been started.
 
-Phase 4 is complete and ready for independent review.
+---
+
+## 8. Items for Product Owner Direction & Acceptance
+
+The following governance items are submitted for Product Owner direction and review:
+1. **Staging Environment Confirmation (OD-01):** Confirm designated staging Firebase project and preview URL prior to Phase 5 server-side deployments.
+2. **Production Cutover Strategy (OD-02):** Approve the phased cutover roadmap from the legacy monolithic branch upon completion of Phase 12 verification.
+3. **Phase 4 Prototype Review & Sign-Off:** Review the navigable prototype at `/prototype` across both Player View and Admin Console. Note: Phase 4 status remains **Pending Independent QA Review & Owner Acceptance**; no self-certification is claimed.

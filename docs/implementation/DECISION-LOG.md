@@ -19,6 +19,17 @@
 | **D-07** | **Phase 3 Product Rationalisation & UX Discovery Sign-Off** | Comprehensive product, navigation, and UX/UI audit of existing application on branch `mig-mov`. | **DECIDED: Approved by Product Owner** (2026-11-17). Authorizes implementation of Phase 4 roadmap: 5-item Player Navigation, 7-hub Admin Console, and resolution of UX-P0-01, UX-P0-02, UX-P0-03. See `PRODUCT_RATIONALISATION_AND_UX_DISCOVERY.md`. | Phase 4 |
 | **D-08** | **Granular Roles & Permissions Governance** | Legacy draft proposed 3-tier collapse (`Team & Match Manager` absorbing matchAdmin, financeAdmin, clubAdmin). | **DECIDED: Retain Granular Capabilities** per `AGENTS.md` Section 4. Enforce Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin, and Designer independently. Simplify assignment UI, not enforcement boundaries. Unapproved 3-tier collapse rejected. | Governance |
 | **D-09** | **Authoritative Information Architecture Reconciliation** | Legacy draft retained `Home, My Finance, Pay, Profile, More` vs `AGENTS.md` standard. | **DECIDED: Authoritative Direction Enforced** per `AGENTS.md` and Phase 3 Sign-Off. Player Nav = `Home, Matches, Payments, Performance, Club`. Admin Hubs = `Overview, Match Centre, Player Roster, Finance & Dues, Studio & Nets, Club Operations, Settings & Access`. Legacy draft formally superseded. | Phase 4 / 5 |
+| **D-10** | **Unified Player Experience with Authorised Admin Console Entry** | Independent review flagged risk of global persona switching separating admin and player personas. | **DECIDED: Unified Player Experience with Authorised Entry Point Enforced** per `AGENTS.md` Section 4. Administrators experience the normal player view first. Admin Console is an authorized entry point into administrative functionality, not a disconnected global persona or separate user account. Preserves granular RBAC and least privilege. | Phase 4 / Governance |
+
+---
+
+## Open Decisions & Items for Product Owner Direction
+
+| # | Item | Context / Description | Recommendation | Owner Status |
+|---|------|-----------------------|----------------|--------------|
+| **OD-01** | **Staging Environment Confirmation** | Live application at `https://play.kavachcricket.com` is production. Need confirmation of designated staging URL / Firebase project for Phase 5+ deployment tests. | Establish isolated staging Firebase project / preview channel before executing live database/auth mutations. | **Pending Owner Confirmation** |
+| **OD-02** | **Production Cutover Strategy** | Cutover from legacy monolithic branch to modernized codebase. | Controlled cutover after Phase 12 verification with zero data loss and automated rollback plan. | **Pending Owner Decision** |
+| **OD-03** | **Native App Scope Boundary** | Architecture should remain native-ready (API boundaries, clean data models), but native iOS/Android builds are out of scope. | Confirm native apps remain out of scope for current web modernization track. | **Confirmed Out of Scope** |
 
 ---
 

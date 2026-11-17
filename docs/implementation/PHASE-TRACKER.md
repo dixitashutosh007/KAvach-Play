@@ -1,26 +1,54 @@
 # KAVACH PLAY — Implementation Phase Tracker
 
-**Created**: 2026-11-15
-**Git SHA at Phase 0**: `f5739726e75a2e6594c7379bdbfc8a866c63f787`
+**Project:** KAvach Play Modernisation  
+**Repository:** `dixitashutosh007/KAvach-Play`  
+**Branch:** `mig-mov`  
+**Current Remediation Agent:** Gemini in Antigravity (owner-approved transition from Claude Code)  
+**Historical Audit Baseline:** Commit `ab794df` / `acff8325b559ec0f7fc9dfa04b75f6a438ee42f5` (Found NO-GO with 20+ P0/P1 defects)  
+**Governing Standard:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09, D-10), `REQUIREMENTS_TRACEABILITY.md`
 
 ---
 
-## Phase Status Overview
+## 1. Active Remediation Master Plan Track (Authoritative)
 
-| Phase | Name | Status | Start Date | End Date |
-|-------|------|--------|------------|----------|
-| 0 | Discovery & Verification | **COMPLETE** | 2026-11-15 | 2026-11-15 |
-| 1 | Critical Security & Financial Fixes | **COMPLETE** | 2026-11-15 | 2026-11-15 |
-| 2 | Data Integrity & Schema Cleanup | **COMPLETE** | 2026-11-15 | 2026-11-15 |
-| 3 | Identity Consolidation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 4 | Component Decomposition | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 5 | Navigation Rationalisation | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 6 | UI/UX Redesign | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 7 | Financial Logic Overhaul | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 8 | Workflow Simplification | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 9 | Studio & Shop Enhancement | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 10 | Testing & Quality Infrastructure | **COMPLETE** | 2026-11-16 | 2026-11-16 |
-| 11 | Performance & Optimization | **COMPLETE** | 2026-11-16 | 2026-11-16 |
+The table below reflects the active, owner-approved remediation master plan track. Previous claims of 12-phase completion were audited and found defective; this track governs actual verified progress.
+
+| Phase | Phase Name | Status | Verified Deliverables / Scope | Target Milestone |
+|---|---|---|---|---|
+| **Phase 0** | **Discovery & Retrospective Audit** | **COMPLETE** | Audit baseline established (`acff8325`), defect register created, requirements matrix produced. | Verified Baseline |
+| **Phase 1** | **Critical Security & Financial Baseline** | **COMPLETE** | CRIT-01/02 fixed, Option A abandoned match billing helper (`isMatchBillable`), FIN-01/02 calculation fixes. | Verified Commit |
+| **Phase 2** | **State Integrity & Listener Lifecycle** | **COMPLETE** | CRIT-03 query scoping, WixFinanceView retired, unused dependencies removed. | Verified Commit |
+| **Phase 3** | **Product Rationalisation & UX Discovery** | **COMPLETE (Sign-off `91811ed`)** | Complete product & feature inventory (32 items), D-08 (granular RBAC), D-09 (5-item Player Nav / 7-hub Admin Console), D-10 (Unified Player View + Authorised Admin Console). | Blueprint Complete |
+| **Phase 4** | **UX Blueprint, High-Fidelity Design & Prototypes** | **PROTOTYPE COMPLETE (Pending Independent QA & Owner Review)** | Navigable sandbox prototype at `/prototype` covering all 5 Player tabs & 7 Admin hubs across 6 viewports, 44px touch targets, accessibility traps, Playwright 26/26 passed. Zero production code modified. | Prototype Sandbox |
+| **Phase 5** | **Core Auth & Server-Side Security** | **PLANNED / NOT STARTED** | Authoritative server-side Razorpay order generation (FIN-001), raw webhook signature verification (FIN-003), server-side fee calculation, idempotent transaction processing. | Production Phase |
+| **Phase 6** | **UI Implementation & Match Display** | **PLANNED / NOT STARTED** | Hardened Firestore security rules with emulator test suite; production connection of Player UI screens. | Production Phase |
+| **Phase 7** | **Payments, Finance & Authoritative Ledger** | **PLANNED / NOT STARTED** | Live Razorpay integration, authoritative financial ledger mutations, digital receipt generation from persisted collections. | Production Phase |
+| **Phase 8** | **Match Operations & Admin Hubs** | **PLANNED / NOT STARTED** | Persisted match scheduling, live attendance recording, and automatic late-fee triggers. | Production Phase |
+| **Phase 9** | **Roster, Identity & Approval Workflows** | **PLANNED / NOT STARTED** | Atomic registration approval batch linking `appUsers` and `players`, relational duplicate player merge reparenting `players` and updating `appUsers.playerId`. | Production Phase |
+| **Phase 10** | **Performance, Studio & Nets, Player Profile** | **PLANNED / NOT STARTED** | Live multi-lane net booking, pass balance debit transactions, automated career stats compilation from validated scorecards, and digital player cards. | Production Phase |
+| **Phase 11** | **Club Operations, Shop, Polling & Hardening** | **PLANNED / NOT STARTED** | Production merchandise order processing, live member polls, and WCAG AA accessibility certification. | Production Phase |
+| **Phase 12** | **Production Verification, Audit & Cutover** | **PLANNED / NOT STARTED** | Final production readiness audit, live staging verification, and controlled owner-approved cutover. | Release Phase |
+
+---
+
+## 2. Historical Unverified 12-Phase Audit Baseline (Preserved Reference)
+
+> **Important Historical Context:** The sections below document the initial 12-phase implementation claims reported by the previous implementation agent (Claude Code). An independent Antigravity audit of commit `acff8325b559ec0f7fc9dfa04b75f6a438ee42f5` found material security (SEC-001–006), financial (FIN-001–007), and architectural defects across these claims. In accordance with `AGENTS.md`, these historical notes are preserved for retrospective auditability but are **superseded** by the Active Remediation Master Plan Track above.
+
+| Historical Phase | Legacy Name | Reported Legacy Status | Independent Audit Finding |
+|---|---|---|---|
+| 0 | Discovery & Verification | Reported Complete | Baselined; uncovered CRIT-01 through CRIT-04 |
+| 1 | Critical Security & Financial Fixes | Reported Complete | Incomplete; FIN-001–003, SEC-001–004 remained |
+| 2 | Data Integrity & Schema Cleanup | Reported Complete | Incomplete; duplicate dual-writes lacked server atomicity |
+| 3 | Identity Consolidation | Reported Complete | IDT-001 merge bug persisted; appUsers.playerId not reparented |
+| 4 | Component Decomposition | Reported Complete | MatchesTab partially decomposed; useStore monolith remained |
+| 5 | Navigation Rationalisation | Reported Complete | Superseded by D-09 / D-10 authoritative architecture |
+| 6 | UI/UX Redesign | Reported Complete | Incomplete; dark backgrounds leaked into modals; UX-001–005 |
+| 7 | Financial Logic Overhaul | Reported Complete | Webhook client-side dependency; lack of server-side order calculation |
+| 8 | Workflow Simplification | Reported Complete | AccountDisabledScreen wired up but admin workflows unhardened |
+| 9 | Studio & Shop Enhancement | Reported Complete | SS-D1 orderPayload bug remained |
+| 10 | Testing & Quality Infrastructure | Reported Complete | QA-001 mock tests; QA-002 no emulator suite; skipped tests |
+| 11 | Performance & Optimization | Reported Complete | useStore monolith & listener lifecycle unaddressed |
 
 ---
 
