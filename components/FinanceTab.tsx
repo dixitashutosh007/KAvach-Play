@@ -1325,7 +1325,77 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
             {(() => {
               const showPct = collectedMatches.some((d) => d.matchFeeTotal > 0);
               return (
-              <div className="overflow-x-auto">
+              <>
+              {/* Mobile Match Fee Accounting Cards (< md, UX-P1-03) */}
+              <div data-testid="mobile-finance-cards" className="md:hidden space-y-3">
+                {collectedMatches.map((data) => {
+                  const ground = store.grounds.find((g) => g.id === data.match.groundId);
+                  return (
+                    <div
+                      key={data.match.id}
+                      className="bg-surface rounded-xl p-3.5 border border-border space-y-2.5 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-text-primary font-bold text-xs">
+                            {formatDate(data.match.date)}
+                          </div>
+                          <div className="text-[10px] text-text-muted mt-0.5">
+                            {ground?.name || "Ground TBD"}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                          <span className="text-emerald-400 font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            {data.paidCount} Paid
+                          </span>
+                          <span className={`font-bold px-1.5 py-0.5 rounded ${
+                            data.unpaidCount > 0
+                              ? "text-red-400 bg-red-500/10 border border-red-500/20"
+                              : "text-text-muted bg-surface-hover"
+                          }`}>
+                            {data.unpaidCount} Due
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border text-center text-xs">
+                        <div className="bg-surface-hover p-2 rounded-lg">
+                          <div className="text-[9px] uppercase tracking-wider text-text-muted font-bold">Budget</div>
+                          <div className="font-mono font-bold text-text-primary mt-0.5">₹{data.matchFeeTotal}</div>
+                        </div>
+                        <div className="bg-surface-hover p-2 rounded-lg">
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Collected</div>
+                          <div className="font-mono font-bold text-emerald-400 mt-0.5">₹{data.feeCollected}</div>
+                        </div>
+                        <div className="bg-surface-hover p-2 rounded-lg">
+                          <div className="text-[9px] uppercase tracking-wider text-amber-400 font-bold">Sponsored</div>
+                          <div className="font-mono font-bold text-amber-400 mt-0.5">₹{data.feeOffset}</div>
+                        </div>
+                      </div>
+
+                      {data.percentRecovered !== null && (
+                        <div className="pt-1">
+                          <div className="flex justify-between text-[10px] font-bold mb-1">
+                            <span className="text-text-muted uppercase tracking-wider">Recovery</span>
+                            <span className={data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}>
+                              {data.percentRecovered}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-surface-hover rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${data.percentRecovered >= 80 ? "bg-emerald-500" : data.percentRecovered >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                              style={{ width: `${Math.min(100, Math.max(0, data.percentRecovered))}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table (>= md) */}
+              <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-border text-[10px] uppercase tracking-widest text-text-muted">
@@ -1624,12 +1694,25 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                   </tfoot>
                 )}
               </table>
+              </div>
+
               {collectedMatches.length === 0 && (
-                <div className="text-center text-text-muted text-sm py-4">
-                  No match collections found.
+                <div
+                  data-testid="empty-finance-collections"
+                  className="text-center py-10 px-4 bg-surface rounded-xl border border-border border-dashed space-y-2 mt-2"
+                >
+                  <div className="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center mx-auto">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-text-primary">
+                    No Match Collections Found
+                  </p>
+                  <p className="text-[11px] text-text-muted max-w-xs mx-auto">
+                    Try adjusting your date range or player search above to see accounting records.
+                  </p>
                 </div>
               )}
-            </div>
+              </>
               );
             })()}
           </div>

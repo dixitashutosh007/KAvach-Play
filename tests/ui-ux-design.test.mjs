@@ -163,3 +163,34 @@ test("UX-P1-02: Enforce scarlet-led design tokens and eliminate hardcoded emeral
   assert.ok(legalCode.includes("#F6F7F9"), "Legal page must use light background #F6F7F9");
   assert.ok(legalCode.includes("#A30F2D"), "Legal page must use primary brand #A30F2D");
 });
+
+test("UX-P1-03 & UX-P1-04: Adaptive responsive cards for dense mobile data and rich empty states", () => {
+  const financeCode = fs.readFileSync(path.resolve("components/FinanceTab.tsx"), "utf-8");
+  const playersCode = fs.readFileSync(path.resolve("components/PlayersTab.tsx"), "utf-8");
+
+  // Verify responsive mobile cards for match accounting on small viewports
+  assert.ok(
+    financeCode.includes('data-testid="mobile-finance-cards"'),
+    "FinanceTab must render mobile-optimized cards on < md viewports",
+  );
+  assert.ok(
+    financeCode.includes('hidden md:block overflow-x-auto'),
+    "FinanceTab must preserve structured table for >= md viewports",
+  );
+
+  // Verify rich empty states
+  assert.ok(
+    financeCode.includes('data-testid="empty-finance-collections"'),
+    "FinanceTab must render rich empty state when no collections match filter",
+  );
+  assert.ok(
+    playersCode.includes('data-testid="empty-players-roster"'),
+    "PlayersTab must render rich empty state when no players match filter",
+  );
+
+  // Verify viewMode toggle has min 44px touch target
+  assert.ok(
+    playersCode.includes('min-h-[44px]'),
+    "PlayersTab viewMode button must enforce min 44px touch target",
+  );
+});

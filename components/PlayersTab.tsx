@@ -14,6 +14,7 @@ import {
   MessageSquare,
   CheckCircle,
   UserX,
+  Users,
   Calendar,
   Table2,
   X,
@@ -190,10 +191,11 @@ export function PlayersTab({
           {isAdmin && (
             <button
               onClick={() => setViewMode(viewMode === "list" ? "table" : "list")}
-              className={`text-xs px-3 py-2 rounded-xl font-bold border transition flex items-center gap-1.5 ${viewMode === "table" ? "bg-accent/20 text-accent border-accent/30" : "bg-surface-hover text-text-secondary border-border hover:bg-surface-hover"}`}
+              className={`text-xs min-h-[44px] px-3.5 py-2 rounded-xl font-bold border transition flex items-center gap-1.5 cursor-pointer ${viewMode === "table" ? "bg-accent/20 text-accent border-accent/30" : "bg-surface-hover text-text-secondary border-border hover:bg-surface-hover"}`}
+              title={viewMode === "table" ? "Switch to List View" : "Switch to Table View"}
             >
               <Table2 className="h-3.5 w-3.5" />
-              {viewMode === "table" ? "Table View" : "Table View"}
+              {viewMode === "table" ? "List View" : "Table View"}
             </button>
           )}
           <button
@@ -350,8 +352,14 @@ export function PlayersTab({
         ) : (
         <div className="bg-surface rounded-xl overflow-hidden divide-y divide-border">
           {displayPlayers.length === 0 && (
-            <div className="py-8 text-center text-sm text-text-muted">
-              No players added yet.
+            <div data-testid="empty-players-roster" className="py-12 text-center text-sm text-text-muted space-y-2">
+              <div className="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center mx-auto">
+                <Users className="w-5 h-5" />
+              </div>
+              <p className="font-bold text-text-primary text-xs uppercase tracking-wider">No Players Found</p>
+              <p className="text-[11px] text-text-muted max-w-xs mx-auto">
+                {searchQuery ? "No members match your search criteria. Try a different name or number." : "No players match the current roster filter."}
+              </p>
             </div>
           )}
           {displayPlayers.map((player) => (
