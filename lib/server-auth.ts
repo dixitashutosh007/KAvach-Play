@@ -11,11 +11,11 @@
  * preferred (no Firestore read); the doc fallback keeps things working
  * during the rollout window before scripts/set-admin-claim.js is applied.
  */
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
-import firebaseConfig from "../firebase-applet-config.json";
+import firebaseConfig from "../firebase-applet-config.json" with { type: "json" };
 
 function ensureAdminApp() {
   const apps = getApps();
@@ -39,6 +39,15 @@ export type AdminGuardResult = AuthGuardResult;
  * Use this for routes that any signed-in user may call (e.g. creating their own payment order).
  */
 export async function requireAuth(req: Request): Promise<AuthGuardResult> {
+  // Test environment bypass for integration tests with live emulator
+  if (process.env.NODE_ENV === "test" && req.headers.get("x-test-uid")) {
+    return {
+      ok: true,
+      uid: req.headers.get("x-test-uid")!,
+      email: req.headers.get("x-test-email") || "test@kavachcricket.com",
+    };
+  }
+
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return {

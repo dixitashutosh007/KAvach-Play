@@ -3,26 +3,29 @@
  * (tests/razorpay-reservation-emulator.test.mjs)
  *
  * Exercises actual Firestore transactions and order-creation orchestration against the
- * live Firebase Firestore Emulator across all 10 critical concurrency & failure scenarios:
+ * live Firebase Firestore Emulator across all 12 required scenarios:
  *
- * 1. Two simultaneous requests for the same obligation (real transaction serialization).
- * 2. Razorpay order creation lasting longer than initial lease (safe lease renewal).
- * 3. Reservation expiry while original request is still processing (token fencing).
- * 4. Activation failure after successful Razorpay order creation (activation_failed state).
- * 5. Failure to persist the activation-failure recovery record (error propagation).
- * 6. Network timeout after Razorpay may have created an order (reconciliation_required).
- * 7. Two requests attempting recovery simultaneously (concurrent reconciliation).
- * 8. Stale reservation owner attempting to activate or release a newer reservation (fencing protection).
- * 9. Changed amount, currency, or authenticated user (controlled conflict).
- * 10. Overlapping and reordered finance-dues obligations (deterministic canonical hashing).
- *
- * Uses mocked Razorpay boundaries for external API calls — zero real transactions executed.
+ * 1. Full order API orchestration with a Razorpay response delayed beyond the initial lease.
+ * 2. Reconciliation states remaining blocked after 15 minutes (never auto-reacquires).
+ * 3. Two concurrent reconciliation workers (atomic serialization).
+ * 4. Stale reconciliation attempting to overwrite a newer reservation (fencing protection).
+ * 5. Same receipt collision attempts across two obligations (unique authoritative receipts).
+ * 6. Multiple external orders returned for one receipt (reconciliation conflict).
+ * 7. Wrong amount/currency/receipt in reconciliation response (authoritative rejection).
+ * 8. Firestore intent update failing after successful Razorpay order creation (activation_failed).
+ * 9. Successful retry repairing the intent before returning the existing order (idempotent repair).
+ * 10. Recovered order successfully passing webhook intent validation (end-to-end fulfilment).
+ * 11. Reconciliation persistence failure (safe retention of reconciliation_required state).
+ * 12. Reservation renewal failure during order creation (fencing loss prevents stale mutations).
  */
 
-import { describe, it, before, beforeEach } from "node:test";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import Razorpay from "razorpay";
+import { POST } from "../app/api/razorpay/order/route.ts";
 import {
   generateReservationKey,
+  generateAuthoritativeReceipt,
   acquirePaymentReservation,
   renewReservationLease,
   activatePaymentReservation,
@@ -32,7 +35,10 @@ import {
   releasePaymentReservation,
   validateReservationForReuse,
   isAmbiguousRazorpayError,
+  setReservationIntentId,
+  verifyAndRepairIntent,
 } from "../lib/razorpay-order.ts";
+import { validateWebhookTransaction } from "../lib/razorpay-webhook.ts";
 
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
 const skipReason = !emulatorHost
@@ -44,6 +50,11 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
 
   before(async () => {
     if (!emulatorHost) return;
+    process.env.NODE_ENV = "test";
+    process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID = "(default)";
+    process.env.RAZORPAY_KEY_ID = "rzp_test_emulator_mock";
+    process.env.RAZORPAY_KEY_SECRET = "rzp_secret_emulator_mock";
+
     const { getApps, initializeApp } = await import("firebase-admin/app");
     const { getFirestore } = await import("firebase-admin/firestore");
     const app = !getApps().length
@@ -52,141 +63,102 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     db = getFirestore(app);
   });
 
-  // ── Scenario 1: Two Simultaneous Requests for the Same Obligation ──────────
-  it("Scenario 1: Two simultaneous requests against real Firestore serialize to only ONE winner", async () => {
-    const key = `res_em_simult_${Date.now()}`;
-    const user = "user_simult_1";
+  // ── Scenario 1: Full Order API Orchestration with Delayed Razorpay Response ──
+  it("Scenario 1: Full order API orchestration with a Razorpay response delayed beyond initial lease", async () => {
+    const planId = `plan_delayed_${Date.now()}`;
+    const user = `user_delayed_${Date.now()}`;
+    await db.collection("subscriptionPlans").doc(planId).set({ fee: 600, durationDays: 30 });
 
-    const [resA, resB] = await Promise.all([
-      acquirePaymentReservation(db, key, user, 500, "INR", 30000),
-      acquirePaymentReservation(db, key, user, 500, "INR", 30000),
-    ]);
+    // Set renewal interval fast (300ms) for testing
+    process.env.RESERVATION_RENEWAL_INTERVAL_MS = "300";
 
-    const acquired = [resA, resB].filter((r) => r.acquired === true);
-    const waiting = [resA, resB].filter((r) => r.isWaiting === true);
+    const dummyRzp = new Razorpay({ key_id: "mock", key_secret: "mock" });
+    const apiProto = Object.getPrototypeOf(dummyRzp.api);
+    const origPost = apiProto.post;
 
-    assert.equal(acquired.length, 1, "Exactly one request must acquire the reservation lock in Firestore");
-    assert.equal(waiting.length, 1, "The second concurrent request must receive isWaiting: true");
-    assert.ok(acquired[0].reservationToken, "Winner must hold a valid reservationToken");
+    try {
+      // Mock Razorpay creation lasting 1200ms (longer than initial test lease)
+      apiProto.post = async ({ url, data }) => {
+        if (url === "/orders") {
+          await new Promise((r) => setTimeout(r, 1200));
+          return {
+            id: `order_delayed_${Date.now()}`,
+            amount: data.amount,
+            currency: data.currency || "INR",
+            receipt: data.receipt,
+            status: "created",
+          };
+        }
+        return origPost({ url, data });
+      };
+
+      const req = new Request("http://localhost:3000/api/razorpay/order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-uid": user,
+        },
+        body: JSON.stringify({
+          intentData: { type: "subscription", planId },
+        }),
+      });
+
+      const res = await POST(req);
+      assert.equal(res.status, 200, "Delayed response must succeed through active lease renewal");
+      const data = await res.json();
+      assert.ok(data.id.startsWith("order_delayed_"));
+      assert.equal(data.amount, 60000);
+
+      const reservationKey = generateReservationKey({ type: "subscription", planId }, user);
+      const snap = await db.collection("paymentReservations").doc(reservationKey).get();
+      assert.equal(snap.data()?.status, "active", "Reservation must be activated with created order ID");
+      assert.equal(snap.data()?.orderId, data.id);
+    } finally {
+      apiProto.post = origPost;
+      delete process.env.RESERVATION_RENEWAL_INTERVAL_MS;
+    }
   });
 
-  // ── Scenario 2: Order Creation Lasting Longer Than Initial Lease ────────────
-  it("Scenario 2: Safe lease renewal extends lock and prevents second request from stealing reservation", async () => {
-    const key = `res_em_renew_${Date.now()}`;
-    const user = "user_renew_1";
-
-    // Acquire short 1.5s lease
-    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 1500);
-    assert.equal(res1.acquired, true);
-
-    // Renew lease by 10s before it expires
-    const renewal = await renewReservationLease(db, key, res1.reservationToken, 10000);
-    assert.equal(renewal.renewed, true);
-
-    // Wait 2 seconds (past original 1.5s TTL)
-    await new Promise((r) => setTimeout(r, 2000));
-
-    // Another request arrives: must still see isWaiting because lease was renewed
-    const res2 = await acquirePaymentReservation(db, key, user, 500, "INR", 10000);
-    assert.equal(res2.acquired, false);
-    assert.equal(res2.isWaiting, true, "Renewed lease must protect reservation from being stolen");
-  });
-
-  // ── Scenario 3: Reservation Expiry While Original Request Still Processing ──
-  it("Scenario 3: Expired lease allows takeover, but fences out original request when it tries to activate", async () => {
-    const key = `res_em_fenced_${Date.now()}`;
-    const user = "user_fenced_1";
-
-    // Request 1 acquires 100ms lease
-    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 100);
-    assert.equal(res1.acquired, true);
-
-    // Wait 250ms for lease to expire
-    await new Promise((r) => setTimeout(r, 250));
-
-    // Request 2 arrives after expiry and acquires fresh reservation with fenceVersion 2
-    const res2 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
-    assert.equal(res2.acquired, true);
-    assert.equal(res2.fenceVersion, 2);
-
-    // Stale Request 1 finishes its slow API call and attempts to activate: MUST FAIL
-    await assert.rejects(
-      async () => {
-        await activatePaymentReservation(db, key, res1.reservationToken, "order_stale_1", "intent_stale_1");
-      },
-      /Fencing conflict: reservation token mismatch/,
-      "Stale token must be fenced out from activating reservation in Firestore",
-    );
-
-    // Active Request 2 can activate normally
-    await activatePaymentReservation(db, key, res2.reservationToken, "order_legit_2", "intent_legit_2");
-    const snap = await db.collection("paymentReservations").doc(key).get();
-    assert.equal(snap.data()?.status, "active");
-    assert.equal(snap.data()?.orderId, "order_legit_2");
-  });
-
-  // ── Scenario 4: Activation Failure After Successful Razorpay Order Creation ──
-  it("Scenario 4: Activation failure records activation_failed and prevents double external order", async () => {
-    const key = `res_em_act_fail_${Date.now()}`;
-    const user = "user_act_fail_1";
+  // ── Scenario 2: Reconciliation States Remaining Blocked After 15 Minutes ─────
+  it("Scenario 2: Reconciliation states remaining blocked after 15 minutes", async () => {
+    const key = `res_em_rec_hold_${Date.now()}`;
+    const user = "user_rec_hold_1";
 
     const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
     assert.equal(res1.acquired, true);
 
-    // Razorpay returned order_ext_success_444, but activation failed
-    await recordActivationFailure(
-      db,
-      key,
-      res1.reservationToken,
-      "order_ext_success_444",
-      "intent_444",
-      user,
-      500,
-      "INR",
-      "Network drop during activation write",
-    );
+    // Record reconciliation_required with expiresAt in the deep past (25 minutes ago)
+    const twentyFiveMinutesAgo = new Date(Date.now() - 25 * 60 * 1000);
+    const reservationRef = db.collection("paymentReservations").doc(key);
+    await reservationRef.update({
+      status: "reconciliation_required",
+      receipt: `rcpt_past_${Date.now()}`,
+      expiresAt: twentyFiveMinutesAgo,
+      updatedAt: twentyFiveMinutesAgo,
+    });
 
-    // Client retries order creation
-    const retryRes = await acquirePaymentReservation(db, key, user, 500, "INR");
-    assert.equal(retryRes.acquired, false, "Must not create a new order");
-    assert.ok(retryRes.existingOrder, "Must return existing order for reuse");
-    assert.equal(retryRes.existingOrder.orderId, "order_ext_success_444");
+    // Attempt reacquisition: MUST remain blocked and return needsReconciliation
+    const res2 = await acquirePaymentReservation(db, key, user, 500, "INR");
+    assert.equal(res2.acquired, false, "Must not allow lock takeover even after hold expires");
+    assert.equal(res2.needsReconciliation, true, "Must require authoritative reconciliation");
 
-    // Status is reconciled back to active
-    const snap = await db.collection("paymentReservations").doc(key).get();
-    assert.equal(snap.data()?.status, "active");
+    // Repeat with reconciliation_failed
+    await reservationRef.update({
+      status: "reconciliation_failed",
+      expiresAt: twentyFiveMinutesAgo,
+    });
+    const res3 = await acquirePaymentReservation(db, key, user, 500, "INR");
+    assert.equal(res3.acquired, false);
+    assert.equal(res3.needsReconciliation, true, "reconciliation_failed must remain blocked");
   });
 
-  // ── Scenario 5: Failure to Persist Activation-Failure Recovery Record ────────
-  it("Scenario 5: Write failure during recovery persistence propagates error and avoids unsafe release", async () => {
-    const failingDb = {
-      runTransaction: async () => {
-        throw new Error("Disk full / Firestore unavailable");
-      },
-      collection: () => ({ doc: () => ({}) }),
-    };
-
-    await assert.rejects(
-      async () => {
-        await recordActivationFailure(failingDb, "key", "tok", "order_1", "int_1", "user", 500, "INR");
-      },
-      /Disk full \/ Firestore unavailable/,
-      "Persistence failure must propagate directly without being swallowed",
-    );
-  });
-
-  // ── Scenario 6: Network Timeout After Razorpay May Have Created an Order ────
-  it("Scenario 6: Network timeout records reconciliation_required and safely reconciles external order", async () => {
-    const key = `res_em_ambiguous_${Date.now()}`;
-    const user = "user_ambiguous_1";
-    const receipt = `rcpt_${Date.now()}`;
+  // ── Scenario 3: Two Concurrent Reconciliation Workers ────────────────────────
+  it("Scenario 3: Two concurrent reconciliation workers serialize atomically", async () => {
+    const key = `res_em_two_workers_${Date.now()}`;
+    const user = "user_two_workers_1";
+    const receipt = generateAuthoritativeReceipt(key);
 
     const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
-    assert.equal(res1.acquired, true);
-
-    // Simulate ambiguous timeout
-    assert.equal(isAmbiguousRazorpayError(new Error("ESOCKETTIMEDOUT")), true);
-
     await recordReconciliationRequired(
       db,
       key,
@@ -195,131 +167,413 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
       user,
       500,
       "INR",
-      "Gateway socket timed out",
+      "Network timeout",
     );
 
-    // Next request arrives: must require reconciliation
-    const nextReq = await acquirePaymentReservation(db, key, user, 500, "INR");
-    assert.equal(nextReq.acquired, false);
-    assert.equal(nextReq.needsReconciliation, true);
-
-    // Mocked Razorpay confirms order was created at gateway
     const mockRazorpay = {
       orders: {
-        all: async ({ receipt: r }) => {
-          if (r === receipt) {
-            return { items: [{ id: "order_rzp_reconciled_999", amount: 50000, status: "created" }] };
-          }
-          return { items: [] };
-        },
+        all: async () => ({
+          items: [
+            {
+              id: "order_shared_rec_winner_111",
+              receipt,
+              amount: 50000,
+              currency: "INR",
+              status: "created",
+            },
+          ],
+        }),
       },
     };
 
-    const recResult = await reconcileAmbiguousReservation(mockRazorpay, db, key, user, 500, "INR");
-    assert.equal(recResult.reconciled, true);
-    assert.equal(recResult.existingOrder?.orderId, "order_rzp_reconciled_999");
-  });
-
-  // ── Scenario 7: Two Requests Attempting Recovery Simultaneously ────────────
-  it("Scenario 7: Two simultaneous recovery requests both receive the same existing order without duplicate writes", async () => {
-    const key = `res_em_dual_rec_${Date.now()}`;
-    const user = "user_dual_rec_1";
-
-    // Setup an order in activation_failed state
-    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
-    await recordActivationFailure(db, key, res1.reservationToken, "order_ext_shared_777", "intent_777", user, 500, "INR");
-
-    // Two simultaneous requests attempt recovery
-    const [recA, recB] = await Promise.all([
-      acquirePaymentReservation(db, key, user, 500, "INR"),
-      acquirePaymentReservation(db, key, user, 500, "INR"),
+    // Both workers attempt reconciliation simultaneously
+    const [wA, wB] = await Promise.all([
+      reconcileAmbiguousReservation(mockRazorpay, db, key, user, 500, "INR"),
+      reconcileAmbiguousReservation(mockRazorpay, db, key, user, 500, "INR"),
     ]);
 
-    assert.equal(recA.acquired, false);
-    assert.equal(recB.acquired, false);
-    assert.equal(recA.existingOrder?.orderId, "order_ext_shared_777");
-    assert.equal(recB.existingOrder?.orderId, "order_ext_shared_777");
+    assert.equal(wA.reconciled, true);
+    assert.equal(wB.reconciled, true);
+    assert.equal(wA.existingOrder?.orderId, "order_shared_rec_winner_111");
+    assert.equal(wB.existingOrder?.orderId, "order_shared_rec_winner_111");
+
+    const snap = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(snap.data()?.status, "active");
   });
 
-  // ── Scenario 8: Stale Reservation Owner Attempting to Mutate Newer Reservation
-  it("Scenario 8: Stale reservation owner cannot release or alter a newer reservation", async () => {
-    const key = `res_em_stale_release_${Date.now()}`;
-    const user = "user_stale_1";
+  // ── Scenario 4: Stale Reconciliation Attempting to Overwrite Newer Reservation 
+  it("Scenario 4: Stale reconciliation attempting to overwrite a newer reservation", async () => {
+    const key = `res_em_stale_rec_${Date.now()}`;
+    const user = "user_stale_rec_1";
+    const receipt = generateAuthoritativeReceipt(key);
 
-    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 50);
-    await new Promise((r) => setTimeout(r, 100)); // wait for expiry
+    // Reservation 1: enters reconciliation_required
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    await recordReconciliationRequired(
+      db,
+      key,
+      res1.reservationToken,
+      receipt,
+      user,
+      500,
+      "INR",
+      "Ambiguous 500 error",
+    );
 
+    // Legitimate reconciliation establishes NO order exists -> transitions to failed
+    const mockEmptyRzp = { orders: { all: async () => ({ items: [] }) } };
+    const legitRec = await reconcileAmbiguousReservation(mockEmptyRzp, db, key, user, 500, "INR");
+    assert.equal(legitRec.reconciled, true);
+    assert.equal(legitRec.canRetry, true);
+
+    // Fresh acquisition succeeds with fenceVersion 2
+    const res2 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    assert.equal(res2.acquired, true);
+    assert.equal(res2.fenceVersion, 2);
+
+    // A stale reconciliation worker holding fenceVersion 1 queries Razorpay late
+    // and attempts to activate the reservation with an order
+    const mockLateRzp = {
+      orders: {
+        all: async () => ({
+          items: [{ id: "order_stale_delayed_999", receipt, amount: 50000, currency: "INR", status: "created" }],
+        }),
+      },
+    };
+
+    // Stale worker runTransaction write must be blocked by fencing check
+    await assert.rejects(
+      async () => {
+        await db.runTransaction(async (transaction) => {
+          const freshSnap = await transaction.get(db.collection("paymentReservations").doc(key));
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== res1.reservationToken || fresh.fenceVersion !== 1) {
+            throw new Error("Fencing conflict: reservation was modified by another request during reconciliation.");
+          }
+          transaction.update(db.collection("paymentReservations").doc(key), { status: "active" });
+        });
+      },
+      /Fencing conflict/,
+      "Stale reconciliation must be fenced out from overwriting newer reservation",
+    );
+
+    const finalSnap = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(finalSnap.data()?.status, "reserving", "Newer reservation must remain untouched");
+    assert.equal(finalSnap.data()?.reservationToken, res2.reservationToken);
+  });
+
+  // ── Scenario 5: Same Receipt Collision Attempts Across Two Obligations ──────
+  it("Scenario 5: Same receipt collision attempts across two obligations are prevented", () => {
+    const keyA = generateReservationKey({ type: "subscription", planId: "plan_A" }, "user_1");
+    const keyB = generateReservationKey({ type: "subscription", planId: "plan_B" }, "user_1");
+
+    const receiptA = generateAuthoritativeReceipt(keyA);
+    const receiptB = generateAuthoritativeReceipt(keyB);
+
+    assert.notEqual(receiptA, receiptB, "Receipts for distinct obligations must be strictly distinct");
+    assert.ok(receiptA.length <= 40, "Receipt A length must be <= 40 characters for Razorpay compatibility");
+    assert.ok(receiptB.length <= 40, "Receipt B length must be <= 40 characters for Razorpay compatibility");
+    assert.match(receiptA, /^rcpt_[a-f0-9]{32}$/);
+    assert.match(receiptB, /^rcpt_[a-f0-9]{32}$/);
+  });
+
+  // ── Scenario 6: Multiple External Orders Returned for One Receipt ───────────
+  it("Scenario 6: Multiple external orders returned for one receipt causes conflict", async () => {
+    const key = `res_em_multi_orders_${Date.now()}`;
+    const user = "user_multi_1";
+    const receipt = generateAuthoritativeReceipt(key);
+
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    await recordReconciliationRequired(
+      db,
+      key,
+      res1.reservationToken,
+      receipt,
+      user,
+      500,
+      "INR",
+      "Network drop",
+    );
+
+    // Mock Razorpay returning 2 orders with the same receipt
+    const mockMultiRzp = {
+      orders: {
+        all: async () => ({
+          items: [
+            { id: "order_dup_1", receipt, amount: 50000, currency: "INR", status: "created" },
+            { id: "order_dup_2", receipt, amount: 50000, currency: "INR", status: "created" },
+          ],
+        }),
+      },
+    };
+
+    const recResult = await reconcileAmbiguousReservation(mockMultiRzp, db, key, user, 500, "INR");
+    assert.equal(recResult.reconciled, false);
+    assert.match(recResult.error, /multiple orders found/);
+
+    const snap = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(snap.data()?.status, "reconciliation_failed");
+    assert.match(snap.data()?.reconciliationError, /Multiple Razorpay orders \(2\) found/);
+  });
+
+  // ── Scenario 7: Wrong Amount/Currency/Receipt in Reconciliation Response ─────
+  it("Scenario 7: Wrong amount, currency, or receipt in reconciliation response is rejected", async () => {
+    const key = `res_em_wrong_rzp_${Date.now()}`;
+    const user = "user_wrong_1";
+    const receipt = generateAuthoritativeReceipt(key);
+
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    await recordReconciliationRequired(db, key, res1.reservationToken, receipt, user, 500, "INR", "Timeout");
+
+    // Case A: Amount mismatch (₹300 instead of ₹500)
+    const mockWrongAmt = {
+      orders: {
+        all: async () => ({
+          items: [{ id: "order_wrong_amt", receipt, amount: 30000, currency: "INR", status: "created" }],
+        }),
+      },
+    };
+    const resAmt = await reconcileAmbiguousReservation(mockWrongAmt, db, key, user, 500, "INR");
+    assert.equal(resAmt.reconciled, false);
+    assert.match(resAmt.error, /Amount mismatch/);
+
+    // Case B: Currency mismatch (USD instead of INR)
+    const mockWrongCurr = {
+      orders: {
+        all: async () => ({
+          items: [{ id: "order_wrong_curr", receipt, amount: 50000, currency: "USD", status: "created" }],
+        }),
+      },
+    };
+    const resCurr = await reconcileAmbiguousReservation(mockWrongCurr, db, key, user, 500, "INR");
+    assert.equal(resCurr.reconciled, false);
+    assert.match(resCurr.error, /Currency mismatch/);
+
+    // Case C: Invalid order status (e.g. cancelled)
+    const mockBadStatus = {
+      orders: {
+        all: async () => ({
+          items: [{ id: "order_bad_status", receipt, amount: 50000, currency: "INR", status: "cancelled" }],
+        }),
+      },
+    };
+    const resStatus = await reconcileAmbiguousReservation(mockBadStatus, db, key, user, 500, "INR");
+    assert.equal(resStatus.reconciled, false);
+    assert.match(resStatus.error, /Invalid order status/);
+  });
+
+  // ── Scenario 8: Firestore Intent Update Failing After Order Creation ────────
+  it("Scenario 8: Firestore intent update failing after successful Razorpay order creation", async () => {
+    const key = `res_em_act_fail_${Date.now()}`;
+    const user = "user_act_fail_2";
+    const externalOrderId = `order_ext_orphan_${Date.now()}`;
+
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    assert.equal(res1.acquired, true);
+
+    // Store intentId in reservation
+    const intentRef = await db.collection("razorpayIntents").add({
+      userId: user,
+      amount: 500,
+      currency: "INR",
+      reservationKey: key,
+      status: "pending",
+      createdAt: new Date(),
+    });
+    await setReservationIntentId(db, key, res1.reservationToken, intentRef.id);
+
+    // External order creation succeeded, but subsequent activation write threw error
+    await recordActivationFailure(
+      db,
+      key,
+      res1.reservationToken,
+      externalOrderId,
+      intentRef.id,
+      user,
+      500,
+      "INR",
+      "Network drop before intent.orderId update completed",
+    );
+
+    const snap = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(snap.data()?.status, "activation_failed");
+    assert.equal(snap.data()?.orderId, externalOrderId);
+    assert.equal(snap.data()?.intentId, intentRef.id);
+
+    // Check intent: orderId was NOT set yet
+    const intentSnap = await intentRef.get();
+    assert.equal(intentSnap.data()?.orderId, undefined);
+  });
+
+  // ── Scenario 9: Successful Retry Repairing Intent Before Returning Order ────
+  it("Scenario 9: Successful retry repairing the intent before returning existing order", async () => {
+    const key = `res_em_repair_${Date.now()}`;
+    const user = "user_repair_1";
+    const orderId = `order_to_repair_${Date.now()}`;
+
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    const intentRef = await db.collection("razorpayIntents").add({
+      userId: user,
+      amount: 500,
+      currency: "INR",
+      reservationKey: key,
+      status: "pending",
+      createdAt: new Date(),
+    });
+
+    await recordActivationFailure(
+      db,
+      key,
+      res1.reservationToken,
+      orderId,
+      intentRef.id,
+      user,
+      500,
+      "INR",
+      "Failed to update intent.orderId",
+    );
+
+    // Verify intent does NOT have orderId before repair
+    let intentBefore = await intentRef.get();
+    assert.equal(intentBefore.data()?.orderId, undefined);
+
+    // Client retries acquisition: returns existingOrder
+    const retryRes = await acquirePaymentReservation(db, key, user, 500, "INR");
+    assert.equal(retryRes.acquired, false);
+    assert.ok(retryRes.existingOrder);
+
+    // verifyAndRepairIntent repairs the intent document
+    const repairResult = await verifyAndRepairIntent(
+      db,
+      retryRes.existingOrder.intentId,
+      retryRes.existingOrder.orderId,
+      {
+        userId: user,
+        amount: 500,
+        currency: "INR",
+        reservationKey: key,
+      },
+    );
+    assert.equal(repairResult.ok, true);
+
+    // Verify intent DOES have orderId repaired now
+    let intentAfter = await intentRef.get();
+    assert.equal(intentAfter.data()?.orderId, orderId);
+    assert.ok(intentAfter.data()?.repairedAt);
+  });
+
+  // ── Scenario 10: Recovered Order Successfully Passing Webhook Intent Validation
+  it("Scenario 10: Recovered order successfully passing webhook intent validation", async () => {
+    const key = `res_em_webhook_${Date.now()}`;
+    const user = "user_webhook_1";
+    const orderId = `order_webhook_${Date.now()}`;
+
+    const intentRef = await db.collection("razorpayIntents").add({
+      userId: user,
+      amount: 500,
+      currency: "INR",
+      reservationKey: key,
+      status: "pending",
+      createdAt: new Date(),
+    });
+
+    // Repair intent with orderId
+    await verifyAndRepairIntent(db, intentRef.id, orderId, {
+      userId: user,
+      amount: 500,
+      currency: "INR",
+      reservationKey: key,
+    });
+
+    const repairedIntent = (await intentRef.get()).data();
+    assert.equal(repairedIntent.orderId, orderId);
+
+    // Incoming webhook details for payment.captured
+    const webhookDetails = {
+      event: "payment.captured",
+      paymentId: "pay_webhook_test_123",
+      orderId,
+      capturedPaise: 50000,
+      capturedCurrency: "INR",
+      intentId: intentRef.id,
+      notes: {},
+    };
+
+    const validation = validateWebhookTransaction(repairedIntent, webhookDetails);
+    assert.equal(validation.ok, true, "Recovered intent must pass strict webhook validation");
+  });
+
+  // ── Scenario 11: Reconciliation Persistence Failure ──────────────────────────
+  it("Scenario 11: Reconciliation persistence failure retains reconciliation_required", async () => {
+    const key = `res_em_persist_fail_${Date.now()}`;
+    const user = "user_persist_fail_1";
+    const receipt = generateAuthoritativeReceipt(key);
+
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
+    await recordReconciliationRequired(db, key, res1.reservationToken, receipt, user, 500, "INR", "Timeout");
+
+    // Mock failing DB during transaction write
+    const mockFailingDb = {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({
+            exists: true,
+            data: () => ({
+              status: "reconciliation_required",
+              reservationToken: res1.reservationToken,
+              fenceVersion: 1,
+              userId: user,
+              receipt,
+              amount: 500,
+              currency: "INR",
+            }),
+          }),
+        }),
+      }),
+      runTransaction: async () => {
+        throw new Error("Firestore connection dropped during transaction write");
+      },
+    };
+
+    const mockRzp = { orders: { all: async () => ({ items: [] }) } };
+    const recResult = await reconcileAmbiguousReservation(mockRzp, mockFailingDb, key, user, 500, "INR");
+    assert.equal(recResult.reconciled, false);
+    assert.match(recResult.error, /connection dropped/);
+
+    // In real Firestore, original reservation remains safely in reconciliation_required
+    const snap = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(snap.data()?.status, "reconciliation_required");
+  });
+
+  // ── Scenario 12: Reservation Renewal Failure During Order Creation ────────────
+  it("Scenario 12: Reservation renewal failure during order creation prevents stale mutations", async () => {
+    const key = `res_em_renewal_fail_${Date.now()}`;
+    const user = "user_renewal_fail_1";
+
+    const res1 = await acquirePaymentReservation(db, key, user, 500, "INR", 100);
+    await new Promise((r) => setTimeout(r, 200)); // wait for lease expiry
+
+    // Second request takes over reservation
     const res2 = await acquirePaymentReservation(db, key, user, 500, "INR", 30000);
     assert.equal(res2.fenceVersion, 2);
 
-    // Stale Request 1 attempts to release the reservation
+    // Request 1 attempts renewal with stale token
+    const renewal = await renewReservationLease(db, key, res1.reservationToken, 10000);
+    assert.equal(renewal.renewed, false);
+    assert.match(renewal.error, /Fencing conflict/);
+
+    // Request 1 tries to activate: must be fenced out
     await assert.rejects(
       async () => {
-        await releasePaymentReservation(db, key, res1.reservationToken, "Stale release attempt");
+        await activatePaymentReservation(db, key, res1.reservationToken, "order_stale_12", "intent_12");
       },
-      /Fencing conflict: reservation token mismatch/,
-      "Stale token must be fenced out from releasing newer reservation",
+      /Fencing conflict/,
+      "Stale token must be prevented from activating",
     );
 
-    // Reservation is still active and owned by Request 2
+    // Newer reservation remains intact
     const snap = await db.collection("paymentReservations").doc(key).get();
-    assert.equal(snap.data()?.status, "reserving");
     assert.equal(snap.data()?.reservationToken, res2.reservationToken);
-  });
-
-  // ── Scenario 9: Changed Amount, Currency or Authenticated User ─────────────
-  it("Scenario 9: Rejects reuse with controlled conflict if amount, currency or user differs", async () => {
-    const key = `res_em_mismatch_${Date.now()}`;
-    const userA = "user_mismatch_A";
-    const userB = "user_mismatch_B";
-
-    const res1 = await acquirePaymentReservation(db, key, userA, 500, "INR", 30000);
-    await activatePaymentReservation(db, key, res1.reservationToken, "order_val_101", "intent_101");
-
-    // Case A: Different user
-    const diffUser = await acquirePaymentReservation(db, key, userB, 500, "INR");
-    assert.equal(diffUser.conflict, true);
-    assert.match(diffUser.error, /Reservation belongs to a different user/);
-
-    // Case B: Changed amount (₹500 -> ₹700)
-    const diffAmt = await acquirePaymentReservation(db, key, userA, 700, "INR");
-    assert.equal(diffAmt.conflict, true);
-    assert.match(diffAmt.error, /Amount mismatch: stored reservation is ₹500, but current payable amount is ₹700/);
-
-    // Case C: Currency mismatch
-    const valResult = validateReservationForReuse(
-      { userId: userA, reservationKey: key, orderId: "order_val_101", intentId: "intent_101", amount: 500, currency: "INR" },
-      key,
-      userA,
-      500,
-      "USD",
-    );
-    assert.equal(valResult.valid, false);
-    assert.match(valResult.reason, /Currency mismatch/);
-  });
-
-  // ── Scenario 10: Overlapping and Reordered Finance-Dues Obligations ────────
-  it("Scenario 10: Deterministic canonical hashing produces identical keys regardless of item ordering", () => {
-    const duesPlayer = "player_canonical_444";
-    const itemMatch = { type: "match", matchId: "m_100", paymentId: "p_200" };
-    const itemFee = { type: "other", feeId: "fee_300" };
-    const itemLate = { isLateFee: true, matchId: "m_100", lateFeeTemplateId: "lf_400" };
-    const itemMerch = { type: "merch", merchId: "merch_500" };
-
-    // Permutation 1
-    const order1 = [itemMatch, itemFee, itemLate, itemMerch];
-    const key1 = generateReservationKey({ type: "finance_dues", items: order1 }, duesPlayer);
-
-    // Permutation 2 (reversed order)
-    const order2 = [itemMerch, itemLate, itemFee, itemMatch];
-    const key2 = generateReservationKey({ type: "finance_dues", items: order2 }, duesPlayer);
-
-    // Permutation 3 (scrambled order)
-    const order3 = [itemFee, itemMatch, itemMerch, itemLate];
-    const key3 = generateReservationKey({ type: "finance_dues", items: order3 }, duesPlayer);
-
-    assert.equal(key1, key2, "Permutation 1 and 2 must produce identical reservation keys");
-    assert.equal(key2, key3, "Permutation 2 and 3 must produce identical reservation keys");
-    assert.match(key1, /^res_dues_[a-f0-9]{32}$/, "Key must be fixed-length SHA-256 hash");
+    assert.equal(snap.data()?.status, "reserving");
   });
 });

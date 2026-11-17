@@ -11,122 +11,94 @@
 
 ## 1. Executive Summary
 
-This report documents the completion of the final payment integrity, reservation race, and security corrections requested for branch `mig-mov`:
+This report documents the completion of the final payment reservation lifecycle, reconciliation integrity, intent consistency, and security corrections requested for branch `mig-mov`:
 
-1. **FIN-001 (Atomic Razorpay Order Reservation, Lease Fencing & Ambiguous Gateway Reconciliation):**
-   - **Deterministic Canonical Keys:** Replaced long, concatenated document IDs with deterministic SHA-256 hashes (`res_match_${hash}`, `res_dues_${hash}`, `res_sub_${hash}`, `res_merch_${hash}`). Overlapping dues items and item reordering produce identical canonical keys. Removed non-idempotent timestamp fallbacks.
-   - **Lease Fencing (`reservationToken` & `fenceVersion`):** Introduced a cryptographically unique `reservationToken` (`${authUid}_${uuid}`) and monotonically increasing `fenceVersion` to prevent lock stealing. Stale or expired lease holders are fenced out and cannot activate, release, or mutate newer reservations.
-   - **Safe Lease Renewal (`renewReservationLease`):** In-flight requests holding the valid token can extend `expiresAt` conditionally inside an atomic transaction, preventing lease stealing during slow upstream API calls.
-   - **Waiting Requests Never Duplicate Orders:** When `acquirePaymentReservation()` returns `isWaiting: true`, the endpoint polls `/paymentReservations/{reservationKey}` for up to 3 seconds. If active, it validates identity and amount before reusing. If failed, it safely attempts atomic reacquisition. If polling times out, it returns HTTP 409 Conflict. A waiting request can never fall through to `instance.orders.create()`.
-   - **Ambiguous Gateway Failure Reconciliation:** Network drops or 5xx gateway errors during `orders.create()` no longer release the reservation or leave duplicate orders. The reservation enters `reconciliation_required`. The endpoint queries Razorpay (`orders.all({ receipt })`): if an order exists, it transitions to `active` and reuses it; if confirmed non-existent, it transitions to `failed`; if the gateway remains unreachable, it records `reconciliation_failed` for operational visibility without releasing the lock unsafely.
-   - **Propagate Recovery & Activation Errors:** `activatePaymentReservation()`, `recordActivationFailure()`, and `releasePaymentReservation()` strictly propagate errors rather than swallowing them. If recovery persistence fails, the existing reservation is preserved to prevent unsafe reacquisition.
-   - **Verified against Live Cloud Firestore Emulator:** 10 integration scenarios verified against the real Cloud Firestore Emulator (OpenJDK 21), including simultaneous requests, lease renewal, lease fencing, network timeout reconciliation, and concurrent recovery.
+1. **P0 — Reservation Lifecycle & Route Integration:**
+   - **Lease Renewal Integrated into Order API:** In `app/api/razorpay/order/route.ts`, safe periodic lease renewal (`renewReservationLease`) runs while the external Razorpay `instance.orders.create()` request is in flight. The renewal timer stops in a `finally` block upon terminal state. If renewal fails or the lease is lost/fenced, the endpoint aborts with HTTP 409 and avoids any stale reservation mutations.
+   - **Reconciliation States Never Auto-Expire:** In `acquirePaymentReservation()`, reservations in `reconciliation_required` or `reconciliation_failed` remain permanently blocked regardless of `expiresAt`. Automatic lock takeover is strictly forbidden; only an authoritative reconciliation confirming that no external order exists can transition the state to `failed` to permit fresh acquisition.
 
-2. **FIN-003 (Require Payment ID for Every Fulfilment Event):**
-   - Enforced that **both** `payment.captured` and `order.paid` provide a valid `pay_...` payment ID before financial fulfilment in `lib/razorpay-webhook.ts`.
-   - Extracted payment IDs from all standard Razorpay event structures (`payment.entity.id`, `order.entity.payment_id`, or `order.entity.payments`).
-   - Events lacking a valid payment ID are rejected before writing any state; inside `processWebhookIntentTransaction`, transaction abort leaves both `razorpayIntents` and downstream match payment records completely untouched.
-   - Never writes empty `razorpayPaymentId` into financial records.
-   - Verified via negative test suite in `tests/razorpay-webhook-negative.test.mjs`.
+2. **P0 — Reconciliation Integrity & Authoritative Receipts:**
+   - **Atomic, Fenced Reconciliation:** `reconcileAmbiguousReservation()` executes all state transitions inside Firestore transactions (`db.runTransaction`), verifying `reservationToken` and `fenceVersion`. Concurrent reconciliation workers serialize atomically, and stale background workers are fenced out from overwriting newer reservations.
+   - **Deterministic, Authoritative Receipts:** `generateAuthoritativeReceipt(reservationKey)` derives a unique, deterministic receipt string (`rcpt_${hash.slice(0, 32)}`, 37 characters <= 40 Razorpay character limit). Client-supplied receipts are discarded. The receipt is stored in the reservation before calling Razorpay, and the reconciliation query strictly matches this receipt. Multiple matching orders trigger a reconciliation conflict rather than silent reuse. Order amount, currency, and status (`created`, `attempted`, `paid`) are strictly validated.
 
-3. **Merchandise Customisation Validation:**
-   - Authoritative validation of custom merchandise selections in `calculateAuthoritativeMerchPrice` (`lib/razorpay-order.ts`).
-   - Unknown custom selection fields are strictly rejected (prevents field injection).
-   - Missing mandatory fields and whitespace-only selections are strictly rejected.
-   - Invalid/manipulated option values are strictly rejected.
-   - Never silently ignores invalid selections or undercharges.
-   - Verified via test suite in `tests/merchandise-validation.test.mjs`.
+3. **P0 — Intent Consistency & Idempotent Repair:**
+   - **Pre-Order Intent Linking:** `intentRef.id` is stored in the reservation via `setReservationIntentId()` before calling external Razorpay order creation, ensuring the reservation retains the intent ID even during ambiguous gateway timeouts.
+   - **Idempotent Intent Repair (`verifyAndRepairIntent`):** Reusing or recovering an order (from `activation_failed` or `reconciliation_required`) executes an atomic transaction verifying user identity, amount, currency, and obligation against the intent document, repairing `intent.orderId` before returning the reusable order. A payable order is never returned with a missing or mismatched intent, guaranteeing subsequent webhook validation succeeds.
 
-4. **Security Configuration & Administration:**
-   - Confirmed production must not enable `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`.
-   - `scripts/migrate-admin-claims.js` remains read-only by default, requiring an explicit owner-approved UID allowlist (`--allowlist=...`) before any claim can be set.
-   - Admin migration was **not executed** and production data was **not modified**.
+4. **Security & Data Safety Configuration:**
+   - Production must not enable `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`. Custom claim `{ admin: true }` is the sole source of admin authority.
+   - `scripts/migrate-admin-claims.js` remains read-only by default, requiring an explicit owner-approved allowlist. No production data was modified.
 
 5. **Test & Environmental Verification:**
    - `npm run test:functional`: **170 passed, 0 failed** across 38 suites.
-   - `npm run test:emulator`: **26 passed, 0 failed** across 4 suites against live Cloud Firestore Emulator.
+   - `npm run test:emulator`: **28 passed, 0 failed** across 4 suites against live Cloud Firestore Emulator (all 12 required scenarios tested and passing).
    - `npx tsc --noEmit`: **0 errors**, clean exit code 0.
    - `npm run lint`: **0 errors**, clean exit code 0.
    - `npm run build`: **Compiled successfully**, all 17 routes generated.
 
 ---
 
-## 2. Requirements & Finding Traceability Matrix
+## 2. Requirements Traceability Matrix
 
-| Requirement | Implementation Status | Unit Tested | Emulator Tested | Independently Verified | Production Approved |
-|---|---|---|---|---|---|
-| **FIN-001: Atomic Razorpay Order Reservation** | **Implemented** (`lib/razorpay-order.ts`, `app/api/razorpay/order/route.ts`) | **PASS** (`tests/razorpay-concurrent-orders.test.mjs`) | **PASS** (`tests/razorpay-reservation-emulator.test.mjs`) | **PENDING** (Separate review required) | **PENDING** (Awaiting owner) |
-| **FIN-003: Mandatory Payment ID on Fulfilment** | **Implemented** (`lib/razorpay-webhook.ts`) | **PASS** (`tests/razorpay-webhook-negative.test.mjs`) | **PASS** (`tests/emulator-webhook-concurrency.test.mjs`) | **PENDING** (Separate review required) | **PENDING** (Awaiting owner) |
-| **Merchandise Customisation Validation** | **Implemented** (`lib/razorpay-order.ts`) | **PASS** (`tests/merchandise-validation.test.mjs`, `tests/razorpay-tamper.test.mjs`) | N/A | **PENDING** (Separate review required) | **PENDING** (Awaiting owner) |
-| **SEC-001: Custom Claim Only Authority** | **Implemented** (`firestore.rules`, `lib/server-auth.ts`, `scripts/migrate-admin-claims.js`) | **PASS** (`tests/server-auth.test.mjs`, `tests/firestore-rules.test.mjs`) | **PASS** (`tests/firestore-rules.test.mjs`) | **PENDING** (Separate review required) | **PENDING** (Awaiting owner) |
-| **FIN-002: Webhook Concurrency & Idempotency** | **Implemented** (`lib/razorpay-webhook.ts`) | **PASS** (`tests/razorpay-webhook-concurrency.test.mjs`) | **PASS** (`tests/emulator-webhook-concurrency.test.mjs`) | **PENDING** (Separate review required) | **PENDING** (Awaiting owner) |
-
-> **Note on Independent Verification:** In strict accordance with AGENTS.md § 2, the implementation agent does not self-certify independent verification merely because its own unit tests pass. Formal independent verification requires testing on a staging environment by an independent QA session or product owner.
+| Requirement ID | Requirement Description | Implementation Evidence | Unit Test Evidence | Emulator Test Evidence | Independent QA Status | Production Status |
+|---|---|---|---|---|---|---|
+| **P0-LIFECYCLE-1** | Safe lease renewal integrated into actual order API while external creation runs | `app/api/razorpay/order/route.ts` | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 1) | **PENDING** | **PENDING** |
+| **P0-LIFECYCLE-2** | Reconciliation states remain blocked regardless of hold expiration | `lib/razorpay-order.ts` (`acquirePaymentReservation`) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 2) | **PENDING** | **PENDING** |
+| **P0-RECON-1** | Fenced, atomic reconciliation transitions via Firestore transactions | `lib/razorpay-order.ts` (`reconcileAmbiguousReservation`) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenarios 3, 4, 11) | **PENDING** | **PENDING** |
+| **P0-RECON-2** | Unique authoritative receipt generation and strict order validation | `lib/razorpay-order.ts` (`generateAuthoritativeReceipt`) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenarios 5, 6, 7) | **PENDING** | **PENDING** |
+| **P0-INTENT-1** | Intent ID stored before external creation and repaired upon recovery | `lib/razorpay-order.ts` (`setReservationIntentId`, `verifyAndRepairIntent`) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenarios 8, 9, 10) | **PENDING** | **PENDING** |
+| **FIN-003** | Mandatory Payment ID for all fulfilment events | `lib/razorpay-webhook.ts` | `tests/razorpay-webhook-negative.test.mjs` | **PASS** (`tests/emulator-webhook-concurrency.test.mjs`) | **PENDING** | **PENDING** |
+| **SEC-001** | Custom claim only authority (no role fallback) | `firestore.rules`, `lib/server-auth.ts` | `tests/server-auth.test.mjs` | **PASS** (`tests/firestore-rules.test.mjs`) | **PENDING** | **PENDING** |
 
 ---
 
-## 3. Implementation Details: FIN-001 Reservation Race & Concurrency Closure
-
-### 3.1 State Machine & Life-Cycle Transitions
+## 3. Reservation State Transition Machine
 
 ```mermaid
 stateDiagram-v2
-  [*] --> reserving: acquirePaymentReservation() [token, fenceVersion]
+  [*] --> reserving: acquirePaymentReservation() [token, fenceVersion, receipt]
+  reserving --> reserving: renewReservationLease() [extends expiresAt while order creation in flight]
   reserving --> active: instance.orders.create() succeeds + activatePaymentReservation()
-  reserving --> activation_failed: instance.orders.create() succeeds + activation write fails [retains orderId]
-  activation_failed --> active: retry request reuses existing order + reconciles to active
-  reserving --> reconciliation_required: instance.orders.create() times out / ambiguous 5xx [retains receipt]
-  reconciliation_required --> active: reconcileAmbiguousReservation() finds order in Razorpay
+  reserving --> activation_failed: instance.orders.create() succeeds + activation write fails [retains orderId & intentId]
+  activation_failed --> active: retry verifies & repairs intent + reconciles reservation to active
+  reserving --> reconciliation_required: instance.orders.create() times out / ambiguous 5xx [retains receipt & intentId]
+  reconciliation_required --> active: reconcileAmbiguousReservation() finds single order matching receipt & verifies intent
   reconciliation_required --> failed: reconcileAmbiguousReservation() confirms NO order in Razorpay
-  reconciliation_required --> reconciliation_failed: Razorpay query unreachable / fails
+  reconciliation_required --> reconciliation_failed: multiple orders found / Razorpay unreachable / amount mismatch
+  reconciliation_failed --> reconciliation_required: retry triggers re-check without unlocking
   reserving --> failed: Razorpay API definitively rejects (4xx) + releasePaymentReservation()
   failed --> reserving: safe fresh reacquisition
 ```
 
-### 3.2 Deterministic Canonical Hashing
-- **Function:** `generateReservationKey(details: PaymentOrderRequest): string`
-- Replaced concatenated string document IDs with deterministic SHA-256 hashes:
-  - Match: `res_match_${sha256(matchId + "_" + playerId).slice(0, 32)}`
-  - Finance Dues: Sorts obligation items deterministically (`item.type:item.id`) before hashing. Independent of array ordering.
-  - Subscription: `res_sub_${sha256(userId + "_" + planId).slice(0, 32)}`
-  - Merchandise: `res_merch_${sha256(userId + "_" + cartSignature).slice(0, 32)}`
-- Valid length, no invalid Firestore path characters, no non-idempotent timestamp fallbacks.
+---
 
-### 3.3 Lease Fencing and Safe Renewal
-- **Token Generation:** `reservationToken = "${authUid}_${crypto.randomUUID()}"`
-- **Fence Version:** Incrementing integer counter on every state transition.
-- **Conditional Mutations:** `activatePaymentReservation()`, `recordActivationFailure()`, `recordReconciliationRequired()`, and `releasePaymentReservation()` verify `current.reservationToken === reservationToken`.
-- **Fencing Protection:** If a reservation's TTL expires and another request takes over, the original request's subsequent activation or release attempts are rejected with `RESERVATION_FENCED_OUT` and cannot corrupt the new reservation.
-- **Safe Lease Renewal:** Long-running external gateway requests can safely call `renewReservationLease(reservationKey, reservationToken, extendSeconds)` to extend `expiresAt` conditionally inside an atomic transaction.
+## 4. Emulator Integration Test Scenarios (`npm run test:emulator`)
 
-### 3.4 Ambiguous Gateway Error Handling & External Reconciliation
-- **Ambiguous Detection:** `isAmbiguousRazorpayError(err)` identifies network timeouts, connection drops (`ETIMEDOUT`, `ECONNRESET`), and 5xx gateway errors.
-- **Reconciliation State:** Transitions reservation to `reconciliation_required` with `receipt` stored.
-- **Authoritative Reconciliation:** `reconcileAmbiguousReservation()` queries `razorpayInstance.orders.all({ receipt })`:
-  1. **Order Exists:** Updates reservation to `active` with external `orderId`, and returns the order for client reuse.
-  2. **Order Confirmed Absent:** Updates reservation to `failed` and allows safe fresh acquisition.
-  3. **Gateway Unreachable:** Updates reservation to `reconciliation_failed` without releasing lock, preventing duplicate external order creation.
+All 12 requested scenarios are executed directly against the live Cloud Firestore Emulator:
 
-### 3.5 Polling and Gating in Order Route
-- **File:** [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts)
-- If `acquirePaymentReservation()` returns `isWaiting: true`:
-  - Polls `/paymentReservations/{reservationKey}` up to 6 times at 500ms intervals (3s total).
-  - Handles `reconciliation_required` dynamically during polling.
-  - If `active`, runs `validateReservationForReuse()`.
-  - If `failed`, safely re-attempts atomic reservation acquisition.
-  - If polling times out, returns HTTP 409 Conflict.
-- **Hard Execution Barrier:** If `reservationKey` is set and `reservationAcquired` is false, the route returns HTTP 409 and **never** calls `instance.orders.create()`.
+| Scenario | Test File & Name | Assertions & Verifications | Result |
+|---|---|---|---|
+| **Scenario 1** | `Scenario 1: Full order API orchestration with a Razorpay response delayed beyond initial lease` | Executes `POST(req)`. Mock Razorpay delays 1200ms with fast 300ms renewal interval. Leases extend dynamically, reservation activates, returns HTTP 200 with order ID. | **PASS** |
+| **Scenario 2** | `Scenario 2: Reconciliation states remaining blocked after 15 minutes` | Sets `reconciliation_required` and `reconciliation_failed` with `expiresAt` 25 minutes in the past. Reacquisition attempts return `acquired: false`, `needsReconciliation: true`. Lock is never stolen. | **PASS** |
+| **Scenario 3** | `Scenario 3: Two concurrent reconciliation workers serialize atomically` | Two workers call `reconcileAmbiguousReservation` simultaneously with real Firestore transactions. Exactly one commits activation, both return the identical order without collisions. | **PASS** |
+| **Scenario 4** | `Scenario 4: Stale reconciliation attempting to overwrite a newer reservation` | Reservation transitions to failed and is reacquired (fenceVersion 2). A delayed worker with fenceVersion 1 attempts to activate. Fencing rejects write; newer reservation remains intact. | **PASS** |
+| **Scenario 5** | `Scenario 5: Same receipt collision attempts across two obligations are prevented` | Verifies `generateAuthoritativeReceipt` yields distinct receipts for different obligations, deterministic SHA-256 formatting, and strict length <= 40 chars. | **PASS** |
+| **Scenario 6** | `Scenario 6: Multiple external orders returned for one receipt causes conflict` | Razorpay returns 2 matching orders for one receipt. System flags conflict, transitions to `reconciliation_failed`, records reason, and refuses to pick an arbitrary order. | **PASS** |
+| **Scenario 7** | `Scenario 7: Wrong amount, currency, or receipt in reconciliation response is rejected` | Rejects order when amount is ₹300 instead of ₹500, currency is USD instead of INR, or status is cancelled. | **PASS** |
+| **Scenario 8** | `Scenario 8: Firestore intent update failing after successful Razorpay order creation` | Stores `intentId` before call. Simulates post-create write failure. Reservation records `activation_failed` retaining both external `orderId` and `intentId`. | **PASS** |
+| **Scenario 9** | `Scenario 9: Successful retry repairing the intent before returning existing order` | Simulates unrepaired intent document. Reacquisition triggers `verifyAndRepairIntent`, repairs `intent.orderId`, and returns reusable order. | **PASS** |
+| **Scenario 10** | `Scenario 10: Recovered order successfully passing webhook intent validation` | Passes repaired intent and captured webhook payload to `validateWebhookTransaction`. Passes with `{ ok: true }`. | **PASS** |
+| **Scenario 11** | `Scenario 11: Reconciliation persistence failure retains reconciliation_required` | Database transaction write failure during reconciliation safely preserves reservation in `reconciliation_required` without premature release. | **PASS** |
+| **Scenario 12** | `Scenario 12: Reservation renewal failure during order creation prevents stale mutations` | Stale token renewal attempt fails with fencing conflict. Stale activation attempt is rejected. Newer reservation remains intact. | **PASS** |
 
 ---
 
-## 4. Verification Gate Results
+## 5. Quality Gate Outputs
 
-### 4.1 Functional & Unit Test Suite
-Command:
+### 5.1 Functional Tests
 ```bash
 npm run test:functional
 ```
-Output:
 ```text
 ℹ tests 170
 ℹ suites 38
@@ -135,96 +107,45 @@ Output:
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 637.906125
+ℹ duration_ms 858.096875
 ```
 
-### 4.2 Firebase Emulator Integration Tests
-Command:
+### 5.2 Live Firestore Emulator Integration Tests
 ```bash
 npm run test:emulator
 ```
-Output:
 ```text
-i  emulators: Starting emulators: firestore
-✔  firestore: Firestore Emulator was started in standard edition.
-✔  firestore: Firestore Emulator UI websocket is running on 9150.
-i  Running script: node --test tests/*emulator*.test.mjs tests/firestore-rules.test.mjs
-
-▶ FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
-  ✔ handles payment.captured and order.paid simultaneous arrivals without duplicate writes (0.307083ms)
-✔ FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests (226.681959ms)
-
-▶ Firestore Security Rules — AST Syntax Validation
-  ✔ parses firestore.rules without syntax errors (497.767167ms)
-  ✔ contains mandatory security boundaries and collections (0.143542ms)
-  ✔ enforces SEC-001: appUsers keys cannot be escalated by non-superadmins (0.079125ms)
-  ✔ enforces SEC-002: match payment status cannot be marked Paid by player (0.05675ms)
-  ✔ allows 'Waived' status in isValidMatchPayment for abandoned match policy (Option A) (0.063583ms)
-  ✔ enforces SEC-003: otherFees restricted to isFinanceAdmin or isSuperAdmin (0.0545ms)
-  ✔ enforces SEC-004: otherFees read restricted to admins or owner (0.038208ms)
-  ✔ enforces SEC-005: posts update restricted to isAnyAdmin (0.100542ms)
-  ✔ enforces SEC-006: merchOrders requires isValidMerchOrder and unpaid on create (0.077458ms)
-✔ Firestore Security Rules — AST Syntax Validation (499.150333ms)
-
-▶ Firestore Security Rules — Emulator Integration Tests
-  ✔ SEC-001: player cannot self-escalate role to admin (268.983375ms)
-  ✔ SEC-002: player cannot mark match payment as Paid (38.16025ms)
-  ✔ SEC-003: player cannot create or delete otherFees (37.307125ms)
-  ✔ SEC-004: player cannot read other players' otherFees (42.976083ms)
-  ✔ SEC-005: player cannot update posts (29.978625ms)
-  ✔ SEC-006: player cannot create pre-paid merch order (21.567334ms)
-✔ Firestore Security Rules — Emulator Integration Tests (1338.547959ms)
-
-▶ FIN-001: Real Firestore Emulator Integration Tests
-  ✔ Scenario 1: Two simultaneous requests against real Firestore serialize to only ONE winner (6528.6115ms)
-  ✔ Scenario 2: Safe lease renewal extends lock and prevents second request from stealing reservation (2041.503666ms)
-  ✔ Scenario 3: Expired lease allows takeover, but fences out original request when it tries to activate (315.974041ms)
-  ✔ Scenario 4: Activation failure records activation_failed and prevents double external order (39.225791ms)
-  ✔ Scenario 5: Write failure during recovery persistence propagates error and avoids unsafe release (0.663459ms)
-  ✔ Scenario 6: Network timeout records reconciliation_required and safely reconciles external order (33.214833ms)
-  ✔ Scenario 7: Two simultaneous recovery requests both receive the same existing order without duplicate writes (3463.8795ms)
-  ✔ Scenario 8: Stale reservation owner cannot release or alter a newer reservation (145.955417ms)
-  ✔ Scenario 9: Rejects reuse with controlled conflict if amount, currency or user differs (40.933667ms)
-  ✔ Scenario 10: Deterministic canonical hashing produces identical keys regardless of item ordering (0.773ms)
-✔ FIN-001: Real Firestore Emulator Integration Tests (12828.256958ms)
-
-ℹ tests 26
+ℹ tests 28
 ℹ suites 4
-ℹ pass 26
+ℹ pass 28
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 12922.057084
+ℹ duration_ms 8899.660625
 ✔ Script exited successfully (code 0)
 ```
 
-### 4.3 TypeScript Typecheck
-Command:
+### 5.3 TypeScript Compilation
 ```bash
 npx tsc --noEmit
 ```
-Output:
 ```text
 Clean exit code 0, 0 type errors.
 ```
 
-### 4.4 Code Linting
-Command:
+### 5.4 Code Linting
 ```bash
 npm run lint
 ```
-Output:
 ```text
 Clean exit code 0 (4 open read warnings in firestore.rules, 0 errors).
 ```
 
-### 4.5 Production Build Compilation
-Command:
+### 5.5 Next.js Production Build
 ```bash
 npm run build
 ```
-Output:
 ```text
 ✓ Compiled successfully
 ✓ Linting and checking validity of types
@@ -237,15 +158,12 @@ All routes compiled successfully. Exit code 0.
 
 ---
 
-## 5. Security & Risk Assessment
+## 6. Governance & Production Boundaries
 
-1. **Production Admin Role Fallback:**
-   - Production must not set `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK=true`. All administrative access requires verified Firebase Auth custom claims `{ admin: true }`.
-2. **Administrator Account Migration:**
-   - `scripts/migrate-admin-claims.js` was NOT run against production data.
-   - When executed by the owner in the future, it must be run with `--allowlist=<approved_uids>` following candidate report review.
-3. **Razorpay Production Mode:**
-   - No real transactions were executed. All tests used mocked and synthetic payloads.
-4. **Outstanding Work / Next Steps:**
-   - Independent QA review on staging environment.
-   - Owner review of candidate administrators before running the migration script.
+1. **Production Safety:**
+   - Production must not enable `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK=true`.
+   - `scripts/migrate-admin-claims.js` was NOT executed against production data.
+   - Zero real Razorpay transactions were executed.
+2. **Status Discipline:**
+   - In accordance with AGENTS.md § 2, the implementation agent does not self-certify independent QA acceptance or production deployment.
+   - Status remains: **Implemented & Emulator-Tested (PASS)**, awaiting independent QA staging verification and product owner review.

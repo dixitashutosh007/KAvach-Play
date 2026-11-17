@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 import Razorpay from "razorpay";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { requireAuth } from "@/lib/server-auth";
+import { requireAuth } from "../../../../lib/server-auth.ts";
 import {
   derivePayableAmount,
   validateCurrency,
   acquirePaymentReservation,
+  renewReservationLease,
   activatePaymentReservation,
   releasePaymentReservation,
   recordActivationFailure,
@@ -14,8 +15,11 @@ import {
   reconcileAmbiguousReservation,
   isAmbiguousRazorpayError,
   validateReservationForReuse,
-} from "@/lib/razorpay-order";
-import firebaseConfig from "@/firebase-applet-config.json";
+  generateAuthoritativeReceipt,
+  setReservationIntentId,
+  verifyAndRepairIntent,
+} from "../../../../lib/razorpay-order.ts";
+import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
 
 function getDb() {
   const apps = getApps();
@@ -99,6 +103,9 @@ export async function POST(req: Request) {
     const reservationKey = storedIntentData.reservationKey;
     let reservationAcquired = false;
     let reservationToken: string | undefined;
+    const authoritativeReceipt = reservationKey
+      ? generateAuthoritativeReceipt(reservationKey)
+      : "rcpt_generic";
 
     if (reservationKey) {
       const resResult = await acquirePaymentReservation(
@@ -117,11 +124,31 @@ export async function POST(req: Request) {
       }
 
       if (resResult.existingOrder && resResult.existingOrder.orderId) {
+        // Verify and repair intent consistency before returning existing order (FIN-001)
+        const repairRes = await verifyAndRepairIntent(
+          db,
+          resResult.existingOrder.intentId,
+          resResult.existingOrder.orderId,
+          {
+            userId: auth.uid,
+            amount: payableAmount,
+            currency,
+            reservationKey,
+          },
+        );
+
+        if (!repairRes.ok) {
+          return NextResponse.json(
+            { error: `Payment intent consistency error: ${repairRes.error}` },
+            { status: 409 },
+          );
+        }
+
         return NextResponse.json({
           id: resResult.existingOrder.orderId,
           amount: Math.round(resResult.existingOrder.amount * 100),
           currency: resResult.existingOrder.currency || currency,
-          receipt,
+          receipt: authoritativeReceipt,
           status: "created",
           notes: { ...notes, intentId: resResult.existingOrder.intentId, reusedExistingOrder: true },
         });
@@ -143,11 +170,31 @@ export async function POST(req: Request) {
         );
 
         if (recResult.existingOrder && recResult.existingOrder.orderId) {
+          // Verify and repair intent consistency before returning reconciled order (FIN-001)
+          const repairRes = await verifyAndRepairIntent(
+            db,
+            recResult.existingOrder.intentId,
+            recResult.existingOrder.orderId,
+            {
+              userId: auth.uid,
+              amount: payableAmount,
+              currency,
+              reservationKey,
+            },
+          );
+
+          if (!repairRes.ok) {
+            return NextResponse.json(
+              { error: `Payment intent consistency error: ${repairRes.error}` },
+              { status: 409 },
+            );
+          }
+
           return NextResponse.json({
             id: recResult.existingOrder.orderId,
             amount: Math.round(recResult.existingOrder.amount * 100),
             currency: recResult.existingOrder.currency || currency,
-            receipt,
+            receipt: authoritativeReceipt,
             status: "created",
             notes: { ...notes, intentId: recResult.existingOrder.intentId, reusedExistingOrder: true },
           });
@@ -205,11 +252,31 @@ export async function POST(req: Request) {
             );
           }
 
+          // Verify and repair intent consistency before returning reused order (FIN-001)
+          const repairRes = await verifyAndRepairIntent(
+            db,
+            waitOrder.intentId,
+            waitOrder.orderId,
+            {
+              userId: auth.uid,
+              amount: payableAmount,
+              currency,
+              reservationKey,
+            },
+          );
+
+          if (!repairRes.ok) {
+            return NextResponse.json(
+              { error: `Payment intent consistency error: ${repairRes.error}` },
+              { status: 409 },
+            );
+          }
+
           return NextResponse.json({
             id: waitOrder.orderId,
             amount: Math.round(waitOrder.amount * 100),
             currency: waitOrder.currency || currency,
-            receipt,
+            receipt: authoritativeReceipt,
             status: "created",
             notes: { ...notes, intentId: waitOrder.intentId, reusedExistingOrder: true },
           });
@@ -230,11 +297,30 @@ export async function POST(req: Request) {
           );
 
           if (recResult.existingOrder && recResult.existingOrder.orderId) {
+            const repairRes = await verifyAndRepairIntent(
+              db,
+              recResult.existingOrder.intentId,
+              recResult.existingOrder.orderId,
+              {
+                userId: auth.uid,
+                amount: payableAmount,
+                currency,
+                reservationKey,
+              },
+            );
+
+            if (!repairRes.ok) {
+              return NextResponse.json(
+                { error: `Payment intent consistency error: ${repairRes.error}` },
+                { status: 409 },
+              );
+            }
+
             return NextResponse.json({
               id: recResult.existingOrder.orderId,
               amount: Math.round(recResult.existingOrder.amount * 100),
               currency: recResult.existingOrder.currency || currency,
-              receipt,
+              receipt: authoritativeReceipt,
               status: "created",
               notes: { ...notes, intentId: recResult.existingOrder.intentId, reusedExistingOrder: true },
             });
@@ -267,11 +353,30 @@ export async function POST(req: Request) {
           }
 
           if (retryRes.existingOrder && retryRes.existingOrder.orderId) {
+            const repairRes = await verifyAndRepairIntent(
+              db,
+              retryRes.existingOrder.intentId,
+              retryRes.existingOrder.orderId,
+              {
+                userId: auth.uid,
+                amount: payableAmount,
+                currency,
+                reservationKey,
+              },
+            );
+
+            if (!repairRes.ok) {
+              return NextResponse.json(
+                { error: `Payment intent consistency error: ${repairRes.error}` },
+                { status: 409 },
+              );
+            }
+
             return NextResponse.json({
               id: retryRes.existingOrder.orderId,
               amount: Math.round(retryRes.existingOrder.amount * 100),
               currency: retryRes.existingOrder.currency || currency,
-              receipt,
+              receipt: authoritativeReceipt,
               status: "created",
               notes: { ...notes, intentId: retryRes.existingOrder.intentId, reusedExistingOrder: true },
             });
@@ -314,6 +419,9 @@ export async function POST(req: Request) {
 
     let intentRef: any;
     let order: any;
+    let renewalTimer: NodeJS.Timeout | null = null;
+    let leaseLost = false;
+    let leaseLostReason: string | undefined;
 
     try {
       intentRef = await db.collection("razorpayIntents").add({
@@ -321,20 +429,63 @@ export async function POST(req: Request) {
         amount: payableAmount,
         currency,
         userId: auth.uid,
+        reservationKey,
         createdAt: new Date(),
         status: "pending",
       });
+
+      // P0: Store intentId in reservation BEFORE calling external Razorpay order creation
+      if (reservationKey && reservationToken) {
+        await setReservationIntentId(db, reservationKey, reservationToken, intentRef.id);
+      }
 
       const finalNotes = { ...notes, intentId: intentRef.id, reservationKey };
 
       const options = {
         amount: Math.round(payableAmount * 100), // amount in smallest currency unit (paise)
         currency,
-        receipt,
+        receipt: authoritativeReceipt,
         notes: finalNotes,
       };
 
-      order = await instance.orders.create(options);
+      // P0: Safe lease renewal while external Razorpay order creation request is in progress
+      const renewalIntervalMs = process.env.RESERVATION_RENEWAL_INTERVAL_MS
+        ? Number(process.env.RESERVATION_RENEWAL_INTERVAL_MS)
+        : 5000;
+
+      if (reservationKey && reservationToken) {
+        renewalTimer = setInterval(async () => {
+          try {
+            const res = await renewReservationLease(db, reservationKey, reservationToken!);
+            if (!res.renewed) {
+              leaseLost = true;
+              leaseLostReason = res.error;
+              if (renewalTimer) clearInterval(renewalTimer);
+            }
+          } catch (err: any) {
+            leaseLost = true;
+            leaseLostReason = err?.message;
+            if (renewalTimer) clearInterval(renewalTimer);
+          }
+        }, renewalIntervalMs);
+      }
+
+      try {
+        order = await instance.orders.create(options);
+      } finally {
+        if (renewalTimer) {
+          clearInterval(renewalTimer);
+          renewalTimer = null;
+        }
+      }
+
+      // If renewal failed or fencing was lost during external order creation:
+      if (leaseLost) {
+        return NextResponse.json(
+          { error: `Payment reservation lease lost during order creation: ${leaseLostReason || "Fencing conflict"}. Please retry.` },
+          { status: 409 },
+        );
+      }
 
       // Save order ID back to intent for verification in webhook (FIN-003)
       await intentRef.update({
@@ -349,7 +500,12 @@ export async function POST(req: Request) {
 
       return NextResponse.json(order);
     } catch (orderErr: any) {
-      if (reservationKey && reservationAcquired && reservationToken) {
+      if (renewalTimer) {
+        clearInterval(renewalTimer);
+        renewalTimer = null;
+      }
+
+      if (reservationKey && reservationAcquired && reservationToken && !leaseLost) {
         if (order && order.id) {
           // Razorpay order was successfully created, but Firestore activation (or intent update) failed.
           // Do NOT release reservation blindly! Record activation failure with orderId so it can be reconciled and reused (FIN-001).
@@ -374,7 +530,7 @@ export async function POST(req: Request) {
               db,
               reservationKey,
               reservationToken,
-              receipt,
+              authoritativeReceipt,
               auth.uid,
               payableAmount,
               currency,

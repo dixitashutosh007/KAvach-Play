@@ -385,7 +385,7 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
       orders: {
         all: async ({ receipt: r }) => {
           if (r === receipt) {
-            return { items: [{ id: "order_reconciled_from_rzp_777", amount: 50000, status: "created" }] };
+            return { items: [{ id: "order_reconciled_from_rzp_777", amount: 50000, currency: "INR", receipt, status: "created" }] };
           }
           return { items: [] };
         },
