@@ -994,34 +994,34 @@ export default function PlayerHomePrototype() {
         {/* Viewport Frame Mode Controls & Prominent Persona Switcher */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Explicit Dual Persona Switcher */}
-          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700">
+          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700">
             <button
               onClick={() => setPersona("player")}
-              className={`min-h-[36px] px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition ${
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
                 persona === "player" ? "bg-[#D51F43] text-white shadow-xs" : "text-gray-300 hover:text-white"
               }`}
               title="Switch to Player View"
             >
-              <User className="w-3.5 h-3.5" />
+              <User className="w-4 h-4" />
               <span>View Player</span>
             </button>
             <button
               onClick={() => setPersona("admin")}
-              className={`min-h-[36px] px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition ${
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
                 persona === "admin" ? "bg-[#A30F2D] text-white shadow-xs" : "text-gray-300 hover:text-white"
               }`}
               title="Switch to Admin Console"
             >
-              <Shield className="w-3.5 h-3.5" />
+              <Shield className="w-4 h-4" />
               <span>View Admin (Console)</span>
             </button>
           </div>
 
           {/* Viewport Device Frames */}
-          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg">
+          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-xl">
             <button
               onClick={() => setDeviceFrame("responsive")}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
+              className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1 transition ${
                 deviceFrame === "responsive" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
               }`}
             >
@@ -1029,20 +1029,20 @@ export default function PlayerHomePrototype() {
             </button>
             <button
               onClick={() => setDeviceFrame("mobile")}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
+              className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
                 deviceFrame === "mobile" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
               }`}
             >
-              <Smartphone className="w-3.5 h-3.5" />
+              <Smartphone className="w-4 h-4" />
               Mobile 390px
             </button>
             <button
               onClick={() => setDeviceFrame("desktop")}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
+              className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
                 deviceFrame === "desktop" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
               }`}
             >
-              <Monitor className="w-3.5 h-3.5" />
+              <Monitor className="w-4 h-4" />
               Desktop 1280px
             </button>
           </div>
@@ -1162,7 +1162,7 @@ export default function PlayerHomePrototype() {
 
                 <button
                   onClick={() => setPersona("player")}
-                  className="min-h-[36px] px-3 rounded-lg bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 transition shrink-0"
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 transition shrink-0"
                 >
                   <span>Return to Player View</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -1170,7 +1170,7 @@ export default function PlayerHomePrototype() {
               </div>
 
               {/* 7 Admin Command Hub Selector */}
-              <div className="px-3 py-2 flex items-center gap-1.5 overflow-x-auto text-xs font-bold scrollbar-none">
+              <nav role="navigation" aria-label="Admin Hub Navigation" className="px-3 py-2 flex items-center gap-1.5 overflow-x-auto text-xs font-bold scrollbar-none">
                 {[
                   { key: "overview", label: "Overview", icon: Activity },
                   { key: "matches", label: "Match Centre", icon: Trophy },
@@ -1186,7 +1186,7 @@ export default function PlayerHomePrototype() {
                     <button
                       key={hub.key}
                       onClick={() => setAdminHub(hub.key as any)}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition ${
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition ${
                         isActive
                           ? "bg-white text-[#A30F2D] shadow-sm font-black"
                           : "text-white/80 hover:bg-white/10 hover:text-white"
@@ -1197,7 +1197,7 @@ export default function PlayerHomePrototype() {
                     </button>
                   );
                 })}
-              </div>
+              </nav>
             </div>
           )}
 
@@ -1377,7 +1377,7 @@ export default function PlayerHomePrototype() {
                       </span>
                       <button
                         onClick={() => setAdminHub("matches")}
-                        className="font-bold text-[#D51F43] hover:underline"
+                        className="min-h-[44px] px-2 font-bold text-[#D51F43] hover:underline flex items-center"
                       >
                         Manage Squad
                       </button>
@@ -1403,7 +1403,7 @@ export default function PlayerHomePrototype() {
                       </span>
                       <button
                         onClick={() => setAdminHub("finance")}
-                        className="font-bold text-[#D51F43] hover:underline"
+                        className="min-h-[44px] px-2 font-bold text-[#D51F43] hover:underline flex items-center"
                       >
                         Dues Ledger
                       </button>
@@ -1429,7 +1429,7 @@ export default function PlayerHomePrototype() {
                       </span>
                       <button
                         onClick={() => setAdminHub("people")}
-                        className="font-bold text-[#D51F43] hover:underline"
+                        className="min-h-[44px] px-2 font-bold text-[#D51F43] hover:underline flex items-center"
                       >
                         Review Roster
                       </button>
@@ -1455,7 +1455,7 @@ export default function PlayerHomePrototype() {
                       </span>
                       <button
                         onClick={() => setAdminHub("studio")}
-                        className="font-bold text-[#D51F43] hover:underline"
+                        className="min-h-[44px] px-2 font-bold text-[#D51F43] hover:underline flex items-center"
                       >
                         Manage Slots
                       </button>
@@ -1494,13 +1494,13 @@ export default function PlayerHomePrototype() {
                               setSimulationToast(`[PROTOTYPE SIMULATION] Admin action simulated: ${item.actionLabel}`);
                               dismissAlert(item.id);
                             }}
-                            className="min-h-[40px] px-3.5 py-1.5 bg-[#A30F2D] hover:bg-[#D51F43] text-white text-xs font-bold rounded-xl transition"
+                            className="min-h-[44px] px-3.5 py-2 bg-[#A30F2D] hover:bg-[#D51F43] text-white text-xs font-bold rounded-xl transition"
                           >
                             {item.actionLabel}
                           </button>
                           <button
                             onClick={() => dismissAlert(item.id)}
-                            className="min-h-[40px] px-3 py-1.5 text-gray-400 hover:text-gray-700 text-xs font-medium"
+                            className="min-h-[44px] px-3.5 py-2 text-gray-400 hover:text-gray-700 text-xs font-medium"
                           >
                             Dismiss
                           </button>
@@ -1689,16 +1689,16 @@ export default function PlayerHomePrototype() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setMergeModalOpen(true)}
-                        className="min-h-[40px] px-3.5 py-1.5 border border-gray-300 hover:bg-gray-100 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                        className="min-h-[44px] px-3.5 py-2 border border-gray-300 hover:bg-gray-100 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
                       >
-                        <GitMerge className="w-3.5 h-3.5 text-gray-600" />
+                        <GitMerge className="w-4 h-4 text-gray-600" />
                         <span>Merge Duplicate</span>
                       </button>
                       <button
                         onClick={() => setSimulationToast("[PROTOTYPE SIMULATION] Member invitation generator triggered (simulation only).")}
-                        className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                        className="min-h-[44px] px-3.5 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
                       >
-                        <UserPlus className="w-3.5 h-3.5" />
+                        <UserPlus className="w-4 h-4" />
                         <span>Invite Player</span>
                       </button>
                     </div>
@@ -1709,32 +1709,32 @@ export default function PlayerHomePrototype() {
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                       <button
                         onClick={() => setRosterFilter("all")}
-                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          rosterFilter === "all" ? "bg-[#A30F2D] text-white" : "bg-gray-100 text-[#667085]"
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "all" ? "bg-[#A30F2D] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
                         }`}
                       >
                         All Members ({rosterList.length})
                       </button>
                       <button
                         onClick={() => setRosterFilter("pending")}
-                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          rosterFilter === "pending" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-800"
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "pending" ? "bg-amber-600 text-white shadow-xs" : "bg-amber-50 text-amber-800 hover:bg-amber-100"
                         }`}
                       >
                         Pending Review ({rosterList.filter(p => p.status === "pending").length})
                       </button>
                       <button
                         onClick={() => setRosterFilter("active")}
-                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          rosterFilter === "active" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-800"
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "active" ? "bg-emerald-600 text-white shadow-xs" : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                         }`}
                       >
                         Active ({rosterList.filter(p => p.status === "active").length})
                       </button>
                       <button
                         onClick={() => setRosterFilter("injured")}
-                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          rosterFilter === "injured" ? "bg-rose-600 text-white" : "bg-rose-50 text-rose-800"
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "injured" ? "bg-rose-600 text-white shadow-xs" : "bg-rose-50 text-rose-800 hover:bg-rose-100"
                         }`}
                       >
                         Injured / Out ({rosterList.filter(p => p.status === "injured").length})
@@ -1792,9 +1792,9 @@ export default function PlayerHomePrototype() {
                         {player.status === "pending" ? (
                           <button
                             onClick={() => handleApprovePlayer(player.id)}
-                            className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1"
+                            className="min-h-[44px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5"
                           >
-                            <UserCheck className="w-3.5 h-3.5" />
+                            <UserCheck className="w-4 h-4" />
                             <span>Approve & Assign ID</span>
                           </button>
                         ) : (
@@ -1803,9 +1803,9 @@ export default function PlayerHomePrototype() {
                               setSelectedPlayerProfile(player);
                               setJerseyValidationWarning(null);
                             }}
-                            className="min-h-[40px] px-3.5 py-1.5 border border-gray-200 text-[#171C26] text-xs font-bold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5"
+                            className="min-h-[44px] px-3.5 py-2 border border-gray-200 text-[#171C26] text-xs font-bold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5"
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-[#D51F43]" />
+                            <Edit2 className="w-4 h-4 text-[#D51F43]" />
                             <span>Edit Profile & Roles</span>
                           </button>
                         )}
@@ -1835,14 +1835,14 @@ export default function PlayerHomePrototype() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setRecordCashModalOpen(true)}
-                      className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                      className="min-h-[44px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
                     >
                       <DollarSign className="w-4 h-4" />
                       <span>Record Cash/UPI</span>
                     </button>
                     <button
                       onClick={() => setAdHocFeeModalOpen(true)}
-                      className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                      className="min-h-[44px] px-3.5 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
                     >
                       <Plus className="w-4 h-4" />
                       <span>Levy Ad-hoc Fee</span>
@@ -1888,7 +1888,7 @@ export default function PlayerHomePrototype() {
                         <button
                           key={tab.key}
                           onClick={() => setFinanceFilter(tab.key as any)}
-                          className={`min-h-[36px] px-3 py-1.5 rounded-xl transition whitespace-nowrap ${
+                          className={`min-h-[44px] px-3.5 py-2 rounded-xl transition whitespace-nowrap text-xs font-bold ${
                             financeFilter === tab.key
                               ? "bg-[#D51F43] text-white shadow-xs font-black"
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -1906,7 +1906,7 @@ export default function PlayerHomePrototype() {
                         placeholder="Search player, KAV-ID, title..."
                         value={financeSearch}
                         onChange={(e) => setFinanceSearch(e.target.value)}
-                        className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none"
+                        className="w-full min-h-[44px] text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none"
                       />
                     </div>
                   </div>
@@ -1967,17 +1967,17 @@ export default function PlayerHomePrototype() {
                         {rec.status !== "paid" && rec.status !== "waived" ? (
                           <button
                             onClick={() => handleRecordManualPayment(rec.id, "Pitch-Side Cash", "Rahul Verma (Admin)")}
-                            className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1"
+                            className="min-h-[44px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5"
                           >
-                            <DollarSign className="w-3.5 h-3.5" />
+                            <DollarSign className="w-4 h-4" />
                             <span>Collect Cash</span>
                           </button>
                         ) : (
                           <button
                             onClick={() => setSelectedAuditTx(rec)}
-                            className="min-h-[40px] px-3 py-1.5 border border-gray-200 text-[#171C26] text-xs font-bold rounded-xl hover:bg-gray-50 transition flex items-center gap-1"
+                            className="min-h-[44px] px-3.5 py-2 border border-gray-200 text-[#171C26] text-xs font-bold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5"
                           >
-                            <FileText className="w-3.5 h-3.5 text-[#D51F43]" />
+                            <FileText className="w-4 h-4 text-[#D51F43]" />
                             <span>Audit Trail</span>
                           </button>
                         )}
@@ -2006,7 +2006,7 @@ export default function PlayerHomePrototype() {
                   </div>
                   <button
                     onClick={() => setBookSlotModalOpen(true)}
-                    className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                    className="min-h-[44px] px-3.5 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Book Net Slot</span>
@@ -2022,7 +2022,7 @@ export default function PlayerHomePrototype() {
                       <button
                         key={day}
                         onClick={() => setSelectedStudioDate(day)}
-                        className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold transition ${
                           selectedStudioDate === day
                             ? "bg-[#D51F43] text-white shadow-xs font-black"
                             : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -2146,7 +2146,7 @@ export default function PlayerHomePrototype() {
                           </div>
                           <button
                             onClick={() => setSimulationToast(`[PROTOTYPE SIMULATION] Simulated follow-up contact for lead ${lead.name} (${lead.phone}).`)}
-                            className="min-h-[32px] px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition"
+                            className="min-h-[44px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition"
                           >
                             Follow Up
                           </button>
@@ -2223,7 +2223,7 @@ export default function PlayerHomePrototype() {
                           {ord.status !== "Delivered" && (
                             <button
                               onClick={() => handleAdvanceOrderStatus(ord.id)}
-                              className="min-h-[36px] px-3 py-1 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl transition"
+                              className="min-h-[44px] px-3.5 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl transition"
                             >
                               {ord.status === "New Order" ? "Send to Production" :
                                ord.status === "In Production" ? "Mark Ready" : "Mark Delivered"}
@@ -2274,7 +2274,7 @@ export default function PlayerHomePrototype() {
                     <button
                       onClick={handleVotePoll}
                       disabled={!selectedPollOption}
-                      className="min-h-[40px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition"
+                      className="min-h-[44px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition"
                     >
                       Submit Member Vote
                     </button>
@@ -2495,7 +2495,7 @@ export default function PlayerHomePrototype() {
                       <button
                         key={r.role}
                         onClick={() => setActiveRoleName(r.role)}
-                        className={`min-h-[36px] px-3.5 py-1.5 rounded-xl transition whitespace-nowrap ${
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl transition whitespace-nowrap text-xs font-bold ${
                           activeRoleName === r.role
                             ? "bg-[#D51F43] text-white shadow-xs font-black"
                             : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -2647,7 +2647,7 @@ export default function PlayerHomePrototype() {
                         </label>
                         <button
                           onClick={() => setShowNoteInput(!showNoteInput)}
-                          className="text-[11px] font-semibold text-[#D51F43] hover:underline"
+                          className="min-h-[44px] px-2 py-1 flex items-center text-xs font-semibold text-[#D51F43] hover:underline"
                         >
                           {showNoteInput ? "Hide Note" : "+ Add Note for Captain"}
                         </button>
@@ -2816,7 +2816,7 @@ export default function PlayerHomePrototype() {
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                     <button
                       onClick={() => setMatchFilter("all")}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                         matchFilter === "all" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
                       }`}
                     >
@@ -2824,7 +2824,7 @@ export default function PlayerHomePrototype() {
                     </button>
                     <button
                       onClick={() => setMatchFilter("upcoming")}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                         matchFilter === "upcoming" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
                       }`}
                     >
@@ -2832,7 +2832,7 @@ export default function PlayerHomePrototype() {
                     </button>
                     <button
                       onClick={() => setMatchFilter("past")}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                         matchFilter === "past" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
                       }`}
                     >
@@ -2840,7 +2840,7 @@ export default function PlayerHomePrototype() {
                     </button>
                     <button
                       onClick={() => setMatchFilter("abandoned")}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                         matchFilter === "abandoned" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
                       }`}
                     >
@@ -3045,7 +3045,7 @@ export default function PlayerHomePrototype() {
                           <span className="font-black text-sm text-[#171C26]">₹{tx.amount}</span>
                           <button
                             onClick={() => setSelectedReceipt(tx)}
-                            className="min-h-[40px] px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-[#D51F43] hover:bg-[#FCE8ED] transition flex items-center gap-1.5"
+                            className="min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 text-xs font-bold text-[#D51F43] hover:bg-[#FCE8ED] transition flex items-center gap-1.5"
                           >
                             <FileText className="w-3.5 h-3.5" />
                             <span>Receipt</span>
@@ -3820,7 +3820,7 @@ export default function PlayerHomePrototype() {
                 <div className={`p-1 rounded-lg ${activeTab === "performance" ? "bg-[#FCE8ED]" : ""}`}>
                   <Award className="w-5 h-5" />
                 </div>
-                <span className="text-[10px] tracking-tight">Stats</span>
+                <span className="text-[10px] tracking-tight">Performance</span>
               </button>
 
               <button
@@ -4061,7 +4061,11 @@ export default function PlayerHomePrototype() {
                     <GitMerge className="w-4 h-4 text-amber-300" />
                     <h3 className="text-sm font-black uppercase">Merge Duplicate Players</h3>
                   </div>
-                  <button onClick={() => setMergeModalOpen(false)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setMergeModalOpen(false)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4119,7 +4123,11 @@ export default function PlayerHomePrototype() {
                     <Trophy className="w-4 h-4 text-amber-300" />
                     <h3 className="text-sm font-black uppercase">Schedule New Match</h3>
                   </div>
-                  <button onClick={() => setCreateMatchModalOpen(false)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setCreateMatchModalOpen(false)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4187,7 +4195,11 @@ export default function PlayerHomePrototype() {
                     <DollarSign className="w-4 h-4 text-white" />
                     <h3 className="text-sm font-black uppercase">Record Pitch-Side Cash</h3>
                   </div>
-                  <button onClick={() => setRecordCashModalOpen(false)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setRecordCashModalOpen(false)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4408,17 +4420,24 @@ export default function PlayerHomePrototype() {
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
                 <div className="bg-[#A30F2D] text-white p-4 text-center relative">
-                  <button onClick={() => setSelectedReceipt(null)} className="absolute right-3 top-3 text-white/80 hover:text-white">
-                    <X className="w-4 h-4" />
+                  <button
+                    onClick={() => setSelectedReceipt(null)}
+                    aria-label="Close Receipt Modal"
+                    className="min-h-[44px] min-w-[44px] absolute right-2 top-2 flex items-center justify-center text-white/80 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
                   </button>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-amber-300">
-                    Official Payment Receipt
+                    Digital Payment Receipt (Prototype Simulation)
                   </div>
                   <h4 className="text-base font-black uppercase tracking-tight mt-0.5">KAvach Cricket Club</h4>
                   <div className="text-[10px] opacity-80">play.kavachcricket.com</div>
                 </div>
 
                 <div className="p-5 space-y-3">
+                  <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-bold text-center">
+                    [PROTOTYPE SIMULATION] Simulated club receipt preview. Real financial records untouched.
+                  </div>
                   <div className="flex justify-between border-b border-gray-100 pb-2">
                     <span className="text-gray-500">Receipt No:</span>
                     <span className="font-bold text-[#171C26]">{selectedReceipt.receiptNumber}</span>
@@ -4485,7 +4504,10 @@ export default function PlayerHomePrototype() {
                 </div>
 
                 <div className="p-3 border-t border-gray-100 bg-gray-50 text-center">
-                  <button onClick={() => setNotificationsOpen(false)} className="text-xs font-bold text-[#D51F43] hover:underline">
+                  <button
+                    onClick={() => setNotificationsOpen(false)}
+                    className="w-full min-h-[44px] text-xs font-bold text-[#D51F43] hover:underline flex items-center justify-center"
+                  >
                     Close Drawer
                   </button>
                 </div>
@@ -4502,7 +4524,11 @@ export default function PlayerHomePrototype() {
                     <Plus className="w-4 h-4 text-white" />
                     <h3 className="text-sm font-black uppercase">Levy Member Ad-hoc Fee</h3>
                   </div>
-                  <button onClick={() => setAdHocFeeModalOpen(false)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setAdHocFeeModalOpen(false)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4570,7 +4596,11 @@ export default function PlayerHomePrototype() {
                     <Shield className="w-4 h-4 text-emerald-400" />
                     <h3 className="text-sm font-black uppercase">Transaction Audit Record</h3>
                   </div>
-                  <button onClick={() => setSelectedAuditTx(null)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setSelectedAuditTx(null)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4613,7 +4643,7 @@ export default function PlayerHomePrototype() {
 
                   <button
                     onClick={() => setSelectedAuditTx(null)}
-                    className="w-full min-h-[40px] bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl transition"
+                    className="w-full min-h-[44px] bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl transition"
                   >
                     Close Audit Log
                   </button>
@@ -4631,7 +4661,11 @@ export default function PlayerHomePrototype() {
                     <Sparkles className="w-4 h-4 text-amber-300" />
                     <h3 className="text-sm font-black uppercase">Reserve Net Lane</h3>
                   </div>
-                  <button onClick={() => setBookSlotModalOpen(false)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setBookSlotModalOpen(false)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -4688,12 +4722,12 @@ export default function PlayerHomePrototype() {
                 <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-amber-300" />
-                    <h3 className="text-sm font-black uppercase">Razorpay Secure Checkout</h3>
+                    <h3 className="text-sm font-black uppercase">Payment Checkout — Prototype Simulation</h3>
                   </div>
                   <button
                     onClick={() => setPaymentModalOpen(false)}
                     aria-label="Close Checkout"
-                    className="text-white/80 hover:text-white p-1"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -4748,7 +4782,11 @@ export default function PlayerHomePrototype() {
                     <ShoppingBag className="w-4 h-4 text-white" />
                     <h3 className="text-sm font-black uppercase">Order Club Merchandise</h3>
                   </div>
-                  <button onClick={() => setShopItemOrderModal(null)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setShopItemOrderModal(null)}
+                    aria-label="Close modal"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
