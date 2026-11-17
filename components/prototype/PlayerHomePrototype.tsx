@@ -37,7 +37,13 @@ import {
   TrendingUp,
   Settings,
   HelpCircle,
-  Activity
+  Activity,
+  Edit2,
+  UserCheck,
+  GitMerge,
+  AlertTriangle,
+  Phone,
+  Shirt
 } from "lucide-react";
 
 // -------------------------------------------------------------
@@ -139,17 +145,17 @@ const MOCK_MATCHES = [
     matchFee: 500,
     playerStatus: "Playing (XI)",
     playingXI: [
-      { name: "Ashutosh Dixit", role: "All-Rounder", isCurrent: true, badge: "(VC)" },
-      { name: "Vikram Sharma", role: "Batter", badge: "(C)" },
-      { name: "Rahul Verma", role: "Bowler" },
-      { name: "Sameer Khan", role: "Wicket-Keeper" },
-      { name: "Arjun Nair", role: "Batter" },
-      { name: "Deepak Joshi", role: "All-Rounder" },
-      { name: "Karan Patel", role: "Bowler" },
-      { name: "Rohan Gupta", role: "Batter" },
-      { name: "Amitabh Sen", role: "Bowler" },
-      { name: "Harish Rao", role: "Bowler" },
-      { name: "Manoj Kumar", role: "Batter" }
+      { id: "p-2", name: "Ashutosh Dixit", role: "All-Rounder", isCurrent: true, badge: "(VC)", attendance: "Present", feePaid: false },
+      { id: "p-1", name: "Vikram Sharma", role: "Batter", badge: "(C)", attendance: "Present", feePaid: true },
+      { id: "p-3", name: "Rahul Verma", role: "Bowler", attendance: "Present", feePaid: true },
+      { id: "p-4", name: "Sameer Khan", role: "Wicket-Keeper", attendance: "Late", feePaid: false },
+      { id: "p-5", name: "Arjun Nair", role: "Batter", attendance: "Present", feePaid: false },
+      { id: "p-7", name: "Deepak Joshi", role: "All-Rounder", attendance: "Absent", feePaid: false },
+      { id: "p-8", name: "Karan Patel", role: "Bowler", attendance: "Present", feePaid: true },
+      { id: "p-9", name: "Rohan Gupta", role: "Batter", attendance: "Present", feePaid: true },
+      { id: "p-10", name: "Amitabh Sen", role: "Bowler", attendance: "Present", feePaid: false },
+      { id: "p-11", name: "Harish Rao", role: "Bowler", attendance: "Present", feePaid: true },
+      { id: "p-12", name: "Manoj Kumar", role: "Batter", attendance: "Present", feePaid: false }
     ],
     reserves: ["Siddharth Jain", "Pranav Reddy", "Gaurav Mehta"]
   },
@@ -211,6 +217,107 @@ const MOCK_MATCHES = [
     status: "abandoned",
     result: "Match Abandoned due to persistent rain (No Result)",
     feePolicy: "Fee Waived (Option A - No Obligation)"
+  }
+];
+
+const MOCK_ROSTER_PLAYERS = [
+  {
+    id: "p-1",
+    kavachId: "KAV-001",
+    name: "Vikram Sharma",
+    role: "Batter",
+    battingStyle: "Right-hand bat",
+    bowlingStyle: "Right-arm off-spin",
+    jerseyNumber: "18",
+    status: "active",
+    phone: "+91 98765 43210",
+    roles: ["clubAdmin", "matchAdmin"],
+    tshirtSize: "L",
+    trouserSize: "32"
+  },
+  {
+    id: "p-2",
+    kavachId: "KAV-007",
+    name: "Ashutosh Dixit",
+    role: "All-Rounder",
+    battingStyle: "Right-hand bat",
+    bowlingStyle: "Right-arm medium",
+    jerseyNumber: "07",
+    status: "active",
+    phone: "+91 98111 22334",
+    roles: ["superAdmin"],
+    tshirtSize: "XL",
+    trouserSize: "34"
+  },
+  {
+    id: "p-3",
+    kavachId: "KAV-012",
+    name: "Rahul Verma",
+    role: "Bowler",
+    battingStyle: "Right-hand bat",
+    bowlingStyle: "Right-arm fast",
+    jerseyNumber: "99",
+    status: "active",
+    phone: "+91 98222 33445",
+    roles: [],
+    tshirtSize: "M",
+    trouserSize: "30"
+  },
+  {
+    id: "p-4",
+    kavachId: "KAV-018",
+    name: "Sameer Khan",
+    role: "Wicket-Keeper",
+    battingStyle: "Left-hand bat",
+    bowlingStyle: "None",
+    jerseyNumber: "23",
+    status: "active",
+    phone: "+91 98333 44556",
+    roles: ["isDesigner"],
+    tshirtSize: "L",
+    trouserSize: "32"
+  },
+  {
+    id: "p-pending-1",
+    kavachId: "PENDING",
+    name: "Rohan Deshmukh",
+    role: "Batter",
+    battingStyle: "Right-hand bat",
+    bowlingStyle: "Right-arm medium",
+    jerseyNumber: "14",
+    status: "pending",
+    phone: "+91 98444 55667",
+    roles: [],
+    tshirtSize: "M",
+    trouserSize: "32"
+  },
+  {
+    id: "p-pending-2",
+    kavachId: "PENDING",
+    name: "Aditya Chopra",
+    role: "All-Rounder",
+    battingStyle: "Left-hand bat",
+    bowlingStyle: "Left-arm orthodox",
+    jerseyNumber: "33",
+    status: "pending",
+    phone: "+91 98555 66778",
+    roles: [],
+    tshirtSize: "L",
+    trouserSize: "34"
+  },
+  {
+    id: "p-injured-1",
+    kavachId: "KAV-025",
+    name: "Deepak Joshi",
+    role: "All-Rounder",
+    battingStyle: "Right-hand bat",
+    bowlingStyle: "Right-arm off-spin",
+    jerseyNumber: "45",
+    status: "injured",
+    phone: "+91 98666 77889",
+    roles: [],
+    tshirtSize: "XL",
+    trouserSize: "36"
   }
 ];
 
@@ -300,6 +407,17 @@ export default function PlayerHomePrototype() {
   const [selectedMatch, setSelectedMatch] = useState<any | null>(null);
   const [selectedMatchSubTab, setSelectedMatchSubTab] = useState<"overview" | "scorecard" | "catches">("overview");
 
+  // Admin Match Management Drawer
+  const [adminMatchSquadDrawer, setAdminMatchSquadDrawer] = useState<any | null>(null);
+
+  // Admin Roster & Profile Drawer States
+  const [rosterList, setRosterList] = useState(MOCK_ROSTER_PLAYERS);
+  const [rosterFilter, setRosterFilter] = useState<"all" | "pending" | "active" | "injured">("all");
+  const [rosterSearch, setRosterSearch] = useState("");
+  const [selectedPlayerProfile, setSelectedPlayerProfile] = useState<any | null>(null);
+  const [jerseyValidationWarning, setJerseyValidationWarning] = useState<string | null>(null);
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+
   // Payments Tab States
   const [duesState, setDuesState] = useState(MOCK_CURRENT_PLAYER.dues);
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
@@ -326,6 +444,18 @@ export default function PlayerHomePrototype() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return m.title.toLowerCase().includes(q) || m.venue.toLowerCase().includes(q) || m.format.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  // Filtered Roster logic
+  const filteredRoster = rosterList.filter((p) => {
+    if (rosterFilter === "pending" && p.status !== "pending") return false;
+    if (rosterFilter === "active" && p.status !== "active") return false;
+    if (rosterFilter === "injured" && p.status !== "injured") return false;
+    if (rosterSearch.trim()) {
+      const q = rosterSearch.toLowerCase();
+      return p.name.toLowerCase().includes(q) || p.kavachId.toLowerCase().includes(q) || p.jerseyNumber.includes(q);
     }
     return true;
   });
@@ -359,6 +489,50 @@ export default function PlayerHomePrototype() {
     setAdminAlerts(prev => prev.filter(a => a.id !== alertId));
   };
 
+  // Approve pending player
+  const handleApprovePlayer = (playerId: string) => {
+    setRosterList(prev => prev.map(p => {
+      if (p.id === playerId) {
+        return {
+          ...p,
+          status: "active",
+          kavachId: `KAV-0${Math.floor(Math.random() * 80 + 30)}`
+        };
+      }
+      return p;
+    }));
+    window.alert("Member approved! Sequential KAvach ID generated and profile activated.");
+  };
+
+  // Toggle match attendance
+  const handleToggleAttendance = (matchPlayerName: string) => {
+    if (!adminMatchSquadDrawer) return;
+    setAdminMatchSquadDrawer((prev: any) => ({
+      ...prev,
+      playingXI: prev.playingXI.map((pl: any) => {
+        if (pl.name === matchPlayerName) {
+          const next = pl.attendance === "Present" ? "Late" : pl.attendance === "Late" ? "Absent" : "Present";
+          return { ...pl, attendance: next };
+        }
+        return pl;
+      })
+    }));
+  };
+
+  // Real-time jersey validation in profile editor
+  const handleJerseyChange = (val: string) => {
+    if (selectedPlayerProfile) {
+      setSelectedPlayerProfile({ ...selectedPlayerProfile, jerseyNumber: val });
+      if (val === "10") {
+        setJerseyValidationWarning("Jersey #10 is reserved (Club Honor). Please select an alternate number.");
+      } else if (val && isNaN(Number(val))) {
+        setJerseyValidationWarning("Jersey must be a numeric value.");
+      } else {
+        setJerseyValidationWarning(null);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F0F2F5] text-[#171C26] font-sans">
       {/* Top Prototype Control Bar */}
@@ -367,7 +541,7 @@ export default function PlayerHomePrototype() {
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#A30F2D] text-white font-bold text-[10px] uppercase tracking-wider">
             Prototype Preview
           </span>
-          <span className="font-semibold text-gray-200">Phase 4 Stage 3: Admin Navigation & Overview Blueprint</span>
+          <span className="font-semibold text-gray-200">Phase 4 Stage 4: Admin Match Centre & Player Roster Blueprint</span>
         </div>
 
         {/* Viewport Frame Mode Controls */}
@@ -481,7 +655,6 @@ export default function PlayerHomePrototype() {
           {/* ADMIN CONTEXT BANNER & HUB SELECTOR (Rendered only when persona === "admin") */}
           {persona === "admin" && (
             <div className="bg-[#A30F2D] text-white shadow-md z-30">
-              {/* Context Banner */}
               <div className="px-4 py-2.5 flex items-center justify-between border-b border-white/10 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <Shield className="w-4 h-4 text-amber-300 shrink-0" />
@@ -538,489 +711,357 @@ export default function PlayerHomePrototype() {
           <main className="flex-1 pb-24 px-4 sm:px-6 py-5 max-w-5xl mx-auto w-full">
             
             {/* ========================================================================= */}
-            {/* ADMIN VIEW MODE: OVERVIEW COMMAND HUB                                     */}
+            {/* ADMIN HUB 1: OVERVIEW COMMAND HUB                                         */}
             {/* ========================================================================= */}
-            {persona === "admin" ? (
-              adminHub === "overview" ? (
-                <div className="space-y-6">
-                  
-                  {/* QUICK ACTIONS ACTION STRIP */}
-                  <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-wrap items-center gap-2.5">
-                    <span className="text-xs font-black uppercase tracking-wider text-[#667085] mr-1 hidden sm:inline">
-                      Quick Launch:
-                    </span>
-                    <button
-                      onClick={() => setCreateMatchModalOpen(true)}
-                      className="min-h-[44px] px-3.5 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Create Match</span>
-                    </button>
-                    <button
-                      onClick={() => setRecordCashModalOpen(true)}
-                      className="min-h-[44px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      <span>Record Pitch Cash</span>
-                    </button>
-                    <button
-                      onClick={() => alert("Simulating Player Invite link copied to clipboard: https://play.kavachcricket.com/join")}
-                      className="min-h-[44px] px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-                    >
-                      <UserPlus className="w-4 h-4 text-gray-600" />
-                      <span>Invite Member</span>
-                    </button>
-                    <button
-                      onClick={() => alert("Broadcast Announcement modal triggered.")}
-                      className="min-h-[44px] px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-                    >
-                      <Send className="w-4 h-4 text-gray-600" />
-                      <span>Broadcast Feed</span>
-                    </button>
-                  </div>
+            {persona === "admin" && adminHub === "overview" && (
+              <div className="space-y-6">
+                {/* Quick Actions */}
+                <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-wrap items-center gap-2.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-[#667085] mr-1 hidden sm:inline">
+                    Quick Launch:
+                  </span>
+                  <button
+                    onClick={() => setCreateMatchModalOpen(true)}
+                    className="min-h-[44px] px-3.5 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Match</span>
+                  </button>
+                  <button
+                    onClick={() => setRecordCashModalOpen(true)}
+                    className="min-h-[44px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    <span>Record Pitch Cash</span>
+                  </button>
+                  <button
+                    onClick={() => window.alert("Simulating Player Invite link copied to clipboard: https://play.kavachcricket.com/join")}
+                    className="min-h-[44px] px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                  >
+                    <UserPlus className="w-4 h-4 text-gray-600" />
+                    <span>Invite Member</span>
+                  </button>
+                  <button
+                    onClick={() => window.alert("Broadcast Announcement modal triggered.")}
+                    className="min-h-[44px] px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                  >
+                    <Send className="w-4 h-4 text-gray-600" />
+                    <span>Broadcast Feed</span>
+                  </button>
+                </div>
 
-                  {/* 4 CORE OPERATIONS KPI CARDS */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* KPI 1: Next Match Readiness */}
-                    <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
-                          <span>Next Match Readiness</span>
-                          <Trophy className="w-4 h-4 text-[#D51F43]" />
-                        </div>
-                        <div className="text-xl font-black text-[#171C26] mt-2">
-                          {MOCK_ADMIN_KPIS.nextMatch.confirmedXI} / {MOCK_ADMIN_KPIS.nextMatch.squadTarget} Playing
-                        </div>
-                        <p className="text-xs text-[#667085] mt-0.5">
-                          {MOCK_ADMIN_KPIS.nextMatch.title} • {MOCK_ADMIN_KPIS.nextMatch.date}
-                        </p>
+                {/* 4 Operations KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
+                        <span>Next Match Readiness</span>
+                        <Trophy className="w-4 h-4 text-[#D51F43]" />
                       </div>
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
-                        <span className="text-amber-700 font-bold">
-                          {MOCK_ADMIN_KPIS.nextMatch.pendingRsvps} RSVPs Pending
-                        </span>
-                        <button
-                          onClick={() => setAdminHub("matches")}
-                          className="font-bold text-[#D51F43] hover:underline"
-                        >
-                          Manage Squad
-                        </button>
+                      <div className="text-xl font-black text-[#171C26] mt-2">
+                        {MOCK_ADMIN_KPIS.nextMatch.confirmedXI} / {MOCK_ADMIN_KPIS.nextMatch.squadTarget} Playing
                       </div>
+                      <p className="text-xs text-[#667085] mt-0.5">
+                        {MOCK_ADMIN_KPIS.nextMatch.title} • {MOCK_ADMIN_KPIS.nextMatch.date}
+                      </p>
                     </div>
-
-                    {/* KPI 2: Collections & Unpaid Dues */}
-                    <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
-                          <span>Collections (Nov)</span>
-                          <CreditCard className="w-4 h-4 text-emerald-600" />
-                        </div>
-                        <div className="text-xl font-black text-emerald-700 mt-2">
-                          ₹{MOCK_ADMIN_KPIS.finance.collectedMonth.toLocaleString("en-IN")}
-                        </div>
-                        <p className="text-xs text-[#667085] mt-0.5">
-                          {MOCK_ADMIN_KPIS.finance.collectionRate}% of monthly budget
-                        </p>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
-                        <span className="text-rose-700 font-bold">
-                          ₹{MOCK_ADMIN_KPIS.finance.unpaidDues} Overdue ({MOCK_ADMIN_KPIS.finance.unpaidPlayersCount}p)
-                        </span>
-                        <button
-                          onClick={() => setAdminHub("finance")}
-                          className="font-bold text-[#D51F43] hover:underline"
-                        >
-                          Dues Ledger
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* KPI 3: Roster & Onboarding */}
-                    <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
-                          <span>Active Player Roster</span>
-                          <Users className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div className="text-xl font-black text-[#171C26] mt-2">
-                          {MOCK_ADMIN_KPIS.roster.activePlayers} Players
-                        </div>
-                        <p className="text-xs text-[#667085] mt-0.5">
-                          {MOCK_ADMIN_KPIS.roster.injuredOut} currently out of play
-                        </p>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
-                        <span className="text-amber-700 font-bold">
-                          {MOCK_ADMIN_KPIS.roster.pendingApprovals} Pending Approval
-                        </span>
-                        <button
-                          onClick={() => setAdminHub("people")}
-                          className="font-bold text-[#D51F43] hover:underline"
-                        >
-                          Review Roster
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* KPI 4: Studio Nets Occupancy */}
-                    <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
-                          <span>Studio & Nets</span>
-                          <Sparkles className="w-4 h-4 text-purple-600" />
-                        </div>
-                        <div className="text-xl font-black text-[#171C26] mt-2">
-                          {MOCK_ADMIN_KPIS.studio.slotOccupancyPercent}% Occupancy
-                        </div>
-                        <p className="text-xs text-[#667085] mt-0.5">
-                          {MOCK_ADMIN_KPIS.studio.activePassHolders} active facility passes
-                        </p>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
-                        <span className="text-[#667085] font-medium">
-                          {MOCK_ADMIN_KPIS.studio.renewalsDueNext48h} renewals in 48h
-                        </span>
-                        <button
-                          onClick={() => setAdminHub("studio")}
-                          className="font-bold text-[#D51F43] hover:underline"
-                        >
-                          Manage Slots
-                        </button>
-                      </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                      <span className="text-amber-700 font-bold">
+                        {MOCK_ADMIN_KPIS.nextMatch.pendingRsvps} RSVPs Pending
+                      </span>
+                      <button
+                        onClick={() => setAdminHub("matches")}
+                        className="font-bold text-[#D51F43] hover:underline"
+                      >
+                        Manage Squad
+                      </button>
                     </div>
                   </div>
 
-                  {/* ACTIONABLE OPERATIONAL ALERTS FEED */}
-                  <section className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-[#667085] flex items-center gap-1.5">
-                        <AlertCircle className="w-4 h-4 text-[#D51F43]" />
-                        Urgent Operations Queue ({adminAlerts.length})
-                      </h3>
+                  <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
+                        <span>Collections (Nov)</span>
+                        <CreditCard className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div className="text-xl font-black text-emerald-700 mt-2">
+                        ₹{MOCK_ADMIN_KPIS.finance.collectedMonth.toLocaleString("en-IN")}
+                      </div>
+                      <p className="text-xs text-[#667085] mt-0.5">
+                        {MOCK_ADMIN_KPIS.finance.collectionRate}% of monthly budget
+                      </p>
                     </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                      <span className="text-rose-700 font-bold">
+                        ₹{MOCK_ADMIN_KPIS.finance.unpaidDues} Overdue ({MOCK_ADMIN_KPIS.finance.unpaidPlayersCount}p)
+                      </span>
+                      <button
+                        onClick={() => setAdminHub("finance")}
+                        className="font-bold text-[#D51F43] hover:underline"
+                      >
+                        Dues Ledger
+                      </button>
+                    </div>
+                  </div>
 
-                    <div className="space-y-3">
-                      {adminAlerts.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-4 rounded-xl border border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${
-                                item.level === "urgent" ? "bg-rose-500" : item.level === "warning" ? "bg-amber-500" : "bg-blue-500"
-                              }`} />
-                              <h4 className="font-bold text-xs text-[#171C26]">{item.title}</h4>
-                            </div>
-                            <p className="text-xs text-[#667085] mt-1 pl-4">
-                              {item.description}
-                            </p>
-                          </div>
+                  <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
+                        <span>Active Player Roster</span>
+                        <Users className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="text-xl font-black text-[#171C26] mt-2">
+                        {MOCK_ADMIN_KPIS.roster.activePlayers} Players
+                      </div>
+                      <p className="text-xs text-[#667085] mt-0.5">
+                        {MOCK_ADMIN_KPIS.roster.injuredOut} currently out of play
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                      <span className="text-amber-700 font-bold">
+                        {MOCK_ADMIN_KPIS.roster.pendingApprovals} Pending Approval
+                      </span>
+                      <button
+                        onClick={() => setAdminHub("people")}
+                        className="font-bold text-[#D51F43] hover:underline"
+                      >
+                        Review Roster
+                      </button>
+                    </div>
+                  </div>
 
-                          <div className="flex items-center gap-2 self-start sm:self-auto pl-4 sm:pl-0">
-                            <button
-                              onClick={() => {
-                                window.alert(`Action triggered: ${item.actionLabel}`);
-                                dismissAlert(item.id);
-                              }}
-                              className="min-h-[40px] px-3.5 py-1.5 bg-[#A30F2D] hover:bg-[#D51F43] text-white text-xs font-bold rounded-xl transition"
-                            >
-                              {item.actionLabel}
-                            </button>
-                            <button
-                              onClick={() => dismissAlert(item.id)}
-                              className="min-h-[40px] px-3 py-1.5 text-gray-400 hover:text-gray-700 text-xs font-medium"
-                            >
-                              Dismiss
-                            </button>
+                  <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-[#667085] font-semibold">
+                        <span>Studio & Nets</span>
+                        <Sparkles className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div className="text-xl font-black text-[#171C26] mt-2">
+                        {MOCK_ADMIN_KPIS.studio.slotOccupancyPercent}% Occupancy
+                      </div>
+                      <p className="text-xs text-[#667085] mt-0.5">
+                        {MOCK_ADMIN_KPIS.studio.activePassHolders} active facility passes
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                      <span className="text-[#667085] font-medium">
+                        {MOCK_ADMIN_KPIS.studio.renewalsDueNext48h} renewals in 48h
+                      </span>
+                      <button
+                        onClick={() => setAdminHub("studio")}
+                        className="font-bold text-[#D51F43] hover:underline"
+                      >
+                        Manage Slots
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Urgent Operations Alerts */}
+                <section className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#667085] flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-[#D51F43]" />
+                    Urgent Operations Queue ({adminAlerts.length})
+                  </h3>
+
+                  <div className="space-y-3">
+                    {adminAlerts.map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-4 rounded-xl border border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              item.level === "urgent" ? "bg-rose-500" : item.level === "warning" ? "bg-amber-500" : "bg-blue-500"
+                            }`} />
+                            <h4 className="font-bold text-xs text-[#171C26]">{item.title}</h4>
                           </div>
+                          <p className="text-xs text-[#667085] mt-1 pl-4">
+                            {item.description}
+                          </p>
                         </div>
-                      ))}
 
-                      {adminAlerts.length === 0 && (
-                        <div className="p-6 text-center text-xs text-emerald-800 font-bold bg-emerald-50 rounded-xl flex items-center justify-center gap-2">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                          <span>All operational items cleared! Club is operating smoothly.</span>
+                        <div className="flex items-center gap-2 self-start sm:self-auto pl-4 sm:pl-0">
+                          <button
+                            onClick={() => {
+                              window.alert(`Action triggered: ${item.actionLabel}`);
+                              dismissAlert(item.id);
+                            }}
+                            className="min-h-[40px] px-3.5 py-1.5 bg-[#A30F2D] hover:bg-[#D51F43] text-white text-xs font-bold rounded-xl transition"
+                          >
+                            {item.actionLabel}
+                          </button>
+                          <button
+                            onClick={() => dismissAlert(item.id)}
+                            className="min-h-[40px] px-3 py-1.5 text-gray-400 hover:text-gray-700 text-xs font-medium"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* ADMIN HUB 2: MATCH CENTRE (Stage 4 Core Deliverable)                      */}
+            {/* ========================================================================= */}
+            {persona === "admin" && adminHub === "matches" && (
+              <div className="space-y-5">
+                {/* Hub Header & Actions */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs">
+                  <div>
+                    <h2 className="text-base font-black text-[#171C26] uppercase tracking-tight flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-[#D51F43]" />
+                      Match Centre & Squad Operations
+                    </h2>
+                    <p className="text-xs text-[#667085] mt-0.5">
+                      Schedule fixtures, coordinate squad availability, announce Playing XIs, and log pitch-side cash.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setCreateMatchModalOpen(true)}
+                    className="min-h-[44px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Schedule New Match</span>
+                  </button>
+                </div>
+
+                {/* Match Operations Grid */}
+                <div className="space-y-4">
+                  {MOCK_MATCHES.map((m) => (
+                    <div
+                      key={m.id}
+                      className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
+                              {m.format}
+                            </span>
+                            <span className="text-xs text-[#667085] font-medium flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
+                              {m.dateString}
+                            </span>
+                          </div>
+                          <h3 className="text-base font-black text-[#171C26] mt-1">{m.title}</h3>
+                          <p className="text-xs text-[#667085] flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3.5 h-3.5" />
+                            {m.venue}
+                          </p>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {m.playingXI && (
+                            <button
+                              onClick={() => setAdminMatchSquadDrawer(m)}
+                              className="min-h-[40px] px-3.5 py-1.5 bg-[#FCE8ED] hover:bg-[#A30F2D] hover:text-white text-[#A30F2D] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              <span>Squad & Attendance ({m.playingXI.length})</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => setRecordCashModalOpen(true)}
+                            className="min-h-[40px] px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                          >
+                            <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Pitch Cash</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Squad readiness bar */}
+                      {m.playingXI && (
+                        <div className="flex items-center justify-between text-xs text-[#667085]">
+                          <span>Confirmed Squad: 11 / 14 Players</span>
+                          <span className="text-emerald-700 font-bold">XI Published</span>
                         </div>
                       )}
                     </div>
-                  </section>
+                  ))}
                 </div>
-              ) : (
-                /* Admin Hub Placeholders */
-                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center mx-auto">
-                    <Shield className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-black uppercase text-[#171C26]">
-                    Admin {adminHub.toUpperCase()} Hub
-                  </h3>
-                  <p className="text-xs text-[#667085] max-w-sm mx-auto">
-                    Stage 3 establishes the Admin Navigation framework & Overview hub. Stage 4 will deliver the full Match Centre & Player Roster blueprints.
-                  </p>
-                  <button
-                    onClick={() => setAdminHub("overview")}
-                    className="min-h-[44px] px-4 py-2 bg-[#D51F43] text-white text-xs font-bold rounded-xl"
-                  >
-                    Return to Overview Hub
-                  </button>
-                </div>
-              )
-            ) : (
-              /* ========================================================================= */
-              /* PLAYER VIEW MODE (HOME, MATCHES, PAYMENTS)                                */
-              /* ========================================================================= */
-              activeTab === "home" ? (
-                <div className="space-y-6">
-                  {/* Hero Next Match */}
-                  <section className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
-                    <div className="bg-gradient-to-r from-[#A30F2D] to-[#D51F43] px-4 py-2.5 text-white flex items-center justify-between text-xs">
-                      <span className="font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                        <Trophy className="w-3.5 h-3.5 text-amber-300" />
-                        Next Fixture • {MOCK_MATCHES[0].format}
-                      </span>
-                      <span className="bg-white/20 px-2 py-0.5 rounded-full font-semibold text-[10px] tracking-wide">
-                        {MOCK_MATCHES[0].countdown}
-                      </span>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* ADMIN HUB 3: PLAYER ROSTER (Stage 4 Core Deliverable)                     */}
+            {/* ========================================================================= */}
+            {persona === "admin" && adminHub === "people" && (
+              <div className="space-y-5">
+                {/* Header & Filter Controls */}
+                <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base font-black text-[#171C26] uppercase tracking-tight flex items-center gap-2">
+                        <Users className="w-5 h-5 text-[#D51F43]" />
+                        Club Player Roster & Memberships
+                      </h2>
+                      <p className="text-xs text-[#667085] mt-0.5">
+                        Manage player profiles, member approvals, granular permissions, and identity mergers.
+                      </p>
                     </div>
 
-                    <div className="p-4 sm:p-5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
-                        <div>
-                          <h2 className="text-lg sm:text-xl font-black text-[#171C26] tracking-tight">
-                            {MOCK_MATCHES[0].title}
-                          </h2>
-                          <div className="mt-2 flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-[#667085]">
-                            <span className="flex items-center gap-1 font-medium">
-                              <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
-                              {MOCK_MATCHES[0].dateString}
-                            </span>
-                            <span className="flex items-center gap-1 font-medium">
-                              <Clock className="w-3.5 h-3.5 text-[#D51F43]" />
-                              {MOCK_MATCHES[0].timeString}
-                            </span>
-                            <a
-                              href={MOCK_MATCHES[0].venueDirectionsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-[#D51F43] font-semibold hover:underline"
-                            >
-                              <MapPin className="w-3.5 h-3.5" />
-                              {MOCK_MATCHES[0].venue}
-                            </a>
-                          </div>
-                        </div>
-
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold self-start sm:self-auto">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>You are in Playing XI!</span>
-                        </div>
-                      </div>
-
-                      {/* 1-Tap RSVP */}
-                      <div className="pt-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-xs font-black uppercase tracking-wider text-[#667085]">
-                            Confirm Your Availability
-                          </label>
-                          <button
-                            onClick={() => setShowNoteInput(!showNoteInput)}
-                            className="text-[11px] font-semibold text-[#D51F43] hover:underline"
-                          >
-                            {showNoteInput ? "Hide Note" : "+ Add Note for Captain"}
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2">
-                          <button
-                            onClick={() => setRsvpStatus("available")}
-                            className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                              rsvpStatus === "available"
-                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                : "bg-emerald-50/60 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
-                            }`}
-                          >
-                            <CheckCircle2 className="w-4 h-4 shrink-0" />
-                            <span>Playing</span>
-                          </button>
-
-                          <button
-                            onClick={() => setRsvpStatus("tentative")}
-                            className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                              rsvpStatus === "tentative"
-                                ? "bg-amber-600 text-white border-amber-600 shadow-sm"
-                                : "bg-amber-50/60 text-amber-800 border-amber-200 hover:bg-amber-100"
-                            }`}
-                          >
-                            <Clock className="w-4 h-4 shrink-0" />
-                            <span>Tentative</span>
-                          </button>
-
-                          <button
-                            onClick={() => setRsvpStatus("unavailable")}
-                            className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                              rsvpStatus === "unavailable"
-                                ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                                : "bg-rose-50/60 text-rose-800 border-rose-200 hover:bg-rose-100"
-                            }`}
-                          >
-                            <XCircle className="w-4 h-4 shrink-0" />
-                            <span>Out</span>
-                          </button>
-                        </div>
-
-                        {showNoteInput && (
-                          <div className="mt-2.5">
-                            <input
-                              type="text"
-                              value={rsvpNote}
-                              onChange={(e) => setRsvpNote(e.target.value)}
-                              placeholder="e.g. Arriving 15m early / bat top order..."
-                              className="w-full text-xs px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Dues Alert Card */}
-                  {duesState.total > 0 ? (
-                    <section className="bg-gradient-to-br from-[#FCE8ED] to-white rounded-2xl border border-[#D51F43]/20 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3.5">
-                        <div className="w-10 h-10 rounded-xl bg-[#D51F43] text-white flex items-center justify-center shrink-0 shadow-sm">
-                          <CreditCard className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-[#A30F2D] uppercase tracking-wider">
-                              Outstanding Club Dues
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D51F43] text-white">
-                              Due Now
-                            </span>
-                          </div>
-                          <div className="text-2xl font-black text-[#171C26] mt-0.5">
-                            ₹{duesState.total.toLocaleString("en-IN")}
-                          </div>
-                          <p className="text-xs text-[#667085] mt-0.5">
-                            {duesState.breakdown.filter(d => d.amount > 0).length} pending obligations • Includes match fee & studio pass
-                          </p>
-                        </div>
-                      </div>
-
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setPaymentModalOpen(true)}
-                        className="min-h-[44px] w-full sm:w-auto px-5 py-2.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-xs flex items-center justify-center gap-1.5"
+                        onClick={() => setMergeModalOpen(true)}
+                        className="min-h-[40px] px-3.5 py-1.5 border border-gray-300 hover:bg-gray-100 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
                       >
-                        <span>Pay Now</span>
-                        <ArrowRight className="w-4 h-4" />
+                        <GitMerge className="w-3.5 h-3.5 text-gray-600" />
+                        <span>Merge Duplicate</span>
                       </button>
-                    </section>
-                  ) : (
-                    <section className="bg-emerald-50/60 rounded-2xl border border-emerald-200 p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5 text-xs text-emerald-800 font-bold">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                        <span>All club dues settled! Good standing for upcoming matches.</span>
-                      </div>
-                    </section>
-                  )}
-
-                  {/* Club Feed */}
-                  <section className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-[#667085] flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-[#D51F43]" />
-                        Club Announcements & Feed
-                      </h3>
+                      <button
+                        onClick={() => window.alert("Simulating member invite generator.")}
+                        className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Invite Player</span>
+                      </button>
                     </div>
+                  </div>
 
-                    {posts.map((post) => (
-                      <article key={post.id} className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs">
-                        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-                          <div className="flex items-center gap-2.5">
-                            <img
-                              src={post.authorAvatar}
-                              alt={post.authorName}
-                              className="w-9 h-9 rounded-full object-cover"
-                            />
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="text-xs font-black text-[#171C26]">{post.authorName}</h4>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
-                                  {post.badge}
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-[#667085]">{post.timeAgo}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <p className="text-xs sm:text-sm text-[#171C26] leading-relaxed pt-3">
-                          {post.content}
-                        </p>
-
-                        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-4 text-xs font-medium text-[#667085]">
-                          <button
-                            onClick={() => toggleLike(post.id)}
-                            className={`min-h-[44px] flex items-center gap-1.5 transition ${
-                              post.isLiked ? "text-[#D51F43] font-bold" : "hover:text-[#171C26]"
-                            }`}
-                          >
-                            <Heart className={`w-4 h-4 ${post.isLiked ? "fill-current" : ""}`} />
-                            <span>{post.likesCount}</span>
-                          </button>
-
-                          <button className="min-h-[44px] flex items-center gap-1.5 hover:text-[#171C26] transition">
-                            <MessageSquare className="w-4 h-4" />
-                            <span>{post.commentsCount} Comments</span>
-                          </button>
-
-                          <button className="min-h-[44px] ml-auto flex items-center gap-1.5 hover:text-[#171C26] transition">
-                            <Share2 className="w-4 h-4" />
-                            <span className="hidden sm:inline">Share</span>
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </section>
-                </div>
-              ) : activeTab === "matches" ? (
-                /* MATCHES TAB */
-                <div className="space-y-5">
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#E5E7EB] shadow-xs">
+                  {/* Filter Pills & Search */}
+                  <div className="pt-2 border-t border-gray-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                       <button
-                        onClick={() => setMatchFilter("all")}
-                        className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          matchFilter === "all" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                        onClick={() => setRosterFilter("all")}
+                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "all" ? "bg-[#A30F2D] text-white" : "bg-gray-100 text-[#667085]"
                         }`}
                       >
-                        All Matches ({MOCK_MATCHES.length})
+                        All Members ({rosterList.length})
                       </button>
                       <button
-                        onClick={() => setMatchFilter("upcoming")}
-                        className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          matchFilter === "upcoming" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                        onClick={() => setRosterFilter("pending")}
+                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "pending" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-800"
                         }`}
                       >
-                        Upcoming (2)
+                        Pending Review ({rosterList.filter(p => p.status === "pending").length})
                       </button>
                       <button
-                        onClick={() => setMatchFilter("past")}
-                        className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          matchFilter === "past" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                        onClick={() => setRosterFilter("active")}
+                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "active" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-800"
                         }`}
                       >
-                        Past Results (1)
+                        Active ({rosterList.filter(p => p.status === "active").length})
                       </button>
                       <button
-                        onClick={() => setMatchFilter("abandoned")}
-                        className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                          matchFilter === "abandoned" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                        onClick={() => setRosterFilter("injured")}
+                        className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                          rosterFilter === "injured" ? "bg-rose-600 text-white" : "bg-rose-50 text-rose-800"
                         }`}
                       >
-                        Abandoned (1)
+                        Injured / Out ({rosterList.filter(p => p.status === "injured").length})
                       </button>
                     </div>
 
@@ -1028,228 +1069,565 @@ export default function PlayerHomePrototype() {
                       <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
-                        placeholder="Search opponent or venue..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
+                        placeholder="Search name, KAV-ID, jersey..."
+                        value={rosterSearch}
+                        onChange={(e) => setRosterSearch(e.target.value)}
+                        className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none"
                       />
                     </div>
                   </div>
+                </div>
 
-                  <div className="space-y-4">
-                    {filteredMatches.map((m) => (
-                      <article
-                        key={m.id}
-                        onClick={() => setSelectedMatch(m)}
-                        className="bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#D51F43]/40 p-4 sm:p-5 shadow-xs transition hover:shadow-md cursor-pointer relative overflow-hidden"
-                      >
-                        {m.status === "past" && (
-                          <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${m.isWin ? "bg-emerald-500" : "bg-rose-500"}`} />
+                {/* Roster List Cards */}
+                <div className="space-y-3">
+                  {filteredRoster.map((player) => (
+                    <div
+                      key={player.id}
+                      className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#FCE8ED] text-[#A30F2D] font-black text-sm flex items-center justify-center shrink-0">
+                          #{player.jerseyNumber}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-sm text-[#171C26]">{player.name}</h4>
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-700">
+                              {player.kavachId}
+                            </span>
+                            {player.status === "pending" && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                                Pending Approval
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-[#667085] flex flex-wrap items-center gap-2 mt-0.5">
+                            <span>{player.role}</span>
+                            <span>•</span>
+                            <span>{player.battingStyle}</span>
+                            <span>•</span>
+                            <span className="text-gray-500">{player.phone}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        {player.status === "pending" ? (
+                          <button
+                            onClick={() => handleApprovePlayer(player.id)}
+                            className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Approve & Assign ID</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSelectedPlayerProfile(player);
+                              setJerseyValidationWarning(null);
+                            }}
+                            className="min-h-[40px] px-3.5 py-1.5 border border-gray-200 text-[#171C26] text-xs font-bold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-[#D51F43]" />
+                            <span>Edit Profile & Roles</span>
+                          </button>
                         )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Other Admin Hub Placeholders */}
+            {persona === "admin" && !["overview", "matches", "people"].includes(adminHub) && (
+              <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center mx-auto">
+                  <Shield className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-black uppercase text-[#171C26]">
+                  Admin {adminHub.toUpperCase()} Hub
+                </h3>
+                <p className="text-xs text-[#667085] max-w-sm mx-auto">
+                  Stage 4 delivered Match Centre and Player Roster. Stage 5 will deliver Finance & Dues, Studio & Nets, and Club Operations.
+                </p>
+                <button
+                  onClick={() => setAdminHub("overview")}
+                  className="min-h-[44px] px-4 py-2 bg-[#D51F43] text-white text-xs font-bold rounded-xl"
+                >
+                  Return to Overview Hub
+                </button>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* PLAYER VIEW MODE (HOME, MATCHES, PAYMENTS)                                */}
+            {/* ========================================================================= */}
+            {persona === "player" && activeTab === "home" && (
+              <div className="space-y-6">
+                {/* Hero Next Match */}
+                <section className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
+                  <div className="bg-gradient-to-r from-[#A30F2D] to-[#D51F43] px-4 py-2.5 text-white flex items-center justify-between text-xs">
+                    <span className="font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-amber-300" />
+                      Next Fixture • {MOCK_MATCHES[0].format}
+                    </span>
+                    <span className="bg-white/20 px-2 py-0.5 rounded-full font-semibold text-[10px] tracking-wide">
+                      {MOCK_MATCHES[0].countdown}
+                    </span>
+                  </div>
+
+                  <div className="p-4 sm:p-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                      <div>
+                        <h2 className="text-lg sm:text-xl font-black text-[#171C26] tracking-tight">
+                          {MOCK_MATCHES[0].title}
+                        </h2>
+                        <div className="mt-2 flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-[#667085]">
+                          <span className="flex items-center gap-1 font-medium">
+                            <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
+                            {MOCK_MATCHES[0].dateString}
+                          </span>
+                          <span className="flex items-center gap-1 font-medium">
+                            <Clock className="w-3.5 h-3.5 text-[#D51F43]" />
+                            {MOCK_MATCHES[0].timeString}
+                          </span>
+                          <a
+                            href={MOCK_MATCHES[0].venueDirectionsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[#D51F43] font-semibold hover:underline"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            {MOCK_MATCHES[0].venue}
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold self-start sm:self-auto">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>You are in Playing XI!</span>
+                      </div>
+                    </div>
+
+                    {/* 1-Tap RSVP */}
+                    <div className="pt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-[#667085]">
+                          Confirm Your Availability
+                        </label>
+                        <button
+                          onClick={() => setShowNoteInput(!showNoteInput)}
+                          className="text-[11px] font-semibold text-[#D51F43] hover:underline"
+                        >
+                          {showNoteInput ? "Hide Note" : "+ Add Note for Captain"}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => setRsvpStatus("available")}
+                          className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                            rsvpStatus === "available"
+                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                              : "bg-emerald-50/60 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                          }`}
+                        >
+                          <CheckCircle2 className="w-4 h-4 shrink-0" />
+                          <span>Playing</span>
+                        </button>
+
+                        <button
+                          onClick={() => setRsvpStatus("tentative")}
+                          className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                            rsvpStatus === "tentative"
+                              ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                              : "bg-amber-50/60 text-amber-800 border-amber-200 hover:bg-amber-100"
+                          }`}
+                        >
+                          <Clock className="w-4 h-4 shrink-0" />
+                          <span>Tentative</span>
+                        </button>
+
+                        <button
+                          onClick={() => setRsvpStatus("unavailable")}
+                          className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                            rsvpStatus === "unavailable"
+                              ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                              : "bg-rose-50/60 text-rose-800 border-rose-200 hover:bg-rose-100"
+                          }`}
+                        >
+                          <XCircle className="w-4 h-4 shrink-0" />
+                          <span>Out</span>
+                        </button>
+                      </div>
+
+                      {showNoteInput && (
+                        <div className="mt-2.5">
+                          <input
+                            type="text"
+                            value={rsvpNote}
+                            onChange={(e) => setRsvpNote(e.target.value)}
+                            placeholder="e.g. Arriving 15m early / bat top order..."
+                            className="w-full text-xs px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {/* Dues Alert Card */}
+                {duesState.total > 0 ? (
+                  <section className="bg-gradient-to-br from-[#FCE8ED] to-white rounded-2xl border border-[#D51F43]/20 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-[#D51F43] text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-[#A30F2D] uppercase tracking-wider">
+                            Outstanding Club Dues
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D51F43] text-white">
+                            Due Now
+                          </span>
+                        </div>
+                        <div className="text-2xl font-black text-[#171C26] mt-0.5">
+                          ₹{duesState.total.toLocaleString("en-IN")}
+                        </div>
+                        <p className="text-xs text-[#667085] mt-0.5">
+                          {duesState.breakdown.filter(d => d.amount > 0).length} pending obligations • Includes match fee & studio pass
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setPaymentModalOpen(true)}
+                      className="min-h-[44px] w-full sm:w-auto px-5 py-2.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>Pay Now</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </section>
+                ) : (
+                  <section className="bg-emerald-50/60 rounded-2xl border border-emerald-200 p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 text-xs text-emerald-800 font-bold">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span>All club dues settled! Good standing for upcoming matches.</span>
+                    </div>
+                  </section>
+                )}
+
+                {/* Club Feed */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#667085] flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[#D51F43]" />
+                      Club Announcements & Feed
+                    </h3>
+                  </div>
+
+                  {posts.map((post) => (
+                    <article key={post.id} className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs">
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                        <div className="flex items-center gap-2.5">
+                          <img
+                            src={post.authorAvatar}
+                            alt={post.authorName}
+                            className="w-9 h-9 rounded-full object-cover"
+                          />
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
-                                {m.format}
-                              </span>
-                              <span className="text-xs text-[#667085] font-medium flex items-center gap-1">
-                                <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
-                                {m.dateString}
+                              <h4 className="text-xs font-black text-[#171C26]">{post.authorName}</h4>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
+                                {post.badge}
                               </span>
                             </div>
+                            <span className="text-[11px] text-[#667085]">{post.timeAgo}</span>
+                          </div>
+                        </div>
+                      </div>
 
-                            <h3 className="text-base sm:text-lg font-black text-[#171C26] mt-1.5">
-                              {m.title}
-                            </h3>
+                      <p className="text-xs sm:text-sm text-[#171C26] leading-relaxed pt-3">
+                        {post.content}
+                      </p>
 
-                            <p className="text-xs text-[#667085] flex items-center gap-1 mt-1">
-                              <MapPin className="w-3.5 h-3.5 text-[#667085]" />
-                              {m.venue}
-                            </p>
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-4 text-xs font-medium text-[#667085]">
+                        <button
+                          onClick={() => toggleLike(post.id)}
+                          className={`min-h-[44px] flex items-center gap-1.5 transition ${
+                            post.isLiked ? "text-[#D51F43] font-bold" : "hover:text-[#171C26]"
+                          }`}
+                        >
+                          <Heart className={`w-4 h-4 ${post.isLiked ? "fill-current" : ""}`} />
+                          <span>{post.likesCount}</span>
+                        </button>
+
+                        <button className="min-h-[44px] flex items-center gap-1.5 hover:text-[#171C26] transition">
+                          <MessageSquare className="w-4 h-4" />
+                          <span>{post.commentsCount} Comments</span>
+                        </button>
+
+                        <button className="min-h-[44px] ml-auto flex items-center gap-1.5 hover:text-[#171C26] transition">
+                          <Share2 className="w-4 h-4" />
+                          <span className="hidden sm:inline">Share</span>
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              </div>
+            )}
+
+            {persona === "player" && activeTab === "matches" && (
+              /* MATCHES TAB */
+              <div className="space-y-5">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#E5E7EB] shadow-xs">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                    <button
+                      onClick={() => setMatchFilter("all")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "all" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      All Matches ({MOCK_MATCHES.length})
+                    </button>
+                    <button
+                      onClick={() => setMatchFilter("upcoming")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "upcoming" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      Upcoming (2)
+                    </button>
+                    <button
+                      onClick={() => setMatchFilter("past")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "past" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      Past Results (1)
+                    </button>
+                    <button
+                      onClick={() => setMatchFilter("abandoned")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "abandoned" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      Abandoned (1)
+                    </button>
+                  </div>
+
+                  <div className="relative min-w-[200px]">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search opponent or venue..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {filteredMatches.map((m) => (
+                    <article
+                      key={m.id}
+                      onClick={() => setSelectedMatch(m)}
+                      className="bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#D51F43]/40 p-4 sm:p-5 shadow-xs transition hover:shadow-md cursor-pointer relative overflow-hidden"
+                    >
+                      {m.status === "past" && (
+                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${m.isWin ? "bg-emerald-500" : "bg-rose-500"}`} />
+                      )}
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
+                              {m.format}
+                            </span>
+                            <span className="text-xs text-[#667085] font-medium flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
+                              {m.dateString}
+                            </span>
                           </div>
 
-                          <div className="flex items-center gap-2 self-start sm:self-auto">
-                            {m.status === "upcoming" && (
-                              <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                {m.playerStatus}
-                              </span>
-                            )}
+                          <h3 className="text-base sm:text-lg font-black text-[#171C26] mt-1.5">
+                            {m.title}
+                          </h3>
 
-                            {m.status === "past" && (
-                              <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
-                                m.isWin ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-rose-50 text-rose-800"
-                              }`}>
-                                {m.result}
-                              </span>
-                            )}
+                          <p className="text-xs text-[#667085] flex items-center gap-1 mt-1">
+                            <MapPin className="w-3.5 h-3.5 text-[#667085]" />
+                            {m.venue}
+                          </p>
+                        </div>
 
-                            {m.status === "abandoned" && (
-                              <span className="px-2.5 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold">
-                                Rain Abandoned • Fee Waived
-                              </span>
-                            )}
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          {m.status === "upcoming" && (
+                            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              {m.playerStatus}
+                            </span>
+                          )}
 
-                            <button className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-[#D51F43]">
-                              <ChevronRight className="w-5 h-5" />
-                            </button>
+                          {m.status === "past" && (
+                            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
+                              m.isWin ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-rose-50 text-rose-800"
+                            }`}>
+                              {m.result}
+                            </span>
+                          )}
+
+                          {m.status === "abandoned" && (
+                            <span className="px-2.5 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold">
+                              Rain Abandoned • Fee Waived
+                            </span>
+                          )}
+
+                          <button className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-[#D51F43]">
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {m.status === "past" && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between text-xs text-[#667085] gap-2">
+                          <span className="font-semibold text-[#171C26]">{m.scoreline}</span>
+                          <span className="text-amber-700 font-bold flex items-center gap-1">
+                            <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                            POTM: {m.potm}
+                          </span>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {persona === "player" && activeTab === "payments" && (
+              /* PAYMENTS TAB */
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-[#FCE8ED] to-white rounded-2xl border border-[#D51F43]/20 p-5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <span className="text-xs font-bold text-[#A30F2D] uppercase tracking-wider">
+                        Total Payable Obligations
+                      </span>
+                      <div className="text-3xl font-black text-[#171C26] mt-0.5">
+                        ₹{duesState.total.toLocaleString("en-IN")}
+                      </div>
+                      <p className="text-xs text-[#667085] mt-1">
+                        Settlements processed securely via Razorpay with immediate digital receipt.
+                      </p>
+                    </div>
+
+                    {duesState.total > 0 && (
+                      <button
+                        onClick={() => setPaymentModalOpen(true)}
+                        className="min-h-[48px] w-full sm:w-auto px-6 py-2.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-md flex items-center justify-center gap-2"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span>Pay Full Balance (₹{duesState.total})</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Line Item Breakdown */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#667085]">
+                    Current Unpaid Obligations & Policies
+                  </h3>
+
+                  <div className="space-y-2.5">
+                    {duesState.breakdown.map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-[#171C26]">{item.title}</div>
+                          <div className="text-[11px] text-[#667085] mt-0.5">
+                            {item.status ? (
+                              <span className="text-emerald-700 font-semibold">{item.status}</span>
+                            ) : (
+                              <span>Due Date: {item.deadline}</span>
+                            )}
                           </div>
                         </div>
 
-                        {m.status === "past" && (
-                          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between text-xs text-[#667085] gap-2">
-                            <span className="font-semibold text-[#171C26]">{m.scoreline}</span>
-                            <span className="text-amber-700 font-bold flex items-center gap-1">
-                              <Trophy className="w-3.5 h-3.5 text-amber-500" />
-                              POTM: {m.potm}
+                        <div className="text-right">
+                          {item.amount === 0 ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs line-through text-gray-400">₹{item.originalAmount}</span>
+                              <span className="text-xs font-black text-emerald-700">₹0 (Waived)</span>
+                            </div>
+                          ) : (
+                            <div className="text-sm font-black text-[#D51F43]">₹{item.amount}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {duesState.total === 0 && (
+                      <div className="text-center py-6 text-xs text-emerald-800 font-bold flex items-center justify-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        <span>All dues cleared! No pending financial obligations.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                    <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Club Late Fee Rule:</span> Match fees must be settled by Tuesday 23:59 IST following the match weekend. Automatic late fee of ₹150 applies subsequently.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment History */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#667085]">
+                      Payment History & Verified Receipts
+                    </h3>
+                  </div>
+
+                  <div className="divide-y divide-gray-100">
+                    {MOCK_PAYMENT_HISTORY.map((tx) => (
+                      <div key={tx.id} className="py-3.5 first:pt-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-xs text-[#171C26]">{tx.title}</div>
+                          <div className="text-[11px] text-[#667085] flex flex-wrap items-center gap-2 mt-0.5">
+                            <span>{tx.date}</span>
+                            <span>•</span>
+                            <span className="font-medium text-gray-700">{tx.referenceId}</span>
+                            <span>•</span>
+                            <span className="px-1.5 py-0.2 rounded bg-gray-100 font-semibold text-[10px]">
+                              {tx.channel}
                             </span>
                           </div>
-                        )}
-                      </article>
+                        </div>
+
+                        <div className="flex items-center gap-3 self-end sm:self-auto">
+                          <span className="font-black text-sm text-[#171C26]">₹{tx.amount}</span>
+                          <button
+                            onClick={() => setSelectedReceipt(tx)}
+                            className="min-h-[40px] px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-[#D51F43] hover:bg-[#FCE8ED] transition flex items-center gap-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Receipt</span>
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
-              ) : activeTab === "payments" ? (
-                /* PAYMENTS TAB */
-                <div className="space-y-6">
-                  <div className="bg-gradient-to-br from-[#FCE8ED] to-white rounded-2xl border border-[#D51F43]/20 p-5 shadow-xs">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div>
-                        <span className="text-xs font-bold text-[#A30F2D] uppercase tracking-wider">
-                          Total Payable Obligations
-                        </span>
-                        <div className="text-3xl font-black text-[#171C26] mt-0.5">
-                          ₹{duesState.total.toLocaleString("en-IN")}
-                        </div>
-                        <p className="text-xs text-[#667085] mt-1">
-                          Settlements processed securely via Razorpay with immediate digital receipt.
-                        </p>
-                      </div>
-
-                      {duesState.total > 0 && (
-                        <button
-                          onClick={() => setPaymentModalOpen(true)}
-                          className="min-h-[48px] w-full sm:w-auto px-6 py-2.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-md flex items-center justify-center gap-2"
-                        >
-                          <CreditCard className="w-4 h-4" />
-                          <span>Pay Full Balance (₹{duesState.total})</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Line Item Breakdown */}
-                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-3">
-                    <h3 className="text-xs font-black uppercase tracking-wider text-[#667085]">
-                      Current Unpaid Obligations & Policies
-                    </h3>
-
-                    <div className="space-y-2.5">
-                      {duesState.breakdown.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2"
-                        >
-                          <div>
-                            <div className="font-bold text-xs text-[#171C26]">{item.title}</div>
-                            <div className="text-[11px] text-[#667085] mt-0.5">
-                              {item.status ? (
-                                <span className="text-emerald-700 font-semibold">{item.status}</span>
-                              ) : (
-                                <span>Due Date: {item.deadline}</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            {item.amount === 0 ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs line-through text-gray-400">₹{item.originalAmount}</span>
-                                <span className="text-xs font-black text-emerald-700">₹0 (Waived)</span>
-                              </div>
-                            ) : (
-                              <div className="text-sm font-black text-[#D51F43]">₹{item.amount}</div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
-                      {duesState.total === 0 && (
-                        <div className="text-center py-6 text-xs text-emerald-800 font-bold flex items-center justify-center gap-2">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                          <span>All dues cleared! No pending financial obligations.</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-3 p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold">Club Late Fee Rule:</span> Match fees must be settled by Tuesday 23:59 IST following the match weekend. Automatic late fee of ₹150 applies subsequently.
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Payment History */}
-                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-[#667085]">
-                        Payment History & Verified Receipts
-                      </h3>
-                    </div>
-
-                    <div className="divide-y divide-gray-100">
-                      {MOCK_PAYMENT_HISTORY.map((tx) => (
-                        <div key={tx.id} className="py-3.5 first:pt-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                          <div>
-                            <div className="font-bold text-xs text-[#171C26]">{tx.title}</div>
-                            <div className="text-[11px] text-[#667085] flex flex-wrap items-center gap-2 mt-0.5">
-                              <span>{tx.date}</span>
-                              <span>•</span>
-                              <span className="font-medium text-gray-700">{tx.referenceId}</span>
-                              <span>•</span>
-                              <span className="px-1.5 py-0.2 rounded bg-gray-100 font-semibold text-[10px]">
-                                {tx.channel}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 self-end sm:self-auto">
-                            <span className="font-black text-sm text-[#171C26]">₹{tx.amount}</span>
-                            <button
-                              onClick={() => setSelectedReceipt(tx)}
-                              className="min-h-[40px] px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-[#D51F43] hover:bg-[#FCE8ED] transition flex items-center gap-1.5"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>Receipt</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Stats / Club Placeholders */
-                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center mx-auto">
-                    <Shield className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-black uppercase text-[#171C26]">
-                    {activeTab} Screen Blueprint
-                  </h3>
-                  <p className="text-xs text-[#667085] max-w-sm mx-auto">
-                    Stage 1 & 2 prototype encompasses Player Navigation, Home, Matches, and Payments. Stages 3–5 cover Administrator hubs and Player Performance leaderboards.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab("home")}
-                    className="min-h-[44px] px-4 py-2 bg-[#D51F43] text-white text-xs font-bold rounded-xl"
-                  >
-                    Return to Home
-                  </button>
-                </div>
-              )
+              </div>
             )}
           </main>
 
@@ -1323,8 +1701,279 @@ export default function PlayerHomePrototype() {
           )}
 
           {/* ========================================================================= */}
-          {/* CREATE MATCH WIZARD MODAL (Admin Action Preview)                          */}
+          {/* SQUAD & ATTENDANCE MANAGEMENT DRAWER (Admin Match Centre)                 */}
           {/* ========================================================================= */}
+          {adminMatchSquadDrawer && (
+            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
+              <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs">
+                <div className="p-4 bg-[#A30F2D] text-white flex items-center justify-between sticky top-0 z-10">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                      Match Centre Squad Management
+                    </span>
+                    <h3 className="text-sm sm:text-base font-black truncate">{adminMatchSquadDrawer.title}</h3>
+                  </div>
+                  <button
+                    onClick={() => setAdminMatchSquadDrawer(null)}
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4 flex-1">
+                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                    <span>Playing XI Confirmed ({adminMatchSquadDrawer.playingXI.length} Players)</span>
+                    <span className="font-bold text-[#A30F2D]">Fee: ₹{adminMatchSquadDrawer.matchFee} / player</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-gray-700 uppercase tracking-wider text-[11px]">
+                      Pitch Attendance & Match Fee Status:
+                    </h4>
+
+                    <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden bg-white">
+                      {adminMatchSquadDrawer.playingXI.map((pl: any, idx: number) => (
+                        <div key={idx} className="p-3 flex items-center justify-between">
+                          <div>
+                            <div className="font-bold text-sm text-[#171C26]">{pl.name}</div>
+                            <div className="text-[11px] text-[#667085] flex items-center gap-2 mt-0.5">
+                              <span>{pl.role}</span>
+                              <span>•</span>
+                              <span className={pl.feePaid ? "text-emerald-700 font-bold" : "text-rose-700 font-bold"}>
+                                {pl.feePaid ? "Fee Paid" : "Fee Unpaid"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleAttendance(pl.name)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                pl.attendance === "Present"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : pl.attendance === "Late"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-rose-100 text-rose-800"
+                              }`}
+                            >
+                              {pl.attendance}
+                            </button>
+
+                            {!pl.feePaid && (
+                              <button
+                                onClick={() => setRecordCashModalOpen(true)}
+                                className="px-2.5 py-1.5 rounded-lg bg-[#D51F43] text-white text-[11px] font-bold"
+                              >
+                                Collect
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+                  <button
+                    onClick={() => {
+                      window.alert("Playing XI broadcast sent to team WhatsApp group!");
+                      setAdminMatchSquadDrawer(null);
+                    }}
+                    className="w-full min-h-[44px] bg-[#A30F2D] hover:bg-[#D51F43] text-white font-bold rounded-xl"
+                  >
+                    Save & Broadcast Squad Announcement
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* PLAYER PROFILE & ROLE ASSIGNMENT DRAWER (Admin Roster)                    */}
+          {/* ========================================================================= */}
+          {selectedPlayerProfile && (
+            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
+              <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs">
+                <div className="p-4 bg-[#A30F2D] text-white flex items-center justify-between sticky top-0 z-10">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                      Edit Player Profile & Roles
+                    </span>
+                    <h3 className="text-sm sm:text-base font-black truncate">{selectedPlayerProfile.name}</h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedPlayerProfile(null)}
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4 flex-1">
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      defaultValue={selectedPlayerProfile.name}
+                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">
+                      Jersey Number (Real-Time Validation)
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedPlayerProfile.jerseyNumber}
+                      onChange={(e) => handleJerseyChange(e.target.value)}
+                      className={`w-full text-xs p-2.5 rounded-xl border ${
+                        jerseyValidationWarning ? "border-rose-500 bg-rose-50/30" : "border-gray-300"
+                      }`}
+                    />
+                    {jerseyValidationWarning && (
+                      <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{jerseyValidationWarning}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Batting Style</label>
+                      <select
+                        defaultValue={selectedPlayerProfile.battingStyle}
+                        className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white"
+                      >
+                        <option>Right-hand bat</option>
+                        <option>Left-hand bat</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Kit T-Shirt</label>
+                      <select
+                        defaultValue={selectedPlayerProfile.tshirtSize}
+                        className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white"
+                      >
+                        <option>M</option>
+                        <option>L</option>
+                        <option>XL</option>
+                        <option>XXL</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Granular Roles Checkboxes (SEC-001 Compliant) */}
+                  <div className="pt-2 border-t border-gray-200">
+                    <label className="font-bold text-gray-800 uppercase tracking-wider text-[11px] block mb-2">
+                      Granular Capability Permissions:
+                    </label>
+                    <div className="space-y-2">
+                      {[
+                        { role: "matchAdmin", label: "Match Admin (Fixtures, Squads, Pitch Cash)" },
+                        { role: "financeAdmin", label: "Finance Admin (Accounting, Debtor Ledger)" },
+                        { role: "studioAdmin", label: "Studio Admin (Nets Passes, Extensions)" },
+                        { role: "isDesigner", label: "Designer (Social Canvas Graphics)" }
+                      ].map((item) => {
+                        const hasRole = selectedPlayerProfile.roles.includes(item.role);
+                        return (
+                          <label key={item.role} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              defaultChecked={hasRole}
+                              className="rounded text-[#D51F43] focus:ring-[#D51F43]"
+                            />
+                            <span className="text-xs font-semibold text-gray-700">{item.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border-t border-gray-200 bg-gray-50">
+                  <button
+                    onClick={() => {
+                      if (jerseyValidationWarning) {
+                        window.alert("Cannot save profile while jersey validation error exists!");
+                        return;
+                      }
+                      window.alert("Player profile and permissions updated successfully!");
+                      setSelectedPlayerProfile(null);
+                    }}
+                    className="w-full min-h-[44px] bg-[#A30F2D] hover:bg-[#D51F43] text-white font-bold rounded-xl"
+                  >
+                    Save Changes & Update Claims
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* DUPLICATE PLAYER MERGE MODAL (Admin Roster IDT-001)                       */}
+          {/* ========================================================================= */}
+          {mergeModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <GitMerge className="w-4 h-4 text-amber-300" />
+                    <h3 className="text-sm font-black uppercase">Merge Duplicate Players</h3>
+                  </div>
+                  <button onClick={() => setMergeModalOpen(false)} className="text-white/80 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
+                    <span className="font-bold">IDT-001 Safeguard:</span> Merging reparents all matches, scorecards, and payments from the duplicate player to the primary player, and updates <code className="font-mono bg-white px-1 rounded">appUsers.playerId</code>.
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Source Duplicate Player (To be disabled)</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Ashutosh D (Ghost Profile - No KAV-ID)</option>
+                      <option>Vikram S (Unverified)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Target Primary Player (Preserved Record)</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Ashutosh Dixit (KAV-007) - Authoritative</option>
+                      <option>Vikram Sharma (KAV-001)</option>
+                    </select>
+                  </div>
+
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-700 space-y-1 text-[11px]">
+                    <div className="font-bold text-[#171C26]">Dry-Run Summary:</div>
+                    <div>• 14 Matches will be reparented</div>
+                    <div>• 8 Payment records will be reparented</div>
+                    <div>• 1 Firebase User link updated to KAV-007</div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        window.alert("Player merger completed successfully! All relational references reparented without data loss.");
+                        setMergeModalOpen(false);
+                      }}
+                      className="w-full min-h-[44px] bg-[#A30F2D] hover:bg-[#D51F43] text-white font-bold rounded-xl"
+                    >
+                      Execute Relational Merge
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CREATE MATCH MODAL */}
           {createMatchModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
               <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
@@ -1379,7 +2028,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        alert("Match scheduled successfully! Added to upcoming fixtures.");
+                        window.alert("Match scheduled successfully! Added to upcoming fixtures.");
                         setCreateMatchModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
@@ -1392,9 +2041,7 @@ export default function PlayerHomePrototype() {
             </div>
           )}
 
-          {/* ========================================================================= */}
-          {/* RECORD CASH MODAL (Admin Pitch-Side Action Preview)                       */}
-          {/* ========================================================================= */}
+          {/* RECORD CASH MODAL */}
           {recordCashModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
@@ -1430,7 +2077,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        alert("Cash payment of ₹500 recorded and receipt generated!");
+                        window.alert("Cash payment of ₹500 recorded and receipt generated!");
                         setRecordCashModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl"
@@ -1661,7 +2308,7 @@ export default function PlayerHomePrototype() {
 
                   <div className="pt-3 text-center">
                     <button
-                      onClick={() => alert("Simulating receipt download PDF...")}
+                      onClick={() => window.alert("Simulating receipt download PDF...")}
                       className="min-h-[44px] w-full bg-[#171C26] hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-1.5"
                     >
                       <Download className="w-4 h-4" />
