@@ -52,9 +52,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 0 — Discovery & Verification
+### Historical Legacy Phase 0 — Discovery & Verification (Pre-Audit Claude Track)
 
-### Deliverables
+#### Deliverables
 
 | # | Deliverable | File | Status |
 |---|------------|------|--------|
@@ -92,9 +92,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 1 — Critical Security & Financial Fixes
+### Historical Legacy Phase 1 — Critical Security & Financial Fixes (Pre-Audit Claude Track)
 
-### Tasks
+#### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
@@ -111,9 +111,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 2 — Data Integrity & Schema Cleanup
+### Historical Legacy Phase 2 — Data Integrity & Schema Cleanup (Pre-Audit Claude Track)
 
-### Tasks
+#### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
@@ -127,9 +127,11 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 3 — Identity Consolidation
+### Historical Legacy Phase 3 — Identity Consolidation (Pre-Audit Claude Track — Superseded by Active Master Plan)
 
-### Tasks
+> **Historical Note:** The tasks below (3.1–3.5) represent early pre-audit identity sync experiments performed under the previous agent's track. They do not represent the authoritative Phase 3 (Product Rationalisation & UX Discovery, signed off at commit `91811ed`) nor the planned Phase 9 (Roster, Identity & Approval Workflows).
+
+#### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
@@ -149,9 +151,11 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 4 — Component Decomposition
+### Historical Legacy Phase 4 — Component Decomposition (Pre-Audit Claude Track — Superseded by Active Master Plan)
 
-### Tasks
+> **Historical Note:** The tasks below (4.1–4.5) represent early code refactoring performed under the previous agent's track. They do not represent the authoritative Phase 4 (UX Blueprint, High-Fidelity Design & Prototypes) which delivered the complete prototype at `/prototype`.
+
+#### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
@@ -170,9 +174,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 5 — Navigation Rationalisation
+### Historical Legacy Phase 5 — Navigation Rationalisation (Pre-Audit Claude Track — Superseded by D-09/D-10)
 
-### Tasks
+#### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
@@ -201,9 +205,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 6 — UI/UX Redesign
+### Historical Legacy Phase 6 — UI/UX Redesign (Pre-Audit Claude Track)
 
-### Tasks
+#### Tasks
 
 | # | Task | File(s) | Complexity | Status |
 |---|------|---------|-----------|--------|
@@ -232,9 +236,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 7 — Financial Logic Overhaul
+### Historical Legacy Phase 7 — Financial Logic Overhaul (Pre-Audit Claude Track)
 
-### Audit Findings
+#### Audit Findings
 
 | Finding | Severity | Description | Status |
 |---------|----------|-------------|--------|
@@ -269,9 +273,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 8 — Workflow Simplification
+### Historical Legacy Phase 8 — Workflow Simplification (Pre-Audit Claude Track)
 
-### Audit Findings
+#### Audit Findings
 
 | Finding | Severity | Description | Status |
 |---------|----------|-------------|--------|
@@ -302,9 +306,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 9 — Studio & Shop Enhancement
+### Historical Legacy Phase 9 — Studio & Shop Enhancement (Pre-Audit Claude Track)
 
-### Audit Findings
+#### Audit Findings
 
 | ID | Severity | Finding | Location |
 |----|----------|---------|----------|
@@ -361,9 +365,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 10 — Testing & Quality Infrastructure
+### Historical Legacy Phase 10 — Testing & Quality Infrastructure (Pre-Audit Claude Track)
 
-### Task Breakdown
+#### Task Breakdown
 
 | Task | Description | Files | Status |
 |------|-------------|-------|--------|
@@ -430,9 +434,9 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Phase 11 — Performance & Optimization
+### Historical Legacy Phase 11 — Performance & Optimization (Pre-Audit Claude Track)
 
-### Task Breakdown
+#### Task Breakdown
 
 | Task | Description | Status |
 |------|-------------|--------|
@@ -492,11 +496,11 @@ The table below reflects the active, owner-approved remediation master plan trac
 
 ---
 
-## Non-Negotiable Constraints (Carry Forward)
+## Non-Negotiable Constraints (Carry Forward per AGENTS.md)
 
 1. Firebase Authentication — PRESERVE (do not introduce Cognito or alternative auth)
 2. Razorpay — PRESERVE (do not change payment gateway)
-3. Claude Code — SOLE implementation agent
-4. Antigravity — Read-only QA verification only
+3. Gemini in Antigravity — Implementation agent (owner-approved transition from Claude Code)
+4. Independent QA — Separate read-only verification session / Playwright test harness
 5. No data migrations without explicit approval
 6. No deployments without explicit approval

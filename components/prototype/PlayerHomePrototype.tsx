@@ -711,8 +711,17 @@ export default function PlayerHomePrototype() {
   // Device Frame Toggle: 'responsive' | 'mobile' | 'desktop'
   const [deviceFrame, setDeviceFrame] = useState<"responsive" | "mobile" | "desktop">("responsive");
   
-  // Persona Toggle: 'player' | 'admin'
-  const [persona, setPersona] = useState<"player" | "admin">("player");
+  // Simulated RBAC Role for Prototype Inspection Harness (Preview Only)
+  // Granular roles supported: 'superAdmin' | 'clubAdmin' | 'matchAdmin' | 'financeAdmin' | 'studioAdmin' | 'isDesigner' | 'player'
+  const [simulatedRole, setSimulatedRole] = useState<
+    "superAdmin" | "clubAdmin" | "matchAdmin" | "financeAdmin" | "studioAdmin" | "isDesigner" | "player"
+  >("superAdmin");
+
+  // In accordance with Decision D-10:
+  // Standard Player View is the default experience for all club members.
+  // An authorized administrator has an entry point into the Admin Console to access operational command hubs.
+  const isAuthorizedAdmin = simulatedRole !== "player";
+  const [isAdminConsoleOpen, setIsAdminConsoleOpen] = useState(false);
 
   // Navigation & View States
   const [activeTab, setActiveTab] = useState<"home" | "matches" | "payments" | "performance" | "club">("home");
@@ -826,97 +835,86 @@ export default function PlayerHomePrototype() {
     return true;
   });
 
-  // Focus restoration & modal trap
-  const lastActiveElementRef = useRef<HTMLElement | null>(null);
+  // Instance-aware modal dialog management & focus restoration
+  interface DialogInstance {
+    id: string;
+    triggerElement: HTMLElement | null;
+    close: () => void;
+  }
 
-  const isAnyModalOpen = Boolean(
-    paymentModalOpen ||
-    selectedMatch ||
-    selectedReceipt ||
-    createMatchModalOpen ||
-    recordCashModalOpen ||
-    mergeModalOpen ||
-    adHocFeeModalOpen ||
-    selectedAuditTx ||
-    bookSlotModalOpen ||
-    shopItemOrderModal ||
-    selectedPlayerProfile ||
-    adminMatchSquadDrawer ||
-    notificationsOpen ||
-    designStudioModal
-  );
+  const dialogStackRef = useRef<DialogInstance[]>([]);
+  const prevOpenMapRef = useRef<Record<string, boolean>>({});
 
-  const prevIsAnyModalOpen = useRef(isAnyModalOpen);
+  const dialogConfigs = [
+    { id: "notifications-drawer", isOpen: notificationsOpen, close: () => setNotificationsOpen(false) },
+    { id: "admin-match-squad-drawer", isOpen: Boolean(adminMatchSquadDrawer), close: () => setAdminMatchSquadDrawer(null) },
+    { id: "player-profile-drawer", isOpen: Boolean(selectedPlayerProfile), close: () => setSelectedPlayerProfile(null) },
+    { id: "create-match-modal", isOpen: createMatchModalOpen, close: () => setCreateMatchModalOpen(false) },
+    { id: "record-cash-modal", isOpen: recordCashModalOpen, close: () => setRecordCashModalOpen(false) },
+    { id: "match-details-drawer", isOpen: Boolean(selectedMatch), close: () => setSelectedMatch(null) },
+    { id: "receipt-modal", isOpen: Boolean(selectedReceipt), close: () => setSelectedReceipt(null) },
+    { id: "merge-player-modal", isOpen: mergeModalOpen, close: () => setMergeModalOpen(false) },
+    { id: "adhoc-fee-modal", isOpen: adHocFeeModalOpen, close: () => setAdHocFeeModalOpen(false) },
+    { id: "audit-tx-modal", isOpen: Boolean(selectedAuditTx), close: () => setSelectedAuditTx(null) },
+    { id: "book-slot-modal", isOpen: bookSlotModalOpen, close: () => setBookSlotModalOpen(false) },
+    { id: "payment-modal", isOpen: paymentModalOpen, close: () => setPaymentModalOpen(false) },
+    { id: "shop-order-modal", isOpen: Boolean(shopItemOrderModal), close: () => setShopItemOrderModal(null) },
+  ];
 
   useEffect(() => {
-    if (isAnyModalOpen && !prevIsAnyModalOpen.current) {
-      lastActiveElementRef.current = document.activeElement as HTMLElement;
-      // Focus first focusable element inside the modal
-      requestAnimationFrame(() => {
-        const dialog = document.querySelector('div[role="dialog"]');
-        if (dialog) {
-          const focusable = dialog.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-          );
-          if (focusable.length > 0) {
-            focusable[0].focus();
+    dialogConfigs.forEach((cfg) => {
+      const wasOpen = Boolean(prevOpenMapRef.current[cfg.id]);
+      const isNowOpen = Boolean(cfg.isOpen);
+
+      if (isNowOpen && !wasOpen) {
+        // Modal instance just opened: record opener trigger and push to stack
+        const trigger = (document.activeElement as HTMLElement) || null;
+        dialogStackRef.current.push({
+          id: cfg.id,
+          triggerElement: trigger,
+          close: cfg.close,
+        });
+
+        // Focus first visible focusable element inside this specific dialog instance
+        requestAnimationFrame(() => {
+          const dialogEl = document.querySelector(`div[role="dialog"][data-dialog-id="${cfg.id}"]`) as HTMLElement;
+          if (dialogEl) {
+            const focusable = Array.from(dialogEl.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+            )).filter((el) => {
+              const style = window.getComputedStyle(el);
+              return style.display !== "none" && style.visibility !== "hidden" && (el.offsetParent !== null || el.getBoundingClientRect().width > 0);
+            });
+
+            if (focusable.length > 0) {
+              focusable[0].focus();
+            } else {
+              dialogEl.focus();
+            }
           }
-        }
-      });
-    } else if (!isAnyModalOpen && prevIsAnyModalOpen.current) {
-      // Modal just closed: restore focus to trigger
-      if (lastActiveElementRef.current && typeof lastActiveElementRef.current.focus === "function") {
-        lastActiveElementRef.current.focus();
-      }
-    }
-    prevIsAnyModalOpen.current = isAnyModalOpen;
-  }, [isAnyModalOpen]);
-
-  // Keyboard Accessibility: Escape key dismissal & Modal Tab Focus Containment
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (paymentModalOpen) setPaymentModalOpen(false);
-        else if (selectedMatch) setSelectedMatch(null);
-        else if (selectedReceipt) setSelectedReceipt(null);
-        else if (createMatchModalOpen) setCreateMatchModalOpen(false);
-        else if (recordCashModalOpen) setRecordCashModalOpen(false);
-        else if (mergeModalOpen) setMergeModalOpen(false);
-        else if (adHocFeeModalOpen) setAdHocFeeModalOpen(false);
-        else if (selectedAuditTx) setSelectedAuditTx(null);
-        else if (bookSlotModalOpen) setBookSlotModalOpen(false);
-        else if (shopItemOrderModal) setShopItemOrderModal(null);
-        else if (selectedPlayerProfile) setSelectedPlayerProfile(null);
-        else if (adminMatchSquadDrawer) setAdminMatchSquadDrawer(null);
-        else if (notificationsOpen) setNotificationsOpen(false);
-        else if (designStudioModal) setDesignStudioModal(false);
-        else if (simulationToast) setSimulationToast(null);
-      } else if (e.key === "Tab") {
-        const dialog = document.querySelector('div[role="dialog"]');
-        if (dialog) {
-          const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-          )).filter((el) => el.offsetParent !== null || el.getBoundingClientRect().width > 0);
-
-          if (focusable.length > 0) {
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (e.shiftKey && document.activeElement === first) {
-              e.preventDefault();
-              last.focus();
-            } else if (!e.shiftKey && document.activeElement === last) {
-              e.preventDefault();
-              first.focus();
-            } else if (!dialog.contains(document.activeElement)) {
-              e.preventDefault();
-              first.focus();
+        });
+      } else if (!isNowOpen && wasOpen) {
+        // Modal instance just closed: remove from stack and restore focus
+        const idx = dialogStackRef.current.findIndex((d) => d.id === cfg.id);
+        if (idx !== -1) {
+          const [removed] = dialogStackRef.current.splice(idx, 1);
+          if (removed.triggerElement && typeof removed.triggerElement.focus === "function") {
+            removed.triggerElement.focus();
+          } else {
+            const remainingTop = dialogStackRef.current[dialogStackRef.current.length - 1];
+            if (remainingTop) {
+              const remainingEl = document.querySelector(`div[role="dialog"][data-dialog-id="${remainingTop.id}"]`) as HTMLElement;
+              if (remainingEl) {
+                const focusable = remainingEl.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+                if (focusable.length > 0) focusable[0].focus();
+              }
             }
           }
         }
       }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+
+      prevOpenMapRef.current[cfg.id] = isNowOpen;
+    });
   }, [
     paymentModalOpen,
     selectedMatch,
@@ -931,9 +929,53 @@ export default function PlayerHomePrototype() {
     selectedPlayerProfile,
     adminMatchSquadDrawer,
     notificationsOpen,
-    designStudioModal,
-    simulationToast,
   ]);
+
+  // Keyboard Accessibility: Escape key dismissal & Modal Tab Focus Containment on topmost dialog
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const stack = dialogStackRef.current;
+      const topDialog = stack[stack.length - 1];
+
+      if (e.key === "Escape") {
+        if (topDialog) {
+          e.preventDefault();
+          topDialog.close();
+        } else if (simulationToast) {
+          setSimulationToast(null);
+        }
+      } else if (e.key === "Tab") {
+        if (topDialog) {
+          const dialogEl = document.querySelector(`div[role="dialog"][data-dialog-id="${topDialog.id}"]`) as HTMLElement;
+          if (dialogEl) {
+            const focusable = Array.from(dialogEl.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+            )).filter((el) => {
+              const style = window.getComputedStyle(el);
+              return style.display !== "none" && style.visibility !== "hidden" && (el.offsetParent !== null || el.getBoundingClientRect().width > 0);
+            });
+
+            if (focusable.length > 0) {
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+              } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+              } else if (!dialogEl.contains(document.activeElement)) {
+                e.preventDefault();
+                first.focus();
+              }
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [simulationToast]);
 
   // Toggle Like on feed
   const toggleLike = (postId: string) => {
@@ -1091,39 +1133,43 @@ export default function PlayerHomePrototype() {
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] text-[#171C26] font-sans">
-      {/* Top Prototype Control Bar */}
+      {/* Top Prototype Inspection Bar (Harness Only) */}
       <div className="bg-[#171C26] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-gray-800 sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#A30F2D] text-white font-bold text-[10px] uppercase tracking-wider">
-            Prototype Preview
+            Prototype Inspector
           </span>
-          <span className="font-semibold text-gray-200">Phase 4: Complete UX Blueprint & Navigable Prototypes (Remediated)</span>
+          <span className="font-semibold text-gray-200 hidden sm:inline">
+            Phase 4: Unified Player Experience & Authorised Admin Console
+          </span>
         </div>
 
-        {/* Viewport Frame Mode Controls & Authorised Admin Console Entry */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Navigation Model: Player View as Default with Authorised Admin Console Entry */}
-          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700">
-            <button
-              onClick={() => setPersona("player")}
-              className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                persona === "player" ? "bg-[#D51F43] text-white shadow-xs" : "text-gray-300 hover:text-white"
-              }`}
-              title="Player Experience (Default for all club members, including administrators)"
+        {/* Viewport Frame Mode Controls & Role Simulation */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Simulated RBAC Role Selector (Harness Only) */}
+          <div className="flex items-center gap-1.5 bg-gray-800/90 px-2.5 py-1 rounded-xl border border-gray-700 text-xs">
+            <span className="text-gray-400 font-medium hidden md:inline">Inspect Role:</span>
+            <select
+              value={simulatedRole}
+              onChange={(e) => {
+                const r = e.target.value as any;
+                setSimulatedRole(r);
+                if (r === "player") {
+                  setIsAdminConsoleOpen(false);
+                }
+              }}
+              className="bg-gray-900 text-white px-2 py-1 rounded-lg border border-gray-600 font-bold min-h-[44px]"
+              title="Simulate role for prototype inspection only (mocked access; does not demonstrate production RBAC enforcement)"
+              aria-label="Simulate role for prototype inspection"
             >
-              <User className="w-4 h-4" />
-              <span>Player View</span>
-            </button>
-            <button
-              onClick={() => setPersona("admin")}
-              className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                persona === "admin" ? "bg-[#A30F2D] text-white shadow-xs" : "text-gray-300 hover:text-white"
-              }`}
-              title="Authorised Admin Console (Restricted to club administrators)"
-            >
-              <Shield className="w-4 h-4" />
-              <span>Admin Console</span>
-            </button>
+              <option value="superAdmin">Super Admin (Authorised Admin Console)</option>
+              <option value="clubAdmin">Club Admin (Authorised Admin Console)</option>
+              <option value="matchAdmin">Match Admin (Authorised Admin Console)</option>
+              <option value="financeAdmin">Finance Admin (Authorised Admin Console)</option>
+              <option value="studioAdmin">Studio Admin (Authorised Admin Console)</option>
+              <option value="isDesigner">Designer (Authorised Admin Console)</option>
+              <option value="player">Standard Member (No Admin Console Entry)</option>
+            </select>
           </div>
 
           {/* Viewport Device Frames */}
@@ -1210,21 +1256,22 @@ export default function PlayerHomePrototype() {
             {/* Right: Actions */}
             <div className="flex items-center gap-1.5 shrink-0">
               {/* Authorised Admin Console Entry (Strictly gated to authorized administrators) */}
-              {MOCK_CURRENT_PLAYER.isAdmin && (
+              {isAuthorizedAdmin && (
                 <button
-                  onClick={() => setPersona(persona === "player" ? "admin" : "player")}
+                  onClick={() => setIsAdminConsoleOpen(!isAdminConsoleOpen)}
                   className={`min-h-[44px] px-3.5 rounded-xl border transition flex items-center gap-1.5 text-xs font-bold ${
-                    persona === "admin"
+                    isAdminConsoleOpen
                       ? "bg-[#A30F2D] text-white border-[#A30F2D] shadow-xs"
                       : "bg-[#FCE8ED]/50 hover:bg-[#FCE8ED] text-[#A30F2D] border-[#A30F2D]/20"
                   }`}
-                  title={persona === "admin" ? "Return to Player View" : "Enter Authorised Admin Console"}
+                  title={isAdminConsoleOpen ? "Return to Player View" : "Enter Authorised Admin Console"}
+                  aria-label={isAdminConsoleOpen ? "Return to Player View" : "Admin Console"}
                 >
                   <Shield className="w-4 h-4" />
                   <span className="hidden sm:inline">
-                    {persona === "admin" ? "Return to Player View" : "Admin Console"}
+                    {isAdminConsoleOpen ? "Return to Player View" : "Admin Console"}
                   </span>
-                  <span className="sm:hidden">{persona === "admin" ? "To Player" : "Admin Console"}</span>
+                  <span className="sm:hidden">{isAdminConsoleOpen ? "To Player" : "Admin Console"}</span>
                 </button>
               )}
 
@@ -1241,7 +1288,7 @@ export default function PlayerHomePrototype() {
               {/* Profile Avatar */}
               <button
                 onClick={() => {
-                  setPersona("player");
+                  setIsAdminConsoleOpen(false);
                   setActiveTab("club");
                 }}
                 className="min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -1256,8 +1303,8 @@ export default function PlayerHomePrototype() {
             </div>
           </header>
 
-          {/* ADMIN CONTEXT BANNER & HUB SELECTOR (Rendered only when persona === "admin") */}
-          {persona === "admin" && (
+          {/* ADMIN CONTEXT BANNER & HUB SELECTOR (Rendered only when isAdminConsoleOpen) */}
+          {isAdminConsoleOpen && (
             <div className="bg-[#A30F2D] text-white shadow-md z-30">
               <div className="px-4 py-2.5 flex items-center justify-between border-b border-white/10 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
@@ -1271,8 +1318,9 @@ export default function PlayerHomePrototype() {
                 </div>
 
                 <button
-                  onClick={() => setPersona("player")}
+                  onClick={() => setIsAdminConsoleOpen(false)}
                   className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 transition shrink-0"
+                  aria-label="Return to Player View"
                 >
                   <span>Return to Player View</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -1323,20 +1371,20 @@ export default function PlayerHomePrototype() {
                 {/* Brand / Mode badge */}
                 <div className="flex items-center gap-2.5 px-2">
                   <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#A30F2D] to-[#D51F43] flex items-center justify-center text-white font-black text-xs shadow-xs">
-                    {persona === "player" ? "KP" : "OPS"}
+                    {!isAdminConsoleOpen ? "KP" : "OPS"}
                   </div>
                   <div>
                     <h2 className="text-xs font-black uppercase text-[#171C26]">
-                      {persona === "player" ? "KAvach Player" : "Admin Operations"}
+                      {!isAdminConsoleOpen ? "KAvach Player" : "Admin Operations"}
                     </h2>
                     <span className="text-[10px] text-gray-500 font-medium">
-                      {persona === "player" ? "Squad Member" : MOCK_CURRENT_PLAYER.adminRole}
+                      {!isAdminConsoleOpen ? "Squad Member" : MOCK_CURRENT_PLAYER.adminRole}
                     </span>
                   </div>
                 </div>
 
                 {/* Navigation Links */}
-                {persona === "player" ? (
+                {!isAdminConsoleOpen ? (
                   <nav className="space-y-1" aria-label="Desktop Player Navigation">
                     {[
                       { key: "home", label: "Home Feed", icon: Calendar },
@@ -1397,17 +1445,20 @@ export default function PlayerHomePrototype() {
 
               {/* Bottom Card / Mode Switcher */}
               <div className="pt-4 border-t border-gray-100 space-y-3">
-                <button
-                  onClick={() => setPersona(persona === "player" ? "admin" : "player")}
-                  className={`w-full min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
-                    persona === "player"
-                      ? "bg-[#FCE8ED] text-[#A30F2D] hover:bg-[#FCE8ED]/80"
-                      : "bg-gray-900 text-white hover:bg-black"
-                  }`}
-                >
-                  <Shield className="w-4 h-4" />
-                  <span>{persona === "player" ? "Admin Console" : "Return to Player View"}</span>
-                </button>
+                {isAuthorizedAdmin && (
+                  <button
+                    onClick={() => setIsAdminConsoleOpen(!isAdminConsoleOpen)}
+                    className={`w-full min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
+                      !isAdminConsoleOpen
+                        ? "bg-[#FCE8ED] text-[#A30F2D] hover:bg-[#FCE8ED]/80"
+                        : "bg-gray-900 text-white hover:bg-black"
+                    }`}
+                    aria-label={!isAdminConsoleOpen ? "Admin Console" : "Return to Player View"}
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span>{!isAdminConsoleOpen ? "Admin Console" : "Return to Player View"}</span>
+                  </button>
+                )}
 
                 <div className="flex items-center gap-2.5 p-2 rounded-xl bg-gray-50 border border-gray-100">
                   <img
@@ -1429,7 +1480,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 1: OVERVIEW COMMAND HUB                                         */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "overview" && (
+            {isAdminConsoleOpen && adminHub === "overview" && (
               <div className="space-y-6">
                 {/* Quick Actions */}
                 <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-wrap items-center gap-2.5">
@@ -1625,7 +1676,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 2: MATCH CENTRE (Stage 4 Core Deliverable)                      */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "matches" && (
+            {isAdminConsoleOpen && adminHub === "matches" && (
               <div className="space-y-5">
                 {/* Hub Header & Actions */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs">
@@ -1781,7 +1832,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 3: PLAYER ROSTER (Stage 4 Core Deliverable)                     */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "people" && (
+            {isAdminConsoleOpen && adminHub === "people" && (
               <div className="space-y-5">
                 {/* Header & Filter Controls */}
                 <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs space-y-3">
@@ -1929,7 +1980,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 4: FINANCE & DUES COMMAND HUB                                   */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "finance" && (
+            {isAdminConsoleOpen && adminHub === "finance" && (
               <div className="space-y-6">
                 {/* Header & Quick Action Buttons */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2101,7 +2152,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 5: STUDIO & NETS COMMAND HUB                                    */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "studio" && (
+            {isAdminConsoleOpen && adminHub === "studio" && (
               <div className="space-y-6">
                 {/* Header & Quick Action Buttons */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2271,7 +2322,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 6: CLUB OPERATIONS COMMAND HUB                                  */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "design" && (
+            {isAdminConsoleOpen && adminHub === "design" && (
               <div className="space-y-6">
                 {/* Header */}
                 <div>
@@ -2583,7 +2634,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* ADMIN HUB 7: SETTINGS & RBAC COMMAND HUB                                  */}
             {/* ========================================================================= */}
-            {persona === "admin" && adminHub === "settings" && (
+            {isAdminConsoleOpen && adminHub === "settings" && (
               <div className="space-y-6">
                 {/* Header */}
                 <div>
@@ -2711,7 +2762,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* PLAYER VIEW MODE (HOME, MATCHES, PAYMENTS)                                */}
             {/* ========================================================================= */}
-            {persona === "player" && activeTab === "home" && (
+            {!isAdminConsoleOpen && activeTab === "home" && (
               <div className="space-y-6">
                 {/* Hero Next Match */}
                 <section className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
@@ -2744,7 +2795,7 @@ export default function PlayerHomePrototype() {
                             href={MOCK_MATCHES[0].venueDirectionsUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-[#D51F43] font-semibold hover:underline"
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center gap-1 text-[#D51F43] font-semibold hover:underline px-1"
                           >
                             <MapPin className="w-3.5 h-3.5" />
                             {MOCK_MATCHES[0].venue}
@@ -2935,7 +2986,7 @@ export default function PlayerHomePrototype() {
               </div>
             )}
 
-            {persona === "player" && activeTab === "matches" && (
+            {!isAdminConsoleOpen && activeTab === "matches" && (
               /* MATCHES TAB */
               <div className="space-y-5">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#E5E7EB] shadow-xs">
@@ -3071,7 +3122,7 @@ export default function PlayerHomePrototype() {
               </div>
             )}
 
-            {persona === "player" && activeTab === "payments" && (
+            {!isAdminConsoleOpen && activeTab === "payments" && (
               /* PAYMENTS TAB */
               <div className="space-y-6">
                 <div className="bg-gradient-to-br from-[#FCE8ED] to-white rounded-2xl border border-[#D51F43]/20 p-5 shadow-xs">
@@ -3196,7 +3247,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* PLAYER VIEW: PERFORMANCE & STATISTICS TAB                                 */}
             {/* ========================================================================= */}
-            {persona === "player" && activeTab === "performance" && (
+            {!isAdminConsoleOpen && activeTab === "performance" && (
               <div className="space-y-6">
                 {/* Header & Sub-tab switcher */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -3550,7 +3601,7 @@ export default function PlayerHomePrototype() {
             {/* ========================================================================= */}
             {/* PLAYER VIEW: CLUB EXPERIENCE & MEMBER SERVICES TAB                        */}
             {/* ========================================================================= */}
-            {persona === "player" && activeTab === "club" && (
+            {!isAdminConsoleOpen && activeTab === "club" && (
               <div className="space-y-6">
                 {/* Header & Sub-tab switcher */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -3847,7 +3898,7 @@ export default function PlayerHomePrototype() {
             </main>
 
             {/* 3. DESKTOP RIGHT CONTEXTUAL PANEL (Visible on Desktop in Player View) */}
-            {persona === "player" && (
+            {!isAdminConsoleOpen && (
               <aside
                 className={`w-80 bg-white border-l border-[#E5E7EB] shrink-0 p-5 space-y-5 overflow-y-auto hidden ${
                   deviceFrame === "desktop" ? "!flex flex-col" : deviceFrame === "responsive" ? "xl:flex flex-col" : ""
@@ -3911,7 +3962,7 @@ export default function PlayerHomePrototype() {
           </div>
 
           {/* 2. PLAYER MOBILE BOTTOM NAVIGATION (Hidden in Admin Mode & on Desktop) */}
-          {persona === "player" && (
+          {!isAdminConsoleOpen && (
             <nav
               role="navigation"
               aria-label="Player Primary Navigation"
@@ -3989,6 +4040,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs"
                 role="dialog"
+                data-dialog-id="admin-match-squad-drawer"
                 aria-modal="true"
                 aria-labelledby="squad-drawer-title"
               >
@@ -4087,6 +4139,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-y-auto text-xs"
                 role="dialog"
+                data-dialog-id="player-profile-drawer"
                 aria-modal="true"
                 aria-label="Edit Player Profile & Roles"
               >
@@ -4216,6 +4269,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs max-h-[90vh] flex flex-col"
                 role="dialog"
+                data-dialog-id="merge-player-modal"
                 aria-modal="true"
                 aria-labelledby="merge-modal-title"
               >
@@ -4283,6 +4337,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs max-h-[90vh] flex flex-col"
                 role="dialog"
+                data-dialog-id="create-match-modal"
                 aria-modal="true"
                 aria-labelledby="create-match-title"
               >
@@ -4360,6 +4415,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs max-h-[90vh] flex flex-col"
                 role="dialog"
+                data-dialog-id="record-cash-modal"
                 aria-modal="true"
                 aria-labelledby="record-cash-title"
               >
@@ -4418,6 +4474,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto"
                 role="dialog"
+                data-dialog-id="match-details-drawer"
                 aria-modal="true"
                 aria-labelledby="match-details-title"
               >
@@ -4488,7 +4545,7 @@ export default function PlayerHomePrototype() {
                             href={selectedMatch.venueDirectionsUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-bold text-[#D51F43] flex items-center gap-1 hover:underline"
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center gap-1 font-bold text-[#D51F43] hover:underline px-1"
                           >
                             <MapPin className="w-3.5 h-3.5" />
                             {selectedMatch.venue}
@@ -4599,6 +4656,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
                 role="dialog"
+                data-dialog-id="receipt-modal"
                 aria-modal="true"
                 aria-labelledby="receipt-modal-title"
               >
@@ -4666,6 +4724,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-sm bg-white h-full shadow-2xl flex flex-col"
                 role="dialog"
+                data-dialog-id="notifications-drawer"
                 aria-modal="true"
                 aria-labelledby="notifications-drawer-title"
               >
@@ -4713,6 +4772,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
                 role="dialog"
+                data-dialog-id="adhoc-fee-modal"
                 aria-modal="true"
                 aria-labelledby="adhoc-fee-title"
               >
@@ -4790,6 +4850,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
                 role="dialog"
+                data-dialog-id="audit-tx-modal"
                 aria-modal="true"
                 aria-labelledby="audit-record-title"
               >
@@ -4860,6 +4921,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
                 role="dialog"
+                data-dialog-id="book-slot-modal"
                 aria-modal="true"
                 aria-labelledby="reserve-lane-title"
               >
@@ -4928,6 +4990,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col"
                 role="dialog"
+                data-dialog-id="payment-modal"
                 aria-modal="true"
                 aria-labelledby="checkout-modal-title"
               >
@@ -4991,6 +5054,7 @@ export default function PlayerHomePrototype() {
               <div
                 className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs"
                 role="dialog"
+                data-dialog-id="shop-order-modal"
                 aria-modal="true"
                 aria-labelledby="shop-item-modal-title"
               >

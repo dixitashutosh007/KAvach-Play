@@ -5,7 +5,7 @@
 **Phase:** Phase 4 — UX Blueprint, High-Fidelity Design & Prototypes  
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
-**Current Milestone Commit:** *Current working tree (reconciled)*  
+**Current Milestone Commit:** `94cc506c9ef44855b85b507f9a7e618988d7dd6e` (reconciled milestone commit; parent `4a74e5104be3d086051c6b99f8bcaab77a378e3b`)  
 **Authoritative References:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09, D-10), Phase 3 Architecture Sign-off (`91811ed`), Feature Traceability Matrix (`docs/implementation/REQUIREMENTS_TRACEABILITY.md`).  
 **Status:** Developer Verified — **Pending Independent QA Review & Owner Acceptance** (Not Self-Certified)
 
@@ -43,7 +43,7 @@ Rather than static mockups alone, Phase 4 delivers a **comprehensive, interactiv
 | `fed6936` | Remediation | Touch target audit, test coverage, and traceability distinctions |
 | `6b430fb` | Remediation | 44px touch targets, responsive assertions, and report reconciliation |
 | `bcfad69` | Config | Owner Super Admin custom claim and allowlist configuration |
-| *Current* | Closure | Reconcile navigation model, phase tracker, and modal focus containment |
+| `94cc506` | Closure | Reconcile D-10 unified model, instance-aware dialog focus, unrounded 44px targets |
 
 ### Deliverable Artifacts & Specification Files
 
@@ -101,13 +101,22 @@ The following capabilities are interactively demonstrated in the isolated sandbo
 ## 4. Unified Player Experience & Authorised Admin Console Entry
 
 **Reconciliation with Approved Product Architecture (D-10):**
-In accordance with `AGENTS.md` and Decision `D-10`, the platform does not employ a disconnected dual-persona system or global persona-switcher. Instead, club administrators retain their standard player experience first, with an authorised entry point into administrative functionality.
+In accordance with `AGENTS.md` and Decision `D-10`, the platform strictly eliminates the global player/admin persona-switching paradigm (`persona: "player" | "admin"` state, `setPersona()`, and segmented switcher). All authenticated users, including club administrators, experience the standard player view as their default application experience.
 
-In the prototype:
-1. **Clear Header Entry Point:** When an authorized administrator views the application, a prominent `Admin Console` action is available in the header and navigation controls. Clicking it transitions into administrative mode (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`).
-2. **Seamless Return to Player View:** When inside the Admin Console, a clear `Return to Player View` control is persistently available in the header, desktop command rail, and top preview bar, immediately returning the user to their standard player dashboard.
-3. **Synchronized Prototype Preview Bar:** For design inspection purposes, the sticky top preview bar provides a clear indicator: `Unified Player Experience with Authorised Admin Console Entry` with `[ 👤 Player View ]` and `[ 🛡️ Admin Console ]` pills, visually highlighting the current mode without fracturing identity or session data.
-4. **Granular RBAC Preserved:** Administrative capabilities remain partitioned across the 6 authoritative roles (Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin, Designer) with least-privilege scoping.
+Key architectural properties implemented:
+1. **Single Player Identity & Session:** The user always maintains their authoritative player identity (`MOCK_CURRENT_PLAYER`), player profile, and navigation context. Entering administrative areas does not swap the user identity or instantiate a separate session.
+2. **Authorised Admin Console Entry Point:** When an authorized administrator accesses the application, a prominent `Admin Console` action is provided in the application header and desktop navigation sidebar. Clicking this opens administrative operations (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`).
+3. **Persistent Return to Player View:** When inside the Admin Console, clear `Return to Player View` actions are provided in the application header, admin context banner, and desktop sidebar, immediately returning to the player dashboard while preserving player tab state.
+4. **Isolated Prototype Inspector Harness:** The prototype preview/inspection controls (role simulation dropdown and viewport toggle) are visually and structurally isolated within a separate sticky top harness labeled `Prototype Inspector`. It carries an unambiguous disclaimer:
+   > `*Note: Prototype inspection only. Mocked role simulation is client-side synthetic and does not demonstrate production server-side RBAC enforcement.`
+5. **Preservation of 6 Granular RBAC Roles:** In accordance with Decision `D-08` and `AGENTS.md`, all six granular administrative roles are strictly retained:
+   - `superAdmin` (Full administrative authority)
+   - `clubAdmin` (Roster management and announcements)
+   - `matchAdmin` (Fixture management, pitch attendance and cash collections)
+   - `financeAdmin` (Match fee accounting, ad-hoc fee levy, ledger audit)
+   - `studioAdmin` (Nets and studio lane bookings and memberships)
+   - `isDesigner` (Matchday canvas and social banner graphics generator)
+   - `player` (Standard member with least-privilege access)
 
 ---
 
@@ -116,12 +125,12 @@ In the prototype:
 ### 1. Developer Automated Test Suite vs. Independent QA Boundary
 In accordance with `AGENTS.md` and the governance principles of this project:
 - **Developer Automated Verification:** The test results documented below represent automated developer-executed regression and compliance suites (`tsc`, `lint`, `test:functional`, `build`, and Playwright end-to-end tests) verifying that all code compiles without errors, units pass cleanly, and interactive prototype behavior adheres to specifications across viewports.
-- **Independent QA Acceptance Boundary:** These internal developer verification results do not constitute self-certified acceptance or independent QA approval. Formal verification of running artifacts and staging behavior remains the duty of an independent read-only QA review session and the Product Owner.
+- **Independent QA Acceptance Boundary:** These internal developer verification results do not constitute self-certified acceptance or independent QA approval. Formal verification of running artifacts and staging behavior remains the duty of an independent read-only QA review session and the Product Owner. Phase 4 is explicitly submitted as **Pending Independent QA Review & Owner Acceptance**.
 
 ### 2. Automated Playwright Responsive & Capabilities Suite (`e2e/prototype-responsive.spec.ts`)
 Executed against both official Playwright projects:
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **13/13 passed** (17.0s, 0 failed, 0 skipped).
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **13/13 passed** (22.0s, 0 failed, 0 skipped).
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **13/13 passed** (16.0s, 0 failed, 0 skipped).
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **13/13 passed** (18.7s, 0 failed, 0 skipped).
 - **Combined Total:** **26/26 passed (0 failures, 0 skipped)**.
 
 Tests executed in each project across all 6 target viewports:
@@ -132,12 +141,12 @@ Tests executed in each project across all 6 target viewports:
 5. **Viewport 1280×800:** `renders at 1280x800 (1280x800) with valid layout, navigation, touch targets, and modals` — **PASS**
 6. **Viewport 1440×900:** `renders at 1440x900 (1440x900) with valid layout, navigation, touch targets, and modals` — **PASS**
 7. **Player Navigation:** `verifies all 5 player navigation destinations across tabs` (`Home`, `Matches`, `Payments`, `Performance`, `Club`) — **PASS**
-8. **Admin Command Hubs:** `verifies all 7 administrator command hubs and sub-tabs` (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`) plus sub-tabs (Grounds, Tournaments) — **PASS**
+8. **Admin Command Hubs:** `verifies all 7 administrator command hubs and sub-tabs` (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`) plus sub-tabs (Grounds, Tournaments) via authorized Admin Console entry — **PASS**
 9. **Drawers & Modals:** `verifies opening and closing major drawers and modals cleanly` (match details drawer, create match modal, record pitch cash modal, merge duplicate modal) — **PASS**
 10. **Mandatory Checkout Simulation:** `verifies mandatory checkout workflow, heading clarity, and simulation notification` (asserts visible entry point without conditionals, verifies `Payment Checkout — Prototype Simulation` heading, toast disclaimers, auto-dismiss) — **PASS**
 11. **Design Studio Generator:** `verifies interactive Design Studio generator and live SVG canvas` (template switching, POTM layout, high-res graphic download simulation) — **PASS**
 12. **Keyboard Accessibility & Focus:** `verifies keyboard navigation and focus visibility across primary player navigation` (focus ring on active control, Tab keyboard navigation) — **PASS**
-13. **Modal Focus Containment & Restoration:** `verifies modal focus containment, keyboard interaction, Escape-key dismissal, and focus restoration` (asserts focus trapped within `div[role="dialog"]` during Tab cycles, Escape key dismissal, and restoration of focus to the triggering element) — **PASS**
+13. **Instance-Aware Modal Focus Management & Restoration:** `verifies instance-aware modal focus containment, first/last element cycling, Escape dismissal, and nested dialog focus restoration` (asserts initial focus inside active dialog, first/last focus wrapping with Tab and Shift+Tab, Escape key LIFO dismissal, and focus restoration to the exact opener trigger button across single and nested dialogs e.g. Squad Drawer -> Record Cash Modal) — **PASS**
 
 Screenshots captured and stored under `docs/qa/screenshots/`:
 - `prototype-360x800.png`
@@ -168,20 +177,24 @@ Executed via `npm run build`:
 ## 6. Accessibility & Touch Target Standards
 
 The following accessibility, ergonomics, and touch target standards were audited and verified in `components/prototype/PlayerHomePrototype.tsx`:
-- **Strict 44×44px Touch Target Standard:** Enforced strict $\ge 44\text{px} \times 44\text{px}$ minimum clickable area across all interactive controls (`button`, `[role="button"]`, `input`, `select`), verified by Playwright:
+- **Strict 44×44px Touch Target Standard (Unrounded Assertion):** Enforced strict unrounded $\ge 44\text{px} \times 44\text{px}$ minimum clickable area across all interactive controls (`button`, `a[href]`, `[role="button"]`, `input`, `select`, `textarea`, `[tabindex="0"]`), directly verified by Playwright with zero rounding:
   - Mobile bottom navigation items (Home, Matches, Payments, Performance, Club): `min-h-[44px] min-w-[44px]`
   - Match details sub-tab navigation (Squad & Info, Scorecard, Fielding & Catches): `min-h-[44px] px-3.5`
   - Pitch attendance toggle buttons (Present, Late, Absent): `min-h-[44px] min-w-[76px]`
   - Pitch cash collection buttons: `min-h-[44px] min-w-[68px]`
+  - External venue map links: `min-h-[44px] min-w-[44px] inline-flex items-center px-1`
   - Feed post action buttons (Like, Comments, Share): `min-h-[44px] min-w-[44px] px-2`
   - Modal and slide-over close buttons: `min-h-[44px] min-w-[44px]`
   - Toast notification dismiss button: `min-h-[44px] min-w-[44px]`
   - All form `<input>` and `<select>` controls: `min-h-[44px]`
-- **Modal Focus Containment & Restoration:**
-  - Implemented keyboard focus trap inside all active dialogs/drawers (`div[role="dialog"]`), trapping `Tab` and `Shift+Tab` within the modal.
-  - Implemented focus restoration using `lastActiveElementRef` so that upon closing any modal or drawer, keyboard focus returns to the exact element that opened it.
-- **Dialog & Modal Standards:** All 13 modal dialogues and slide-over drawers include `role="dialog"`, `aria-modal="true"`, scrollable constraints (`max-h-[90vh] overflow-y-auto`), and prominent `min-h-[44px] min-w-[44px]` close buttons.
-- **Escape Key Listener:** Global `Escape` key event listener in `useEffect` immediately dismisses any active modal, slide-over drawer, or simulation toast.
+- **Instance-Aware Modal Focus Containment & Restoration:**
+  - Implemented an instance-aware dialog stack (`dialogStackRef`) tracking `{ id, triggerElement, close }` for all 13 modals and drawers.
+  - Automatically shifts initial focus to the first focusable element inside newly opened dialogs via `requestAnimationFrame`.
+  - Traps `Tab` and `Shift+Tab` strictly within the active topmost dialog (`topDialog`), cycling seamlessly between first and last focusable elements.
+  - Restores keyboard focus to the exact triggering element that launched the dialog upon closure.
+  - Safely handles nested dialogs (e.g., opening `Record Cash Modal` from within `Admin Match Squad Drawer`): pressing Escape or Close dismisses only the top modal and returns focus to the "Collect" trigger button inside the underlying drawer, leaving the underlying drawer open and interactive.
+- **Dialog & Modal Standards:** All 13 modal dialogues and slide-over drawers include unique `data-dialog-id`, `role="dialog"`, `aria-modal="true"`, scrollable constraints (`max-h-[90vh] overflow-y-auto`), and prominent `min-h-[44px] min-w-[44px]` close buttons.
+- **Escape Key Listener:** Global `Escape` key event listener in `useEffect` pops the topmost dialog from `dialogStackRef` in strict LIFO order.
 - **Justified Exceptions:** Non-interactive status badges (e.g. `UPCOMING`, `PLAYED`, `CONFIRMED`), decorative indicators, and table header labels remain compact by design because they are informational displays without click handlers.
 - **Accessible Names:** Explicit `aria-label` attributes on icon-only controls (e.g. `aria-label="Close Checkout"`, `aria-label="Close match details"`, `aria-label="Close modal"`).
 - **Visible Focus States:** Focusable elements include high-contrast focus rings (`focus:ring-2 focus:ring-[#D51F43]/40`).
