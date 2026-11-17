@@ -1872,7 +1872,7 @@ export function MatchPayments({
           contact: appUser?.mobile || mePlayer?.mobile || "",
         },
         theme: {
-          color: "#10b981", // Accent color
+          color: "#D51F43", // Primary action brand color
         },
         modal: {
           ondismiss: function () {

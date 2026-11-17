@@ -170,7 +170,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
           contact: appUser?.mobile || player?.mobile || "",
         },
         theme: {
-          color: "#10b981", // Accent color
+          color: "#D51F43", // Primary action brand color
         },
       };
 

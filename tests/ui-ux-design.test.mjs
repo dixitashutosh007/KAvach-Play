@@ -138,3 +138,28 @@ test("UX-P1-01: Admin experience eliminates dual mobile navigation bars and prov
     "Desktop sidebar must provide Return to Player View button",
   );
 });
+
+test("UX-P1-02: Enforce scarlet-led design tokens and eliminate hardcoded emerald shadows and dark themes", () => {
+  const financeCode = fs.readFileSync(path.resolve("components/FinanceTab.tsx"), "utf-8");
+  const matchesCode = fs.readFileSync(path.resolve("components/MatchesTab.tsx"), "utf-8");
+  const studioCode = fs.readFileSync(path.resolve("components/StudioTab.tsx"), "utf-8");
+  const policyCode = fs.readFileSync(path.resolve("app/policy/page.tsx"), "utf-8");
+  const legalCode = fs.readFileSync(path.resolve("app/legal/page.tsx"), "utf-8");
+
+  // Verify checkout modals use primary action color #D51F43
+  assert.ok(financeCode.includes('color: "#D51F43"'), "Finance Razorpay checkout must use #D51F43");
+  assert.ok(matchesCode.includes('color: "#D51F43"'), "Matches Razorpay checkout must use #D51F43");
+  assert.ok(studioCode.includes('color: "#D51F43"'), "Studio Razorpay checkout must use #D51F43");
+
+  // Verify hardcoded emerald glow shadows are eliminated
+  assert.equal(financeCode.includes("16,185,129"), false, "FinanceTab must not contain hardcoded emerald rgba shadows");
+
+  // Verify Policy and Legal pages use light background #F6F7F9 and scarlet brand #A30F2D
+  assert.equal(policyCode.includes("#022c22"), false, "Policy page must not contain dark green #022c22");
+  assert.ok(policyCode.includes("#F6F7F9"), "Policy page must use light background #F6F7F9");
+  assert.ok(policyCode.includes("#A30F2D"), "Policy page must use primary brand #A30F2D");
+
+  assert.equal(legalCode.includes("bg-black"), false, "Legal page must not use bg-black");
+  assert.ok(legalCode.includes("#F6F7F9"), "Legal page must use light background #F6F7F9");
+  assert.ok(legalCode.includes("#A30F2D"), "Legal page must use primary brand #A30F2D");
+});

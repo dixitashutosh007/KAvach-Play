@@ -430,7 +430,7 @@ export function PlayerFinanceView({
           contact: appUser?.mobile || mePlayer?.mobile || "",
         },
         theme: {
-          color: "#10b981", // Accent color
+          color: "#D51F43", // Primary action brand color
         },
       };
 
@@ -575,7 +575,7 @@ export function PlayerFinanceView({
           <button
             disabled={isProcessingPayment || selectedDues.length === 0}
             onClick={handlePay}
-            className={`px-6 py-2.5 rounded-lg font-bold text-sm shadow-[0_4px_12px_rgba(16,185,129,0.2)] transition flex items-center gap-2 ${selectedDues.length > 0 ? "bg-accent text-text-accent hover:bg-accent/90" : "bg-surface-hover text-text-primary/30 cursor-not-allowed"}`}
+            className={`px-6 py-2.5 rounded-lg font-bold text-sm shadow-[0_4px_12px_rgba(213,31,67,0.2)] transition flex items-center gap-2 ${selectedDues.length > 0 ? "bg-accent text-text-accent hover:bg-accent/90" : "bg-surface-hover text-text-primary/30 cursor-not-allowed"}`}
           >
             {isProcessingPayment ? "Processing..." : "Pay Now"}{" "}
             <ChevronRight className="w-4 h-4" />
@@ -1306,7 +1306,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
               onClick={() => setSubTab(tab as any)}
               className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 text-center cursor-pointer whitespace-nowrap ${
                 active
-                  ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
+                  ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(213,31,67,0.25)]"
                   : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
               }`}
             >

@@ -2,13 +2,13 @@ import Link from "next/link";
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-[#022c22] text-text-primary p-6 sm:p-12 font-sans overflow-y-auto">
-      <div className="max-w-3xl mx-auto bg-surface border border-border rounded-3xl p-8 sm:p-12 shadow-2xl backdrop-blur-xl">
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-[#10b981] mb-2 uppercase tracking-wide">
+    <div className="min-h-screen bg-[#F6F7F9] text-text-primary p-6 sm:p-12 font-sans overflow-y-auto">
+      <div className="max-w-3xl mx-auto bg-surface border border-border rounded-3xl p-8 sm:p-12 shadow-sm backdrop-blur-xl">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-[#A30F2D] mb-2 uppercase tracking-wide">
           Privacy Policy
         </h1>
         <p className="text-text-muted text-sm font-semibold uppercase tracking-widest mb-10 pb-4 border-b border-border">
-          Kavach Play
+          KAvach Play
         </p>
 
         <div className="space-y-8 text-sm leading-relaxed max-w-none">
@@ -16,8 +16,8 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-bold text-text-primary mb-3">
               1. Introduction
             </h2>
-            <p>
-              Welcome to Kavach Play. We are committed to protecting your
+            <p className="text-text-secondary">
+              Welcome to KAvach Play. We are committed to protecting your
               personal information and your right to privacy. This Privacy
               Policy explains how we collect, use, and share your information
               when you use our application.
@@ -28,20 +28,20 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-bold text-text-primary mb-3">
               2. Information We Collect
             </h2>
-            <p className="mb-2">
+            <p className="mb-2 text-text-secondary">
               We collect personal information that you voluntarily provide to us
               when you register on the application, including:
             </p>
             <ul className="list-disc pl-5 space-y-1 text-text-secondary">
               <li>
                 Name, email address, and profile picture (via Google
-                Authentication)
+                Authentication or Phone OTP)
               </li>
               <li>Contact information such as mobile number</li>
               <li>
-                Emergency contact details and blood group for safety purposes
+                Emergency contact details and blood group for sports safety purposes
               </li>
-              <li>Locality and other demographic details</li>
+              <li>Locality and kit details (jersey number, chest size)</li>
             </ul>
           </section>
 
@@ -49,7 +49,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-bold text-text-primary mb-3">
               3. How We Use Your Information
             </h2>
-            <p className="mb-2">
+            <p className="mb-2 text-text-secondary">
               We use the personal information collected via our application for
               a variety of sports management purposes described below:
             </p>
@@ -72,7 +72,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-bold text-text-primary mb-3">
               4. Information Sharing and Disclosure
             </h2>
-            <p>
+            <p className="text-text-secondary">
               We do not share, sell, rent, or trade your information with any
               third parties for their promotional purposes. Your information is
               visible to Club Administrators for management purposes and to
@@ -84,7 +84,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-bold text-text-primary mb-3">
               5. Data Security
             </h2>
-            <p>
+            <p className="text-text-secondary">
               We aim to protect your personal information through a system of
               organizational and technical security measures. Your data is
               stored securely using Google Cloud and Firebase infrastructure.
@@ -95,7 +95,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-bold text-text-primary mb-3">
               6. User Consent
             </h2>
-            <p>
+            <p className="text-text-secondary">
               By using our application, you consent to our Privacy Policy. If
               you do not agree with the terms outlined in this policy, please do
               not use our portal.
@@ -104,12 +104,12 @@ export default function PrivacyPolicy() {
 
           <section>
             <h2 className="text-xl font-bold text-text-primary mb-3">7. Contact Us</h2>
-            <p>
+            <p className="text-text-secondary">
               If you have questions or comments about this policy, you may email
               the club administration at{" "}
               <a
                 href="mailto:dixitashutosh007@gmail.com"
-                className="text-[#10b981] hover:underline"
+                className="text-[#D51F43] hover:underline font-semibold"
               >
                 dixitashutosh007@gmail.com
               </a>
@@ -120,7 +120,7 @@ export default function PrivacyPolicy() {
           <div className="pt-8 mt-10 border-t border-border flex justify-center">
             <Link
               href="/"
-              className="inline-block bg-[#10b981]/10 text-[#10b981] px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#10b981]/20 transition border border-[#10b981]/20"
+              className="inline-block bg-[#A30F2D]/10 text-[#A30F2D] px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#A30F2D]/20 transition border border-[#A30F2D]/20"
             >
               Return to Application
             </Link>
