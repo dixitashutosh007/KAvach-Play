@@ -11,15 +11,15 @@
 
 ## 1. Executive Summary
 
-This report documents the completion of the final payment integrity and security corrections requested for branch `mig-mov`:
+This report documents the completion of the final payment integrity, reservation race, and security corrections requested for branch `mig-mov`:
 
-1. **FIN-001 (Atomic Razorpay Order Reservation):**
-   - Replaced non-transactional lookups with a deterministic, atomic reservation mechanism using Firestore transactions on `/paymentReservations/{reservationKey}`.
-   - Only one request can acquire a reservation for a given obligation; concurrent requests poll and reuse the active Razorpay order (`reusedExistingOrder: true`).
-   - Automatic expiry handling allows legitimate retry after lock/order TTL.
-   - Instant release on Razorpay API failures transitions reservation status to `failed`, preventing permanent lockout.
-   - Obligations are not marked paid until the verified webhook is processed.
-   - Verified via unit test suite in `tests/razorpay-concurrent-orders.test.mjs`.
+1. **FIN-001 (Atomic Razorpay Order Reservation & Race Prevention):**
+   - **Waiting requests never create duplicate orders:** When `acquirePaymentReservation()` returns `isWaiting: true`, the endpoint polls `/paymentReservations/{reservationKey}` for up to 3 seconds. If active, it validates identity and amount before reusing. If failed, it safely attempts atomic reacquisition. If polling times out, it returns HTTP 409 Conflict. A waiting request can never fall through to `instance.orders.create()`.
+   - **Propagate activation errors:** `activatePaymentReservation()` strictly propagates errors rather than swallowing them. A failed reservation write returns an error response instead of 200 OK.
+   - **Recovery after activation failure:** If Razorpay creates an order but Firestore activation fails, `recordActivationFailure()` records `orderId`, `intentId`, amount, and currency with status `activation_failed`. Subsequent retry requests detect this existing order, reconcile the status back to `active`, and reuse it without creating a second Razorpay order.
+   - **Never release blindly:** Reservations are only released to `failed` when Razorpay's API call itself failed (no external order exists).
+   - **Strict identity and amount validation:** `validateReservationForReuse()` verifies authenticated user identity (`authUid`), reservation key, amount, currency, and existing order/intent IDs. Any amount discrepancy (e.g. newly added late fee) or foreign user attempt returns an explicit HTTP 409 Conflict rather than silently reusing mismatched orders.
+   - Verified via unit test suite in `tests/razorpay-concurrent-orders.test.mjs` (10 tests covering all concurrency, failure, recovery, timeout, and tampering scenarios).
 
 2. **FIN-003 (Require Payment ID for Every Fulfilment Event):**
    - Enforced that **both** `payment.captured` and `order.paid` provide a valid `pay_...` payment ID before financial fulfilment in `lib/razorpay-webhook.ts`.
@@ -42,7 +42,7 @@ This report documents the completion of the final payment integrity and security
    - Admin migration was **not executed** and production data was **not modified**.
 
 5. **Test & Environmental Verification:**
-   - `npm run test:functional`: **161 passed, 0 failed** across 37 suites.
+   - `npm run test:functional`: **165 passed, 0 failed** across 37 suites.
    - `npx tsc --noEmit`: **0 errors**, clean exit code 0.
    - `npm run lint`: **0 errors**, clean exit code 0.
    - `npm run build`: **Compiled successfully**, all 17 routes generated.
@@ -64,50 +64,36 @@ This report documents the completion of the final payment integrity and security
 
 ---
 
-## 3. Implementation Details
+## 3. Implementation Details: FIN-001 Reservation Race Closure
 
-### 3.1 FIN-001: Atomic Order Reservation Mechanism
-- **Path:** [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts) & [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts)
+### 3.1 Waiting Requests & Concurrency Control
+- **File:** [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts)
+- **Polling & Gating Mechanism:**
+  - If `acquirePaymentReservation()` returns `isWaiting: true`, the endpoint polls `/paymentReservations/{reservationKey}` up to 6 times at 500ms intervals (3s total).
+  - If the reservation becomes `active`, it runs `validateReservationForReuse()`:
+    - If valid, returns HTTP 200 with the existing order and `reusedExistingOrder: true`.
+    - If invalid (amount changed or wrong user), returns HTTP 409 Conflict with the exact reason.
+  - If the reservation transitions to `failed`, it attempts to reacquire the lock via a new atomic transaction. If reacquisition succeeds, `reservationAcquired = true` is set; otherwise returns HTTP 409 Conflict.
+  - If polling times out while still in `reserving`, returns HTTP 409 Conflict (`"Payment order creation is already in progress. Please wait a moment and retry."`).
+  - **Guaranteed Lock Boundary:** If `reservationKey` is present and `reservationAcquired` is not true, the endpoint immediately returns HTTP 409. It never reaches `instance.orders.create()`.
+
+### 3.2 Error Propagation & Safe Activation Recovery
+- **File:** [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts)
 - **Functions:**
-  - `acquirePaymentReservation(db, reservationKey, authUid, payableAmount, currency, lockTtlMs)`:
-    - Runs inside `db.runTransaction` against `/paymentReservations/{reservationKey}`.
-    - If active and unexpired with `orderId`, returns `{ acquired: false, existingOrder: { ... } }`.
-    - If status is `reserving` and unexpired, returns `{ acquired: false, isWaiting: true }`.
-    - Otherwise acquires reservation with status `reserving` and lock TTL (30s).
-  - `activatePaymentReservation(db, reservationKey, orderId, intentId, orderTtlMs)`:
-    - Updates reservation to `active` with `orderId` and `intentId` (15-min order TTL).
-  - `releasePaymentReservation(db, reservationKey, errorMessage)`:
-    - Called in `catch` blocks when Razorpay API order creation fails. Immediately sets status `failed` and expires the document, allowing instant retries.
-- **Route Handling:**
-  - In `app/api/razorpay/order/route.ts`, if `resResult.isWaiting` is returned, the endpoint polls the reservation document for up to 3 seconds before falling back, preventing duplicate Razorpay orders during concurrent double-clicks.
+  - `activatePaymentReservation`: Direct async call without try/catch swallowing; propagates Firestore update errors immediately.
+  - `recordActivationFailure`: When Razorpay order creation succeeds but Firestore activation throws an error, the endpoint catches the error and records `orderId`, `intentId`, amount, and currency with status `"activation_failed"`.
+  - `acquirePaymentReservation`: When a retry arrives for an obligation in `"activation_failed"` status with an unexpired order, it validates the identity and amount, reconciles the status back to `"active"`, and returns the existing order (`acquired: false`, `existingOrder: { ... }`).
+  - `releasePaymentReservation`: Only invoked when the Razorpay API call itself fails and no external order ID exists. Never releases an active or created order blindly.
 
-### 3.2 FIN-003: Strict Payment ID Requirement
-- **Path:** [lib/razorpay-webhook.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-webhook.ts)
-- **Functions:**
-  - `extractWebhookEventDetails(payload)`:
-    - Extracts `paymentId` from `paymentEntity.id`, `orderEntity.payment_id`, or `orderEntity.payments[0].id`.
-    - Ensures payment ID starts with `pay_`.
-  - `validateWebhookTransaction(intent, details)`:
-    - Enforces:
-      ```typescript
-      if (!details.paymentId || !details.paymentId.startsWith("pay_")) {
-        return {
-          ok: false,
-          error: `Missing or invalid payment ID (must start with 'pay_') for event '${details.event}'.`,
-        };
-      }
-      ```
-  - `processWebhookIntentTransaction(db, details, rawPayload)`:
-    - When `validateWebhookTransaction` fails, throws an error inside `db.runTransaction`. The transaction is aborted cleanly, leaving intent `status: "pending"` and downstream match payment records untouched.
-
-### 3.3 Merchandise Customisation Validation
-- **Path:** [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts)
-- **Logic:**
-  - Maps valid custom field definitions from catalogue item.
-  - Rejects unknown fields: throws `Error("Unknown merchandise custom selection field: '<key>'.")`.
-  - Enforces required fields: throws `Error("Missing required merchandise selection for '<field>'.")`.
-  - Validates options against allowed option list: throws `Error("Invalid selection '<value>' for field '<field>'...")`.
-  - Adds authoritative price modifiers (`priceModifierType === "Add"`).
+### 3.3 Strict Identity and Amount Validation
+- **Function:** `validateReservationForReuse(reservationData, reservationKey, authUid, payableAmount, currency)`
+- **Validations Enforced:**
+  1. `reservationData.reservationKey === reservationKey`
+  2. `reservationData.userId === authUid` (blocks cross-user order hijacking)
+  3. `reservationData.orderId` starts with `order_`
+  4. `reservationData.intentId` is non-empty string
+  5. `Number(reservationData.amount) === Number(payableAmount)` (prevents reusing an order if obligation amount changed, e.g. late fees added)
+  6. `reservationData.currency.toUpperCase() === currency.toUpperCase()`
 
 ---
 
@@ -120,14 +106,14 @@ npm run test:functional
 ```
 Output:
 ```text
-ℹ tests 161
+ℹ tests 165
 ℹ suites 37
-ℹ pass 161
+ℹ pass 165
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 637.601875
+ℹ duration_ms 640.827959
 ```
 
 ### 4.2 TypeScript Typecheck

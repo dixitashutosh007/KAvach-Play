@@ -9,6 +9,8 @@ import {
   acquirePaymentReservation,
   activatePaymentReservation,
   releasePaymentReservation,
+  recordActivationFailure,
+  validateReservationForReuse,
 } from "@/lib/razorpay-order";
 import firebaseConfig from "@/firebase-applet-config.json";
 
@@ -103,6 +105,13 @@ export async function POST(req: Request) {
         currency,
       );
 
+      if (resResult.conflict) {
+        return NextResponse.json(
+          { error: resResult.error || "Payment reservation conflict." },
+          { status: 409 },
+        );
+      }
+
       if (resResult.existingOrder && resResult.existingOrder.orderId) {
         return NextResponse.json({
           id: resResult.existingOrder.orderId,
@@ -116,23 +125,43 @@ export async function POST(req: Request) {
 
       if (resResult.isWaiting) {
         // Another concurrent request is actively creating the order right now.
-        // Wait / poll for up to 3 seconds.
+        // Poll for up to 3 seconds (6 attempts x 500ms).
         let waitOrder: any = null;
+        let reservationFailed = false;
+
         for (let attempt = 0; attempt < 6; attempt++) {
           await new Promise((resolve) => setTimeout(resolve, 500));
           const docSnap = await db.collection("paymentReservations").doc(reservationKey).get();
           if (docSnap.exists) {
             const data = docSnap.data() || {};
-            if (data.status === "active" && data.orderId) {
+            if ((data.status === "active" || data.status === "activation_failed") && data.orderId) {
               waitOrder = data;
               break;
             }
             if (data.status === "failed") {
+              reservationFailed = true;
               break;
             }
           }
         }
+
         if (waitOrder && waitOrder.orderId) {
+          // Strictly validate identity and amount before reusing order (FIN-001)
+          const validation = validateReservationForReuse(
+            waitOrder,
+            reservationKey,
+            auth.uid,
+            payableAmount,
+            currency,
+          );
+
+          if (!validation.valid) {
+            return NextResponse.json(
+              { error: validation.reason || "Payment reservation conflict." },
+              { status: 409 },
+            );
+          }
+
           return NextResponse.json({
             id: waitOrder.orderId,
             amount: Math.round(waitOrder.amount * 100),
@@ -142,9 +171,61 @@ export async function POST(req: Request) {
             notes: { ...notes, intentId: waitOrder.intentId, reusedExistingOrder: true },
           });
         }
+
+        if (reservationFailed) {
+          // The other concurrent request failed. Safely attempt to reacquire reservation through a new atomic transaction.
+          const retryRes = await acquirePaymentReservation(
+            db,
+            reservationKey,
+            auth.uid,
+            payableAmount,
+            currency,
+          );
+
+          if (retryRes.conflict) {
+            return NextResponse.json(
+              { error: retryRes.error || "Payment reservation conflict." },
+              { status: 409 },
+            );
+          }
+
+          if (retryRes.existingOrder && retryRes.existingOrder.orderId) {
+            return NextResponse.json({
+              id: retryRes.existingOrder.orderId,
+              amount: Math.round(retryRes.existingOrder.amount * 100),
+              currency: retryRes.existingOrder.currency || currency,
+              receipt,
+              status: "created",
+              notes: { ...notes, intentId: retryRes.existingOrder.intentId, reusedExistingOrder: true },
+            });
+          }
+
+          if (retryRes.acquired) {
+            reservationAcquired = true;
+          } else {
+            return NextResponse.json(
+              { error: "Payment order creation failed and reservation could not be reacquired. Please retry." },
+              { status: 409 },
+            );
+          }
+        } else {
+          // Polling timed out while still reserving
+          return NextResponse.json(
+            { error: "Payment order creation is already in progress. Please wait a moment and retry." },
+            { status: 409 },
+          );
+        }
+      } else {
+        reservationAcquired = resResult.acquired;
       }
 
-      reservationAcquired = resResult.acquired;
+      // Safety assertion: NEVER proceed to order creation without acquiring reservation (FIN-001)
+      if (!reservationAcquired) {
+        return NextResponse.json(
+          { error: "Unable to acquire payment reservation. Please retry." },
+          { status: 409 },
+        );
+      }
     }
 
     const instance = new Razorpay({
@@ -190,7 +271,23 @@ export async function POST(req: Request) {
       return NextResponse.json(order);
     } catch (orderErr: any) {
       if (reservationKey && reservationAcquired) {
-        await releasePaymentReservation(db, reservationKey, orderErr.message);
+        if (order && order.id) {
+          // Razorpay order was successfully created, but Firestore activation (or intent update) failed.
+          // Do NOT release reservation blindly! Record activation failure with orderId so it can be reconciled and reused (FIN-001).
+          await recordActivationFailure(
+            db,
+            reservationKey,
+            order.id,
+            intentRef?.id,
+            auth.uid,
+            payableAmount,
+            currency,
+            orderErr.message,
+          );
+        } else {
+          // Razorpay call itself failed (no external Razorpay order exists)
+          await releasePaymentReservation(db, reservationKey, orderErr.message);
+        }
       }
       throw orderErr;
     }
@@ -198,7 +295,7 @@ export async function POST(req: Request) {
     console.error("Razorpay Order Error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to create payment order" },
-      { status: 400 },
+      { status: 500 },
     );
   }
 }

@@ -26,12 +26,82 @@ export function generateReservationKey(intentData: any, playerId: string): strin
 export interface PaymentReservationResult {
   acquired: boolean;
   isWaiting?: boolean;
+  conflict?: boolean;
+  error?: string;
   existingOrder?: {
     orderId: string;
     intentId: string;
     amount: number;
     currency: string;
   };
+}
+
+export interface ReservationValidationResult {
+  valid: boolean;
+  conflict?: boolean;
+  reason?: string;
+}
+
+/**
+ * Validates reservation identity, amount, currency, and existing order/intent IDs
+ * before reusing an active or recovered reservation (FIN-001).
+ * If the stored amount or identity differs, returns a controlled conflict.
+ */
+export function validateReservationForReuse(
+  reservationData: any,
+  reservationKey: string,
+  authUid: string,
+  payableAmount: number,
+  currency: string,
+): ReservationValidationResult {
+  if (!reservationData || typeof reservationData !== "object") {
+    return { valid: false, conflict: true, reason: "Reservation record is missing or invalid." };
+  }
+
+  // 1. Validate reservation key
+  if (reservationData.reservationKey && reservationData.reservationKey !== reservationKey) {
+    return { valid: false, conflict: true, reason: "Reservation key mismatch." };
+  }
+
+  // 2. Validate authenticated user identity
+  if (reservationData.userId !== authUid) {
+    return { valid: false, conflict: true, reason: "Reservation belongs to a different user." };
+  }
+
+  // 3. Validate existing order ID and intent ID
+  if (
+    !reservationData.orderId ||
+    typeof reservationData.orderId !== "string" ||
+    !reservationData.orderId.startsWith("order_")
+  ) {
+    return { valid: false, conflict: true, reason: "Reservation is missing a valid Razorpay order ID." };
+  }
+
+  if (!reservationData.intentId || typeof reservationData.intentId !== "string") {
+    return { valid: false, conflict: true, reason: "Reservation is missing a valid intent ID." };
+  }
+
+  // 4. Validate expected amount (do not silently reuse order if amount changed)
+  if (Number(reservationData.amount) !== Number(payableAmount)) {
+    return {
+      valid: false,
+      conflict: true,
+      reason: `Amount mismatch: stored reservation is ₹${reservationData.amount}, but current payable amount is ₹${payableAmount}.`,
+    };
+  }
+
+  // 5. Validate currency
+  const storedCurrency = String(reservationData.currency || "INR").toUpperCase();
+  const requestedCurrency = String(currency || "INR").toUpperCase();
+  if (storedCurrency !== requestedCurrency) {
+    return {
+      valid: false,
+      conflict: true,
+      reason: `Currency mismatch: reservation currency is ${storedCurrency}, requested ${requestedCurrency}.`,
+    };
+  }
+
+  return { valid: true };
 }
 
 /**
@@ -61,10 +131,35 @@ export async function acquirePaymentReservation(
           : new Date(data.expiresAt)
         : new Date(0);
 
-      // Check if existing reservation is active and unexpired
+      // Check if existing reservation is active or in activation_failed state and unexpired
       if (expiresAt > now) {
-        if (data.status === "active" && data.orderId) {
-          // Existing active Razorpay order found! Reuse it immediately.
+        // If an order already exists (active or activation_failed recovery)
+        if ((data.status === "active" || data.status === "activation_failed") && data.orderId) {
+          // Strictly validate reservation identity, amount, currency, and IDs (FIN-001)
+          const validation = validateReservationForReuse(
+            data,
+            reservationKey,
+            authUid,
+            payableAmount,
+            currency,
+          );
+
+          if (!validation.valid) {
+            return {
+              acquired: false,
+              conflict: true,
+              error: validation.reason,
+            };
+          }
+
+          // If in activation_failed state, reconcile to active within this transaction
+          if (data.status === "activation_failed") {
+            transaction.update(reservationRef, {
+              status: "active",
+              updatedAt: now,
+            });
+          }
+
           return {
             acquired: false,
             existingOrder: {
@@ -77,7 +172,16 @@ export async function acquirePaymentReservation(
         }
 
         if (data.status === "reserving") {
-          // Another concurrent request is actively creating the order right now
+          // Check ownership of active lock
+          if (data.userId && data.userId !== authUid) {
+            return {
+              acquired: false,
+              conflict: true,
+              error: "Obligation is currently reserved by another user.",
+            };
+          }
+
+          // Same user is actively creating the order in another concurrent request
           return {
             acquired: false,
             isWaiting: true,
@@ -104,6 +208,7 @@ export async function acquirePaymentReservation(
 
 /**
  * Activates reservation with created Razorpay order details.
+ * Must propagate errors if Firestore update fails (FIN-001).
  */
 export async function activatePaymentReservation(
   db: any,
@@ -112,23 +217,59 @@ export async function activatePaymentReservation(
   intentId: string,
   orderTtlMs = 15 * 60 * 1000,
 ): Promise<void> {
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+  const now = new Date();
+  await reservationRef.update({
+    status: "active",
+    orderId,
+    intentId,
+    expiresAt: new Date(now.getTime() + orderTtlMs),
+    updatedAt: now,
+  });
+}
+
+/**
+ * Records an activation failure when a Razorpay order was already created externally.
+ * Preserves the orderId so the order can be safely reconciled and reused on retry (FIN-001),
+ * preventing double-creation of Razorpay orders.
+ */
+export async function recordActivationFailure(
+  db: any,
+  reservationKey: string,
+  orderId: string,
+  intentId: string | undefined,
+  userId: string,
+  amount: number,
+  currency: string,
+  errorMessage?: string,
+  orderTtlMs = 15 * 60 * 1000,
+): Promise<void> {
   try {
     const reservationRef = db.collection("paymentReservations").doc(reservationKey);
     const now = new Date();
-    await reservationRef.update({
-      status: "active",
-      orderId,
-      intentId,
-      expiresAt: new Date(now.getTime() + orderTtlMs),
-      updatedAt: now,
-    });
+    await reservationRef.set(
+      {
+        reservationKey,
+        status: "activation_failed",
+        orderId,
+        intentId: intentId || "",
+        userId,
+        amount,
+        currency,
+        error: errorMessage || "Activation failed after order creation",
+        expiresAt: new Date(now.getTime() + orderTtlMs),
+        updatedAt: now,
+      },
+      { merge: true },
+    );
   } catch (err) {
-    console.error("[activatePaymentReservation] Failed to update reservation:", err);
+    console.error("[recordActivationFailure] Failed to record activation failure:", err);
   }
 }
 
 /**
  * Releases reservation on Razorpay failure so retries are never permanently blocked.
+ * Only call when NO external Razorpay order was created (FIN-001).
  */
 export async function releasePaymentReservation(
   db: any,
