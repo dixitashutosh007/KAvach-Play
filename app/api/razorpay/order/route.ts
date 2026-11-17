@@ -155,7 +155,7 @@ export async function POST(req: Request) {
       }
 
       if (resResult.needsReconciliation) {
-        // Previous attempt suffered ambiguous gateway failure; reconcile with Razorpay
+        // Previous attempt suffered ambiguous gateway failure or expired active order; reconcile with Razorpay
         const rzInstance = new Razorpay({
           key_id: finalKeyId,
           key_secret: finalKeySecret,
@@ -168,6 +168,13 @@ export async function POST(req: Request) {
           payableAmount,
           currency,
         );
+
+        if (recResult.isPaid) {
+          return NextResponse.json(
+            { error: `Obligation has already been paid via order ${recResult.existingOrder?.orderId || ""}.` },
+            { status: 409 },
+          );
+        }
 
         if (recResult.existingOrder && recResult.existingOrder.orderId) {
           // Verify and repair intent consistency before returning reconciled order (FIN-001)
@@ -200,7 +207,38 @@ export async function POST(req: Request) {
           });
         }
 
-        if (!recResult.canRetry) {
+        if (recResult.isExpired && recResult.canRetry) {
+          // Order was confirmed expired or cancelled at Razorpay, and obligation is still unpaid.
+          // Safely reacquire reservation through a new atomic transaction.
+          const retryRes = await acquirePaymentReservation(
+            db,
+            reservationKey,
+            auth.uid,
+            payableAmount,
+            currency,
+          );
+          if (retryRes.conflict) {
+            return NextResponse.json(
+              { error: retryRes.error || "Payment reservation conflict." },
+              { status: 409 },
+            );
+          }
+          if (retryRes.needsReconciliation || retryRes.isWaiting) {
+            return NextResponse.json(
+              { error: "Order re-acquisition in progress. Please retry." },
+              { status: 503 },
+            );
+          }
+          if (retryRes.acquired) {
+            reservationAcquired = true;
+            reservationToken = retryRes.reservationToken;
+          } else {
+            return NextResponse.json(
+              { error: "Unable to reacquire reservation after order expiration. Please retry." },
+              { status: 409 },
+            );
+          }
+        } else {
           return NextResponse.json(
             { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
             { status: 503 },
@@ -295,6 +333,13 @@ export async function POST(req: Request) {
             payableAmount,
             currency,
           );
+
+          if (recResult.isPaid) {
+            return NextResponse.json(
+              { error: `Obligation has already been paid via order ${recResult.existingOrder?.orderId || ""}.` },
+              { status: 409 },
+            );
+          }
 
           if (recResult.existingOrder && recResult.existingOrder.orderId) {
             const repairRes = await verifyAndRepairIntent(
@@ -398,7 +443,7 @@ export async function POST(req: Request) {
             { status: 409 },
           );
         }
-      } else {
+      } else if (!reservationAcquired) {
         reservationAcquired = resResult.acquired;
         reservationToken = resResult.reservationToken;
       }

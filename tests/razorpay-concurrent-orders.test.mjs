@@ -39,6 +39,7 @@ import {
   releasePaymentReservation,
   validateReservationForReuse,
   isAmbiguousRazorpayError,
+  verifyAndRepairIntent,
 } from "../lib/razorpay-order.ts";
 
 // In-memory mock database with Firestore atomic transaction queue simulation
@@ -408,7 +409,8 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
     assert.equal(snap.data()?.status, "active");
   });
 
-  it("reconciles ambiguous failure to failed state when Razorpay confirms no order exists", async () => {
+  // ── Finding 4: Authoritative Absence Semantics ──────────────────────────────
+  it("Finding 4: does not assume empty list API proves absence; keeps reservation safely blocked", async () => {
     const mockDb = createMockDb();
     const reservationKey = "res_match_ambiguous_none_1";
     const authUid = "user_abc";
@@ -426,7 +428,7 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
       "Request aborted",
     );
 
-    // Mock Razorpay confirming zero orders exist
+    // Mock Razorpay returning empty items array (e.g. read replica lag / search index delay)
     const mockRazorpayEmpty = {
       orders: {
         all: async () => ({ items: [] }),
@@ -441,15 +443,299 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
       500,
       "INR",
     );
-    assert.equal(recResult.reconciled, true);
-    assert.equal(recResult.canRetry, true);
+    // Must NOT be marked reconciled or retriable; must not transition to failed
+    assert.equal(recResult.reconciled, false);
+    assert.equal(recResult.canRetry, false);
+    assert.match(recResult.error, /Authoritative order absence could not be conclusively established/);
 
-    // Now reservation is in 'failed' state and can be cleanly reacquired
+    // Reservation must remain in 'reconciliation_failed' blocked state
     const snap = await mockDb.collection("paymentReservations").doc(reservationKey).get();
-    assert.equal(snap.data()?.status, "failed");
+    assert.equal(snap.data()?.status, "reconciliation_failed");
 
+    // Fresh acquisition must remain blocked and require external reconciliation
     const retryAcquire = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
-    assert.equal(retryAcquire.acquired, true);
+    assert.equal(retryAcquire.acquired, false);
+    assert.equal(retryAcquire.needsReconciliation, true);
+    assert.match(retryAcquire.error, /External order reconciliation required/);
+  });
+
+  // ── Finding 1: Active Order Expiry & Authoritative Order Reconciliation ─────
+  it("Finding 1: active reservation past local expiry is not auto-replaced; requires external reconciliation", async () => {
+    const mockDb = createMockDb();
+    const reservationKey = "res_match_expired_active_1";
+    const authUid = "user_abc";
+
+    const res1 = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    await activatePaymentReservation(mockDb, reservationKey, res1.reservationToken, "order_rzp_expired_1", "intent_123");
+
+    // Artificially expire the local reservation (e.g. 20 minutes ago)
+    const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+    await mockDb.collection("paymentReservations").doc(reservationKey).update({
+      expiresAt: twentyMinsAgo,
+    });
+
+    // acquirePaymentReservation should NOT overwrite with a new order! It must return needsReconciliation: true
+    const res2 = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(res2.acquired, false);
+    assert.equal(res2.needsReconciliation, true);
+    assert.equal(res2.existingOrder?.orderId, "order_rzp_expired_1");
+
+    // Case A: Gateway status is 'paid' -> blocks replacement with new order, returns isPaid: true
+    const mockRzpPaid = {
+      orders: {
+        fetch: async (id) => ({ id, status: "paid", amount: 50000, currency: "INR" }),
+      },
+    };
+    const recPaid = await reconcileAmbiguousReservation(mockRzpPaid, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recPaid.reconciled, true);
+    assert.equal(recPaid.isPaid, true);
+    assert.equal(recPaid.canRetry, false);
+
+    // Case B: Gateway status is 'created' / 'attempted' (still payable) -> extends lease and reuses order
+    const mockRzpPayable = {
+      orders: {
+        fetch: async (id) => ({ id, status: "created", amount: 50000, currency: "INR" }),
+      },
+    };
+    const recPayable = await reconcileAmbiguousReservation(mockRzpPayable, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recPayable.reconciled, true);
+    assert.equal(recPayable.existingOrder?.orderId, "order_rzp_expired_1");
+    // Verify reservation lease was extended
+    const snapPayable = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    assert.equal(snapPayable.data()?.status, "active");
+    assert.ok(new Date(snapPayable.data()?.expiresAt).getTime() > Date.now());
+
+    // Case C: Gateway status is 'expired' or 'cancelled' -> safely transitions to failed, allowing fresh acquisition
+    const mockRzpCancelled = {
+      orders: {
+        fetch: async (id) => ({ id, status: "cancelled", amount: 50000, currency: "INR" }),
+      },
+    };
+    const recCancelled = await reconcileAmbiguousReservation(mockRzpCancelled, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recCancelled.reconciled, true);
+    assert.equal(recCancelled.isExpired, true);
+    assert.equal(recCancelled.canRetry, true);
+
+    const snapCancelled = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    assert.equal(snapCancelled.data()?.status, "failed");
+
+    // Safe reacquisition is now permitted
+    const resRetry = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(resRetry.acquired, true);
+
+    // Case D: External status unavailable (network/gateway failure) -> retains safe blocked state
+    const mockRzpError = {
+      orders: {
+        fetch: async () => { throw new Error("Gateway connection reset"); },
+      },
+    };
+    // Put reservation back in expired active state
+    await activatePaymentReservation(mockDb, reservationKey, resRetry.reservationToken, "order_rzp_error_1", "intent_456");
+    await mockDb.collection("paymentReservations").doc(reservationKey).update({ expiresAt: twentyMinsAgo });
+
+    const recError = await reconcileAmbiguousReservation(mockRzpError, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recError.reconciled, false);
+    assert.equal(recError.canRetry, false);
+    assert.match(recError.error, /External status unavailable/);
+
+    const snapError = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    assert.equal(snapError.data()?.status, "reconciliation_failed");
+  });
+
+  // ── Finding 2: Strict Currency Validation during Reconciliation ─────────────
+  it("Finding 2: strictly validates currency during reconciliation without fallback defaulting", async () => {
+    const mockDb = createMockDb();
+    const reservationKey = "res_match_curr_val_1";
+    const authUid = "user_abc";
+    const receipt = "rcpt_curr_val_1";
+
+    const res1 = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    await recordReconciliationRequired(mockDb, reservationKey, res1.reservationToken, receipt, authUid, 500, "INR", "Timeout");
+
+    // Case A: Missing currency (undefined/null/empty) in Razorpay response
+    const mockRzpMissingCurr = {
+      orders: {
+        all: async () => ({ items: [{ id: "ord_1", receipt, amount: 50000, currency: "", status: "created" }] }),
+      },
+    };
+    const recMissing = await reconcileAmbiguousReservation(mockRzpMissingCurr, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recMissing.reconciled, false);
+    assert.match(recMissing.error, /Missing or empty currency in reconciled Razorpay order/i);
+
+    // Case B: Currency mismatch (e.g. USD vs INR)
+    const mockRzpMismatchCurr = {
+      orders: {
+        all: async () => ({ items: [{ id: "ord_2", receipt, amount: 50000, currency: "USD", status: "created" }] }),
+      },
+    };
+    const recMismatch = await reconcileAmbiguousReservation(mockRzpMismatchCurr, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recMismatch.reconciled, false);
+    assert.match(recMismatch.error, /Currency mismatch in reconciled order: expected INR, found USD/);
+
+    // Case C: Valid matching INR
+    const mockRzpValidCurr = {
+      orders: {
+        all: async () => ({ items: [{ id: "ord_3", receipt, amount: 50000, currency: "INR", status: "created" }] }),
+      },
+    };
+    const recValid = await reconcileAmbiguousReservation(mockRzpValidCurr, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recValid.reconciled, true);
+    assert.equal(recValid.existingOrder?.currency, "INR");
+  });
+
+  // ── Finding 3: Strict Payment Intent Identity Validation ────────────────────
+  describe("Finding 3: verifyAndRepairIntent strict validation", () => {
+    it("rejects intent with missing or whitespace-only userId", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_bad_user").set({
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_bad_user", "order_123", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /missing required userId/);
+    });
+
+    it("rejects intent with mismatched userId", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_mismatch_user").set({
+        userId: "user_attacker",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_mismatch_user", "order_123", {
+        userId: "user_victim",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /Intent user mismatch: expected user_victim, found user_attacker/);
+    });
+
+    it("rejects intent with missing reservationKey", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_bad_res").set({
+        userId: "user_valid",
+        amount: 500,
+        currency: "INR",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_bad_res", "order_123", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /missing required reservationKey/);
+    });
+
+    it("rejects intent with mismatched reservationKey", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_mismatch_res").set({
+        userId: "user_valid",
+        reservationKey: "res_other_obligation",
+        amount: 500,
+        currency: "INR",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_mismatch_res", "order_123", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /Intent reservation key mismatch/);
+    });
+
+    it("rejects intent with missing or invalid amount", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_bad_amt").set({
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        currency: "INR",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_bad_amt", "order_123", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /missing valid amount/);
+    });
+
+    it("rejects intent with mismatched amount", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_mismatch_amt").set({
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 250,
+        currency: "INR",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_mismatch_amt", "order_123", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /Intent amount mismatch: expected ₹500, found ₹250/);
+    });
+
+    it("rejects intent with missing currency without default fallback", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_no_curr").set({
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_no_curr", "order_123", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /missing required currency/);
+    });
+
+    it("repairs orderId atomically only after all 4 validations succeed", async () => {
+      const mockDb = createMockDb();
+      await mockDb.collection("razorpayIntents").doc("intent_valid").set({
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+        orderId: "order_old_or_missing",
+      });
+
+      const res = await verifyAndRepairIntent(mockDb, "intent_valid", "order_new_repaired_999", {
+        userId: "user_valid",
+        reservationKey: "res_key_1",
+        amount: 500,
+        currency: "INR",
+      });
+      assert.equal(res.ok, true);
+
+      const snap = await mockDb.collection("razorpayIntents").doc("intent_valid").get();
+      assert.equal(snap.data()?.orderId, "order_new_repaired_999");
+      assert.ok(snap.data()?.orderIdRepairedAt);
+    });
   });
 
   // ── 8. Strict Validation: Amount, Currency, and Cross-User ───────────────────

@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server.js";
 import crypto from "crypto";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import {
   extractWebhookEventDetails,
   processWebhookIntentTransaction,
-} from "@/lib/razorpay-webhook";
-import firebaseConfig from "@/firebase-applet-config.json";
+} from "../../../../lib/razorpay-webhook.ts";
+import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
 
 function getDb() {
   const apps = getApps();

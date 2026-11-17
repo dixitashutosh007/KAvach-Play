@@ -237,34 +237,47 @@ export async function verifyAndRepairIntent(
     }
     const intent = snap.data() || {};
 
-    // 1. Verify user identity
-    if (intent.userId && intent.userId !== expected.userId) {
+    // 1. Verify user identity exists and matches exactly (Finding 3)
+    if (!intent.userId || typeof intent.userId !== "string" || !intent.userId.trim()) {
+      return { ok: false, error: "Payment intent is missing required userId." };
+    }
+    if (intent.userId !== expected.userId) {
       return { ok: false, error: `Intent user mismatch: expected ${expected.userId}, found ${intent.userId}` };
     }
 
-    // 2. Verify amount
+    // 2. Verify reservationKey exists and matches exactly (Finding 3)
+    if (!intent.reservationKey || typeof intent.reservationKey !== "string" || !intent.reservationKey.trim()) {
+      return { ok: false, error: "Payment intent is missing required reservationKey." };
+    }
+    if (intent.reservationKey !== expected.reservationKey) {
+      return { ok: false, error: `Intent reservation key mismatch: expected ${expected.reservationKey}, found ${intent.reservationKey}` };
+    }
+
+    // 3. Verify amount exists, is valid number, and matches exactly (Finding 3)
+    if (intent.amount === undefined || intent.amount === null || isNaN(Number(intent.amount))) {
+      return { ok: false, error: "Payment intent is missing valid amount." };
+    }
     if (Number(intent.amount) !== Number(expected.amount)) {
       return { ok: false, error: `Intent amount mismatch: expected ₹${expected.amount}, found ₹${intent.amount}` };
     }
 
-    // 3. Verify currency
-    const intentCurr = String(intent.currency || "INR").toUpperCase();
-    const expectedCurr = String(expected.currency || "INR").toUpperCase();
+    // 4. Verify currency exists, is non-empty string, and matches expected (Finding 3: no default fallback)
+    if (!intent.currency || typeof intent.currency !== "string" || !intent.currency.trim()) {
+      return { ok: false, error: "Payment intent is missing required currency." };
+    }
+    const intentCurr = intent.currency.trim().toUpperCase();
+    const expectedCurr = String(expected.currency || "").trim().toUpperCase();
     if (intentCurr !== expectedCurr) {
       return { ok: false, error: `Intent currency mismatch: expected ${expectedCurr}, found ${intentCurr}` };
     }
 
-    // 4. Verify reservationKey / obligation
-    if (intent.reservationKey && intent.reservationKey !== expected.reservationKey) {
-      return { ok: false, error: `Intent obligation mismatch: expected reservationKey ${expected.reservationKey}, found ${intent.reservationKey}` };
-    }
-
-    // 5. Repair orderId if missing or different
+    // 5. Only after all identity and financial validations succeed, repair orderId if missing or different
     const now = new Date();
     if (intent.orderId !== orderId) {
       transaction.update(intentRef, {
         orderId,
         repairedAt: now,
+        orderIdRepairedAt: now,
         updatedAt: now,
       });
     }
@@ -313,11 +326,11 @@ export async function acquirePaymentReservation(
           : new Date(data.expiresAt)
         : new Date(0);
 
-      // Check if existing reservation is active or in activation_failed state and unexpired
-      if (expiresAt > now) {
-        // If an order already exists (active or activation_failed recovery)
-        if ((data.status === "active" || data.status === "activation_failed") && data.orderId) {
-          // Strictly validate reservation identity, amount, currency, and IDs (FIN-001)
+      // P0 (Finding 1): An active reservation with an existing order must NOT be automatically replaced
+      // just because its local expiry has passed. Reconcile the authoritative external status first.
+      if ((data.status === "active" || data.status === "activation_failed") && data.orderId) {
+        if (expiresAt > now) {
+          // Unexpired active reservation: validate and reuse immediately
           const validation = validateReservationForReuse(
             data,
             reservationKey,
@@ -334,7 +347,6 @@ export async function acquirePaymentReservation(
             };
           }
 
-          // If in activation_failed state, reconcile to active within this transaction
           if (data.status === "activation_failed") {
             transaction.update(reservationRef, {
               status: "active",
@@ -351,8 +363,25 @@ export async function acquirePaymentReservation(
               currency: data.currency || currency,
             },
           };
+        } else {
+          // Expired active reservation with existing order: NEVER auto-replace!
+          // Must reconcile authoritative external status before any action.
+          return {
+            acquired: false,
+            needsReconciliation: true,
+            existingOrder: {
+              orderId: data.orderId,
+              intentId: data.intentId,
+              amount: data.amount,
+              currency: data.currency || currency,
+            },
+            error: "Active reservation hold expired locally. Authoritative Razorpay order reconciliation required.",
+          };
         }
+      }
 
+      // Check if existing reservation is reserving and unexpired
+      if (expiresAt > now) {
         if (data.status === "reserving") {
           // Check ownership of active lock
           if (data.userId && data.userId !== authUid) {
@@ -584,28 +613,15 @@ export async function reconcileAmbiguousReservation(
   authUid: string,
   payableAmount: number,
   currency: string,
-): Promise<{ reconciled: boolean; existingOrder?: any; canRetry?: boolean; error?: string }> {
+): Promise<{ reconciled: boolean; existingOrder?: any; canRetry?: boolean; isPaid?: boolean; isExpired?: boolean; error?: string }> {
   const reservationRef = db.collection("paymentReservations").doc(reservationKey);
 
-  // 1. Snapshot reservation to obtain token, fenceVersion, receipt, intentId
+  // 1. Snapshot reservation to obtain token, fenceVersion, receipt, intentId, orderId
   const snap = await reservationRef.get();
   if (!snap.exists) {
     return { reconciled: false, canRetry: true };
   }
   const data = snap.data() || {};
-
-  // If already active with an orderId, return existing order
-  if (data.status === "active" && data.orderId) {
-    return {
-      reconciled: true,
-      existingOrder: {
-        orderId: data.orderId,
-        intentId: data.intentId || "",
-        amount: data.amount || payableAmount,
-        currency: data.currency || currency,
-      },
-    };
-  }
 
   // Validate ownership before attempting reconciliation
   if (data.userId && data.userId !== authUid) {
@@ -617,8 +633,175 @@ export async function reconcileAmbiguousReservation(
   const fence = data.fenceVersion;
   const intentId = data.intentId || "";
 
+  // ── BRANCH A: Existing Order ID is Known (Finding 1) ───────────────────────
+  // An active reservation with an existing order must NOT be automatically replaced.
+  // We authoritatively reconcile its status directly via razorpayInstance.orders.fetch(orderId).
+  if (data.orderId) {
+    try {
+      const foundOrder = await razorpayInstance.orders.fetch(data.orderId);
+
+      // Strict currency validation (Finding 2: no fallback, must exist and match exactly)
+      if (!foundOrder.currency || typeof foundOrder.currency !== "string" || !foundOrder.currency.trim()) {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "reconciliation_failed",
+            reconciliationError: "Missing or empty currency in fetched Razorpay order.",
+            updatedAt: new Date(),
+          });
+        });
+        return { reconciled: false, error: "Missing or empty currency in fetched Razorpay order." };
+      }
+
+      const foundCurrency = foundOrder.currency.trim().toUpperCase();
+      const expectedCurrency = String(currency || "").trim().toUpperCase();
+      if (foundCurrency !== expectedCurrency) {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "reconciliation_failed",
+            reconciliationError: `Currency mismatch in fetched order: expected ${expectedCurrency}, found ${foundCurrency}`,
+            updatedAt: new Date(),
+          });
+        });
+        return { reconciled: false, error: `Currency mismatch in fetched order: expected ${expectedCurrency}, found ${foundCurrency}` };
+      }
+
+      // Strict amount validation
+      const expectedPaise = Math.round(payableAmount * 100);
+      if (Number(foundOrder.amount) !== expectedPaise) {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "reconciliation_failed",
+            reconciliationError: `Amount mismatch in fetched order: expected ${expectedPaise} paise, found ${foundOrder.amount} paise`,
+            updatedAt: new Date(),
+          });
+        });
+        return { reconciled: false, error: "Amount mismatch in fetched order." };
+      }
+
+      const now = new Date();
+
+      // Case A.1: Order already PAID at Razorpay (Finding 1)
+      // A paid order must NEVER be replaced with a new order!
+      if (foundOrder.status === "paid") {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "active",
+            isPaid: true,
+            updatedAt: now,
+          });
+        });
+        return {
+          reconciled: true,
+          isPaid: true,
+          canRetry: false,
+          existingOrder: {
+            orderId: foundOrder.id,
+            intentId: intentId || data.intentId || "",
+            amount: data.amount || payableAmount,
+            currency: foundCurrency,
+          },
+        };
+      }
+
+      // Case A.2: Order still PAYABLE at Razorpay (created or attempted)
+      // Refresh local expiry by 15 minutes, retain status active, and reuse order.
+      if (foundOrder.status === "created" || foundOrder.status === "attempted") {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "active",
+            expiresAt: new Date(now.getTime() + 15 * 60 * 1000),
+            updatedAt: now,
+          });
+        });
+        return {
+          reconciled: true,
+          existingOrder: {
+            orderId: foundOrder.id,
+            intentId: intentId || data.intentId || "",
+            amount: data.amount || payableAmount,
+            currency: foundCurrency,
+          },
+        };
+      }
+
+      // Case A.3: Order is conclusively EXPIRED or CANCELLED (Finding 1)
+      // Only when previous order is conclusively unusable can reservation transition to failed
+      if (foundOrder.status === "expired" || foundOrder.status === "cancelled") {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "failed",
+            error: `Previous order ${foundOrder.id} is conclusively ${foundOrder.status}. Safe reacquisition permitted.`,
+            expiresAt: now,
+            updatedAt: now,
+          });
+        });
+        return {
+          reconciled: true,
+          canRetry: true,
+          isExpired: true,
+        };
+      }
+
+      // Unrecognized status: retain safe blocked state
+      await db.runTransaction(async (transaction: any) => {
+        const freshSnap = await transaction.get(reservationRef);
+        if (!freshSnap.exists) return;
+        const fresh = freshSnap.data() || {};
+        if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+        transaction.update(reservationRef, {
+          status: "reconciliation_failed",
+          reconciliationError: `Unrecognized order status '${foundOrder.status}' from Razorpay.`,
+          updatedAt: now,
+        });
+      });
+      return { reconciled: false, error: `Unrecognized order status: ${foundOrder.status}` };
+    } catch (fetchErr: any) {
+      if (fetchErr.message?.includes("Fencing conflict")) {
+        return { reconciled: false, error: fetchErr.message };
+      }
+      // External status unavailable (network error, timeout, 5xx): retain safe blocked state (Finding 1)
+      await db.runTransaction(async (transaction: any) => {
+        const freshSnap = await transaction.get(reservationRef);
+        if (!freshSnap.exists) return;
+        const fresh = freshSnap.data() || {};
+        if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+        transaction.update(reservationRef, {
+          status: "reconciliation_failed",
+          reconciliationError: `External status unavailable: ${fetchErr.message}`,
+          updatedAt: new Date(),
+        });
+      });
+      return { reconciled: false, canRetry: false, error: `External status unavailable: ${fetchErr.message}` };
+    }
+  }
+
+  // ── BRANCH B: Only Receipt is Known (orderId not yet received) ──────────────
   try {
-    // 2. Query Razorpay for orders containing this receipt
+    // Query Razorpay for orders containing this receipt
     const response = await razorpayInstance.orders.all({ receipt });
     const rawItems = response?.items || [];
     // Filter to ensure exact match on authoritative receipt
@@ -648,7 +831,40 @@ export async function reconcileAmbiguousReservation(
     if (matchingOrders.length === 1) {
       const foundOrder = matchingOrders[0];
 
-      // Validate order fields: receipt, amount, currency, status
+      // Strict currency validation (Finding 2: no fallback, must exist and match exactly)
+      if (!foundOrder.currency || typeof foundOrder.currency !== "string" || !foundOrder.currency.trim()) {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "reconciliation_failed",
+            reconciliationError: "Missing or empty currency in reconciled Razorpay order.",
+            updatedAt: new Date(),
+          });
+        });
+        return { reconciled: false, error: "Missing or empty currency in reconciled Razorpay order." };
+      }
+
+      const foundCurrency = foundOrder.currency.trim().toUpperCase();
+      const expectedCurrency = String(currency || "").trim().toUpperCase();
+      if (foundCurrency !== expectedCurrency) {
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "reconciliation_failed",
+            reconciliationError: `Currency mismatch in reconciled order: expected ${expectedCurrency}, found ${foundCurrency}`,
+            updatedAt: new Date(),
+          });
+        });
+        return { reconciled: false, error: `Currency mismatch in reconciled order: expected ${expectedCurrency}, found ${foundCurrency}` };
+      }
+
+      // Validate order fields: receipt, amount, status
       if (foundOrder.receipt !== receipt) {
         return { reconciled: false, error: "Receipt mismatch in returned Razorpay order." };
       }
@@ -661,15 +877,13 @@ export async function reconcileAmbiguousReservation(
           if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
           transaction.update(reservationRef, {
             status: "reconciliation_failed",
-            reconciliationError: `Amount mismatch in reconciled order: Razorpay has ₹${foundOrder.amount / 100}, expected ₹${payableAmount}.`,
+            reconciliationError: `Amount mismatch in reconciled order: expected ${expectedPaise} paise, found ${foundOrder.amount} paise`,
             updatedAt: new Date(),
           });
         });
         return { reconciled: false, error: "Amount mismatch in reconciled order." };
       }
-      if (String(foundOrder.currency || "INR").toUpperCase() !== String(currency || "INR").toUpperCase()) {
-        return { reconciled: false, error: "Currency mismatch in reconciled order." };
-      }
+
       if (foundOrder.status !== "created" && foundOrder.status !== "attempted" && foundOrder.status !== "paid") {
         return { reconciled: false, error: `Invalid order status in reconciled order: ${foundOrder.status}` };
       }
@@ -685,7 +899,6 @@ export async function reconcileAmbiguousReservation(
           throw new Error("Fencing conflict: reservation was modified by another request during reconciliation.");
         }
         if (fresh.status === "active") {
-          // Already reconciled by concurrent worker!
           return;
         }
 
@@ -705,35 +918,31 @@ export async function reconcileAmbiguousReservation(
           orderId: foundOrder.id,
           intentId: intentId || data.intentId || "",
           amount: data.amount || payableAmount,
-          currency: data.currency || currency,
+          currency: foundCurrency,
         },
       };
     } else {
-      // Confirmed: 0 matching orders found at Razorpay!
-      // Atomically transition status to 'failed' so fresh acquisition can proceed safely
+      // 0 matching orders found in list.
+      // Finding 4: Do not assume an empty list response proves absence.
+      // An empty response from a paginated list API can be due to read-replica delay or indexing lag.
+      // Keep the reservation blocked. Do not transition it to 'failed'. Do not permit another order.
       await db.runTransaction(async (transaction: any) => {
         const freshSnap = await transaction.get(reservationRef);
-        if (!freshSnap.exists) {
-          throw new Error(`Reservation not found: ${reservationKey}`);
-        }
+        if (!freshSnap.exists) return;
         const fresh = freshSnap.data() || {};
-        if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) {
-          throw new Error("Fencing conflict: reservation was modified by another request during reconciliation.");
-        }
-        if (fresh.status === "failed") {
-          return;
-        }
-
-        const now = new Date();
+        if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
         transaction.update(reservationRef, {
-          status: "failed",
-          error: "Reconciled with Razorpay: confirmed no external order exists.",
-          expiresAt: now,
-          updatedAt: now,
+          status: "reconciliation_failed",
+          reconciliationError: "Authoritative order absence could not be conclusively established by gateway list API. Reservation remains safely blocked to prevent duplicate order creation.",
+          updatedAt: new Date(),
         });
       });
 
-      return { reconciled: true, canRetry: true };
+      return {
+        reconciled: false,
+        canRetry: false,
+        error: "Authoritative order absence could not be conclusively established by gateway list API.",
+      };
     }
   } catch (reconcileErr: any) {
     if (reconcileErr.message?.includes("Fencing conflict")) {
