@@ -5,7 +5,7 @@
 **Phase:** Phase 4 — UX Blueprint, High-Fidelity Design & Prototypes  
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
-**Current Milestone Commit:** Reviewed closure commit `e421587a84b4131ab514c2bccfa6bd7ec5292ac2` (parent `4a74e5104be3d086051c6b99f8bcaab77a378e3b`) with accessibility closure updates on `mig-mov`  
+**Current Milestone Commit:** Reviewed closure milestone `0691be678b449582e9a3328c793cb68e10bee669` (parent `e421587a84b4131ab514c2bccfa6bd7ec5292ac2`) on `mig-mov`  
 **Authoritative References:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09, D-10), Phase 3 Architecture Sign-off (`91811ed`), Feature Traceability Matrix (`docs/implementation/REQUIREMENTS_TRACEABILITY.md`).  
 **Status:** Developer Verified — **Pending Independent QA Review & Owner Acceptance** (Not Self-Certified)
 
@@ -44,7 +44,7 @@ Rather than static mockups alone, Phase 4 delivers a **comprehensive, interactiv
 | `6b430fb` | Remediation | 44px touch targets, responsive assertions, and report reconciliation |
 | `bcfad69` | Config | Owner Super Admin custom claim and allowlist configuration |
 | `e421587` | Closure | Reconcile D-10 unified model, instance-aware dialog focus, unrounded 44px targets |
-| *Current* | Closure | Non-topmost focus handling (UX-07), background content inert isolation (UX-08) |
+| `0691be6` | Closure | Non-topmost focus handling (UX-07), background content inert isolation (UX-08) |
 
 ### Deliverable Artifacts & Specification Files
 
