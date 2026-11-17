@@ -23,12 +23,22 @@ import {
   Award,
   Users,
   Trophy,
-  ArrowRight
+  ArrowRight,
+  Search,
+  Filter,
+  Download,
+  FileText,
+  Check,
+  ChevronDown
 } from "lucide-react";
 
-// Mock Data Fixtures (Decoupled from Live Firebase)
+// -------------------------------------------------------------
+// MOCK DATA FIXTURES (Decoupled from Live Firebase & Razorpay)
+// -------------------------------------------------------------
+
 const MOCK_CURRENT_PLAYER = {
   id: "player-ashutosh",
+  kavachId: "KAV-007",
   name: "Ashutosh Dixit",
   role: "All-Rounder",
   battingStyle: "Right-hand bat",
@@ -39,26 +49,142 @@ const MOCK_CURRENT_PLAYER = {
   dues: {
     total: 1250,
     breakdown: [
-      { id: "due-1", title: "Match Fee: vs Spartans CC", amount: 500, date: "17 Nov 2026" },
-      { id: "due-2", title: "Match Fee: vs Royal Strikers", amount: 500, date: "10 Nov 2026" },
-      { id: "due-3", title: "Studio Nets (1 Hour Session)", amount: 250, date: "14 Nov 2026" }
+      { id: "due-1", title: "Match Fee: vs Spartans CC", amount: 500, date: "17 Nov 2026", deadline: "26 Nov 2026 (Tue 23:59 IST)" },
+      { id: "due-2", title: "Match Fee: vs Royal Strikers", amount: 500, date: "10 Nov 2026", deadline: "19 Nov 2026" },
+      { id: "due-3", title: "Studio Nets (1 Hour Session)", amount: 250, date: "14 Nov 2026", deadline: "Immediate" },
+      { id: "due-waived", title: "Match Fee: vs Stormers (Rain Abandoned)", amount: 0, originalAmount: 500, date: "03 Nov 2026", status: "Waived per Club Policy (Option A)" }
     ]
   }
 };
 
-const MOCK_NEXT_MATCH = {
-  id: "match-spartans-2026",
-  title: "KAvach Cricket Club vs Spartans CC",
-  format: "20 Overs T20",
-  dateString: "Sunday, 24 Nov 2026",
-  timeString: "07:30 AM IST",
-  venue: "Kavach Arena Ground 1",
-  venueDirectionsUrl: "https://maps.google.com",
-  countdown: "3d 14h remaining",
-  squadAnnounced: true,
-  squadCount: 14,
-  matchFee: 500
-};
+const MOCK_MATCHES = [
+  {
+    id: "match-spartans-2026",
+    title: "KAvach Cricket Club vs Spartans CC",
+    opponent: "Spartans CC",
+    format: "20 Overs T20",
+    dateString: "Sunday, 24 Nov 2026",
+    timeString: "07:30 AM IST",
+    reportingTime: "06:45 AM IST",
+    venue: "Kavach Arena Ground 1",
+    venueDirectionsUrl: "https://maps.google.com",
+    countdown: "3d 14h remaining",
+    status: "upcoming",
+    squadAnnounced: true,
+    squadCount: 14,
+    matchFee: 500,
+    playerStatus: "Playing (XI)",
+    playingXI: [
+      { name: "Ashutosh Dixit", role: "All-Rounder", isCurrent: true, badge: "(VC)" },
+      { name: "Vikram Sharma", role: "Batter", badge: "(C)" },
+      { name: "Rahul Verma", role: "Bowler" },
+      { name: "Sameer Khan", role: "Wicket-Keeper" },
+      { name: "Arjun Nair", role: "Batter" },
+      { name: "Deepak Joshi", role: "All-Rounder" },
+      { name: "Karan Patel", role: "Bowler" },
+      { name: "Rohan Gupta", role: "Batter" },
+      { name: "Amitabh Sen", role: "Bowler" },
+      { name: "Harish Rao", role: "Bowler" },
+      { name: "Manoj Kumar", role: "Batter" }
+    ],
+    reserves: ["Siddharth Jain", "Pranav Reddy", "Gaurav Mehta"]
+  },
+  {
+    id: "match-superkings-2026",
+    title: "KAvach Cricket Club vs Super Kings",
+    opponent: "Super Kings",
+    format: "35 Overs Leather Ball",
+    dateString: "Sunday, 01 Dec 2026",
+    timeString: "08:00 AM IST",
+    reportingTime: "07:15 AM IST",
+    venue: "Skyline Turf, Ground B",
+    venueDirectionsUrl: "https://maps.google.com",
+    countdown: "10d remaining",
+    status: "upcoming",
+    squadAnnounced: false,
+    squadCount: 0,
+    matchFee: 600,
+    playerStatus: "Pending RSVP"
+  },
+  {
+    id: "match-royalstrikers-2026",
+    title: "KAvach Cricket Club vs Royal Strikers",
+    opponent: "Royal Strikers",
+    format: "20 Overs T20",
+    dateString: "Sunday, 10 Nov 2026",
+    timeString: "07:30 AM IST",
+    venue: "Kavach Arena Ground 1",
+    status: "past",
+    result: "KAvach won by 38 runs",
+    isWin: true,
+    scoreline: "KAvach: 174/5 (20.0) • Royal Strikers: 136/9 (20.0)",
+    potm: "Rahul Verma (4/18 in 4 overs)",
+    scorecard: {
+      kavachInnings: [
+        { batter: "Vikram Sharma (C)", dismissal: "c & b Patel", runs: 54, balls: 38, fours: 6, sixes: 2, sr: "142.1" },
+        { batter: "Ashutosh Dixit", dismissal: "not out", runs: 46, balls: 29, fours: 4, sixes: 2, sr: "158.6" },
+        { batter: "Arjun Nair", dismissal: "b Sharma", runs: 28, balls: 22, fours: 3, sixes: 0, sr: "127.3" },
+        { batter: "Sameer Khan (WK)", dismissal: "run out (Khan)", runs: 18, balls: 14, fours: 2, sixes: 0, sr: "128.5" }
+      ],
+      opponentInnings: [
+        { batter: "R. Singh", dismissal: "b Verma", runs: 32, balls: 24, fours: 4, sixes: 1, sr: "133.3" },
+        { batter: "K. Malhotra", dismissal: "c Dixit b Verma", runs: 24, balls: 20, fours: 2, sixes: 1, sr: "120.0" },
+        { batter: "V. Rao", dismissal: "b Dixit", runs: 15, balls: 16, fours: 1, sixes: 0, sr: "93.7" }
+      ],
+      catches: [
+        { player: "Ashutosh Dixit", type: "Stunning Catch", description: "Diving backward catch at deep mid-wicket off Verma" },
+        { player: "Sameer Khan", type: "Caught Behind", description: "Sharp low edge take standing up to medium pacer" }
+      ]
+    }
+  },
+  {
+    id: "match-stormers-abandoned",
+    title: "KAvach Cricket Club vs Stormers",
+    opponent: "Stormers",
+    format: "20 Overs T20",
+    dateString: "Sunday, 03 Nov 2026",
+    venue: "Valley Green Grounds",
+    status: "abandoned",
+    result: "Match Abandoned due to persistent rain (No Result)",
+    feePolicy: "Fee Waived (Option A - No Obligation)"
+  }
+];
+
+const MOCK_PAYMENT_HISTORY = [
+  {
+    id: "tx-901",
+    date: "10 Nov 2026, 09:30 AM",
+    title: "Match Fee - vs Royal Strikers",
+    amount: 500,
+    channel: "Razorpay Online",
+    channelType: "gateway",
+    referenceId: "pay_Kavach982189",
+    status: "Completed",
+    receiptNumber: "REC-2026-1102"
+  },
+  {
+    id: "tx-842",
+    date: "27 Oct 2026, 12:45 PM",
+    title: "Match Fee - vs Metro CC",
+    amount: 500,
+    channel: "Pitch-Side Cash",
+    channelType: "cash",
+    referenceId: "CASH-REC-OCT27",
+    status: "Verified by Match Admin",
+    receiptNumber: "REC-2026-1088"
+  },
+  {
+    id: "tx-789",
+    date: "15 Oct 2026, 06:15 PM",
+    title: "Studio Monthly Nets Membership",
+    amount: 1500,
+    channel: "Razorpay Online",
+    channelType: "gateway",
+    referenceId: "pay_Kavach745120",
+    status: "Completed",
+    receiptNumber: "REC-2026-1045"
+  }
+];
 
 const MOCK_FEED_POSTS = [
   {
@@ -89,7 +215,7 @@ const MOCK_FEED_POSTS = [
 
 const MOCK_NOTIFICATIONS = [
   { id: "notif-1", title: "Squad Announced", message: "You are selected in the Playing XI vs Spartans CC!", time: "10m ago", read: false },
-  { id: "notif-2", title: "Payment Receipt Generated", message: "Receipt #KAV-982 for ₹500 has been verified.", time: "1d ago", read: true },
+  { id: "notif-2", title: "Payment Receipt Generated", message: "Receipt #REC-2026-1102 for ₹500 has been verified.", time: "1d ago", read: true },
   { id: "notif-3", title: "Studio Nets Booking", message: "Your nets session is confirmed for Thursday at 6:00 PM.", time: "2d ago", read: true }
 ];
 
@@ -97,16 +223,39 @@ export default function PlayerHomePrototype() {
   // Device Frame Toggle: 'responsive' | 'mobile' | 'desktop'
   const [deviceFrame, setDeviceFrame] = useState<"responsive" | "mobile" | "desktop">("responsive");
   
-  // Interactive Journey States
+  // Navigation & View States
   const [activeTab, setActiveTab] = useState<"home" | "matches" | "payments" | "performance" | "club">("home");
+  
+  // Matches Tab States
+  const [matchFilter, setMatchFilter] = useState<"all" | "upcoming" | "past" | "abandoned">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMatch, setSelectedMatch] = useState<any | null>(null);
+  const [selectedMatchSubTab, setSelectedMatchSubTab] = useState<"overview" | "scorecard" | "catches">("overview");
+
+  // Payments Tab States
+  const [duesState, setDuesState] = useState(MOCK_CURRENT_PLAYER.dues);
+  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  // Home Feed States
   const [rsvpStatus, setRsvpStatus] = useState<"available" | "tentative" | "unavailable" | null>("available");
   const [rsvpNote, setRsvpNote] = useState<string>("Ready to bat top order");
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [duesState, setDuesState] = useState(MOCK_CURRENT_PLAYER.dues);
   const [posts, setPosts] = useState(MOCK_FEED_POSTS);
+
+  // Filtered Matches logic
+  const filteredMatches = MOCK_MATCHES.filter((m) => {
+    if (matchFilter === "upcoming" && m.status !== "upcoming") return false;
+    if (matchFilter === "past" && m.status !== "past") return false;
+    if (matchFilter === "abandoned" && m.status !== "abandoned") return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      return m.title.toLowerCase().includes(q) || m.venue.toLowerCase().includes(q) || m.format.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   // Toggle Like on feed
   const toggleLike = (postId: string) => {
@@ -140,7 +289,7 @@ export default function PlayerHomePrototype() {
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#A30F2D] text-white font-bold text-[10px] uppercase tracking-wider">
             Prototype Preview
           </span>
-          <span className="font-semibold text-gray-200">Phase 4 Stage 1: Player Navigation & Home Blueprint</span>
+          <span className="font-semibold text-gray-200">Phase 4: High-Fidelity Design & Prototype Sandbox</span>
         </div>
 
         {/* Viewport Frame Mode Controls */}
@@ -151,7 +300,7 @@ export default function PlayerHomePrototype() {
               deviceFrame === "responsive" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
             }`}
           >
-            Responsive (Fluid)
+            Fluid Responsive
           </button>
           <button
             onClick={() => setDeviceFrame("mobile")}
@@ -242,51 +391,52 @@ export default function PlayerHomePrototype() {
 
           {/* MAIN WORKSPACE CONTENT */}
           <main className="flex-1 pb-24 px-4 sm:px-6 py-5 max-w-5xl mx-auto w-full">
+            
+            {/* ========================================================================= */}
+            {/* TAB 1: PLAYER HOME                                                        */}
+            {/* ========================================================================= */}
             {activeTab === "home" && (
               <div className="space-y-6">
                 
                 {/* HERO UNIT: NEXT MATCH COUNTDOWN & 1-TAP RSVP */}
                 <section className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
-                  {/* Card Header Strip */}
                   <div className="bg-gradient-to-r from-[#A30F2D] to-[#D51F43] px-4 py-2.5 text-white flex items-center justify-between text-xs">
                     <span className="font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                       <Trophy className="w-3.5 h-3.5 text-amber-300" />
-                      Next Fixture • {MOCK_NEXT_MATCH.format}
+                      Next Fixture • {MOCK_MATCHES[0].format}
                     </span>
                     <span className="bg-white/20 px-2 py-0.5 rounded-full font-semibold text-[10px] tracking-wide">
-                      {MOCK_NEXT_MATCH.countdown}
+                      {MOCK_MATCHES[0].countdown}
                     </span>
                   </div>
 
-                  {/* Fixture Details */}
                   <div className="p-4 sm:p-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
                       <div>
                         <h2 className="text-lg sm:text-xl font-black text-[#171C26] tracking-tight">
-                          {MOCK_NEXT_MATCH.title}
+                          {MOCK_MATCHES[0].title}
                         </h2>
                         <div className="mt-2 flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-[#667085]">
                           <span className="flex items-center gap-1 font-medium">
                             <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
-                            {MOCK_NEXT_MATCH.dateString}
+                            {MOCK_MATCHES[0].dateString}
                           </span>
                           <span className="flex items-center gap-1 font-medium">
                             <Clock className="w-3.5 h-3.5 text-[#D51F43]" />
-                            {MOCK_NEXT_MATCH.timeString}
+                            {MOCK_MATCHES[0].timeString}
                           </span>
                           <a
-                            href={MOCK_NEXT_MATCH.venueDirectionsUrl}
+                            href={MOCK_MATCHES[0].venueDirectionsUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-[#D51F43] font-semibold hover:underline"
                           >
                             <MapPin className="w-3.5 h-3.5" />
-                            {MOCK_NEXT_MATCH.venue}
+                            {MOCK_MATCHES[0].venue}
                           </a>
                         </div>
                       </div>
 
-                      {/* Squad Announcement Chip */}
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold self-start sm:self-auto">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         <span>You are in Playing XI!</span>
@@ -308,7 +458,6 @@ export default function PlayerHomePrototype() {
                       </div>
 
                       <div className="grid grid-cols-3 gap-2">
-                        {/* Option: Available */}
                         <button
                           onClick={() => setRsvpStatus("available")}
                           className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
@@ -321,7 +470,6 @@ export default function PlayerHomePrototype() {
                           <span>Playing</span>
                         </button>
 
-                        {/* Option: Tentative */}
                         <button
                           onClick={() => setRsvpStatus("tentative")}
                           className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
@@ -334,7 +482,6 @@ export default function PlayerHomePrototype() {
                           <span>Tentative</span>
                         </button>
 
-                        {/* Option: Unavailable */}
                         <button
                           onClick={() => setRsvpStatus("unavailable")}
                           className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
@@ -348,7 +495,6 @@ export default function PlayerHomePrototype() {
                         </button>
                       </div>
 
-                      {/* Optional Note Field */}
                       {showNoteInput && (
                         <div className="mt-2.5">
                           <input
@@ -384,7 +530,7 @@ export default function PlayerHomePrototype() {
                           ₹{duesState.total.toLocaleString("en-IN")}
                         </div>
                         <p className="text-xs text-[#667085] mt-0.5">
-                          {duesState.breakdown.length} pending obligations • Includes match fee & studio pass
+                          {duesState.breakdown.filter(d => d.amount > 0).length} pending obligations • Includes match fee & studio pass
                         </p>
                       </div>
                     </div>
@@ -417,7 +563,6 @@ export default function PlayerHomePrototype() {
 
                   {posts.map((post) => (
                     <article key={post.id} className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs">
-                      {/* Post Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                         <div className="flex items-center gap-2.5">
                           <img
@@ -437,12 +582,10 @@ export default function PlayerHomePrototype() {
                         </div>
                       </div>
 
-                      {/* Post Body */}
                       <p className="text-xs sm:text-sm text-[#171C26] leading-relaxed pt-3">
                         {post.content}
                       </p>
 
-                      {/* Post Footer Actions */}
                       <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-4 text-xs font-medium text-[#667085]">
                         <button
                           onClick={() => toggleLike(post.id)}
@@ -467,27 +610,291 @@ export default function PlayerHomePrototype() {
                     </article>
                   ))}
                 </section>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TAB 2: MATCHES LISTING & DETAILS                                          */}
+            {/* ========================================================================= */}
+            {activeTab === "matches" && (
+              <div className="space-y-5">
+                
+                {/* Search & Filter Toolbar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#E5E7EB] shadow-xs">
+                  {/* Filter Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                    <button
+                      onClick={() => setMatchFilter("all")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "all" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      All Matches ({MOCK_MATCHES.length})
+                    </button>
+                    <button
+                      onClick={() => setMatchFilter("upcoming")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "upcoming" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      Upcoming (2)
+                    </button>
+                    <button
+                      onClick={() => setMatchFilter("past")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "past" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      Past Results (1)
+                    </button>
+                    <button
+                      onClick={() => setMatchFilter("abandoned")}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                        matchFilter === "abandoned" ? "bg-[#D51F43] text-white shadow-xs" : "bg-gray-100 text-[#667085] hover:bg-gray-200"
+                      }`}
+                    >
+                      Abandoned (1)
+                    </button>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative min-w-[200px]">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search opponent or venue..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D51F43]/30"
+                    />
+                  </div>
+                </div>
+
+                {/* Matches Card Stack */}
+                <div className="space-y-4">
+                  {filteredMatches.map((m) => (
+                    <article
+                      key={m.id}
+                      onClick={() => setSelectedMatch(m)}
+                      className="bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#D51F43]/40 p-4 sm:p-5 shadow-xs transition hover:shadow-md cursor-pointer relative overflow-hidden"
+                    >
+                      {/* Left accent strip for outcome */}
+                      {m.status === "past" && (
+                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${m.isWin ? "bg-emerald-500" : "bg-rose-500"}`} />
+                      )}
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
+                              {m.format}
+                            </span>
+                            <span className="text-xs text-[#667085] font-medium flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
+                              {m.dateString}
+                            </span>
+                          </div>
+
+                          <h3 className="text-base sm:text-lg font-black text-[#171C26] mt-1.5">
+                            {m.title}
+                          </h3>
+
+                          <p className="text-xs text-[#667085] flex items-center gap-1 mt-1">
+                            <MapPin className="w-3.5 h-3.5 text-[#667085]" />
+                            {m.venue}
+                          </p>
+                        </div>
+
+                        {/* Status Pills & Actions */}
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          {m.status === "upcoming" && (
+                            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              {m.playerStatus}
+                            </span>
+                          )}
+
+                          {m.status === "past" && (
+                            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
+                              m.isWin ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-rose-50 text-rose-800"
+                            }`}>
+                              {m.result}
+                            </span>
+                          )}
+
+                          {m.status === "abandoned" && (
+                            <span className="px-2.5 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold">
+                              Rain Abandoned • Fee Waived
+                            </span>
+                          )}
+
+                          <button className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-[#D51F43]">
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Additional summary details */}
+                      {m.status === "past" && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between text-xs text-[#667085] gap-2">
+                          <span className="font-semibold text-[#171C26]">{m.scoreline}</span>
+                          <span className="text-amber-700 font-bold flex items-center gap-1">
+                            <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                            POTM: {m.potm}
+                          </span>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TAB 3: PAYMENTS, DUES & RECEIPTS                                          */}
+            {/* ========================================================================= */}
+            {activeTab === "payments" && (
+              <div className="space-y-6">
+                
+                {/* Outstanding Dues Card */}
+                <div className="bg-gradient-to-br from-[#FCE8ED] to-white rounded-2xl border border-[#D51F43]/20 p-5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <span className="text-xs font-bold text-[#A30F2D] uppercase tracking-wider">
+                        Total Payable Obligations
+                      </span>
+                      <div className="text-3xl font-black text-[#171C26] mt-0.5">
+                        ₹{duesState.total.toLocaleString("en-IN")}
+                      </div>
+                      <p className="text-xs text-[#667085] mt-1">
+                        Settlements processed securely via Razorpay with immediate digital receipt.
+                      </p>
+                    </div>
+
+                    {duesState.total > 0 && (
+                      <button
+                        onClick={() => setPaymentModalOpen(true)}
+                        className="min-h-[48px] w-full sm:w-auto px-6 py-2.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-md flex items-center justify-center gap-2"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span>Pay Full Balance (₹{duesState.total})</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Line Item Breakdown */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#667085]">
+                    Current Unpaid Obligations & Policies
+                  </h3>
+
+                  <div className="space-y-2.5">
+                    {duesState.breakdown.map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-[#171C26]">{item.title}</div>
+                          <div className="text-[11px] text-[#667085] mt-0.5">
+                            {item.status ? (
+                              <span className="text-emerald-700 font-semibold">{item.status}</span>
+                            ) : (
+                              <span>Due Date: {item.deadline}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          {item.amount === 0 ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs line-through text-gray-400">₹{item.originalAmount}</span>
+                              <span className="text-xs font-black text-emerald-700">₹0 (Waived)</span>
+                            </div>
+                          ) : (
+                            <div className="text-sm font-black text-[#D51F43]">₹{item.amount}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {duesState.total === 0 && (
+                      <div className="text-center py-6 text-xs text-emerald-800 font-bold flex items-center justify-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        <span>All dues cleared! No pending financial obligations.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Late Fee Policy Reminder (Asia/Kolkata timezone standard) */}
+                  <div className="mt-3 p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                    <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Club Late Fee Rule:</span> Match fees must be settled by Tuesday 23:59 IST following the match weekend. Automatic late fee of ₹150 applies subsequently.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chronological Payment History */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#667085]">
+                      Payment History & Verified Receipts
+                    </h3>
+                  </div>
+
+                  <div className="divide-y divide-gray-100">
+                    {MOCK_PAYMENT_HISTORY.map((tx) => (
+                      <div key={tx.id} className="py-3.5 first:pt-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-xs text-[#171C26]">{tx.title}</div>
+                          <div className="text-[11px] text-[#667085] flex flex-wrap items-center gap-2 mt-0.5">
+                            <span>{tx.date}</span>
+                            <span>•</span>
+                            <span className="font-medium text-gray-700">{tx.referenceId}</span>
+                            <span>•</span>
+                            <span className="px-1.5 py-0.2 rounded bg-gray-100 font-semibold text-[10px]">
+                              {tx.channel}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 self-end sm:self-auto">
+                          <span className="font-black text-sm text-[#171C26]">₹{tx.amount}</span>
+                          <button
+                            onClick={() => setSelectedReceipt(tx)}
+                            className="min-h-[40px] px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-[#D51F43] hover:bg-[#FCE8ED] transition flex items-center gap-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Receipt</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
               </div>
             )}
 
-            {/* TAB PLACEHOLDERS FOR BREADTH DEMO */}
-            {activeTab !== "home" && (
+            {/* TAB PLACEHOLDERS FOR STATS & CLUB */}
+            {(activeTab === "performance" || activeTab === "club") && (
               <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 text-center space-y-3">
                 <div className="w-12 h-12 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center mx-auto">
                   <Shield className="w-6 h-6" />
                 </div>
                 <h3 className="text-base font-black uppercase text-[#171C26]">
-                  {activeTab} Screen
+                  {activeTab} Screen Blueprint
                 </h3>
                 <p className="text-xs text-[#667085] max-w-sm mx-auto">
-                  Stage 1 establishes the primary Player Navigation & Home feed. Stages 2–5 will demonstrate full high-fidelity workflows for {activeTab}.
+                  Stage 1 and 2 prototype encompasses Player Navigation, Home, Matches, and Payments. Stages 3–5 will cover Administrator hubs and Player Performance leaderboards.
                 </p>
                 <button
                   onClick={() => setActiveTab("home")}
                   className="min-h-[44px] px-4 py-2 bg-[#D51F43] text-white text-xs font-bold rounded-xl"
                 >
-                  Return to Player Home
+                  Return to Home
                 </button>
               </div>
             )}
@@ -499,7 +906,6 @@ export default function PlayerHomePrototype() {
             aria-label="Player Primary Navigation"
             className="sticky bottom-0 z-40 bg-white border-t border-[#E5E7EB] shadow-lg flex items-center justify-around h-[68px] px-2"
           >
-            {/* Home */}
             <button
               onClick={() => setActiveTab("home")}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
@@ -512,7 +918,6 @@ export default function PlayerHomePrototype() {
               <span className="text-[10px] tracking-tight">Home</span>
             </button>
 
-            {/* Matches */}
             <button
               onClick={() => setActiveTab("matches")}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
@@ -525,7 +930,6 @@ export default function PlayerHomePrototype() {
               <span className="text-[10px] tracking-tight">Matches</span>
             </button>
 
-            {/* Payments */}
             <button
               onClick={() => setActiveTab("payments")}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
@@ -538,7 +942,6 @@ export default function PlayerHomePrototype() {
               <span className="text-[10px] tracking-tight">Payments</span>
             </button>
 
-            {/* Performance */}
             <button
               onClick={() => setActiveTab("performance")}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
@@ -551,7 +954,6 @@ export default function PlayerHomePrototype() {
               <span className="text-[10px] tracking-tight">Stats</span>
             </button>
 
-            {/* Club */}
             <button
               onClick={() => setActiveTab("club")}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition ${
@@ -565,7 +967,250 @@ export default function PlayerHomePrototype() {
             </button>
           </nav>
 
-          {/* SLIDE-OVER NOTIFICATIONS DRAWER */}
+          {/* ========================================================================= */}
+          {/* MATCH DETAILS SLIDE-OVER DRAWER                                           */}
+          {/* ========================================================================= */}
+          {selectedMatch && (
+            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
+              <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-y-auto">
+                {/* Header */}
+                <div className="p-4 bg-[#A30F2D] text-white flex items-center justify-between sticky top-0 z-10">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                      {selectedMatch.format}
+                    </span>
+                    <h3 className="text-sm sm:text-base font-black truncate">{selectedMatch.title}</h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedMatch(null)}
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Subtabs inside Match Details */}
+                <div className="flex border-b border-gray-100 bg-gray-50 text-xs font-bold px-4">
+                  <button
+                    onClick={() => setSelectedMatchSubTab("overview")}
+                    className={`py-3 px-3 border-b-2 transition ${
+                      selectedMatchSubTab === "overview"
+                        ? "border-[#D51F43] text-[#D51F43]"
+                        : "border-transparent text-gray-500 hover:text-gray-900"
+                    }`}
+                  >
+                    Squad & Info
+                  </button>
+                  {selectedMatch.scorecard && (
+                    <button
+                      onClick={() => setSelectedMatchSubTab("scorecard")}
+                      className={`py-3 px-3 border-b-2 transition ${
+                        selectedMatchSubTab === "scorecard"
+                          ? "border-[#D51F43] text-[#D51F43]"
+                          : "border-transparent text-gray-500 hover:text-gray-900"
+                      }`}
+                    >
+                      Scorecard
+                    </button>
+                  )}
+                  {selectedMatch.scorecard?.catches && (
+                    <button
+                      onClick={() => setSelectedMatchSubTab("catches")}
+                      className={`py-3 px-3 border-b-2 transition ${
+                        selectedMatchSubTab === "catches"
+                          ? "border-[#D51F43] text-[#D51F43]"
+                          : "border-transparent text-gray-500 hover:text-gray-900"
+                      }`}
+                    >
+                      Fielding & Catches
+                    </button>
+                  )}
+                </div>
+
+                {/* Subtab Content */}
+                <div className="p-5 space-y-5 flex-1">
+                  {selectedMatchSubTab === "overview" && (
+                    <>
+                      {/* Venue & Time details */}
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Date & Time:</span>
+                          <span className="font-bold text-[#171C26]">{selectedMatch.dateString} • {selectedMatch.timeString}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Venue:</span>
+                          <a
+                            href={selectedMatch.venueDirectionsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-bold text-[#D51F43] flex items-center gap-1 hover:underline"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            {selectedMatch.venue}
+                          </a>
+                        </div>
+                        {selectedMatch.reportingTime && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500">Reporting Time:</span>
+                            <span className="font-bold text-amber-700">{selectedMatch.reportingTime}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Playing XI Roster */}
+                      {selectedMatch.playingXI ? (
+                        <div className="space-y-2.5">
+                          <h4 className="text-xs font-black uppercase text-[#667085] flex items-center justify-between">
+                            <span>Playing XI ({selectedMatch.playingXI.length})</span>
+                            <span className="text-emerald-700 text-[10px] font-bold">Confirmed</span>
+                          </h4>
+
+                          <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden bg-white">
+                            {selectedMatch.playingXI.map((player: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className={`p-2.5 flex items-center justify-between text-xs ${
+                                  player.isCurrent ? "bg-[#FCE8ED]/60 font-bold" : ""
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-400 font-mono w-4">{idx + 1}</span>
+                                  <span>{player.name}</span>
+                                  {player.badge && (
+                                    <span className="text-[10px] text-[#D51F43] font-bold">{player.badge}</span>
+                                  )}
+                                  {player.isCurrent && (
+                                    <span className="text-[9px] bg-[#D51F43] text-white px-1.5 py-0.2 rounded font-bold">
+                                      YOU
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-gray-500">{player.role}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-6 text-center text-xs text-gray-400 border border-dashed rounded-xl">
+                          Squad has not been announced by the match admin yet.
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {selectedMatchSubTab === "scorecard" && selectedMatch.scorecard && (
+                    <div className="space-y-4 text-xs">
+                      <div className="font-black text-sm text-[#171C26]">1st Innings: KAvach Cricket Club (174/5)</div>
+                      <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                        <table className="w-full text-left">
+                          <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase text-gray-500">
+                            <tr>
+                              <th className="p-2.5">Batter</th>
+                              <th className="p-2.5">R</th>
+                              <th className="p-2.5">B</th>
+                              <th className="p-2.5">4s</th>
+                              <th className="p-2.5">6s</th>
+                              <th className="p-2.5">SR</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 text-xs font-medium">
+                            {selectedMatch.scorecard.kavachInnings.map((row: any, i: number) => (
+                              <tr key={i}>
+                                <td className="p-2.5 font-bold text-[#171C26]">{row.batter}</td>
+                                <td className="p-2.5 font-black text-[#D51F43]">{row.runs}</td>
+                                <td className="p-2.5 text-gray-500">{row.balls}</td>
+                                <td className="p-2.5 text-gray-500">{row.fours}</td>
+                                <td className="p-2.5 text-gray-500">{row.sixes}</td>
+                                <td className="p-2.5 text-gray-500">{row.sr}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedMatchSubTab === "catches" && selectedMatch.scorecard?.catches && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-black uppercase text-[#667085]">Fielding Highlights</h4>
+                      {selectedMatch.scorecard.catches.map((c: any, i: number) => (
+                        <div key={i} className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 text-xs">
+                          <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                            <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                            {c.player} • {c.type}
+                          </div>
+                          <p className="text-[11px] text-gray-600 mt-1">{c.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* DIGITAL RECEIPT MODAL                                                     */}
+          {/* ========================================================================= */}
+          {selectedReceipt && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+                {/* Receipt Header */}
+                <div className="bg-[#A30F2D] text-white p-4 text-center relative">
+                  <button
+                    onClick={() => setSelectedReceipt(null)}
+                    className="absolute right-3 top-3 text-white/80 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-amber-300">
+                    Official Payment Receipt
+                  </div>
+                  <h4 className="text-base font-black uppercase tracking-tight mt-0.5">KAvach Cricket Club</h4>
+                  <div className="text-[10px] opacity-80">play.kavachcricket.com</div>
+                </div>
+
+                <div className="p-5 space-y-3">
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-500">Receipt No:</span>
+                    <span className="font-bold text-[#171C26]">{selectedReceipt.receiptNumber}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-500">Date:</span>
+                    <span className="font-medium text-[#171C26]">{selectedReceipt.date}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-500">Payer:</span>
+                    <span className="font-bold text-[#171C26]">Ashutosh Dixit (KAV-007)</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-500">Purpose:</span>
+                    <span className="font-medium text-[#171C26]">{selectedReceipt.title}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-500">Channel / Ref:</span>
+                    <span className="font-mono text-gray-700">{selectedReceipt.referenceId}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 text-sm font-black">
+                    <span>Total Settled:</span>
+                    <span className="text-[#D51F43]">₹{selectedReceipt.amount}.00</span>
+                  </div>
+
+                  <div className="pt-3 text-center">
+                    <button
+                      onClick={() => alert("Simulating receipt download PDF...")}
+                      className="min-h-[44px] w-full bg-[#171C26] hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-1.5"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download PDF Receipt</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* NOTIFICATIONS DRAWER */}
           {notificationsOpen && (
             <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end">
               <div className="w-full max-w-sm bg-white h-full shadow-2xl flex flex-col">
@@ -631,7 +1276,7 @@ export default function PlayerHomePrototype() {
 
                   <div className="space-y-2 text-xs">
                     <span className="font-bold text-[#667085] uppercase tracking-wider text-[10px]">Itemized Obligations:</span>
-                    {duesState.breakdown.map(item => (
+                    {duesState.breakdown.filter(d => d.amount > 0).map(item => (
                       <div key={item.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
                         <div>
                           <div className="font-semibold text-[#171C26]">{item.title}</div>
