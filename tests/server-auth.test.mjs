@@ -20,8 +20,11 @@ import { BaseAuth } from "firebase-admin/auth";
 import { requireAdmin } from "../lib/server-auth.ts";
 
 describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () => {
+  let lastVerifyArgs = null;
+
   // Mock BaseAuth.prototype.verifyIdToken to test production requireAdmin logic directly
-  mock.method(BaseAuth.prototype, "verifyIdToken", async function (token) {
+  mock.method(BaseAuth.prototype, "verifyIdToken", async function (token, checkRevoked) {
+    lastVerifyArgs = { token, checkRevoked };
     if (token === "token-superadmin") {
       return {
         uid: "admin_uid_123",
@@ -83,10 +86,13 @@ describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () 
       },
     });
 
+    lastVerifyArgs = null;
     const res = await requireAdmin(req);
     assert.equal(res.ok, true);
     assert.equal(res.uid, "admin_uid_123");
     assert.equal(res.email, "admin@kavachcricket.com");
+    assert.ok(lastVerifyArgs, "verifyIdToken must be called");
+    assert.equal(lastVerifyArgs.checkRevoked, true, "verifyIdToken must be invoked with checkRevoked: true");
   });
 
   it("rejects an ordinary signed-in player without admin custom claim with 403 Forbidden", async () => {

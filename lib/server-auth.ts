@@ -106,7 +106,9 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
   const app = ensureAdminApp();
   let decoded;
   try {
-    decoded = await getAuth(app).verifyIdToken(token);
+    // SEC-001: checkRevoked = true forces verification against Firebase backend
+    // to reject revoked refresh tokens immediately for privileged admin routes.
+    decoded = await getAuth(app).verifyIdToken(token, true);
   } catch {
     return {
       ok: false,

@@ -16,9 +16,9 @@ No production Firestore rules, production environment variables, Firebase claims
 
 | Item / Finding | Scope | Status | Verification Evidence |
 |---|---|---|---|
-| **Finding 1 (SEC-001)** | Remove legacy server-side admin fallback (`ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`) and Firestore `appUsers.role` lookup from `lib/server-auth.ts`. | **Closed** | `lib/server-auth.ts` requires cryptographic Firebase Auth claim `admin: true`. All server routes audited. |
-| **Finding 2 (SEC-001)** | Test actual production authorization implementation in `tests/server-auth.test.mjs` (replace duplicate helper; test forged claim & genuine revocation). | **Closed** | `tests/server-auth.test.mjs` imports production `requireAdmin(req)` across 10 distinct scenarios (10/10 pass). |
-| **Finding 3 (FIN-002)** | Repair Firestore Emulator concurrency test in `tests/emulator-webhook-concurrency.test.mjs` (initialize testEnv, eliminate silent early returns, seed downstream documents). | **Closed** | `@firebase/rules-unit-testing` and `firebase-admin` initialized against emulator; 4 concurrent race scenarios executed directly against `processWebhookIntentTransaction` (4/4 pass). |
+| **Finding 1 (SEC-001)** | Remove legacy server-side admin fallback (`ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`) and Firestore `appUsers.role` lookup from `lib/server-auth.ts`; enforce genuine token revocation checks via `verifyIdToken(token, true)`. | **Closed** | `lib/server-auth.ts` requires cryptographic Firebase Auth claim `admin: true` and verifies revocation (`checkRevoked: true`). All server routes audited. |
+| **Finding 2 (SEC-001)** | Test actual production authorization implementation in `tests/server-auth.test.mjs` (verify `checkRevoked: true`, forged claims & genuine revocation). | **Closed** | `tests/server-auth.test.mjs` imports production `requireAdmin(req)` across 10 distinct scenarios (10/10 pass). |
+| **Finding 3 (FIN-002)** | Repair Firestore Emulator concurrency test in `tests/emulator-webhook-concurrency.test.mjs` (initialize testEnv, eliminate silent early returns, seed downstream documents). | **Closed** | `@firebase/rules-unit-testing` and `firebase-admin` initialized against emulator; 4 concurrent race scenarios executed directly against `processWebhookIntentTransaction(db, details)` (4/4 pass). |
 | **Finding 4 (Specialist Roles)** | Verify specialist permissions (`isStudioAdmin`, `isMatchAdmin`, `isFinanceAdmin`, `isClubAdmin`, `isDesigner`, `canDesign`, `role`, `status`) in `firestore.rules` and add complete emulator assertions. | **Closed** | Rules verified least-privilege; `tests/firestore-rules.test.mjs` expanded with exhaustive emulator assertions (39/39 emulator tests pass). |
 
 > **Scope Separation Notice:** Navigation rationalisation and ARCH-001 listener teardown improvements were developed in separate, dedicated workstreams and are strictly decoupled from this security and financial remediation sign-off. This document certifies exclusively the security, payment integrity, and authorization findings.
@@ -27,14 +27,16 @@ No production Firestore rules, production environment variables, Firebase claims
 
 ## 2. Detailed Remediation Evidence
 
-### Finding 1 — SEC-001: Server-Side Authority Lockdown
+### Finding 1 — SEC-001: Server-Side Authority Lockdown & Token Revocation Checking
 
 #### File Modified: `lib/server-auth.ts`
-- **Previous state:** Contained `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK` environment flag check and an asynchronous fallback querying `/appUsers/{uid}.role == 'admin'`.
+- **Previous state:** Contained `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK` environment flag check and an asynchronous fallback querying `/appUsers/{uid}.role == 'admin'`. Token verification called `verifyIdToken(token)` without checking token revocation status.
 - **Corrected state:**
   - Removed `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK` and all references to `process.env.ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`.
   - Removed `getFirestore` import and the Firestore document lookup from `requireAdmin()`.
   - Super-admin authorization now solely and strictly requires `decoded.admin === true` in the verified Firebase ID token claims.
+  - Enabled genuine Firebase token revocation checking by updating the verification call to `getAuth(app).verifyIdToken(token, true)`. Revoked tokens are immediately rejected with HTTP 401 Unauthorized without waiting for the 1-hour JWT expiry window.
+  - Operational & performance considerations: Revocation checking adds verification against Firebase's revocation endpoint or cached state, ensuring immediate lockouts upon admin credential revocation or compromise.
   - Retained `effectiveAdmin(claims, userDoc)` helper only for client-side / UI display context where specialist views are rendered, explicitly decoupled from server authority.
 - **Repository Audit for Privileged Routes:**
   Audited all administrative endpoints in `app/api/`:
@@ -81,12 +83,12 @@ No production Firestore rules, production environment variables, Firebase claims
   - Implemented `beforeEach` fixture seeding to seed realistic match fee obligations, players, otherFees, merchandise items, and studio memberships before every scenario.
   - Implemented cleanup (`testEnv.clearFirestore()`) after each test.
 - **Test Architecture & Scope Distinction:**
-  > **IMPORTANT:** `tests/emulator-webhook-concurrency.test.mjs` directly executes the core transaction function `processWebhookIntentTransaction(db, intentId, eventName, payload)` against the live Firestore Emulator. This exercises and proves database-level transaction isolation, atomic locking, and duplicate-write prevention under high concurrency.
+  > **IMPORTANT:** `tests/emulator-webhook-concurrency.test.mjs` directly executes the core transaction function `processWebhookIntentTransaction(db, details, rawPayload)` (invoked with `(db, capturedDetails)` and `(db, orderPaidDetails)` using `WebhookEventDetails` fixtures) against the live Firestore Emulator. This exercises and proves database-level transaction isolation, atomic locking, and duplicate-write prevention under high concurrency.
   >
   > It is **NOT** a full end-to-end HTTP webhook-route integration test across an active HTTP server stack. HTTP transport, body buffering, and HMAC SHA256 signature verification are separately tested in `tests/razorpay-webhook-negative.test.mjs`. Full HTTP network route integration was not executed as part of this database emulator suite.
 - **Concurrency & Race Scenarios Tested Against Live Emulator (4/4 Passed):**
   1. **Simultaneous `payment.captured` & `order.paid` for Match + Late Fee:**
-     - Two concurrent `processWebhookIntentTransaction` workers fired concurrently via `Promise.all`.
+     - Two concurrent `processWebhookIntentTransaction(db, details)` workers fired concurrently via `Promise.all`.
      - Output: Exactly one worker completed fulfilment (`alreadyProcessed: false`), marked the intent `paid`, updated `matches/{m}/payments/{p}` to `Paid`, and created the late-fee waiver. The rival worker returned `alreadyProcessed: true`. Zero duplicate payments or late-fee documents created.
   2. **Simultaneous Deliveries for Merchandise Order:**
      - Handled simultaneous webhook arrivals for physical merchandise.
