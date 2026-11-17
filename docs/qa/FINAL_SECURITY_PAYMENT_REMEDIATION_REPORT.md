@@ -64,7 +64,7 @@ No production Firestore rules, production environment variables, Firebase claims
   3. **Forged Firestore Document:** Caller with Firestore document `role: "admin"` but no custom claim is rejected with HTTP 403 Forbidden.
   4. **Demoted Claim (`admin: false`):** Token with custom claim demoted to `false` is verified by Firebase Auth but rejected by `requireAdmin` with HTTP 403 Forbidden.
   5. **Forged Secondary Claim (`isSuperAdmin: true`):** Token containing `isSuperAdmin: true` but lacking `admin: true` is strictly rejected with HTTP 403 Forbidden.
-  6. **Genuine Token Revocation (`auth/id-token-revoked`):** Token revocation triggers a verification failure in `verifyIdToken()` and is rejected with HTTP 401 Unauthorized (`Invalid or expired token`), clearly distinguished from claim demotion (HTTP 403).
+  6. **Mocked Token Revocation Rejection (`auth/id-token-revoked`):** In this mocked verification test, Firebase Admin's `verifyIdToken()` is configured to simulate the `auth/id-token-revoked` error thrown when `checkRevoked: true` detects a revoked token. The test asserts that `requireAdmin` invoked `verifyIdToken(token, true)` with `checkRevoked: true` and handled the rejection by returning HTTP 401 Unauthorized (`Invalid or expired token`), clearly distinguished from claim demotion (HTTP 403 Forbidden). *Note: This is a unit test asserting production error handling against a mocked Firebase Admin SDK rejection; it does not perform live network calls to Firebase Auth.*
   7. **Legacy Environment Flag:** Setting `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK=true` has zero effect; caller without claim is rejected with HTTP 403 Forbidden.
   8. **Missing Authorization Header:** Rejected with HTTP 401 Unauthorized.
   9. **Empty Bearer Token:** Rejected with HTTP 401 Unauthorized.
@@ -83,9 +83,10 @@ No production Firestore rules, production environment variables, Firebase claims
   - Implemented `beforeEach` fixture seeding to seed realistic match fee obligations, players, otherFees, merchandise items, and studio memberships before every scenario.
   - Implemented cleanup (`testEnv.clearFirestore()`) after each test.
 - **Test Architecture & Scope Distinction:**
-  > **IMPORTANT:** `tests/emulator-webhook-concurrency.test.mjs` directly executes the core transaction function `processWebhookIntentTransaction(db, details, rawPayload)` (invoked with `(db, capturedDetails)` and `(db, orderPaidDetails)` using `WebhookEventDetails` fixtures) against the live Firestore Emulator. This exercises and proves database-level transaction isolation, atomic locking, and duplicate-write prevention under high concurrency.
-  >
-  > It is **NOT** a full end-to-end HTTP webhook-route integration test across an active HTTP server stack. HTTP transport, body buffering, and HMAC SHA256 signature verification are separately tested in `tests/razorpay-webhook-negative.test.mjs`. Full HTTP network route integration was not executed as part of this database emulator suite.
+  > **IMPORTANT:** 
+  > - **Emulator Concurrency Tests:** `tests/emulator-webhook-concurrency.test.mjs` directly executes the transaction function invoking `processWebhookIntentTransaction(db, details)` (2 arguments, without `payload`) against the live Firestore Emulator. This exercises and proves database-level transaction isolation, atomic locking, and duplicate-write prevention under high concurrency.
+  > - **Production HTTP Route Handling:** The production webhook route (`app/api/razorpay/webhook/route.ts`) performs raw-body signature verification via timing-safe HMAC SHA256 comparison, parses the JSON payload, extracts `details`, and invokes `processWebhookIntentTransaction(db, details, payload)` with the 3rd argument.
+  > - **Untested HTTP Integration Scenarios:** The emulator concurrency suite does NOT execute full end-to-end HTTP network route tests against a running Next.js server, nor does it test raw-payload storage/persistence over the wire. Route-level HMAC signature checks and negative payload structures are separately validated in unit/negative tests (`tests/razorpay-webhook-negative.test.mjs`), while database concurrency is tested directly at the transaction function level.
 - **Concurrency & Race Scenarios Tested Against Live Emulator (4/4 Passed):**
   1. **Simultaneous `payment.captured` & `order.paid` for Match + Late Fee:**
      - Two concurrent `processWebhookIntentTransaction(db, details)` workers fired concurrently via `Promise.all`.

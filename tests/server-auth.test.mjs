@@ -4,14 +4,16 @@
  *
  * Verifies directly against production requireAdmin() in lib/server-auth.ts (QA-001 Compliant):
  * 1. requireAdmin strictly enforces custom claim { admin: true } as the sole authority.
- * 2. Ordinary authenticated users without custom claim receive 403 Forbidden.
- * 3. Callers with forged role == 'admin' in Firestore receive 403 Forbidden.
- * 4. Callers with demoted admin claim (admin: false) receive 403 Forbidden.
- * 5. Callers with forged isSuperAdmin: true in token claims (lacking admin: true) receive 403 Forbidden.
- * 6. Genuinely revoked tokens (auth/id-token-revoked) fail verification with 401 Unauthorized.
- * 7. Environment variable attempts (ALLOW_LEGACY_ADMIN_ROLE_FALLBACK) have zero effect.
- * 8. Expired or invalid tokens receive 401 Unauthorized.
- * 9. Missing or empty Authorization header receives 401 Unauthorized.
+ * 2. verifyIdToken(token, true) is invoked with checkRevoked: true on every call.
+ * 3. Ordinary authenticated users without custom claim receive 403 Forbidden.
+ * 4. Callers with forged role == 'admin' in Firestore receive 403 Forbidden.
+ * 5. Callers with demoted admin claim (admin: false) receive 403 Forbidden.
+ * 6. Callers with forged isSuperAdmin: true in token claims (lacking admin: true) receive 403 Forbidden.
+ * 7. Mocked revoked token (auth/id-token-revoked from checkRevoked: true) fails verification with 401 Unauthorized.
+ *    (Note: This is a mocked verification test simulating Firebase Admin SDK rejection; it does not perform live network calls).
+ * 8. Environment variable attempts (ALLOW_LEGACY_ADMIN_ROLE_FALLBACK) have zero effect.
+ * 9. Expired or invalid tokens receive 401 Unauthorized.
+ * 10. Missing or empty Authorization header receives 401 Unauthorized.
  */
 
 import { describe, it, mock } from "node:test";
@@ -155,7 +157,7 @@ describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () 
     assert.match(body.error, /verified admin custom claim required/i);
   });
 
-  it("rejects a genuinely revoked token (auth/id-token-revoked) at verification stage with 401 Unauthorized", async () => {
+  it("rejects a revoked token (auth/id-token-revoked) at verification stage with 401 Unauthorized", async () => {
     const req = new Request("http://localhost:3000/api/email/send", {
       method: "POST",
       headers: {
@@ -163,11 +165,17 @@ describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () 
       },
     });
 
+    lastVerifyArgs = null;
     const res = await requireAdmin(req);
     assert.equal(res.ok, false);
     assert.equal(res.response.status, 401);
     const body = await res.response.json();
     assert.match(body.error, /invalid or expired token/i);
+
+    // Assert that requireAdmin invoked verifyIdToken with the token and checkRevoked: true
+    assert.ok(lastVerifyArgs, "verifyIdToken must have been called");
+    assert.equal(lastVerifyArgs.token, "token-revoked");
+    assert.equal(lastVerifyArgs.checkRevoked, true, "verifyIdToken must be invoked with checkRevoked: true");
   });
 
   it("strictly rejects callers without admin custom claim even when legacy fallback env vars are set", async () => {
