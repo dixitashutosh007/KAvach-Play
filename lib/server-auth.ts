@@ -112,44 +112,36 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
   }
 
   // Fast path: custom claim
+  // Strict: custom claim is required by default (SEC-001)
   if (decoded.admin === true) {
     return { ok: true, uid: decoded.uid, email: decoded.email };
   }
 
-  // If strict claim mode is enabled, reject non-claim requests immediately without appUsers fallback
-  if (process.env.REQUIRE_ADMIN_CLAIM_ONLY === "true") {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Admin privilege required (custom claim required)." },
-        { status: 403 },
-      ),
-    };
-  }
-
-  // Fallback: check appUsers doc during migration period
-  try {
-    const dbId =
-      process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
-      (firebaseConfig as any).firestoreDatabaseId;
-    let db;
+  // Emergency legacy fallback: disabled by default. Only accessible if explicitly enabled.
+  if (process.env.ALLOW_LEGACY_ADMIN_ROLE_FALLBACK === "true") {
     try {
-      db = getFirestore(app, dbId);
+      const dbId =
+        process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
+        (firebaseConfig as any).firestoreDatabaseId;
+      let db;
+      try {
+        db = getFirestore(app, dbId);
+      } catch {
+        db = getFirestore(app);
+      }
+      const snap = await db.collection("appUsers").doc(decoded.uid).get();
+      if (snap.exists && snap.data()?.role === "admin") {
+        return { ok: true, uid: decoded.uid, email: decoded.email };
+      }
     } catch {
-      db = getFirestore(app);
+      // Fall through to reject
     }
-    const snap = await db.collection("appUsers").doc(decoded.uid).get();
-    if (snap.exists && snap.data()?.role === "admin") {
-      return { ok: true, uid: decoded.uid, email: decoded.email };
-    }
-  } catch {
-    // Fall through to reject
   }
 
   return {
     ok: false,
     response: NextResponse.json(
-      { error: "Admin privilege required." },
+      { error: "Admin privilege required (verified admin custom claim required)." },
       { status: 403 },
     ),
   };

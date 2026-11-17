@@ -3,7 +3,11 @@ import Razorpay from "razorpay";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { requireAuth } from "@/lib/server-auth";
-import { derivePayableAmount, validateCurrency } from "@/lib/razorpay-order";
+import {
+  derivePayableAmount,
+  validateCurrency,
+  findActivePendingIntent,
+} from "@/lib/razorpay-order";
 import firebaseConfig from "@/firebase-applet-config.json";
 
 function getDb() {
@@ -78,6 +82,26 @@ export async function POST(req: Request) {
       const derived = await derivePayableAmount(db, auth.uid, intentData);
       payableAmount = derived.amount;
       storedIntentData = derived.verifiedIntent;
+
+      // Idempotency / active order reservation check (FIN-001)
+      // Prevents creating duplicate Razorpay orders on simultaneous double-clicks
+      if (storedIntentData.reservationKey) {
+        const activeOrder = await findActivePendingIntent(
+          db,
+          storedIntentData.reservationKey,
+          auth.uid,
+        );
+        if (activeOrder && activeOrder.orderId) {
+          return NextResponse.json({
+            id: activeOrder.orderId,
+            amount: Math.round(activeOrder.amount * 100),
+            currency: activeOrder.currency,
+            receipt,
+            status: "created",
+            notes: { ...notes, intentId: activeOrder.intentId, reusedExistingOrder: true },
+          });
+        }
+      }
     } else {
       return NextResponse.json(
         { error: "Payment intentData is required." },

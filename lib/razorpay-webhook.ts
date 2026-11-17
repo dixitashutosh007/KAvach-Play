@@ -8,6 +8,7 @@ export interface WebhookEventDetails {
   capturedCurrency: string;
   intentId: string;
   notes: Record<string, any>;
+  isFullyPaid?: boolean;
 }
 
 /**
@@ -18,29 +19,53 @@ export function extractWebhookEventDetails(payload: any): WebhookEventDetails | 
   if (!payload || typeof payload !== "object") return null;
 
   const event = String(payload.event || "");
+  // Strictly allow only supported Razorpay events
+  if (event !== "payment.captured" && event !== "order.paid") {
+    return null;
+  }
+
   const paymentEntity = payload.payload?.payment?.entity;
   const orderEntity = payload.payload?.order?.entity;
 
   if (!paymentEntity && !orderEntity) return null;
 
-  const paymentId =
-    paymentEntity?.id ||
-    (orderEntity?.id?.startsWith("pay_") ? orderEntity.id : "");
+  // Ensure paymentId and orderId are never confused (order.entity.id is ALWAYS orderId)
+  const paymentId = paymentEntity?.id && String(paymentEntity.id).startsWith("pay_")
+    ? String(paymentEntity.id)
+    : "";
 
   const orderId =
     paymentEntity?.order_id ||
-    (orderEntity?.id?.startsWith("order_") ? orderEntity.id : orderEntity?.id || "");
+    (orderEntity?.id && String(orderEntity.id).startsWith("order_") ? String(orderEntity.id) : "");
 
-  const capturedPaise = Number(
-    paymentEntity?.amount ?? orderEntity?.amount_paid ?? orderEntity?.amount ?? 0,
-  );
+  // Raw amount check - do NOT default to valid number if missing
+  const rawAmount =
+    event === "order.paid"
+      ? (orderEntity?.amount_paid ?? orderEntity?.amount)
+      : paymentEntity?.amount;
 
-  const capturedCurrency = String(
-    paymentEntity?.currency || orderEntity?.currency || "INR",
-  ).toUpperCase();
+  const capturedPaise =
+    rawAmount !== undefined && rawAmount !== null && !isNaN(Number(rawAmount))
+      ? Number(rawAmount)
+      : 0;
+
+  // Strict currency extraction - do NOT default to "INR" if missing from payload
+  const rawCurrency = paymentEntity?.currency || orderEntity?.currency;
+  const capturedCurrency = rawCurrency ? String(rawCurrency).trim().toUpperCase() : "";
 
   const notes = paymentEntity?.notes || orderEntity?.notes || {};
   const intentId = String(notes.intentId || "").trim();
+
+  // Validate full payment on order.paid
+  let isFullyPaid = true;
+  if (event === "order.paid" && orderEntity) {
+    const totalAmount = Number(orderEntity.amount || 0);
+    const paidAmount = Number(orderEntity.amount_paid || 0);
+    const status = String(orderEntity.status || "").toLowerCase();
+    if (paidAmount < totalAmount || (totalAmount > 0 && status !== "paid")) {
+      isFullyPaid = false;
+    }
+  }
 
   return {
     event,
@@ -50,6 +75,7 @@ export function extractWebhookEventDetails(payload: any): WebhookEventDetails | 
     capturedCurrency,
     intentId,
     notes,
+    isFullyPaid,
   };
 }
 
@@ -64,16 +90,42 @@ export function validateWebhookTransaction(
     return { ok: false, error: "Intent record is missing." };
   }
 
-  const expectedPaise = Math.round(Number(intent.amount) * 100);
-  const expectedCurrency = String(intent.currency || "INR").toUpperCase();
+  // 1. Event verification
+  if (details.event !== "payment.captured" && details.event !== "order.paid") {
+    return { ok: false, error: `Unsupported webhook event type: ${details.event}` };
+  }
 
-  if (details.capturedCurrency !== expectedCurrency) {
+  // 2. Order ID verification (both MUST be present and match)
+  if (!intent.orderId || typeof intent.orderId !== "string" || !intent.orderId.trim()) {
+    return { ok: false, error: "Stored intent is missing a valid orderId." };
+  }
+  if (!details.orderId || typeof details.orderId !== "string" || !details.orderId.trim()) {
+    return { ok: false, error: "Incoming webhook event is missing a valid orderId." };
+  }
+  if (details.orderId !== intent.orderId) {
     return {
       ok: false,
-      error: `Currency mismatch: expected ${expectedCurrency}, received ${details.capturedCurrency}`,
+      error: `Order ID mismatch: expected ${intent.orderId}, received ${details.orderId}`,
     };
   }
 
+  // 3. Payment ID verification for payment.captured
+  if (details.event === "payment.captured") {
+    if (!details.paymentId || !details.paymentId.startsWith("pay_")) {
+      return { ok: false, error: "Missing or invalid payment ID for payment.captured event." };
+    }
+  }
+
+  // 4. Partial payment verification for order.paid
+  if (details.event === "order.paid" && details.isFullyPaid === false) {
+    return { ok: false, error: "Partial payment detected: order is not fully paid." };
+  }
+
+  // 5. Amount verification
+  if (!details.capturedPaise || details.capturedPaise <= 0 || isNaN(details.capturedPaise)) {
+    return { ok: false, error: "Missing or invalid captured amount." };
+  }
+  const expectedPaise = Math.round(Number(intent.amount) * 100);
   if (details.capturedPaise !== expectedPaise) {
     return {
       ok: false,
@@ -81,10 +133,15 @@ export function validateWebhookTransaction(
     };
   }
 
-  if (intent.orderId && details.orderId && details.orderId !== intent.orderId) {
+  // 6. Currency verification (Strict: no silent default)
+  if (!details.capturedCurrency) {
+    return { ok: false, error: "Missing currency in webhook payload." };
+  }
+  const expectedCurrency = String(intent.currency || "INR").toUpperCase();
+  if (details.capturedCurrency !== expectedCurrency) {
     return {
       ok: false,
-      error: `Order ID mismatch: expected ${intent.orderId}, received ${details.orderId}`,
+      error: `Currency mismatch: expected ${expectedCurrency}, received ${details.capturedCurrency}`,
     };
   }
 

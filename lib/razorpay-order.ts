@@ -1,6 +1,70 @@
 import { computeLateFees } from "./utils.ts";
 
 /**
+ * Generates an obligation reservation key to detect duplicate concurrent payment requests (FIN-001).
+ */
+export function generateReservationKey(intentData: any, playerId: string): string {
+  if (intentData.type === "match") {
+    return `match_${intentData.matchId}_${intentData.paymentId}`;
+  }
+  if (intentData.type === "finance_dues") {
+    const itemIds = Array.isArray(intentData.items)
+      ? intentData.items.map((i: any) => i.paymentId || i.feeId || i.merchId || i.matchId).filter(Boolean).sort().join("_")
+      : "";
+    return `dues_${playerId}_${itemIds}`;
+  }
+  if (intentData.type === "subscription") {
+    return `sub_${playerId}_${intentData.planId}`;
+  }
+  if (intentData.type === "merch_order") {
+    const merchId = intentData.orderPayload?.merchId || intentData.merchId;
+    return `merch_${merchId}_${playerId}`;
+  }
+  return `intent_${playerId}_${Date.now()}`;
+}
+
+/**
+ * Checks for an existing unexpired pending order for the same obligation (FIN-001).
+ * Prevents spawning duplicate active Razorpay orders on simultaneous network requests.
+ */
+export async function findActivePendingIntent(
+  db: any,
+  reservationKey: string,
+  authUid: string,
+  maxAgeMs = 15 * 60 * 1000,
+): Promise<{ intentId: string; orderId: string; amount: number; currency: string } | null> {
+  try {
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    const snap = await db
+      .collection("razorpayIntents")
+      .where("reservationKey", "==", reservationKey)
+      .where("userId", "==", authUid)
+      .where("status", "==", "pending")
+      .get();
+
+    if (!snap.empty) {
+      for (const doc of snap.docs) {
+        const data = doc.data() || {};
+        if (data.orderId && data.createdAt) {
+          const createdAtDate = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+          if (createdAtDate >= cutoff) {
+            return {
+              intentId: doc.id,
+              orderId: data.orderId,
+              amount: data.amount,
+              currency: data.currency || "INR",
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    // If index or query fails, fall back safely to creating a new order
+  }
+  return null;
+}
+
+/**
  * Validates currency string. Only INR is supported per business rules.
  */
 export function validateCurrency(currency: string | undefined | null): boolean {
@@ -165,6 +229,7 @@ export async function derivePayableAmount(
       amount: calculatedAmount,
       verifiedIntent: {
         type: "match",
+        reservationKey: generateReservationKey(intentData, playerId),
         matchId,
         paymentId,
         playerId,
@@ -314,6 +379,7 @@ export async function derivePayableAmount(
       amount: calculatedAmount,
       verifiedIntent: {
         type: "finance_dues",
+        reservationKey: generateReservationKey(intentData, playerId),
         playerId,
         userId: authUid,
         items: verifiedItems,
@@ -338,6 +404,7 @@ export async function derivePayableAmount(
       amount: planFee,
       verifiedIntent: {
         type: "subscription",
+        reservationKey: generateReservationKey(intentData, authUid),
         planId,
         userId: authUid,
         durationDays: Number(plan.durationDays || 30),
@@ -374,6 +441,7 @@ export async function derivePayableAmount(
       amount: calculatedPrice,
       verifiedIntent: {
         type: "merch_order",
+        reservationKey: generateReservationKey(intentData, playerId),
         merchId,
         userId: authUid,
         orderPayload: {
