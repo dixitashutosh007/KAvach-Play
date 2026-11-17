@@ -5,7 +5,7 @@
 **Phase:** Phase 4 — UX Blueprint, High-Fidelity Design & Prototypes  
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
-**Current Milestone Commit:** `94cc506c9ef44855b85b507f9a7e618988d7dd6e` (reconciled milestone commit; parent `4a74e5104be3d086051c6b99f8bcaab77a378e3b`)  
+**Current Milestone Commit:** Reviewed closure commit `e421587a84b4131ab514c2bccfa6bd7ec5292ac2` (parent `4a74e5104be3d086051c6b99f8bcaab77a378e3b`) with accessibility closure updates on `mig-mov`  
 **Authoritative References:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09, D-10), Phase 3 Architecture Sign-off (`91811ed`), Feature Traceability Matrix (`docs/implementation/REQUIREMENTS_TRACEABILITY.md`).  
 **Status:** Developer Verified — **Pending Independent QA Review & Owner Acceptance** (Not Self-Certified)
 
@@ -43,7 +43,8 @@ Rather than static mockups alone, Phase 4 delivers a **comprehensive, interactiv
 | `fed6936` | Remediation | Touch target audit, test coverage, and traceability distinctions |
 | `6b430fb` | Remediation | 44px touch targets, responsive assertions, and report reconciliation |
 | `bcfad69` | Config | Owner Super Admin custom claim and allowlist configuration |
-| `94cc506` | Closure | Reconcile D-10 unified model, instance-aware dialog focus, unrounded 44px targets |
+| `e421587` | Closure | Reconcile D-10 unified model, instance-aware dialog focus, unrounded 44px targets |
+| *Current* | Closure | Non-topmost focus handling (UX-07), background content inert isolation (UX-08) |
 
 ### Deliverable Artifacts & Specification Files
 
@@ -129,9 +130,9 @@ In accordance with `AGENTS.md` and the governance principles of this project:
 
 ### 2. Automated Playwright Responsive & Capabilities Suite (`e2e/prototype-responsive.spec.ts`)
 Executed against both official Playwright projects:
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **13/13 passed** (16.0s, 0 failed, 0 skipped).
-- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **13/13 passed** (18.7s, 0 failed, 0 skipped).
-- **Combined Total:** **26/26 passed (0 failures, 0 skipped)**.
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Desktop Chrome"`: **14/14 passed** (17.0s, 0 failed, 0 skipped).
+- `npx playwright test e2e/prototype-responsive.spec.ts --project="Mobile Chrome"`: **14/14 passed** (19.9s, 0 failed, 0 skipped).
+- **Combined Total:** **28/28 passed (0 failures, 0 skipped)**.
 
 Tests executed in each project across all 6 target viewports:
 1. **Viewport 360×800:** `renders at 360x800 (360x800) with valid layout, navigation, touch targets, and modals` — **PASS**
@@ -147,6 +148,7 @@ Tests executed in each project across all 6 target viewports:
 11. **Design Studio Generator:** `verifies interactive Design Studio generator and live SVG canvas` (template switching, POTM layout, high-res graphic download simulation) — **PASS**
 12. **Keyboard Accessibility & Focus:** `verifies keyboard navigation and focus visibility across primary player navigation` (focus ring on active control, Tab keyboard navigation) — **PASS**
 13. **Instance-Aware Modal Focus Management & Restoration:** `verifies instance-aware modal focus containment, first/last element cycling, Escape dismissal, and nested dialog focus restoration` (asserts initial focus inside active dialog, first/last focus wrapping with Tab and Shift+Tab, Escape key LIFO dismissal, and focus restoration to the exact opener trigger button across single and nested dialogs e.g. Squad Drawer -> Record Cash Modal) — **PASS**
+14. **Non-Topmost Dialog Closure & Background Isolation (UX-07 & UX-08):** `verifies closing non-topmost dialog retains focus within active topmost dialog and preserves stack; verifies background application content and underlying dialogs are completely isolated via inert/aria-hidden while dialogs are open, and interactivity is cleanly restored upon closing` — **PASS**
 
 Screenshots captured and stored under `docs/qa/screenshots/`:
 - `prototype-360x800.png`
@@ -187,12 +189,18 @@ The following accessibility, ergonomics, and touch target standards were audited
   - Modal and slide-over close buttons: `min-h-[44px] min-w-[44px]`
   - Toast notification dismiss button: `min-h-[44px] min-w-[44px]`
   - All form `<input>` and `<select>` controls: `min-h-[44px]`
-- **Instance-Aware Modal Focus Containment & Restoration:**
+- **Background Application Content Isolation (UX-08):**
+  - While any modal or drawer is active, the entire background application tree (`#prototype-app-content`) and top inspector bar (`#prototype-inspector-bar`) are marked with the HTML standard `inert` and `aria-hidden="true"` attributes.
+  - This guarantees that background content cannot receive keyboard focus, click/touch events, or screen reader focus.
+  - When all dialogs close, `inert` and `aria-hidden` attributes are cleanly removed, restoring full interactivity immediately.
+- **Instance-Aware Modal Focus Management & Non-Topmost Closure Handling (UX-07):**
   - Implemented an instance-aware dialog stack (`dialogStackRef`) tracking `{ id, triggerElement, close }` for all 13 modals and drawers.
   - Automatically shifts initial focus to the first focusable element inside newly opened dialogs via `requestAnimationFrame`.
   - Traps `Tab` and `Shift+Tab` strictly within the active topmost dialog (`topDialog`), cycling seamlessly between first and last focusable elements.
-  - Restores keyboard focus to the exact triggering element that launched the dialog upon closure.
-  - Safely handles nested dialogs (e.g., opening `Record Cash Modal` from within `Admin Match Squad Drawer`): pressing Escape or Close dismisses only the top modal and returns focus to the "Collect" trigger button inside the underlying drawer, leaving the underlying drawer open and interactive.
+  - When a dialog closes, the system inspects whether it was the topmost dialog:
+    - **If topmost:** Restores focus to its exact opener trigger element, provided that opener is still connected and usable in the DOM (`opener.isConnected`).
+    - **If non-topmost (e.g. underlying drawer closed while a nested modal is still active):** Focus does NOT jump behind the active modal; focus remains strictly contained within the remaining topmost dialog.
+  - Safely handles nested dialogs (e.g., opening `Record Cash Modal` from within `Admin Match Squad Drawer`): underlying dialogs receive `inert` while nested dialogs are topmost. Pressing Escape or Close dismisses only the top modal and returns focus to the "Collect" trigger button inside the underlying drawer, leaving the underlying drawer open and interactive.
 - **Dialog & Modal Standards:** All 13 modal dialogues and slide-over drawers include unique `data-dialog-id`, `role="dialog"`, `aria-modal="true"`, scrollable constraints (`max-h-[90vh] overflow-y-auto`), and prominent `min-h-[44px] min-w-[44px]` close buttons.
 - **Escape Key Listener:** Global `Escape` key event listener in `useEffect` pops the topmost dialog from `dialogStackRef` in strict LIFO order.
 - **Justified Exceptions:** Non-interactive status badges (e.g. `UPCOMING`, `PLAYED`, `CONFIRMED`), decorative indicators, and table header labels remain compact by design because they are informational displays without click handlers.

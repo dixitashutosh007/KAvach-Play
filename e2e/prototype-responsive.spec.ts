@@ -398,6 +398,9 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
     const createModal = page.locator('div[role="dialog"][data-dialog-id="create-match-modal"]');
     await expect(createModal).toBeVisible();
     await expect(createModal).toHaveAttribute("aria-modal", "true");
+    await expect(page.locator("#prototype-app-content")).toHaveAttribute("inert", "");
+    await expect(page.locator("#prototype-inspector-bar")).toHaveAttribute("inert", "");
+    await expect(createModal).not.toHaveAttribute("inert");
 
     // 1B. Initial focus inside the newly opened dialog
     await expect.poll(async () => {
@@ -436,6 +439,8 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
     await page.keyboard.press("Escape");
     await expect(createModal).not.toBeVisible();
     await expect(createMatchBtn).toBeFocused();
+    await expect(page.locator("#prototype-app-content")).not.toHaveAttribute("inert");
+    await expect(page.locator("#prototype-inspector-bar")).not.toHaveAttribute("inert");
 
     // =========================================================================
     // 2. DRAWER DIALOG: Player Match Details Drawer
@@ -485,6 +490,8 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
 
     const squadDrawer = page.locator('div[role="dialog"][data-dialog-id="admin-match-squad-drawer"]');
     await expect(squadDrawer).toBeVisible();
+    await expect(page.locator("#prototype-app-content")).toHaveAttribute("inert", "");
+    await expect(squadDrawer).not.toHaveAttribute("inert");
 
     // Locate "Collect" button inside Squad Drawer
     const collectBtn = squadDrawer.locator("button:visible", { hasText: "Collect" }).first();
@@ -497,6 +504,9 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
 
     const cashModal = page.locator('div[role="dialog"][data-dialog-id="record-cash-modal"]');
     await expect(cashModal).toBeVisible();
+    await expect(cashModal).not.toHaveAttribute("inert");
+    await expect(squadDrawer).toHaveAttribute("inert", "");
+    await expect(page.locator("#prototype-app-content")).toHaveAttribute("inert", "");
 
     // Verify initial focus is inside the top cash modal
     await expect.poll(async () => {
@@ -516,10 +526,11 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
       expect(isStillInTopModal).toBeTruthy();
     }
 
-    // Dismiss top modal via Escape key: ONLY the top modal closes; underlying squad drawer remains open!
+    // Dismiss top modal via Escape key: ONLY the top modal closes; underlying squad drawer remains open and active!
     await page.keyboard.press("Escape");
     await expect(cashModal).not.toBeVisible();
     await expect(squadDrawer).toBeVisible();
+    await expect(squadDrawer).not.toHaveAttribute("inert");
 
     // Verify focus is restored to the triggering "Collect" button inside the squad drawer
     await expect(collectBtn).toBeFocused();
@@ -528,5 +539,73 @@ test.describe("KAvach Play — Accessibility & Keyboard Interaction Suite", () =
     await page.keyboard.press("Escape");
     await expect(squadDrawer).not.toBeVisible();
     await expect(squadBtn).toBeFocused();
+    await expect(page.locator("#prototype-app-content")).not.toHaveAttribute("inert");
+    await expect(page.locator("#prototype-inspector-bar")).not.toHaveAttribute("inert");
+  });
+
+  test("verifies closing non-topmost dialog retains focus within active topmost dialog and preserves stack (UX-07 & UX-08)", async ({ page }) => {
+    await page.goto("/prototype");
+
+    // Enter Admin Console and navigate to Match Centre
+    await page.locator("button:visible", { hasText: "Admin Console" }).first().click();
+    await page.locator("button:visible", { hasText: "Match Centre" }).first().click();
+
+    // Open underlying Squad Drawer (Dialog A)
+    const squadBtn = page.locator("button:visible", { hasText: "Squad & Attendance" }).first();
+    await squadBtn.click();
+    const squadDrawer = page.locator('div[role="dialog"][data-dialog-id="admin-match-squad-drawer"]');
+    await expect(squadDrawer).toBeVisible();
+    await expect(squadDrawer).not.toHaveAttribute("inert");
+
+    // Open nested Record Cash modal (Dialog B, topmost)
+    const collectBtn = squadDrawer.locator("button:visible", { hasText: "Collect" }).first();
+    await collectBtn.click();
+    const cashModal = page.locator('div[role="dialog"][data-dialog-id="record-cash-modal"]');
+    await expect(cashModal).toBeVisible();
+    await expect(cashModal).not.toHaveAttribute("inert");
+    await expect(squadDrawer).toHaveAttribute("inert", "");
+
+    // Verify initial focus is inside topmost cash modal
+    await expect.poll(async () => {
+      return page.evaluate(() => {
+        const modalEl = document.querySelector('div[role="dialog"][data-dialog-id="record-cash-modal"]');
+        return modalEl ? modalEl.contains(document.activeElement) : false;
+      });
+    }).toBeTruthy();
+
+    // Trigger programmatic closure of non-topmost dialog A (squadDrawer) while dialog B (cashModal) remains active
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("prototype-close-dialog", { detail: { id: "admin-match-squad-drawer" } }));
+    });
+
+    // Assert underlying dialog A is closed
+    await expect(squadDrawer).not.toBeVisible();
+
+    // Assert topmost dialog B is still open, visible, and NOT inert
+    await expect(cashModal).toBeVisible();
+    await expect(cashModal).not.toHaveAttribute("inert");
+
+    // UX-07 Critical Assertion: Focus did NOT jump behind the active dialog (it did NOT jump to squadBtn in the background)
+    const activeIsInsideCashModal = await page.evaluate(() => {
+      const modalEl = document.querySelector('div[role="dialog"][data-dialog-id="record-cash-modal"]');
+      return modalEl ? modalEl.contains(document.activeElement) : false;
+    });
+    expect(activeIsInsideCashModal).toBeTruthy();
+
+    // Verify Tab cycling still functions cleanly inside cashModal
+    await page.keyboard.press("Tab");
+    const stillInsideAfterTab = await page.evaluate(() => {
+      const modalEl = document.querySelector('div[role="dialog"][data-dialog-id="record-cash-modal"]');
+      return modalEl ? modalEl.contains(document.activeElement) : false;
+    });
+    expect(stillInsideAfterTab).toBeTruthy();
+
+    // Close topmost dialog B
+    await page.keyboard.press("Escape");
+    await expect(cashModal).not.toBeVisible();
+
+    // Assert background interactivity is cleanly restored
+    await expect(page.locator("#prototype-app-content")).not.toHaveAttribute("inert");
+    await expect(page.locator("#prototype-inspector-bar")).not.toHaveAttribute("inert");
   });
 });

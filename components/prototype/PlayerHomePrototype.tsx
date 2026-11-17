@@ -845,6 +845,22 @@ export default function PlayerHomePrototype() {
   const dialogStackRef = useRef<DialogInstance[]>([]);
   const prevOpenMapRef = useRef<Record<string, boolean>>({});
 
+  const isAnyDialogOpen = Boolean(
+    notificationsOpen ||
+    adminMatchSquadDrawer ||
+    selectedPlayerProfile ||
+    createMatchModalOpen ||
+    recordCashModalOpen ||
+    selectedMatch ||
+    selectedReceipt ||
+    mergeModalOpen ||
+    adHocFeeModalOpen ||
+    selectedAuditTx ||
+    bookSlotModalOpen ||
+    paymentModalOpen ||
+    shopItemOrderModal
+  );
+
   const dialogConfigs = [
     { id: "notifications-drawer", isOpen: notificationsOpen, close: () => setNotificationsOpen(false) },
     { id: "admin-match-squad-drawer", isOpen: Boolean(adminMatchSquadDrawer), close: () => setAdminMatchSquadDrawer(null) },
@@ -894,26 +910,107 @@ export default function PlayerHomePrototype() {
           }
         });
       } else if (!isNowOpen && wasOpen) {
-        // Modal instance just closed: remove from stack and restore focus
+        // Modal instance just closed: determine whether it was topmost
         const idx = dialogStackRef.current.findIndex((d) => d.id === cfg.id);
         if (idx !== -1) {
+          const wasTopmost = idx === dialogStackRef.current.length - 1;
           const [removed] = dialogStackRef.current.splice(idx, 1);
-          if (removed.triggerElement && typeof removed.triggerElement.focus === "function") {
-            removed.triggerElement.focus();
-          } else {
-            const remainingTop = dialogStackRef.current[dialogStackRef.current.length - 1];
-            if (remainingTop) {
-              const remainingEl = document.querySelector(`div[role="dialog"][data-dialog-id="${remainingTop.id}"]`) as HTMLElement;
-              if (remainingEl) {
-                const focusable = remainingEl.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-                if (focusable.length > 0) focusable[0].focus();
+          const remainingTop = dialogStackRef.current[dialogStackRef.current.length - 1];
+
+          if (wasTopmost) {
+            // UX-07: If it was topmost, restore focus to its opener, provided that opener is still connected and usable
+            requestAnimationFrame(() => {
+              const opener = removed.triggerElement;
+              const isOpenerUsable = Boolean(opener && opener.isConnected && typeof opener.focus === "function");
+
+              if (isOpenerUsable && opener) {
+                opener.focus();
+              } else if (remainingTop) {
+                // Opener is not connected/usable, but another dialog remains in stack: focus remaining top dialog
+                const remainingEl = document.querySelector(`div[role="dialog"][data-dialog-id="${remainingTop.id}"]`) as HTMLElement;
+                if (remainingEl) {
+                  const focusable = Array.from(remainingEl.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+                  )).filter((el) => {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== "none" && style.visibility !== "hidden" && (el.offsetParent !== null || el.getBoundingClientRect().width > 0);
+                  });
+                  if (focusable.length > 0) focusable[0].focus();
+                  else remainingEl.focus();
+                }
+              } else {
+                // No dialogs remain and opener is disconnected: focus main content area
+                const mainContent = document.getElementById("prototype-app-content");
+                const focusableInApp = mainContent?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled])');
+                if (focusableInApp && focusableInApp.length > 0) {
+                  focusableInApp[0].focus();
+                }
               }
-            }
+            });
+          } else {
+            // UX-07: Non-topmost dialog closed while another dialog remains active!
+            // Do NOT move focus behind the active dialog.
+            // Keep focus within the remaining topmost dialog.
+            requestAnimationFrame(() => {
+              if (remainingTop) {
+                const topEl = document.querySelector(`div[role="dialog"][data-dialog-id="${remainingTop.id}"]`) as HTMLElement;
+                if (topEl && !topEl.contains(document.activeElement)) {
+                  const focusable = Array.from(topEl.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+                  )).filter((el) => {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== "none" && style.visibility !== "hidden" && (el.offsetParent !== null || el.getBoundingClientRect().width > 0);
+                  });
+                  if (focusable.length > 0) focusable[0].focus();
+                  else topEl.focus();
+                }
+              }
+            });
           }
         }
       }
 
       prevOpenMapRef.current[cfg.id] = isNowOpen;
+    });
+
+    // UX-08: Isolate background content and underlying dialogs for modal accessibility
+    const stack = dialogStackRef.current;
+    const currentTop = stack[stack.length - 1];
+    const currentTopId = currentTop ? currentTop.id : null;
+    const hasAnyOpen = stack.length > 0;
+
+    const inspectorBar = document.getElementById("prototype-inspector-bar");
+    const appContent = document.getElementById("prototype-app-content");
+
+    if (hasAnyOpen) {
+      inspectorBar?.setAttribute("inert", "");
+      inspectorBar?.setAttribute("aria-hidden", "true");
+      appContent?.setAttribute("inert", "");
+      appContent?.setAttribute("aria-hidden", "true");
+    } else {
+      inspectorBar?.removeAttribute("inert");
+      inspectorBar?.removeAttribute("aria-hidden");
+      appContent?.removeAttribute("inert");
+      appContent?.removeAttribute("aria-hidden");
+    }
+
+    // Isolate underlying dialogs when a nested dialog is active
+    const allDialogs = document.querySelectorAll<HTMLElement>('div[role="dialog"][data-dialog-id]');
+    allDialogs.forEach((diag) => {
+      const diagId = diag.getAttribute("data-dialog-id");
+      const overlayParent = diag.closest(".fixed") as HTMLElement | null;
+
+      if (diagId === currentTopId) {
+        diag.removeAttribute("inert");
+        diag.removeAttribute("aria-hidden");
+        overlayParent?.removeAttribute("inert");
+        overlayParent?.removeAttribute("aria-hidden");
+      } else {
+        diag.setAttribute("inert", "");
+        diag.setAttribute("aria-hidden", "true");
+        overlayParent?.setAttribute("inert", "");
+        overlayParent?.setAttribute("aria-hidden", "true");
+      }
     });
   }, [
     paymentModalOpen,
@@ -930,6 +1027,23 @@ export default function PlayerHomePrototype() {
     adminMatchSquadDrawer,
     notificationsOpen,
   ]);
+
+  // Prototype Test Hook: Allow programmatic closure of dialogs for regression testing (UX-07)
+  useEffect(() => {
+    const handleTestClose = (e: Event) => {
+      const customEvt = e as CustomEvent<{ id: string }>;
+      const targetId = customEvt.detail?.id;
+      const cfg = dialogConfigs.find((c) => c.id === targetId);
+      if (cfg) {
+        cfg.close();
+      }
+    };
+
+    window.addEventListener("prototype-close-dialog", handleTestClose);
+    return () => {
+      window.removeEventListener("prototype-close-dialog", handleTestClose);
+    };
+  }, [dialogConfigs]);
 
   // Keyboard Accessibility: Escape key dismissal & Modal Tab Focus Containment on topmost dialog
   useEffect(() => {
@@ -1134,7 +1248,12 @@ export default function PlayerHomePrototype() {
   return (
     <div className="min-h-screen bg-[#F0F2F5] text-[#171C26] font-sans">
       {/* Top Prototype Inspection Bar (Harness Only) */}
-      <div className="bg-[#171C26] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-gray-800 sticky top-0 z-50">
+      <div
+        id="prototype-inspector-bar"
+        inert={isAnyDialogOpen ? true : undefined}
+        aria-hidden={isAnyDialogOpen ? "true" : undefined}
+        className="bg-[#171C26] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-gray-800 sticky top-0 z-50"
+      >
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#A30F2D] text-white font-bold text-[10px] uppercase tracking-wider">
             Prototype Inspector
@@ -1233,8 +1352,13 @@ export default function PlayerHomePrototype() {
           ? "max-w-[1360px] my-6 shadow-2xl rounded-2xl overflow-hidden border border-gray-300"
           : "w-full"
       }`}>
-        {/* Actual App Preview Surface */}
-        <div className="min-h-[844px] bg-[#F6F7F9] flex flex-col relative overflow-hidden">
+        {/* Actual App Preview Surface (Background Application Content) */}
+        <div
+          id="prototype-app-content"
+          inert={isAnyDialogOpen ? true : undefined}
+          aria-hidden={isAnyDialogOpen ? "true" : undefined}
+          className="min-h-[844px] bg-[#F6F7F9] flex flex-col relative overflow-hidden"
+        >
           
           {/* 1. GLOBAL HEADER */}
           <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-4 py-3 flex items-center justify-between shadow-xs">
@@ -4031,6 +4155,10 @@ export default function PlayerHomePrototype() {
               </button>
             </nav>
           )}
+        </div>
+
+        {/* Modal and Slide-Over Dialogs Container */}
+        <div id="prototype-dialogs-container">
 
           {/* ========================================================================= */}
           {/* SQUAD & ATTENDANCE MANAGEMENT DRAWER (Admin Match Centre)                 */}
