@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import {
   extractWebhookEventDetails,
   validateWebhookTransaction,
+  processWebhookIntentTransaction,
 } from "../lib/razorpay-webhook.ts";
 
 describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
@@ -149,6 +150,7 @@ describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
         order: {
           entity: {
             id: "order_KAvachExpected123",
+            payment_id: "pay_partial_test_123",
             amount: 50000,
             amount_paid: 25000, // Partial: ₹250 of ₹500
             status: "attempted",
@@ -175,5 +177,127 @@ describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
     assert.equal(extractWebhookEventDetails({}), null);
     assert.equal(extractWebhookEventDetails({ event: "payment.captured" }), null);
     assert.equal(extractWebhookEventDetails({ event: "payment.captured", payload: {} }), null);
+  });
+
+  // 11. FIN-003: Mandatory Payment ID on order.paid
+  it("rejects order.paid when payment ID is missing or empty", () => {
+    const orderPaidWithoutPaymentId = {
+      event: "order.paid",
+      payload: {
+        order: {
+          entity: {
+            id: "order_KAvachExpected123",
+            amount: 50000,
+            amount_paid: 50000,
+            status: "paid",
+            currency: "INR",
+            notes: { intentId: "intent_123" },
+            // payment_id omitted, payments omitted
+          },
+        },
+      },
+    };
+    const details = extractWebhookEventDetails(orderPaidWithoutPaymentId);
+    assert.ok(details);
+    assert.equal(details.paymentId, ""); // empty paymentId
+
+    const res = validateWebhookTransaction(baseIntent, details);
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Missing or invalid payment ID \(must start with 'pay_'\)/);
+  });
+
+  it("rejects order.paid when payment ID does not start with pay_", () => {
+    const orderPaidMalformedPaymentId = {
+      event: "order.paid",
+      payload: {
+        order: {
+          entity: {
+            id: "order_KAvachExpected123",
+            amount: 50000,
+            amount_paid: 50000,
+            status: "paid",
+            currency: "INR",
+            payment_id: "invalid_id_format_not_pay",
+            notes: { intentId: "intent_123" },
+          },
+        },
+      },
+    };
+    const details = extractWebhookEventDetails(orderPaidMalformedPaymentId);
+    assert.ok(details);
+    assert.equal(details.paymentId, ""); // filtered out because does not start with pay_
+
+    const res = validateWebhookTransaction(baseIntent, details);
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Missing or invalid payment ID/);
+  });
+
+  it("ensures rejected event leaves intent and downstream records completely unchanged", async () => {
+    const store = new Map();
+    store.set("razorpayIntents/intent_test_101", {
+      status: "pending",
+      orderId: "order_KAvachExpected123",
+      amount: 500,
+      currency: "INR",
+      type: "match",
+      matchId: "match_xyz",
+      paymentId: "pay_record_abc",
+    });
+    store.set("matches/match_xyz/payments/pay_record_abc", {
+      status: "Unpaid",
+      playerId: "player_001",
+    });
+
+    const mockDb = {
+      collection: (col) => ({
+        doc: (docId) => {
+          const key = `${col}/${docId}`;
+          return {
+            ref: { id: docId, path: key },
+            get: async () => ({
+              exists: store.has(key),
+              data: () => store.get(key),
+            }),
+          };
+        },
+      }),
+      runTransaction: async (txFn) => {
+        const tx = {
+          get: async (ref) => ref.get(),
+          set: (ref, val) => store.set(ref.path, val),
+          update: (ref, val) => store.set(ref.path, { ...(store.get(ref.path) || {}), ...val }),
+        };
+        return await txFn(tx);
+      },
+    };
+
+    // Invalid details lacking valid paymentId
+    const invalidDetails = {
+      event: "order.paid",
+      intentId: "intent_test_101",
+      orderId: "order_KAvachExpected123",
+      paymentId: "", // Missing payment ID!
+      capturedPaise: 50000,
+      capturedCurrency: "INR",
+      isFullyPaid: true,
+      notes: {},
+    };
+
+    // Processing must fail with error
+    await assert.rejects(
+      async () => {
+        await processWebhookIntentTransaction(mockDb, invalidDetails);
+      },
+      /Missing or invalid payment ID/,
+    );
+
+    // Verify intent status is STILL "pending"
+    const intentAfter = store.get("razorpayIntents/intent_test_101");
+    assert.equal(intentAfter.status, "pending");
+
+    // Verify downstream match payment is STILL "Unpaid" and has no razorpayPaymentId
+    const paymentAfter = store.get("matches/match_xyz/payments/pay_record_abc");
+    assert.equal(paymentAfter.status, "Unpaid");
+    assert.equal(paymentAfter.razorpayPaymentId, undefined);
   });
 });

@@ -110,9 +110,11 @@ describe("FIN-001: Merchandise Pricing Catalogue Integrity", () => {
     assert.equal(price, 1100); // 850 + 100 + 150
   });
 
-  it("ignores tampered or non-existent custom field values", () => {
-    const price = calculateAuthoritativeMerchPrice(catalogueJersey, { Size: "INVALID_SIZE", HackedField: "FREE" });
-    assert.equal(price, 850);
+  it("rejects tampered or non-existent custom field values", () => {
+    assert.throws(
+      () => calculateAuthoritativeMerchPrice(catalogueJersey, { Size: "INVALID_SIZE", HackedField: "FREE" }),
+      /Unknown merchandise custom selection field: 'HackedField'/,
+    );
   });
 });
 

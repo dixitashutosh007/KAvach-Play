@@ -23,45 +23,130 @@ export function generateReservationKey(intentData: any, playerId: string): strin
   return `intent_${playerId}_${Date.now()}`;
 }
 
+export interface PaymentReservationResult {
+  acquired: boolean;
+  isWaiting?: boolean;
+  existingOrder?: {
+    orderId: string;
+    intentId: string;
+    amount: number;
+    currency: string;
+  };
+}
+
 /**
- * Checks for an existing unexpired pending order for the same obligation (FIN-001).
- * Prevents spawning duplicate active Razorpay orders on simultaneous network requests.
+ * Atomically acquires or reuses an existing order reservation for an obligation (FIN-001).
+ * Uses Firestore transactions on /paymentReservations/{reservationKey} to prevent concurrent
+ * requests from creating duplicate Razorpay orders for the same obligation.
  */
-export async function findActivePendingIntent(
+export async function acquirePaymentReservation(
   db: any,
   reservationKey: string,
   authUid: string,
-  maxAgeMs = 15 * 60 * 1000,
-): Promise<{ intentId: string; orderId: string; amount: number; currency: string } | null> {
-  try {
-    const cutoff = new Date(Date.now() - maxAgeMs);
-    const snap = await db
-      .collection("razorpayIntents")
-      .where("reservationKey", "==", reservationKey)
-      .where("userId", "==", authUid)
-      .where("status", "==", "pending")
-      .get();
+  payableAmount: number,
+  currency: string,
+  lockTtlMs = 30 * 1000,
+): Promise<PaymentReservationResult> {
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
 
-    if (!snap.empty) {
-      for (const doc of snap.docs) {
-        const data = doc.data() || {};
-        if (data.orderId && data.createdAt) {
-          const createdAtDate = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
-          if (createdAtDate >= cutoff) {
-            return {
-              intentId: doc.id,
+  return await db.runTransaction(async (transaction: any) => {
+    const snap = await transaction.get(reservationRef);
+    const now = new Date();
+
+    if (snap.exists) {
+      const data = snap.data() || {};
+      const expiresAt = data.expiresAt
+        ? data.expiresAt.toDate
+          ? data.expiresAt.toDate()
+          : new Date(data.expiresAt)
+        : new Date(0);
+
+      // Check if existing reservation is active and unexpired
+      if (expiresAt > now) {
+        if (data.status === "active" && data.orderId) {
+          // Existing active Razorpay order found! Reuse it immediately.
+          return {
+            acquired: false,
+            existingOrder: {
               orderId: data.orderId,
+              intentId: data.intentId,
               amount: data.amount,
-              currency: data.currency || "INR",
-            };
-          }
+              currency: data.currency || currency,
+            },
+          };
+        }
+
+        if (data.status === "reserving") {
+          // Another concurrent request is actively creating the order right now
+          return {
+            acquired: false,
+            isWaiting: true,
+          };
         }
       }
+      // If expired, or status === "failed", it will be overwritten below
     }
-  } catch {
-    // If index or query fails, fall back safely to creating a new order
+
+    // Acquire reservation lock atomically
+    transaction.set(reservationRef, {
+      reservationKey,
+      status: "reserving",
+      userId: authUid,
+      amount: payableAmount,
+      currency,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + lockTtlMs),
+    });
+
+    return { acquired: true };
+  });
+}
+
+/**
+ * Activates reservation with created Razorpay order details.
+ */
+export async function activatePaymentReservation(
+  db: any,
+  reservationKey: string,
+  orderId: string,
+  intentId: string,
+  orderTtlMs = 15 * 60 * 1000,
+): Promise<void> {
+  try {
+    const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+    const now = new Date();
+    await reservationRef.update({
+      status: "active",
+      orderId,
+      intentId,
+      expiresAt: new Date(now.getTime() + orderTtlMs),
+      updatedAt: now,
+    });
+  } catch (err) {
+    console.error("[activatePaymentReservation] Failed to update reservation:", err);
   }
-  return null;
+}
+
+/**
+ * Releases reservation on Razorpay failure so retries are never permanently blocked.
+ */
+export async function releasePaymentReservation(
+  db: any,
+  reservationKey: string,
+  errorMessage?: string,
+): Promise<void> {
+  try {
+    const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+    const now = new Date();
+    await reservationRef.update({
+      status: "failed",
+      error: errorMessage || "Order creation failed",
+      expiresAt: now,
+      updatedAt: now,
+    });
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -106,25 +191,64 @@ export async function verifyPlayerOwnership(
 }
 
 /**
- * Authoritatively calculates merchandise price including valid custom selections modifiers.
+ * Authoritatively validates merchandise custom selections and calculates total price.
+ * Rejects unknown selections, invalid option values, and missing required custom fields.
+ * Never silently ignores invalid selections.
  */
 export function calculateAuthoritativeMerchPrice(
   merch: any,
   customSelections: Record<string, any> = {},
 ): number {
-  let price = Number(merch.basePrice ?? merch.price ?? 0);
-  if (price < 0) price = 0;
+  if (!merch || typeof merch !== "object") {
+    throw new Error("Invalid merchandise item.");
+  }
 
-  if (merch.customFields && Array.isArray(merch.customFields) && typeof customSelections === "object") {
-    for (const field of merch.customFields) {
-      const selected = customSelections[field.name];
-      if (selected && Array.isArray(field.options)) {
-        const option = field.options.find((opt: any) => opt.value === selected);
-        if (option && option.priceModifierType === "Add" && option.priceModifierValue) {
-          const modVal = Number(option.priceModifierValue);
-          if (modVal > 0) {
-            price += modVal;
-          }
+  let price = Number(merch.basePrice ?? merch.price ?? 0);
+  if (price <= 0) {
+    throw new Error("Invalid merchandise base price.");
+  }
+
+  const customFields: any[] = Array.isArray(merch.customFields) ? merch.customFields : [];
+  const validFieldMap = new Map<string, any>();
+  for (const f of customFields) {
+    if (f && f.name) {
+      validFieldMap.set(f.name, f);
+    }
+  }
+
+  // 1. Reject unknown custom selections
+  if (customSelections && typeof customSelections === "object") {
+    for (const key of Object.keys(customSelections)) {
+      if (!validFieldMap.has(key)) {
+        throw new Error(`Unknown merchandise custom selection field: '${key}'.`);
+      }
+    }
+  }
+
+  // 2. Enforce mandatory fields and validate allowed option values
+  for (const [fieldName, field] of validFieldMap.entries()) {
+    const isRequired = field.required !== false; // Required by default if custom field is defined
+    const selectedVal = customSelections ? customSelections[fieldName] : undefined;
+
+    if (isRequired && (selectedVal === undefined || selectedVal === null || String(selectedVal).trim() === "")) {
+      throw new Error(`Missing required merchandise selection for '${fieldName}'.`);
+    }
+
+    if (selectedVal !== undefined && selectedVal !== null && String(selectedVal).trim() !== "") {
+      const allowedOptions: any[] = Array.isArray(field.options) ? field.options : [];
+      const matchedOpt = allowedOptions.find((opt: any) => opt.value === selectedVal);
+
+      if (!matchedOpt) {
+        const allowedVals = allowedOptions.map((o: any) => o.value).join(", ");
+        throw new Error(
+          `Invalid selection '${selectedVal}' for field '${fieldName}'. Allowed options: [${allowedVals}].`,
+        );
+      }
+
+      if (matchedOpt.priceModifierType === "Add" && matchedOpt.priceModifierValue) {
+        const modVal = Number(matchedOpt.priceModifierValue);
+        if (!isNaN(modVal) && modVal > 0) {
+          price += modVal;
         }
       }
     }

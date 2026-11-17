@@ -30,9 +30,18 @@ export function extractWebhookEventDetails(payload: any): WebhookEventDetails | 
   if (!paymentEntity && !orderEntity) return null;
 
   // Ensure paymentId and orderId are never confused (order.entity.id is ALWAYS orderId)
-  const paymentId = paymentEntity?.id && String(paymentEntity.id).startsWith("pay_")
-    ? String(paymentEntity.id)
-    : "";
+  let paymentId = "";
+  if (paymentEntity?.id && String(paymentEntity.id).startsWith("pay_")) {
+    paymentId = String(paymentEntity.id);
+  } else if (orderEntity?.payment_id && String(orderEntity.payment_id).startsWith("pay_")) {
+    paymentId = String(orderEntity.payment_id);
+  } else if (Array.isArray(orderEntity?.payments) && orderEntity.payments.length > 0) {
+    const p0 = orderEntity.payments[0];
+    const pid = typeof p0 === "string" ? p0 : p0?.id;
+    if (pid && String(pid).startsWith("pay_")) {
+      paymentId = String(pid);
+    }
+  }
 
   const orderId =
     paymentEntity?.order_id ||
@@ -109,11 +118,13 @@ export function validateWebhookTransaction(
     };
   }
 
-  // 3. Payment ID verification for payment.captured
-  if (details.event === "payment.captured") {
-    if (!details.paymentId || !details.paymentId.startsWith("pay_")) {
-      return { ok: false, error: "Missing or invalid payment ID for payment.captured event." };
-    }
+  // 3. Mandatory Payment ID verification for BOTH events (payment.captured AND order.paid)
+  // Prevents financial fulfilment without an authoritative payment identifier
+  if (!details.paymentId || !details.paymentId.startsWith("pay_")) {
+    return {
+      ok: false,
+      error: `Missing or invalid payment ID (must start with 'pay_') for event '${details.event}'.`,
+    };
   }
 
   // 4. Partial payment verification for order.paid

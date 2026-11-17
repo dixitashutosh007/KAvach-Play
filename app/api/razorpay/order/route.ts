@@ -6,7 +6,9 @@ import { requireAuth } from "@/lib/server-auth";
 import {
   derivePayableAmount,
   validateCurrency,
-  findActivePendingIntent,
+  acquirePaymentReservation,
+  activatePaymentReservation,
+  releasePaymentReservation,
 } from "@/lib/razorpay-order";
 import firebaseConfig from "@/firebase-applet-config.json";
 
@@ -82,26 +84,6 @@ export async function POST(req: Request) {
       const derived = await derivePayableAmount(db, auth.uid, intentData);
       payableAmount = derived.amount;
       storedIntentData = derived.verifiedIntent;
-
-      // Idempotency / active order reservation check (FIN-001)
-      // Prevents creating duplicate Razorpay orders on simultaneous double-clicks
-      if (storedIntentData.reservationKey) {
-        const activeOrder = await findActivePendingIntent(
-          db,
-          storedIntentData.reservationKey,
-          auth.uid,
-        );
-        if (activeOrder && activeOrder.orderId) {
-          return NextResponse.json({
-            id: activeOrder.orderId,
-            amount: Math.round(activeOrder.amount * 100),
-            currency: activeOrder.currency,
-            receipt,
-            status: "created",
-            notes: { ...notes, intentId: activeOrder.intentId, reusedExistingOrder: true },
-          });
-        }
-      }
     } else {
       return NextResponse.json(
         { error: "Payment intentData is required." },
@@ -109,38 +91,109 @@ export async function POST(req: Request) {
       );
     }
 
+    const reservationKey = storedIntentData.reservationKey;
+    let reservationAcquired = false;
+
+    if (reservationKey) {
+      const resResult = await acquirePaymentReservation(
+        db,
+        reservationKey,
+        auth.uid,
+        payableAmount,
+        currency,
+      );
+
+      if (resResult.existingOrder && resResult.existingOrder.orderId) {
+        return NextResponse.json({
+          id: resResult.existingOrder.orderId,
+          amount: Math.round(resResult.existingOrder.amount * 100),
+          currency: resResult.existingOrder.currency || currency,
+          receipt,
+          status: "created",
+          notes: { ...notes, intentId: resResult.existingOrder.intentId, reusedExistingOrder: true },
+        });
+      }
+
+      if (resResult.isWaiting) {
+        // Another concurrent request is actively creating the order right now.
+        // Wait / poll for up to 3 seconds.
+        let waitOrder: any = null;
+        for (let attempt = 0; attempt < 6; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const docSnap = await db.collection("paymentReservations").doc(reservationKey).get();
+          if (docSnap.exists) {
+            const data = docSnap.data() || {};
+            if (data.status === "active" && data.orderId) {
+              waitOrder = data;
+              break;
+            }
+            if (data.status === "failed") {
+              break;
+            }
+          }
+        }
+        if (waitOrder && waitOrder.orderId) {
+          return NextResponse.json({
+            id: waitOrder.orderId,
+            amount: Math.round(waitOrder.amount * 100),
+            currency: waitOrder.currency || currency,
+            receipt,
+            status: "created",
+            notes: { ...notes, intentId: waitOrder.intentId, reusedExistingOrder: true },
+          });
+        }
+      }
+
+      reservationAcquired = resResult.acquired;
+    }
+
     const instance = new Razorpay({
       key_id: finalKeyId,
       key_secret: finalKeySecret,
     });
 
-    const intentRef = await db.collection("razorpayIntents").add({
-      ...storedIntentData,
-      amount: payableAmount,
-      currency,
-      userId: auth.uid,
-      createdAt: new Date(),
-      status: "pending",
-    });
+    let intentRef: any;
+    let order: any;
 
-    const finalNotes = { ...notes, intentId: intentRef.id };
+    try {
+      intentRef = await db.collection("razorpayIntents").add({
+        ...storedIntentData,
+        amount: payableAmount,
+        currency,
+        userId: auth.uid,
+        createdAt: new Date(),
+        status: "pending",
+      });
 
-    const options = {
-      amount: Math.round(payableAmount * 100), // amount in smallest currency unit (paise)
-      currency,
-      receipt,
-      notes: finalNotes,
-    };
+      const finalNotes = { ...notes, intentId: intentRef.id };
 
-    const order = await instance.orders.create(options);
+      const options = {
+        amount: Math.round(payableAmount * 100), // amount in smallest currency unit (paise)
+        currency,
+        receipt,
+        notes: finalNotes,
+      };
 
-    // Save order ID back to intent for verification in webhook (FIN-003)
-    await intentRef.update({
-      orderId: order.id,
-      updatedAt: new Date(),
-    });
+      order = await instance.orders.create(options);
 
-    return NextResponse.json(order);
+      // Save order ID back to intent for verification in webhook (FIN-003)
+      await intentRef.update({
+        orderId: order.id,
+        updatedAt: new Date(),
+      });
+
+      // Activate reservation with created order ID (FIN-001)
+      if (reservationKey) {
+        await activatePaymentReservation(db, reservationKey, order.id, intentRef.id);
+      }
+
+      return NextResponse.json(order);
+    } catch (orderErr: any) {
+      if (reservationKey && reservationAcquired) {
+        await releasePaymentReservation(db, reservationKey, orderErr.message);
+      }
+      throw orderErr;
+    }
   } catch (error: any) {
     console.error("Razorpay Order Error:", error);
     return NextResponse.json(
