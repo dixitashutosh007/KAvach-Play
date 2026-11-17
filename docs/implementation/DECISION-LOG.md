@@ -16,6 +16,7 @@
 | **D-04** | Admin Tools page disposition | `app/admin-tools/page.tsx` (454 lines) orphaned from navigation. | **DECIDED: Option C** — Keep page (Player ID Audit + Ghost Cleanup are useful admin tools). Link from nav. Quick-access widgets for home screen are a separate feature (Phase 6). | Phase 4 |
 | **D-05** | `paymentLinks` collection future | CRIT-02: Rules allow any user to update, but collection is unused. | **DECIDED: Option A** — Lock down rules to admin-only. Keep collection for future use. | Phase 1 |
 | **D-06** | `isDesigner` role | Initially flagged as ghost, but actually in active use — gates Design tab access for non-admin players. Toggle exists in Settings → Elevate Player's Role. | **DECIDED: Keep** — Role is functional and actively used. Not a ghost. | N/A |
+| **D-07** | **Phase 3 Product Rationalisation & UX Discovery Sign-Off** | Comprehensive product, navigation, and UX/UI audit of existing application on branch `mig-mov`. | **DECIDED: Approved by Product Owner** (2026-11-17). Authorizes implementation of Phase 4 roadmap: 5-item Player Navigation, 7-hub Admin Console, and resolution of UX-P0-01, UX-P0-02, UX-P0-03. See `PRODUCT_RATIONALISATION_AND_UX_DISCOVERY.md`. | Phase 4 |
 
 ---
 
