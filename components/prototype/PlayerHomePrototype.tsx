@@ -43,7 +43,14 @@ import {
   GitMerge,
   AlertTriangle,
   Phone,
-  Shirt
+  Shirt,
+  Package,
+  ShoppingBag,
+  Vote,
+  CalendarDays,
+  Lock,
+  RefreshCw,
+  BarChart2
 } from "lucide-react";
 
 // -------------------------------------------------------------
@@ -357,6 +364,205 @@ const MOCK_PAYMENT_HISTORY = [
   }
 ];
 
+// --- STAGE 5 MOCK DATA ---
+
+const MOCK_ADMIN_FINANCE_RECORDS = [
+  {
+    id: "fin-101",
+    playerId: "p1",
+    playerName: "Rohan Mehta",
+    kavachId: "KAV-007",
+    category: "Match Fee",
+    title: "Match Fee - vs Spartans CC",
+    amount: 500,
+    dueDate: "15 Nov 2026",
+    status: "overdue_recent", // 1-14 days
+    channel: null,
+    collectedBy: null,
+    receiptNo: null
+  },
+  {
+    id: "fin-102",
+    playerId: "p2",
+    playerName: "Kunal Roy",
+    kavachId: "KAV-021",
+    category: "Club Levy",
+    title: "Annual Kit & Practice Gear",
+    amount: 1200,
+    dueDate: "20 Oct 2026",
+    status: "overdue_urgent", // >14 days
+    channel: null,
+    collectedBy: null,
+    receiptNo: null
+  },
+  {
+    id: "fin-103",
+    playerId: "p3",
+    playerName: "Devendra Joshi",
+    kavachId: "KAV-033",
+    category: "Penalty",
+    title: "Match Late-Withdrawal Penalty",
+    amount: 200,
+    dueDate: "28 Oct 2026",
+    status: "overdue_urgent",
+    channel: null,
+    collectedBy: null,
+    receiptNo: null
+  },
+  {
+    id: "fin-104",
+    playerId: "p4",
+    playerName: "Sameer Khan",
+    kavachId: "KAV-018",
+    category: "Match Fee",
+    title: "Match Fee - vs Titan CC",
+    amount: 500,
+    dueDate: "18 Nov 2026",
+    status: "pending",
+    channel: null,
+    collectedBy: null,
+    receiptNo: null
+  },
+  {
+    id: "fin-105",
+    playerId: "p5",
+    playerName: "Ashutosh Dixit",
+    kavachId: "KAV-002",
+    category: "Match Fee",
+    title: "Match Fee - vs Royal Strikers",
+    amount: 500,
+    dueDate: "10 Nov 2026",
+    status: "paid",
+    channel: "Razorpay Online",
+    collectedBy: "Automated Gateway",
+    receiptNo: "REC-2026-1102"
+  },
+  {
+    id: "fin-106",
+    playerId: "p6",
+    playerName: "Vikram Sharma",
+    kavachId: "KAV-001",
+    category: "Match Fee",
+    title: "Match Fee - vs Metro CC",
+    amount: 500,
+    dueDate: "27 Oct 2026",
+    status: "paid",
+    channel: "Pitch-Side Cash",
+    collectedBy: "Rahul Verma (Match Admin)",
+    receiptNo: "REC-2026-1088"
+  },
+  {
+    id: "fin-107",
+    playerId: "p7",
+    playerName: "Amit Patel",
+    kavachId: "KAV-015",
+    category: "Match Fee",
+    title: "Match Fee - vs Super Kings (Rain Abandoned)",
+    amount: 500,
+    dueDate: "03 Nov 2026",
+    status: "waived",
+    channel: "Option A Auto-Waiver",
+    collectedBy: "System (Policy A)",
+    receiptNo: "VOID-ABANDONED-SK"
+  }
+];
+
+const MOCK_NETS_SCHEDULE = [
+  {
+    id: "net-slot-1",
+    time: "06:00 AM - 07:00 AM",
+    lane1: { status: "booked", bookedBy: "Vikram Sharma (KAV-001)", type: "Fast Bowling Lane" },
+    lane2: { status: "booked", bookedBy: "Rahul Verma (KAV-012)", type: "Spin / Multi-Turf" },
+    lane3: { status: "coaching", bookedBy: "Coach Coach Academy", type: "Bowling Machine" }
+  },
+  {
+    id: "net-slot-2",
+    time: "07:00 AM - 08:00 AM",
+    lane1: { status: "available", bookedBy: null, type: "Fast Bowling Lane" },
+    lane2: { status: "booked", bookedBy: "Sameer Khan (KAV-018)", type: "Spin / Multi-Turf" },
+    lane3: { status: "available", bookedBy: null, type: "Bowling Machine" }
+  },
+  {
+    id: "net-slot-3",
+    time: "06:00 PM - 07:00 PM",
+    lane1: { status: "booked", bookedBy: "Ashutosh Dixit (KAV-002)", type: "Fast Bowling Lane" },
+    lane2: { status: "available", bookedBy: null, type: "Spin / Multi-Turf" },
+    lane3: { status: "booked", bookedBy: "Kunal Roy (KAV-021)", type: "Bowling Machine" }
+  },
+  {
+    id: "net-slot-4",
+    time: "07:00 PM - 08:00 PM",
+    lane1: { status: "available", bookedBy: null, type: "Fast Bowling Lane" },
+    lane2: { status: "available", bookedBy: null, type: "Spin / Multi-Turf" },
+    lane3: { status: "available", bookedBy: null, type: "Bowling Machine" }
+  }
+];
+
+const MOCK_STUDIO_PASSES = [
+  { id: "pass-1", playerName: "Ashutosh Dixit", kavachId: "KAV-002", plan: "10-Session Pass", remaining: 7, total: 10, expiry: "15 Dec 2026" },
+  { id: "pass-2", playerName: "Rohan Mehta", kavachId: "KAV-007", plan: "Monthly Unlimited", remaining: 18, total: 30, expiry: "30 Nov 2026" },
+  { id: "pass-3", playerName: "Devendra Joshi", kavachId: "KAV-033", plan: "5-Session Pass", remaining: 1, total: 5, expiry: "22 Nov 2026" }
+];
+
+const MOCK_STUDIO_LEADS = [
+  { id: "lead-1", name: "Ankit Gupta", phone: "+91 98210 11223", stage: "Trial Attended", interest: "Fast Bowling Machine", date: "Yesterday" },
+  { id: "lead-2", name: "Prateek Shah", phone: "+91 97112 44556", stage: "Trial Requested", interest: "Weekend Net Pass", date: "Today" }
+];
+
+const MOCK_MERCH_ORDERS = [
+  { id: "ORD-1092", playerName: "Rohan Mehta", kavachId: "KAV-007", item: "Match Jersey (Pro Fit)", size: "L", qty: 1, total: 850, status: "New Order", date: "16 Nov 2026" },
+  { id: "ORD-1091", playerName: "Sameer Khan", kavachId: "KAV-018", item: "Club Cap & Training Polo", size: "M", qty: 2, total: 1200, status: "In Production", date: "14 Nov 2026" },
+  { id: "ORD-1088", playerName: "Vikram Sharma", kavachId: "KAV-001", item: "Scarlet Match Jersey", size: "XL", qty: 1, total: 850, status: "Ready for Pickup", date: "10 Nov 2026" },
+  { id: "ORD-1075", playerName: "Ashutosh Dixit", kavachId: "KAV-002", item: "Training Trousers", size: "34", qty: 1, total: 750, status: "Delivered", date: "02 Nov 2026" }
+];
+
+const MOCK_POLLS = [
+  {
+    id: "poll-1",
+    title: "2027 Pre-Season Cricket Tour Destination",
+    desc: "Vote for the club pre-season weekend tournament location.",
+    totalVotes: 32,
+    options: [
+      { id: "opt-1", label: "Goa Cricket Festival (Beach + Leather Ball)", votes: 18, percentage: 56 },
+      { id: "opt-2", label: "Bangalore Turf Grounds Invitational", votes: 10, percentage: 31 },
+      { id: "opt-3", label: "Sri Lanka Colombo Club Series", votes: 4, percentage: 13 }
+    ]
+  }
+];
+
+const MOCK_RBAC_RULES = [
+  {
+    role: "Super Admin",
+    desc: "Full root authority. Grants role permissions, executes player merges, overrides financial settings.",
+    caps: ["Match Fixtures & Squads", "Record Cash & Dues", "Financial Reports", "Studio Bookings", "Merchandise Orders", "User Roles & RBAC"]
+  },
+  {
+    role: "Club Admin",
+    desc: "Operations leader. Manages roster, schedules fixtures, coordinates kit production and polls.",
+    caps: ["Match Fixtures & Squads", "Record Cash & Dues", "Studio Bookings", "Merchandise Orders"]
+  },
+  {
+    role: "Match Admin",
+    desc: "Pitch-side match official. Updates live toss/scorecard, records cash payments for assigned match.",
+    caps: ["Match Fixtures & Squads", "Record Cash (Pitch-side only)"]
+  },
+  {
+    role: "Finance Admin",
+    desc: "Club treasurer. Oversees bank reconciliations, levies fees, audits debtor aging, exports reports.",
+    caps: ["Record Cash & Dues", "Financial Reports", "Levy Ad-Hoc Fees"]
+  },
+  {
+    role: "Studio Admin",
+    desc: "Facility manager. Manages net bookings, bowling machine slots, pass renewals and trials.",
+    caps: ["Studio Bookings", "Manage Passes", "Studio CRM"]
+  },
+  {
+    role: "Designer",
+    desc: "Creative producer. Designs social media matchday graphics, score banners, and digital cards.",
+    caps: ["Graphic Banners & Studio Canvas"]
+  }
+];
+
 const MOCK_FEED_POSTS = [
   {
     id: "post-1",
@@ -428,6 +634,28 @@ export default function PlayerHomePrototype() {
   const [createMatchModalOpen, setCreateMatchModalOpen] = useState(false);
   const [recordCashModalOpen, setRecordCashModalOpen] = useState(false);
   const [adminAlerts, setAdminAlerts] = useState(MOCK_ADMIN_ALERTS);
+
+  // Stage 5 Admin Finance States
+  const [financeRecords, setFinanceRecords] = useState(MOCK_ADMIN_FINANCE_RECORDS);
+  const [financeFilter, setFinanceFilter] = useState<"all" | "unpaid" | "urgent" | "paid" | "waived">("all");
+  const [financeSearch, setFinanceSearch] = useState("");
+  const [adHocFeeModalOpen, setAdHocFeeModalOpen] = useState(false);
+  const [selectedAuditTx, setSelectedAuditTx] = useState<any | null>(null);
+
+  // Stage 5 Studio & Nets States
+  const [netsSchedule, setNetsSchedule] = useState(MOCK_NETS_SCHEDULE);
+  const [selectedStudioDate, setSelectedStudioDate] = useState<"Today" | "Tomorrow" | "Saturday" | "Sunday">("Today");
+  const [bookSlotModalOpen, setBookSlotModalOpen] = useState(false);
+
+  // Stage 5 Club Operations States
+  const [merchOrders, setMerchOrders] = useState(MOCK_MERCH_ORDERS);
+  const [merchFilter, setMerchFilter] = useState<"all" | "new" | "production" | "ready" | "delivered">("all");
+  const [pollData, setPollData] = useState(MOCK_POLLS[0]);
+  const [selectedPollOption, setSelectedPollOption] = useState<string | null>(null);
+  const [hasVotedPoll, setHasVotedPoll] = useState(false);
+
+  // Stage 5 Settings & RBAC States
+  const [activeRoleName, setActiveRoleName] = useState("Super Admin");
 
   // Home Feed States
   const [rsvpStatus, setRsvpStatus] = useState<"available" | "tentative" | "unavailable" | null>("available");
@@ -531,6 +759,87 @@ export default function PlayerHomePrototype() {
         setJerseyValidationWarning(null);
       }
     }
+  };
+
+  // Filtered Finance Records
+  const filteredFinanceRecords = financeRecords.filter((rec) => {
+    if (financeFilter === "unpaid" && !["overdue_recent", "overdue_urgent", "pending"].includes(rec.status)) return false;
+    if (financeFilter === "urgent" && rec.status !== "overdue_urgent") return false;
+    if (financeFilter === "paid" && rec.status !== "paid") return false;
+    if (financeFilter === "waived" && rec.status !== "waived") return false;
+    if (financeSearch.trim()) {
+      const q = financeSearch.toLowerCase();
+      return (
+        rec.playerName.toLowerCase().includes(q) ||
+        rec.kavachId.toLowerCase().includes(q) ||
+        rec.title.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  // Filtered Merch Orders
+  const filteredMerchOrders = merchOrders.filter((ord) => {
+    if (merchFilter === "new" && ord.status !== "New Order") return false;
+    if (merchFilter === "production" && ord.status !== "In Production") return false;
+    if (merchFilter === "ready" && ord.status !== "Ready for Pickup") return false;
+    if (merchFilter === "delivered" && ord.status !== "Delivered") return false;
+    return true;
+  });
+
+  // Advance Merch Order Status
+  const handleAdvanceOrderStatus = (orderId: string) => {
+    setMerchOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        const nextStatus = 
+          o.status === "New Order" ? "In Production" :
+          o.status === "In Production" ? "Ready for Pickup" :
+          o.status === "Ready for Pickup" ? "Delivered" : "Delivered";
+        return { ...o, status: nextStatus };
+      }
+      return o;
+    }));
+  };
+
+  // Submit Poll Vote
+  const handleVotePoll = () => {
+    if (!selectedPollOption) return;
+    setPollData(prev => {
+      const updated = prev.options.map(opt => {
+        if (opt.id === selectedPollOption) {
+          return { ...opt, votes: opt.votes + 1 };
+        }
+        return opt;
+      });
+      const newTotal = prev.totalVotes + 1;
+      return {
+        ...prev,
+        totalVotes: newTotal,
+        options: updated.map(opt => ({
+          ...opt,
+          percentage: Math.round((opt.votes / newTotal) * 100)
+        }))
+      };
+    });
+    setHasVotedPoll(true);
+    window.alert("Thank you! Your vote has been recorded on the live club tally.");
+  };
+
+  // Record Manual Payment (Cash / Pitch UPI)
+  const handleRecordManualPayment = (recordId: string, method: string, collector: string) => {
+    setFinanceRecords(prev => prev.map(r => {
+      if (r.id === recordId) {
+        return {
+          ...r,
+          status: "paid",
+          channel: method,
+          collectedBy: collector,
+          receiptNo: `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`
+        };
+      }
+      return r;
+    }));
+    window.alert(`Payment recorded via ${method} by ${collector}! Receipt generated.`);
   };
 
   return (
@@ -1140,24 +1449,620 @@ export default function PlayerHomePrototype() {
               </div>
             )}
 
-            {/* Other Admin Hub Placeholders */}
-            {persona === "admin" && !["overview", "matches", "people"].includes(adminHub) && (
-              <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center mx-auto">
-                  <Shield className="w-6 h-6" />
+            {/* ========================================================================= */}
+            {/* ADMIN HUB 4: FINANCE & DUES COMMAND HUB                                   */}
+            {/* ========================================================================= */}
+            {persona === "admin" && adminHub === "finance" && (
+              <div className="space-y-6">
+                {/* Header & Quick Action Buttons */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black uppercase text-[#171C26] flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-[#D51F43]" />
+                      Finance & Collections Command
+                    </h2>
+                    <p className="text-xs text-[#667085]">
+                      Authoritative ledger, debtor aging analysis, and Option A abandoned match reconciliation.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setRecordCashModalOpen(true)}
+                      className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                    >
+                      <DollarSign className="w-4 h-4" />
+                      <span>Record Cash/UPI</span>
+                    </button>
+                    <button
+                      onClick={() => setAdHocFeeModalOpen(true)}
+                      className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Levy Ad-hoc Fee</span>
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-base font-black uppercase text-[#171C26]">
-                  Admin {adminHub.toUpperCase()} Hub
-                </h3>
-                <p className="text-xs text-[#667085] max-w-sm mx-auto">
-                  Stage 4 delivered Match Centre and Player Roster. Stage 5 will deliver Finance & Dues, Studio & Nets, and Club Operations.
-                </p>
-                <button
-                  onClick={() => setAdminHub("overview")}
-                  className="min-h-[44px] px-4 py-2 bg-[#D51F43] text-white text-xs font-bold rounded-xl"
-                >
-                  Return to Overview Hub
-                </button>
+
+                {/* 4 Financial Metric Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Total Liquid Collected</span>
+                    <div className="text-2xl font-black text-emerald-600 mt-1">₹68,450</div>
+                    <span className="text-[10px] text-gray-500 font-medium">Gateway + Verified Cash</span>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Actionable Dues</span>
+                    <div className="text-2xl font-black text-[#D51F43] mt-1">₹2,400</div>
+                    <span className="text-[10px] text-rose-600 font-semibold">4 pending member obligations</span>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Option A Waived</span>
+                    <div className="text-2xl font-black text-gray-700 mt-1">₹500</div>
+                    <span className="text-[10px] text-emerald-700 font-semibold">Rain Abandoned (Preserved)</span>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Debtor Aging (&gt;14d)</span>
+                    <div className="text-2xl font-black text-amber-600 mt-1">2 Urgent</div>
+                    <span className="text-[10px] text-amber-700 font-semibold">Immediate collection queue</span>
+                  </div>
+                </div>
+
+                {/* Search & Filter Toolbar */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-3 shadow-xs space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-bold scrollbar-none">
+                      {[
+                        { key: "all", label: "All Ledger" },
+                        { key: "unpaid", label: "Unpaid / Overdue" },
+                        { key: "urgent", label: "Urgent (>14d)" },
+                        { key: "paid", label: "Settled (Paid)" },
+                        { key: "waived", label: "Option A Waived" }
+                      ].map((tab) => (
+                        <button
+                          key={tab.key}
+                          onClick={() => setFinanceFilter(tab.key as any)}
+                          className={`min-h-[36px] px-3 py-1.5 rounded-xl transition whitespace-nowrap ${
+                            financeFilter === tab.key
+                              ? "bg-[#D51F43] text-white shadow-xs font-black"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search player, KAV-ID, title..."
+                        value={financeSearch}
+                        onChange={(e) => setFinanceSearch(e.target.value)}
+                        className="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ledger Cards */}
+                <div className="space-y-3">
+                  {filteredFinanceRecords.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0 ${
+                          rec.status === "paid" ? "bg-emerald-100 text-emerald-800" :
+                          rec.status === "waived" ? "bg-gray-100 text-gray-600" :
+                          rec.status === "overdue_urgent" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
+                        }`}>
+                          {rec.status === "paid" ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> :
+                           rec.status === "waived" ? <FileText className="w-5 h-5 text-gray-600" /> :
+                           <AlertCircle className="w-5 h-5 text-rose-600" />}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-sm text-[#171C26]">{rec.playerName}</h4>
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-700">
+                              {rec.kavachId}
+                            </span>
+                            {rec.status === "overdue_urgent" && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800">
+                                Overdue (&gt;14d)
+                              </span>
+                            )}
+                            {rec.status === "waived" && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-800">
+                                Waived (Option A)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-[#667085] flex flex-wrap items-center gap-2 mt-0.5">
+                            <span>{rec.title}</span>
+                            <span>•</span>
+                            <span className="font-semibold">{rec.category}</span>
+                            <span>•</span>
+                            <span>Due: {rec.dueDate}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 self-end sm:self-auto">
+                        <div className="text-right">
+                          <div className="font-black text-sm text-[#171C26]">₹{rec.amount}</div>
+                          <span className="text-[10px] font-bold text-gray-500">
+                            {rec.channel ? rec.channel : "Pending Payment"}
+                          </span>
+                        </div>
+
+                        {rec.status !== "paid" && rec.status !== "waived" ? (
+                          <button
+                            onClick={() => handleRecordManualPayment(rec.id, "Pitch-Side Cash", "Rahul Verma (Admin)")}
+                            className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span>Collect Cash</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setSelectedAuditTx(rec)}
+                            className="min-h-[40px] px-3 py-1.5 border border-gray-200 text-[#171C26] text-xs font-bold rounded-xl hover:bg-gray-50 transition flex items-center gap-1"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-[#D51F43]" />
+                            <span>Audit Trail</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* ADMIN HUB 5: STUDIO & NETS COMMAND HUB                                    */}
+            {/* ========================================================================= */}
+            {persona === "admin" && adminHub === "studio" && (
+              <div className="space-y-6">
+                {/* Header & Quick Action Buttons */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black uppercase text-[#171C26] flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-[#D51F43]" />
+                      Studio & Nets Command
+                    </h2>
+                    <p className="text-xs text-[#667085]">
+                      Lane timetable, multi-turf slots, bowling machine scheduling, and pass management.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setBookSlotModalOpen(true)}
+                    className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Book Net Slot</span>
+                  </button>
+                </div>
+
+                {/* Day Selection Bar */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-3 shadow-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4 text-[#D51F43]" />
+                    <span className="text-xs font-bold text-gray-700">Select Date:</span>
+                    {(["Today", "Tomorrow", "Saturday", "Sunday"] as const).map((day) => (
+                      <button
+                        key={day}
+                        onClick={() => setSelectedStudioDate(day)}
+                        className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                          selectedStudioDate === day
+                            ? "bg-[#D51F43] text-white shadow-xs font-black"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs font-mono font-bold text-gray-500 hidden sm:block">
+                    Asia/Kolkata (IST)
+                  </div>
+                </div>
+
+                {/* Nets Timetable Grid */}
+                <div className="space-y-3">
+                  {netsSchedule.map((slot) => (
+                    <div key={slot.id} className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+                        <span className="font-black text-xs text-[#A30F2D] flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          {slot.time}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">3 Lanes Online</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Lane 1 */}
+                        <div className={`p-3 rounded-xl border ${
+                          slot.lane1.status === "booked" ? "bg-amber-50/60 border-amber-200" : "bg-emerald-50/60 border-emerald-200"
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-bold mb-1">
+                            <span>Lane 1: Fast Bowling</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-black ${
+                              slot.lane1.status === "booked" ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"
+                            }`}>
+                              {slot.lane1.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-600 font-medium">
+                            {slot.lane1.bookedBy || "Available for Reservation"}
+                          </div>
+                        </div>
+
+                        {/* Lane 2 */}
+                        <div className={`p-3 rounded-xl border ${
+                          slot.lane2.status === "booked" ? "bg-amber-50/60 border-amber-200" : "bg-emerald-50/60 border-emerald-200"
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-bold mb-1">
+                            <span>Lane 2: Spin / Turf</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-black ${
+                              slot.lane2.status === "booked" ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"
+                            }`}>
+                              {slot.lane2.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-600 font-medium">
+                            {slot.lane2.bookedBy || "Available for Reservation"}
+                          </div>
+                        </div>
+
+                        {/* Lane 3 */}
+                        <div className={`p-3 rounded-xl border ${
+                          slot.lane3.status === "coaching" ? "bg-purple-50/60 border-purple-200" :
+                          slot.lane3.status === "booked" ? "bg-amber-50/60 border-amber-200" : "bg-emerald-50/60 border-emerald-200"
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-bold mb-1">
+                            <span>Lane 3: Bowling Machine</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-black ${
+                              slot.lane3.status === "coaching" ? "bg-purple-200 text-purple-900" :
+                              slot.lane3.status === "booked" ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"
+                            }`}>
+                              {slot.lane3.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-600 font-medium">
+                            {slot.lane3.bookedBy || "Available for Reservation"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Studio Passes & CRM Leads */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Passes Ledger */}
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs space-y-3">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-[#171C26] flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4 text-[#D51F43]" />
+                      Active Pass Holders
+                    </h3>
+                    <div className="space-y-2">
+                      {MOCK_STUDIO_PASSES.map((pass) => (
+                        <div key={pass.id} className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
+                          <div>
+                            <div className="font-bold text-[#171C26]">{pass.playerName} <span className="font-mono text-[10px] text-gray-500">({pass.kavachId})</span></div>
+                            <div className="text-[10px] text-gray-500">{pass.plan} • Expires: {pass.expiry}</div>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-black text-[#D51F43]">{pass.remaining} / {pass.total}</span>
+                            <span className="block text-[9px] text-gray-400">sessions left</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* CRM Leads */}
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs space-y-3">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-[#171C26] flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-emerald-600" />
+                      Studio Trial Inquiries
+                    </h3>
+                    <div className="space-y-2">
+                      {MOCK_STUDIO_LEADS.map((lead) => (
+                        <div key={lead.id} className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
+                          <div>
+                            <div className="font-bold text-[#171C26]">{lead.name}</div>
+                            <div className="text-[10px] text-gray-500">{lead.phone} • {lead.interest}</div>
+                          </div>
+                          <button
+                            onClick={() => window.alert(`Calling lead ${lead.name} at ${lead.phone}...`)}
+                            className="min-h-[32px] px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition"
+                          >
+                            Follow Up
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* ADMIN HUB 6: CLUB OPERATIONS COMMAND HUB                                  */}
+            {/* ========================================================================= */}
+            {persona === "admin" && adminHub === "design" && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div>
+                  <h2 className="text-lg font-black uppercase text-[#171C26] flex items-center gap-2">
+                    <Award className="w-5 h-5 text-[#D51F43]" />
+                    Club Operations & Member Hub
+                  </h2>
+                  <p className="text-xs text-[#667085]">
+                    Merchandise fulfillment queue, member feedback polls, and matchday creative studio.
+                  </p>
+                </div>
+
+                {/* Section 1: Shop & Merchandise Fulfillment */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                    <div>
+                      <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                        <ShoppingBag className="w-4 h-4 text-[#D51F43]" />
+                        Merchandise Order Pipeline
+                      </h3>
+                      <p className="text-[11px] text-gray-500">Track kit orders from placement to pitch-side collection.</p>
+                    </div>
+                    {/* Size distribution pills */}
+                    <div className="flex items-center gap-1 text-[10px] font-bold">
+                      <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">S: 2</span>
+                      <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">M: 8</span>
+                      <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">L: 14</span>
+                      <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">XL: 6</span>
+                    </div>
+                  </div>
+
+                  {/* Orders List */}
+                  <div className="space-y-3">
+                    {filteredMerchOrders.map((ord) => (
+                      <div
+                        key={ord.id}
+                        className="p-3.5 rounded-xl border border-gray-200 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-xs text-[#171C26]">{ord.id}</span>
+                            <span className="font-bold text-[#171C26]">{ord.playerName}</span>
+                            <span className="font-mono text-[10px] text-gray-500">({ord.kavachId})</span>
+                            <span className={`text-[10px] font-black px-1.5 py-0.2 rounded ${
+                              ord.status === "New Order" ? "bg-amber-100 text-amber-800" :
+                              ord.status === "In Production" ? "bg-blue-100 text-blue-800" :
+                              ord.status === "Ready for Pickup" ? "bg-purple-100 text-purple-800" : "bg-emerald-100 text-emerald-800"
+                            }`}>
+                              {ord.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-600 mt-0.5">
+                            {ord.item} • Size: <span className="font-bold">{ord.size}</span> • Ordered: {ord.date}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="font-black text-sm text-[#171C26]">₹{ord.total}</div>
+                          {ord.status !== "Delivered" && (
+                            <button
+                              onClick={() => handleAdvanceOrderStatus(ord.id)}
+                              className="min-h-[36px] px-3 py-1 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl transition"
+                            >
+                              {ord.status === "New Order" ? "Send to Production" :
+                               ord.status === "In Production" ? "Mark Ready" : "Mark Delivered"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 2: Member Polls & Community Voting */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                  <div className="border-b border-gray-100 pb-3">
+                    <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                      <Vote className="w-4 h-4 text-[#D51F43]" />
+                      Member Decision Poll
+                    </h3>
+                    <p className="text-[11px] text-gray-500">{pollData.title}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {pollData.options.map((opt) => (
+                      <div
+                        key={opt.id}
+                        onClick={() => !hasVotedPoll && setSelectedPollOption(opt.id)}
+                        className={`p-3 rounded-xl border transition cursor-pointer ${
+                          selectedPollOption === opt.id
+                            ? "border-[#D51F43] bg-rose-50/50"
+                            : "border-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                          <span className="text-[#171C26]">{opt.label}</span>
+                          <span className="font-mono text-[#D51F43]">{opt.percentage}% ({opt.votes} votes)</span>
+                        </div>
+                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#A30F2D] to-[#D51F43] transition-all duration-500"
+                            style={{ width: `${opt.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {!hasVotedPoll ? (
+                    <button
+                      onClick={handleVotePoll}
+                      disabled={!selectedPollOption}
+                      className="min-h-[40px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition"
+                    >
+                      Submit Member Vote
+                    </button>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Your vote has been counted in real time!
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 3: Design Studio Banner Launcher */}
+                <div className="bg-gradient-to-r from-[#A30F2D] to-[#D51F43] rounded-2xl p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">Club Brand Hub</span>
+                    <h3 className="text-base font-black uppercase">Creative Matchday Graphics Studio</h3>
+                    <p className="text-xs text-white/80 max-w-md">
+                      Generate official KAvach Play matchday scorecards, player of the match banners, and playing XI announcements.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => window.alert("Opening KAvach Design Studio Canvas templates...")}
+                    className="min-h-[44px] px-4 py-2 bg-white text-[#A30F2D] font-black text-xs rounded-xl shadow-md hover:bg-gray-100 transition whitespace-nowrap self-start sm:self-auto"
+                  >
+                    Open Design Studio
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* ADMIN HUB 7: SETTINGS & RBAC COMMAND HUB                                  */}
+            {/* ========================================================================= */}
+            {persona === "admin" && adminHub === "settings" && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div>
+                  <h2 className="text-lg font-black uppercase text-[#171C26] flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-[#D51F43]" />
+                    Governance, RBAC & Club Settings
+                  </h2>
+                  <p className="text-xs text-[#667085]">
+                    Granular 6-role permission matrix, business rules, and financial timezone configuration.
+                  </p>
+                </div>
+
+                {/* RBAC Role Matrix */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                  <div className="border-b border-gray-100 pb-3">
+                    <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                      <Lock className="w-4 h-4 text-[#D51F43]" />
+                      Granular RBAC Roles & Capabilities
+                    </h3>
+                    <p className="text-[11px] text-gray-500">
+                      Enforcing strict role boundaries (SEC-001/002/003) — client self-writes to role fields strictly forbidden.
+                    </p>
+                  </div>
+
+                  {/* Role Selector Tabs */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-bold scrollbar-none pb-1">
+                    {MOCK_RBAC_RULES.map((r) => (
+                      <button
+                        key={r.role}
+                        onClick={() => setActiveRoleName(r.role)}
+                        className={`min-h-[36px] px-3.5 py-1.5 rounded-xl transition whitespace-nowrap ${
+                          activeRoleName === r.role
+                            ? "bg-[#D51F43] text-white shadow-xs font-black"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        {r.role}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Selected Role Capabilities Card */}
+                  {(() => {
+                    const selectedRole = MOCK_RBAC_RULES.find((r) => r.role === activeRoleName);
+                    if (!selectedRole) return null;
+                    return (
+                      <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-black text-sm text-[#171C26]">{selectedRole.role}</h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                            Authoritative RBAC
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#667085]">{selectedRole.desc}</p>
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-gray-500 block mb-1.5">
+                            Granted Capabilities:
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {selectedRole.caps.map((cap) => (
+                              <div key={cap} className="flex items-center gap-1.5 text-xs text-[#171C26] font-medium bg-white p-2 rounded-lg border border-gray-100">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>{cap}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* System Policies & Timezone Enforcement */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                  <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-emerald-600" />
+                    Enforced Club Business Policies
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40">
+                      <div className="font-bold text-[#171C26] flex items-center gap-1.5 mb-1">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        Match Abandonment: Option A Enforced
+                      </div>
+                      <p className="text-[11px] text-[#667085]">
+                        Rain or abandoned fixtures auto-waive pending obligations while preserving historical collections.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40">
+                      <div className="font-bold text-[#171C26] flex items-center gap-1.5 mb-1">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        Club Timezone: Asia/Kolkata
+                      </div>
+                      <p className="text-[11px] text-[#667085]">
+                        All late-fee deadlines and matches compute against IST time to prevent local clock tampering (FIN-006).
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40">
+                      <div className="font-bold text-[#171C26] flex items-center gap-1.5 mb-1">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        Jersey Honor: #10 Retired
+                      </div>
+                      <p className="text-[11px] text-[#667085]">
+                        Jersey #10 is reserved for club honors. Duplicate jersey numbers are actively prevented across the roster.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40">
+                      <div className="font-bold text-[#171C26] flex items-center gap-1.5 mb-1">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        Guest Surcharge: +20% Match Fee
+                      </div>
+                      <p className="text-[11px] text-[#667085]">
+                        Unlinked or guest players are billed a standard +20% premium on match participation.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -2350,6 +3255,194 @@ export default function PlayerHomePrototype() {
                   <button onClick={() => setNotificationsOpen(false)} className="text-xs font-bold text-[#D51F43] hover:underline">
                     Close Drawer
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 5: LEVY AD-HOC FEE MODAL */}
+          {adHocFeeModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-white" />
+                    <h3 className="text-sm font-black uppercase">Levy Member Ad-hoc Fee</h3>
+                  </div>
+                  <button onClick={() => setAdHocFeeModalOpen(false)} className="text-white/80 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Select Player</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Rohan Mehta (KAV-007)</option>
+                      <option>Kunal Roy (KAV-021)</option>
+                      <option>Devendra Joshi (KAV-033)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Fee Category</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Late-Withdrawal Penalty</option>
+                      <option>Practice Gear / Equipment Damage</option>
+                      <option>Custom Kit Printing Levy</option>
+                      <option>Annual Club Membership Dues</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Fee Amount (₹)</label>
+                    <input
+                      type="number"
+                      defaultValue="300"
+                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Due Date</label>
+                    <input
+                      type="date"
+                      defaultValue="2026-11-25"
+                      className="w-full text-xs p-2.5 rounded-xl border border-gray-300"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        window.alert("Ad-hoc fee levied successfully! Member notified via push & email.");
+                        setAdHocFeeModalOpen(false);
+                      }}
+                      className="w-full min-h-[44px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
+                    >
+                      Issue Obligation & Notify Member
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 5: FINANCIAL AUDIT TRAIL MODAL */}
+          {selectedAuditTx && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+                <div className="bg-[#171C26] text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm font-black uppercase">Transaction Audit Record</h3>
+                  </div>
+                  <button onClick={() => setSelectedAuditTx(null)} className="text-white/80 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-3">
+                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Record ID:</span>
+                      <span className="font-mono font-bold">{selectedAuditTx.id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Member:</span>
+                      <span className="font-bold">{selectedAuditTx.playerName} ({selectedAuditTx.kavachId})</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Description:</span>
+                      <span className="font-bold">{selectedAuditTx.title}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Amount:</span>
+                      <span className="font-black text-emerald-600">₹{selectedAuditTx.amount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Payment Channel:</span>
+                      <span className="font-bold">{selectedAuditTx.channel || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Authorized By:</span>
+                      <span className="font-bold">{selectedAuditTx.collectedBy || "System"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-medium">Receipt / Audit Token:</span>
+                      <span className="font-mono font-bold text-gray-700">{selectedAuditTx.receiptNo || "N/A"}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-blue-50 text-blue-900 text-[11px]">
+                    <span className="font-bold">Authoritative Ledger Guarantee:</span> This record is cryptographically bound to the server payment intent and cannot be modified via client-side requests.
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedAuditTx(null)}
+                    className="w-full min-h-[40px] bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl transition"
+                  >
+                    Close Audit Log
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 5: BOOK NET SLOT MODAL */}
+          {bookSlotModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <h3 className="text-sm font-black uppercase">Reserve Net Lane</h3>
+                  </div>
+                  <button onClick={() => setBookSlotModalOpen(false)} className="text-white/80 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Select Lane</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Lane 1: Fast Bowling Turf</option>
+                      <option>Lane 2: Spin / Multi-Turf</option>
+                      <option>Lane 3: Bowling Machine</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Time Slot (60 min)</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>06:00 AM - 07:00 AM</option>
+                      <option>07:00 AM - 08:00 AM</option>
+                      <option>06:00 PM - 07:00 PM</option>
+                      <option>07:00 PM - 08:00 PM</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Book For Member</label>
+                    <select className="w-full text-xs p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Ashutosh Dixit (KAV-002) - Active Pass (7 credits)</option>
+                      <option>Rohan Mehta (KAV-007) - Monthly Unlimited</option>
+                      <option>Kunal Roy (KAV-021) - Drop-in Voucher</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        window.alert("Nets lane reserved! Session credit deducted from member pass.");
+                        setBookSlotModalOpen(false);
+                      }}
+                      className="w-full min-h-[44px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
+                    >
+                      Confirm Net Reservation
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
