@@ -50,7 +50,14 @@ import {
   CalendarDays,
   Lock,
   RefreshCw,
-  BarChart2
+  BarChart2,
+  Target,
+  Flame,
+  Image,
+  Copy,
+  Compass,
+  Eye,
+  User
 } from "lucide-react";
 
 // -------------------------------------------------------------
@@ -65,6 +72,8 @@ const MOCK_CURRENT_PLAYER = {
   battingStyle: "Right-hand bat",
   bowlingStyle: "Right-arm medium",
   jerseyNumber: "07",
+  phone: "+91 98101 23456",
+  email: "ashutosh@kavachcricket.com",
   avatar: "https://picsum.photos/seed/kavach7/200/200",
   isAdmin: true,
   adminRole: "Super Admin",
@@ -82,7 +91,7 @@ const MOCK_CURRENT_PLAYER = {
 const MOCK_ADMIN_KPIS = {
   nextMatch: {
     title: "vs Spartans CC",
-    date: "Sun, 24 Nov",
+    date: "Sat, 21 Nov",
     confirmedXI: 11,
     squadTarget: 14,
     pendingRsvps: 3,
@@ -140,7 +149,7 @@ const MOCK_MATCHES = [
     title: "KAvach Cricket Club vs Spartans CC",
     opponent: "Spartans CC",
     format: "20 Overs T20",
-    dateString: "Sunday, 24 Nov 2026",
+    dateString: "Saturday, 21 Nov 2026",
     timeString: "07:30 AM IST",
     reportingTime: "06:45 AM IST",
     venue: "Kavach Arena Ground 1",
@@ -563,6 +572,108 @@ const MOCK_RBAC_RULES = [
   }
 ];
 
+const MOCK_PERFORMANCE_METRICS = {
+  summary: {
+    matches: 24,
+    innings: 22,
+    runs: 384,
+    battingAvg: 32.0,
+    strikeRate: 138.4,
+    highestScore: "104*",
+    fifties: 2,
+    hundreds: 1,
+    wickets: 14,
+    bowlingAvg: 18.2,
+    economy: 6.8,
+    bestBowling: "5/22",
+    catches: 8
+  },
+  milestoneBadges: [
+    { id: "b1", title: "Centurion Club", desc: "104* vs Titans CC", tier: "Gold", earnedDate: "12 Oct 2026" },
+    { id: "b2", title: "Five-Wicket Haul", desc: "5/22 vs Royal Strikers", tier: "Gold", earnedDate: "03 Sep 2026" },
+    { id: "b3", title: "Safe Hands", desc: "8 Catches in 2026 Season", tier: "Silver", earnedDate: "27 Oct 2026" },
+    { id: "b4", title: "Player of the Match", desc: "64* & 1/32 vs Spartans CC", tier: "Gold", earnedDate: "10 Nov 2026" },
+    { id: "b5", title: "Hat-trick Club", desc: "3 in 3 vs Metro CC", tier: "Platinum", earnedDate: "18 Aug 2026" }
+  ],
+  leaderboard: {
+    batting: [
+      { rank: 1, name: "Vikram Sharma", kavachId: "KAV-001", inngs: 24, runs: 482, avg: 48.2, sr: 142.6, hs: "88" },
+      { rank: 2, name: "Ashutosh Dixit", kavachId: "KAV-002", inngs: 22, runs: 384, avg: 32.0, sr: 138.4, hs: "104*" },
+      { rank: 3, name: "Rohan Mehta", kavachId: "KAV-007", inngs: 20, runs: 310, avg: 31.0, sr: 125.0, hs: "62" },
+      { rank: 4, name: "Kunal Roy", kavachId: "KAV-021", inngs: 18, runs: 245, avg: 27.2, sr: 118.0, hs: "51*" }
+    ],
+    bowling: [
+      { rank: 1, name: "Rahul Verma", kavachId: "KAV-012", overs: 48, wkts: 22, avg: 14.2, econ: 5.8, bb: "4/18" },
+      { rank: 2, name: "Sameer Khan", kavachId: "KAV-018", overs: 44, wkts: 18, avg: 16.5, econ: 6.1, bb: "3/15" },
+      { rank: 3, name: "Ashutosh Dixit", kavachId: "KAV-002", overs: 36, wkts: 14, avg: 18.2, econ: 6.8, bb: "5/22" },
+      { rank: 4, name: "Devendra Joshi", kavachId: "KAV-033", overs: 30, wkts: 11, avg: 21.0, econ: 7.2, bb: "2/19" }
+    ],
+    fielding: [
+      { rank: 1, name: "Rahul Verma", kavachId: "KAV-012", matches: 24, catches: 11, runOuts: 3 },
+      { rank: 2, name: "Ashutosh Dixit", kavachId: "KAV-002", matches: 24, catches: 8, runOuts: 2 },
+      { rank: 3, name: "Vikram Sharma", kavachId: "KAV-001", matches: 24, catches: 7, runOuts: 4 },
+      { rank: 4, name: "Rohan Mehta", kavachId: "KAV-007", matches: 20, catches: 5, runOuts: 1 }
+    ]
+  },
+  matchForm: [
+    { match: "vs Royal Strikers", date: "10 Nov 2026", runs: "42 (28b)", bowling: "2/18 (4 ov)", result: "Won by 18 runs", potm: false },
+    { match: "vs Metro CC", date: "27 Oct 2026", runs: "18 (14b)", bowling: "3/24 (4 ov)", result: "Won by 4 wkts", potm: false },
+    { match: "vs Spartans CC", date: "12 Oct 2026", runs: "64* (41b)", bowling: "1/32 (4 ov)", result: "Won by 22 runs", potm: true },
+    { match: "vs Titan CC", date: "28 Sep 2026", runs: "28 (20b)", bowling: "1/28 (3 ov)", result: "Lost by 12 runs", potm: false },
+    { match: "vs Super Kings", date: "15 Sep 2026", runs: "DNB", bowling: "0/12 (2 ov)", result: "Rain Abandoned (Option A)", potm: false }
+  ]
+};
+
+const MOCK_CLUB_SHOP_ITEMS = [
+  {
+    id: "shop-1",
+    title: "Official Match Jersey (Scarlet)",
+    price: 850,
+    category: "Apparel",
+    description: "Pro-Dry breathable fabric with sublimated KAvach crest, personalized player name and jersey number.",
+    sizes: ["S", "M", "L", "XL", "XXL"],
+    badge: "Official Matchwear"
+  },
+  {
+    id: "shop-2",
+    title: "Club Training Polo",
+    price: 650,
+    category: "Apparel",
+    description: "Lightweight moisture-wicking polo for nets, fitness training and off-field club events.",
+    sizes: ["S", "M", "L", "XL", "XXL"],
+    badge: "Bestseller"
+  },
+  {
+    id: "shop-3",
+    title: "Embroidered Cricket Cap",
+    price: 350,
+    category: "Accessories",
+    description: "Deep scarlet cap with 3D gold-embroidered KAvach emblem and adjustable brass buckle.",
+    sizes: ["One Size Fits All"],
+    badge: "Accessories"
+  },
+  {
+    id: "shop-4",
+    title: "Match Turf Trousers",
+    price: 750,
+    category: "Apparel",
+    description: "Stretch performance white trousers with reinforced knee pads and elasticated waistband.",
+    sizes: ["30", "32", "34", "36", "38"],
+    badge: "Matchwear"
+  }
+];
+
+const MOCK_GROUNDS_LIST = [
+  { id: "g1", name: "Kavach Arena Ground 1", pitch: "Natural Turf", boundary: "68m", lights: "Yes (Full Match Ready)", address: "Sector 62 Sports Complex, Noida" },
+  { id: "g2", name: "Kavach Arena Ground 2", pitch: "AstroTurf / Multi-pitch", boundary: "60m", lights: "Yes (Training)", address: "Sector 62 Sports Complex, Noida" },
+  { id: "g3", name: "City Oval Turf Ground", pitch: "Hard Leather Ball Turf", boundary: "72m", lights: "No (Day Match)", address: "Greater Noida Expressway Grounds" }
+];
+
+const MOCK_TOURNAMENTS_LIST = [
+  { id: "t1", name: "Premier Cricket League 2026", format: "T20 Leather Ball", status: "In Progress", matchesPlayed: "4 of 6", clubRank: "2nd (3 Wins, 1 Loss)", prize: "₹1,50,000" },
+  { id: "t2", name: "Delhi-NCR Pre-Season Cup", format: "35 Overs One Day", status: "Completed", matchesPlayed: "5 of 5", clubRank: "Champions 🏆", prize: "₹75,000" }
+];
+
 const MOCK_FEED_POSTS = [
   {
     id: "post-1",
@@ -657,6 +768,33 @@ export default function PlayerHomePrototype() {
   // Stage 5 Settings & RBAC States
   const [activeRoleName, setActiveRoleName] = useState("Super Admin");
 
+  // Performance Tab States
+  const [perfSubTab, setPerfSubTab] = useState<"overview" | "leaderboard" | "badges" | "timeline">("overview");
+  const [leaderboardCategory, setLeaderboardCategory] = useState<"batting" | "bowling" | "fielding">("batting");
+
+  // Club Experience Tab States
+  const [clubSubTab, setClubSubTab] = useState<"card" | "studio" | "shop" | "info">("card");
+  const [shopItemOrderModal, setShopItemOrderModal] = useState<any | null>(null);
+  const [selectedShopSize, setSelectedShopSize] = useState<string>("M");
+
+  // Design Studio Interactive Canvas Generator States
+  const [designStudioModal, setDesignStudioModal] = useState(false);
+  const [designTemplate, setDesignTemplate] = useState<"matchday" | "potm" | "squad" | "result">("matchday");
+  const [designMatch, setDesignMatch] = useState("KAvach Cricket Club vs Spartans CC");
+  const [designPlayer, setDesignPlayer] = useState("Ashutosh Dixit");
+
+  // Admin Match Hub Sub-tab (Fixtures, Grounds, Tournaments)
+  const [adminMatchHubTab, setAdminMatchHubTab] = useState<"fixtures" | "grounds" | "tournaments">("fixtures");
+
+  // Prototype Simulation Toast Banner
+  const [simulationToast, setSimulationToast] = useState<string | null>(null);
+  const showSimulationToast = (msg: string) => {
+    setSimulationToast(msg);
+    setTimeout(() => {
+      setSimulationToast((curr) => (curr === msg ? null : curr));
+    }, 4500);
+  };
+
   // Home Feed States
   const [rsvpStatus, setRsvpStatus] = useState<"available" | "tentative" | "unavailable" | null>("available");
   const [rsvpNote, setRsvpNote] = useState<string>("Ready to bat top order");
@@ -729,7 +867,7 @@ export default function PlayerHomePrototype() {
       }
       return p;
     }));
-    window.alert("Member approved! Sequential KAvach ID generated and profile activated.");
+    setSimulationToast("[PROTOTYPE SIMULATION] Member approved locally; sequential KAvach ID generated (no backend mutation).");
   };
 
   // Toggle match attendance
@@ -822,7 +960,7 @@ export default function PlayerHomePrototype() {
       };
     });
     setHasVotedPoll(true);
-    window.alert("Thank you! Your vote has been recorded on the live club tally.");
+    setSimulationToast("[PROTOTYPE SIMULATION] Member vote recorded locally on test tally (no backend mutation).");
   };
 
   // Record Manual Payment (Cash / Pitch UPI)
@@ -839,7 +977,7 @@ export default function PlayerHomePrototype() {
       }
       return r;
     }));
-    window.alert(`Payment recorded via ${method} by ${collector}! Receipt generated.`);
+    setSimulationToast(`[PROTOTYPE SIMULATION] Pitch payment simulated via ${method} by ${collector} (no live ledger mutation).`);
   };
 
   return (
@@ -850,39 +988,86 @@ export default function PlayerHomePrototype() {
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#A30F2D] text-white font-bold text-[10px] uppercase tracking-wider">
             Prototype Preview
           </span>
-          <span className="font-semibold text-gray-200">Phase 4 Stage 4: Admin Match Centre & Player Roster Blueprint</span>
+          <span className="font-semibold text-gray-200">Phase 4: Complete UX Blueprint & Navigable Prototypes (Remediated)</span>
         </div>
 
-        {/* Viewport Frame Mode Controls */}
-        <div className="flex items-center gap-1.5 bg-gray-800 p-1 rounded-lg">
-          <button
-            onClick={() => setDeviceFrame("responsive")}
-            className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
-              deviceFrame === "responsive" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
-            }`}
-          >
-            Fluid Responsive
-          </button>
-          <button
-            onClick={() => setDeviceFrame("mobile")}
-            className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
-              deviceFrame === "mobile" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            Mobile 390px
-          </button>
-          <button
-            onClick={() => setDeviceFrame("desktop")}
-            className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
-              deviceFrame === "desktop" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            Desktop 1280px
-          </button>
+        {/* Viewport Frame Mode Controls & Prominent Persona Switcher */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Explicit Dual Persona Switcher */}
+          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700">
+            <button
+              onClick={() => setPersona("player")}
+              className={`min-h-[36px] px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition ${
+                persona === "player" ? "bg-[#D51F43] text-white shadow-xs" : "text-gray-300 hover:text-white"
+              }`}
+              title="Switch to Player View"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>View Player</span>
+            </button>
+            <button
+              onClick={() => setPersona("admin")}
+              className={`min-h-[36px] px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition ${
+                persona === "admin" ? "bg-[#A30F2D] text-white shadow-xs" : "text-gray-300 hover:text-white"
+              }`}
+              title="Switch to Admin Console"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>View Admin (Console)</span>
+            </button>
+          </div>
+
+          {/* Viewport Device Frames */}
+          <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg">
+            <button
+              onClick={() => setDeviceFrame("responsive")}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
+                deviceFrame === "responsive" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Fluid Responsive
+            </button>
+            <button
+              onClick={() => setDeviceFrame("mobile")}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
+                deviceFrame === "mobile" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Mobile 390px
+            </button>
+            <button
+              onClick={() => setDeviceFrame("desktop")}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 transition ${
+                deviceFrame === "desktop" ? "bg-[#D51F43] text-white" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              Desktop 1280px
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Floating Prototype Simulation Toast */}
+      {simulationToast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full px-4 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="bg-[#171C26] text-white px-4 py-3 rounded-2xl shadow-2xl border border-[#D51F43]/50 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="px-2 py-0.5 rounded bg-[#D51F43] text-white font-mono text-[9px] font-black uppercase shrink-0">
+                Simulation
+              </span>
+              <span className="text-gray-200 font-medium truncate">{simulationToast}</span>
+            </div>
+            <button
+              onClick={() => setSimulationToast(null)}
+              className="text-gray-400 hover:text-white shrink-0 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Frame Container */}
       <div className={`mx-auto transition-all duration-300 ${
@@ -918,18 +1103,18 @@ export default function PlayerHomePrototype() {
               {MOCK_CURRENT_PLAYER.isAdmin && (
                 <button
                   onClick={() => setPersona(persona === "player" ? "admin" : "player")}
-                  className={`min-h-[44px] px-2.5 rounded-lg border transition flex items-center gap-1.5 text-xs font-bold ${
+                  className={`min-h-[44px] px-3 rounded-xl border transition flex items-center gap-1.5 text-xs font-bold ${
                     persona === "admin"
                       ? "bg-[#A30F2D] text-white border-[#A30F2D] shadow-xs"
                       : "bg-[#FCE8ED]/50 hover:bg-[#FCE8ED] text-[#A30F2D] border-[#A30F2D]/20"
                   }`}
-                  title={persona === "admin" ? "Return to Player View" : "Enter Admin Console"}
+                  title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
                 >
                   <Shield className="w-4 h-4" />
                   <span className="hidden sm:inline">
-                    {persona === "admin" ? "Admin Mode Active" : "Admin Console"}
+                    {persona === "admin" ? "Switch: View Player" : "Switch: Admin Console"}
                   </span>
-                  <span className="sm:hidden">{persona === "admin" ? "Admin" : "Console"}</span>
+                  <span className="sm:hidden">{persona === "admin" ? "To Player" : "To Admin"}</span>
                 </button>
               )}
 
@@ -1016,8 +1201,120 @@ export default function PlayerHomePrototype() {
             </div>
           )}
 
-          {/* MAIN WORKSPACE CONTENT */}
-          <main className="flex-1 pb-24 px-4 sm:px-6 py-5 max-w-5xl mx-auto w-full">
+          {/* DESKTOP FLEX LAYOUT CONTAINER */}
+          <div className="flex-1 flex w-full overflow-hidden">
+            {/* 1. DESKTOP SIDEBAR NAVIGATION (Visible on Desktop / Large screens) */}
+            <aside
+              className={`w-64 bg-white border-r border-[#E5E7EB] shrink-0 p-4 flex-col justify-between hidden ${
+                deviceFrame === "desktop" ? "!flex" : deviceFrame === "responsive" ? "lg:flex" : ""
+              }`}
+            >
+              <div className="space-y-6">
+                {/* Brand / Mode badge */}
+                <div className="flex items-center gap-2.5 px-2">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#A30F2D] to-[#D51F43] flex items-center justify-center text-white font-black text-xs shadow-xs">
+                    {persona === "player" ? "KP" : "OPS"}
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-black uppercase text-[#171C26]">
+                      {persona === "player" ? "KAvach Player" : "Admin Operations"}
+                    </h2>
+                    <span className="text-[10px] text-gray-500 font-medium">
+                      {persona === "player" ? "Squad Member" : MOCK_CURRENT_PLAYER.adminRole}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Navigation Links */}
+                {persona === "player" ? (
+                  <nav className="space-y-1" aria-label="Desktop Player Navigation">
+                    {[
+                      { key: "home", label: "Home Feed", icon: Calendar },
+                      { key: "matches", label: "Matches & Fixtures", icon: Trophy },
+                      { key: "payments", label: "Dues & Payments", icon: CreditCard },
+                      { key: "performance", label: "Performance & Stats", icon: TrendingUp },
+                      { key: "club", label: "Club & Membership", icon: Shield }
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      const isActive = activeTab === tab.key;
+                      return (
+                        <button
+                          key={tab.key}
+                          onClick={() => setActiveTab(tab.key as any)}
+                          className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-3 transition ${
+                            isActive
+                              ? "bg-[#D51F43] text-white shadow-xs font-black"
+                              : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span>{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
+                ) : (
+                  <nav className="space-y-1" aria-label="Desktop Admin Navigation">
+                    {[
+                      { key: "overview", label: "Overview", icon: Activity },
+                      { key: "matches", label: "Match Centre", icon: Trophy },
+                      { key: "people", label: "Player Roster", icon: Users },
+                      { key: "finance", label: "Finance & Dues", icon: CreditCard },
+                      { key: "studio", label: "Studio & Nets", icon: Sparkles },
+                      { key: "design", label: "Club Operations", icon: Award },
+                      { key: "settings", label: "Settings & Access", icon: Settings }
+                    ].map((hub) => {
+                      const Icon = hub.icon;
+                      const isActive = adminHub === hub.key;
+                      return (
+                        <button
+                          key={hub.key}
+                          onClick={() => setAdminHub(hub.key as any)}
+                          className={`w-full min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-3 transition ${
+                            isActive
+                              ? "bg-[#A30F2D] text-white shadow-xs font-black"
+                              : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span>{hub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
+                )}
+              </div>
+
+              {/* Bottom Card / Mode Switcher */}
+              <div className="pt-4 border-t border-gray-100 space-y-3">
+                <button
+                  onClick={() => setPersona(persona === "player" ? "admin" : "player")}
+                  className={`w-full min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
+                    persona === "player"
+                      ? "bg-[#FCE8ED] text-[#A30F2D] hover:bg-[#FCE8ED]/80"
+                      : "bg-gray-900 text-white hover:bg-black"
+                  }`}
+                >
+                  <Shield className="w-4 h-4" />
+                  <span>{persona === "player" ? "Switch: Admin Console" : "Switch: View Player"}</span>
+                </button>
+
+                <div className="flex items-center gap-2.5 p-2 rounded-xl bg-gray-50 border border-gray-100">
+                  <img
+                    src={MOCK_CURRENT_PLAYER.avatar}
+                    alt={MOCK_CURRENT_PLAYER.name}
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                  <div className="min-w-0">
+                    <div className="font-bold text-xs text-[#171C26] truncate">{MOCK_CURRENT_PLAYER.name}</div>
+                    <div className="font-mono text-[10px] text-gray-500">#{MOCK_CURRENT_PLAYER.jerseyNumber} • {MOCK_CURRENT_PLAYER.kavachId}</div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            {/* 2. CENTRAL WORKSPACE CONTENT */}
+            <main className="flex-1 pb-24 px-4 sm:px-6 py-5 max-w-5xl mx-auto w-full overflow-y-auto">
             
             {/* ========================================================================= */}
             {/* ADMIN HUB 1: OVERVIEW COMMAND HUB                                         */}
@@ -1044,14 +1341,14 @@ export default function PlayerHomePrototype() {
                     <span>Record Pitch Cash</span>
                   </button>
                   <button
-                    onClick={() => window.alert("Simulating Player Invite link copied to clipboard: https://play.kavachcricket.com/join")}
+                    onClick={() => setSimulationToast("[PROTOTYPE SIMULATION] Member invite link copied to clipboard: https://play.kavachcricket.com/join")}
                     className="min-h-[44px] px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
                   >
                     <UserPlus className="w-4 h-4 text-gray-600" />
                     <span>Invite Member</span>
                   </button>
                   <button
-                    onClick={() => window.alert("Broadcast Announcement modal triggered.")}
+                    onClick={() => setSimulationToast("[PROTOTYPE SIMULATION] Broadcast announcement modal triggered (simulation only).")}
                     className="min-h-[44px] px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
                   >
                     <Send className="w-4 h-4 text-gray-600" />
@@ -1194,7 +1491,7 @@ export default function PlayerHomePrototype() {
                         <div className="flex items-center gap-2 self-start sm:self-auto pl-4 sm:pl-0">
                           <button
                             onClick={() => {
-                              window.alert(`Action triggered: ${item.actionLabel}`);
+                              setSimulationToast(`[PROTOTYPE SIMULATION] Admin action simulated: ${item.actionLabel}`);
                               dismissAlert(item.id);
                             }}
                             className="min-h-[40px] px-3.5 py-1.5 bg-[#A30F2D] hover:bg-[#D51F43] text-white text-xs font-bold rounded-xl transition"
@@ -1228,7 +1525,7 @@ export default function PlayerHomePrototype() {
                       Match Centre & Squad Operations
                     </h2>
                     <p className="text-xs text-[#667085] mt-0.5">
-                      Schedule fixtures, coordinate squad availability, announce Playing XIs, and log pitch-side cash.
+                      Schedule fixtures, coordinate squad availability, announce Playing XIs, manage grounds and log pitch-side cash.
                     </p>
                   </div>
 
@@ -1241,63 +1538,133 @@ export default function PlayerHomePrototype() {
                   </button>
                 </div>
 
-                {/* Match Operations Grid */}
-                <div className="space-y-4">
-                  {MOCK_MATCHES.map((m) => (
-                    <div
-                      key={m.id}
-                      className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-3"
+                {/* Sub-Tabs: Fixtures | Grounds & Venues | Tournaments */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                  {[
+                    { key: "fixtures", label: "Fixtures & Squads" },
+                    { key: "grounds", label: "Grounds & Venues (MOD-10)" },
+                    { key: "tournaments", label: "Tournaments & Leagues (MOD-17)" }
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setAdminMatchHubTab(tab.key as any)}
+                      className={`min-h-[44px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                        adminMatchHubTab === tab.key
+                          ? "bg-[#D51F43] text-white shadow-xs font-black"
+                          : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                      }`}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
-                              {m.format}
-                            </span>
-                            <span className="text-xs text-[#667085] font-medium flex items-center gap-1">
-                              <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
-                              {m.dateString}
-                            </span>
-                          </div>
-                          <h3 className="text-base font-black text-[#171C26] mt-1">{m.title}</h3>
-                          <p className="text-xs text-[#667085] flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3.5 h-3.5" />
-                            {m.venue}
-                          </p>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {m.playingXI && (
-                            <button
-                              onClick={() => setAdminMatchSquadDrawer(m)}
-                              className="min-h-[40px] px-3.5 py-1.5 bg-[#FCE8ED] hover:bg-[#A30F2D] hover:text-white text-[#A30F2D] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-                            >
-                              <Users className="w-3.5 h-3.5" />
-                              <span>Squad & Attendance ({m.playingXI.length})</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => setRecordCashModalOpen(true)}
-                            className="min-h-[40px] px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-                          >
-                            <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Pitch Cash</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Squad readiness bar */}
-                      {m.playingXI && (
-                        <div className="flex items-center justify-between text-xs text-[#667085]">
-                          <span>Confirmed Squad: 11 / 14 Players</span>
-                          <span className="text-emerald-700 font-bold">XI Published</span>
-                        </div>
-                      )}
-                    </div>
+                      {tab.label}
+                    </button>
                   ))}
                 </div>
+
+                {/* Tab 1: Fixtures & Squads */}
+                {adminMatchHubTab === "fixtures" && (
+                  <div className="space-y-4">
+                    {MOCK_MATCHES.map((m) => (
+                      <div
+                        key={m.id}
+                        className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs space-y-3"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
+                                {m.format}
+                              </span>
+                              <span className="text-xs text-[#667085] font-medium flex items-center gap-1">
+                                <Calendar className="w-3.5 h-3.5 text-[#D51F43]" />
+                                {m.dateString}
+                              </span>
+                            </div>
+                            <h3 className="text-base font-black text-[#171C26] mt-1">{m.title}</h3>
+                            <p className="text-xs text-[#667085] flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3.5 h-3.5" />
+                              {m.venue}
+                            </p>
+                          </div>
+
+                          {/* Action buttons with Role badges */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {m.playingXI && (
+                              <button
+                                onClick={() => setAdminMatchSquadDrawer(m)}
+                                className="min-h-[44px] px-3.5 py-1.5 bg-[#FCE8ED] hover:bg-[#A30F2D] hover:text-white text-[#A30F2D] text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                              >
+                                <Users className="w-3.5 h-3.5" />
+                                <span>Squad & Attendance ({m.playingXI.length})</span>
+                                <span className="font-mono text-[9px] uppercase px-1 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200 ml-1">
+                                  Match Admin
+                                </span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setRecordCashModalOpen(true)}
+                              className="min-h-[44px] px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                            >
+                              <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Pitch Cash</span>
+                              <span className="font-mono text-[9px] uppercase px-1 py-0.2 rounded bg-emerald-100 text-emerald-900 border border-emerald-200 ml-1">
+                                Assigned Match
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Squad readiness bar */}
+                        {m.playingXI && (
+                          <div className="flex items-center justify-between text-xs text-[#667085]">
+                            <span>Confirmed Squad: 11 / 14 Players</span>
+                            <span className="text-emerald-700 font-bold">XI Published</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Tab 2: Grounds & Venues (MOD-10) */}
+                {adminMatchHubTab === "grounds" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {MOCK_GROUNDS_LIST.map((g) => (
+                        <div key={g.id} className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">{g.id.toUpperCase()}</span>
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{g.lights}</span>
+                          </div>
+                          <h4 className="font-bold text-sm text-[#171C26]">{g.name}</h4>
+                          <p className="text-xs text-gray-600">Pitch: <span className="font-semibold">{g.pitch}</span> • Boundary: {g.boundary}</p>
+                          <p className="text-[11px] text-gray-400">{g.address}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 3: Tournaments & Leagues (MOD-17) */}
+                {adminMatchHubTab === "tournaments" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {MOCK_TOURNAMENTS_LIST.map((t) => (
+                        <div key={t.id} className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">{t.format}</span>
+                            <span className="text-xs font-bold text-emerald-700">{t.status}</span>
+                          </div>
+                          <h4 className="font-black text-base text-[#171C26]">{t.name}</h4>
+                          <div className="text-xs text-gray-600 space-y-1">
+                            <div>Matches: <span className="font-bold text-[#171C26]">{t.matchesPlayed}</span></div>
+                            <div>Current Club Standing: <span className="font-black text-[#D51F43]">{t.clubRank}</span></div>
+                            <div>Prize Pool: <span className="font-bold text-amber-700">{t.prize}</span></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1328,7 +1695,7 @@ export default function PlayerHomePrototype() {
                         <span>Merge Duplicate</span>
                       </button>
                       <button
-                        onClick={() => window.alert("Simulating member invite generator.")}
+                        onClick={() => setSimulationToast("[PROTOTYPE SIMULATION] Member invitation generator triggered (simulation only).")}
                         className="min-h-[40px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
@@ -1778,7 +2145,7 @@ export default function PlayerHomePrototype() {
                             <div className="text-[10px] text-gray-500">{lead.phone} • {lead.interest}</div>
                           </div>
                           <button
-                            onClick={() => window.alert(`Calling lead ${lead.name} at ${lead.phone}...`)}
+                            onClick={() => setSimulationToast(`[PROTOTYPE SIMULATION] Simulated follow-up contact for lead ${lead.name} (${lead.phone}).`)}
                             className="min-h-[32px] px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition"
                           >
                             Follow Up
@@ -1919,21 +2286,177 @@ export default function PlayerHomePrototype() {
                   )}
                 </div>
 
-                {/* Section 3: Design Studio Banner Launcher */}
-                <div className="bg-gradient-to-r from-[#A30F2D] to-[#D51F43] rounded-2xl p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">Club Brand Hub</span>
-                    <h3 className="text-base font-black uppercase">Creative Matchday Graphics Studio</h3>
-                    <p className="text-xs text-white/80 max-w-md">
-                      Generate official KAvach Play matchday scorecards, player of the match banners, and playing XI announcements.
-                    </p>
+                {/* Section 3: Interactive Design Studio & Matchday Graphic Generator (MOD-13) */}
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D]">
+                          MOD-13 • Creative Engine
+                        </span>
+                        <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-900 font-bold">
+                          Designer Hub
+                        </span>
+                      </div>
+                      <h3 className="font-black text-sm uppercase text-[#171C26] mt-1 flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-[#D51F43]" />
+                        Matchday Banner & Canvas Graphic Generator
+                      </h3>
+                      <p className="text-[11px] text-gray-500">Produce official, brand-compliant social media graphics with live SVG canvas rendering.</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setDesignStudioModal(!designStudioModal)}
+                        className="min-h-[44px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                      >
+                        <Image className="w-4 h-4" />
+                        <span>{designStudioModal ? "Hide Generator" : "Open Studio Generator"}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => window.alert("Opening KAvach Design Studio Canvas templates...")}
-                    className="min-h-[44px] px-4 py-2 bg-white text-[#A30F2D] font-black text-xs rounded-xl shadow-md hover:bg-gray-100 transition whitespace-nowrap self-start sm:self-auto"
-                  >
-                    Open Design Studio
-                  </button>
+
+                  {designStudioModal && (
+                    <div className="space-y-4 pt-2">
+                      {/* Template Selector */}
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-gray-500 block mb-1.5">
+                          1. Select Matchday Template:
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          {[
+                            { key: "matchday", label: "Matchday Fixture" },
+                            { key: "potm", label: "Player of Match (POTM)" },
+                            { key: "squad", label: "Playing XI Lineup" },
+                            { key: "result", label: "Final Scorecard" }
+                          ].map((tmpl) => (
+                            <button
+                              key={tmpl.key}
+                              onClick={() => setDesignTemplate(tmpl.key as any)}
+                              className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold border transition text-center ${
+                                designTemplate === tmpl.key
+                                  ? "bg-[#D51F43] text-white border-[#D51F43] shadow-xs font-black"
+                                  : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
+                              }`}
+                            >
+                              {tmpl.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Customization Controls */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="font-bold text-gray-700 block mb-1">Target Match Fixture</label>
+                          <select
+                            value={designMatch}
+                            onChange={(e) => setDesignMatch(e.target.value)}
+                            className="w-full min-h-[44px] p-2.5 rounded-xl border border-gray-300 bg-white"
+                          >
+                            <option>KAvach Cricket Club vs Spartans CC</option>
+                            <option>KAvach Cricket Club vs Royal Strikers</option>
+                            <option>KAvach Cricket Club vs Metro CC</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="font-bold text-gray-700 block mb-1">Featured Player Spotlight</label>
+                          <select
+                            value={designPlayer}
+                            onChange={(e) => setDesignPlayer(e.target.value)}
+                            className="w-full min-h-[44px] p-2.5 rounded-xl border border-gray-300 bg-white"
+                          >
+                            <option>Ashutosh Dixit (#07 • All-Rounder)</option>
+                            <option>Vikram Sharma (#18 • Captain)</option>
+                            <option>Rahul Verma (#24 • Bowler)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* LIVE SVG CANVAS BANNER RENDER */}
+                      <div className="rounded-2xl overflow-hidden border border-amber-400/40 shadow-xl bg-gray-950 p-2">
+                        <svg viewBox="0 0 800 450" className="w-full h-auto rounded-xl">
+                          <defs>
+                            <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" stopColor="#A30F2D" />
+                              <stop offset="60%" stopColor="#C4193B" />
+                              <stop offset="100%" stopColor="#D51F43" />
+                            </linearGradient>
+                            <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                              <stop offset="0%" stopColor="#D6A52B" />
+                              <stop offset="50%" stopColor="#F5D061" />
+                              <stop offset="100%" stopColor="#D6A52B" />
+                            </linearGradient>
+                          </defs>
+
+                          {/* Background */}
+                          <rect width="800" height="450" fill="url(#brandGrad)" />
+                          <circle cx="750" cy="50" r="180" fill="#FFFFFF" opacity="0.04" />
+                          <circle cx="50" cy="400" r="140" fill="#000000" opacity="0.15" />
+
+                          {/* Outer Gold Frame */}
+                          <rect x="20" y="20" width="760" height="410" fill="none" stroke="url(#goldGrad)" strokeWidth="3" rx="16" />
+
+                          {/* Crest & Header */}
+                          <rect x="50" y="45" width="48" height="48" rx="12" fill="#FFFFFF" />
+                          <text x="74" y="78" fill="#A30F2D" fontSize="22" fontWeight="900" textAnchor="middle" fontFamily="sans-serif">KP</text>
+
+                          <text x="110" y="66" fill="#FCE8ED" fontSize="13" fontWeight="900" letterSpacing="3" fontFamily="sans-serif">OFFICIAL MATCHDAY MEDIA</text>
+                          <text x="110" y="86" fill="#FFFFFF" fontSize="18" fontWeight="900" letterSpacing="1" fontFamily="sans-serif">KAVACH CRICKET CLUB</text>
+
+                          {/* Template Header Badge */}
+                          <rect x="560" y="45" width="190" height="34" rx="17" fill="#000000" opacity="0.3" />
+                          <text x="655" y="67" fill="#F5D061" fontSize="11" fontWeight="800" textAnchor="middle" fontFamily="sans-serif" letterSpacing="1">
+                            {designTemplate === "matchday" ? "MATCHDAY 12 • T20" :
+                             designTemplate === "potm" ? "PLAYER OF THE MATCH 🏅" :
+                             designTemplate === "squad" ? "PLAYING XI SQUAD" : "OFFICIAL RESULT"}
+                          </text>
+
+                          {/* Dynamic Middle Banner Content */}
+                          {designTemplate === "potm" ? (
+                            <>
+                              <text x="50" y="160" fill="#F5D061" fontSize="16" fontWeight="900" letterSpacing="2" fontFamily="sans-serif">OUTSTANDING PERFORMANCE</text>
+                              <text x="50" y="210" fill="#FFFFFF" fontSize="38" fontWeight="900" fontFamily="sans-serif">{designPlayer.split(" ")[0].toUpperCase()} {designPlayer.split(" ")[1]?.toUpperCase()}</text>
+                              <text x="50" y="250" fill="#FCE8ED" fontSize="20" fontWeight="700" fontFamily="sans-serif">64* (41 balls) • 1/32 (4 overs)</text>
+                              <rect x="50" y="280" width="320" height="44" rx="12" fill="#FFFFFF" opacity="0.15" />
+                              <text x="70" y="308" fill="#FFFFFF" fontSize="14" fontWeight="800" fontFamily="sans-serif">Won by 22 runs vs Spartans CC</text>
+                            </>
+                          ) : (
+                            <>
+                              <text x="50" y="155" fill="#F5D061" fontSize="15" fontWeight="900" letterSpacing="2" fontFamily="sans-serif">UPCOMING PREMIER FIXTURE</text>
+                              <text x="50" y="210" fill="#FFFFFF" fontSize="36" fontWeight="900" fontFamily="sans-serif">{designMatch.toUpperCase()}</text>
+                              <text x="50" y="250" fill="#FCE8ED" fontSize="18" fontWeight="700" fontFamily="sans-serif">Saturday, 21 Nov 2026 • 07:30 AM IST</text>
+                              <rect x="50" y="275" width="420" height="44" rx="12" fill="#FFFFFF" opacity="0.15" />
+                              <text x="70" y="303" fill="#FFFFFF" fontSize="14" fontWeight="800" fontFamily="sans-serif">Venue: Kavach Arena Ground 1 (Natural Turf)</text>
+                            </>
+                          )}
+
+                          {/* Footer */}
+                          <line x1="50" y1="365" x2="750" y2="365" stroke="#FFFFFF" strokeOpacity="0.2" strokeWidth="1" />
+                          <text x="50" y="395" fill="#FFFFFF" fillOpacity="0.8" fontSize="12" fontWeight="700" fontFamily="sans-serif">play.kavachcricket.com • Delhi-NCR League</text>
+                          <text x="750" y="395" fill="#F5D061" fontSize="12" fontWeight="800" textAnchor="end" fontFamily="sans-serif">#KAvachCricket #PlayWithHonor</text>
+                        </svg>
+                      </div>
+
+                      {/* Export Actions */}
+                      <div className="flex flex-wrap items-center gap-3 pt-2">
+                        <button
+                          onClick={() => showSimulationToast("[PROTOTYPE SIMULATION] High-resolution Matchday Graphic exported locally. Ready for social media distribution.")}
+                          className="min-h-[44px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition flex items-center gap-2"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Download High-Res Graphic (PNG)</span>
+                        </button>
+                        <button
+                          onClick={() => showSimulationToast("[PROTOTYPE SIMULATION] Image token copied to clipboard for WhatsApp squad group.")}
+                          className="min-h-[44px] px-4 py-2 bg-gray-100 hover:bg-gray-200 text-[#171C26] text-xs font-bold rounded-xl transition flex items-center gap-2"
+                        >
+                          <Copy className="w-4 h-4 text-gray-600" />
+                          <span>Copy Image to Clipboard</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2534,14 +3057,723 @@ export default function PlayerHomePrototype() {
                 </div>
               </div>
             )}
-          </main>
 
-          {/* 2. PLAYER MOBILE BOTTOM NAVIGATION (Hidden in Admin Mode) */}
+            {/* ========================================================================= */}
+            {/* PLAYER VIEW: PERFORMANCE & STATISTICS TAB                                 */}
+            {/* ========================================================================= */}
+            {persona === "player" && activeTab === "performance" && (
+              <div className="space-y-6">
+                {/* Header & Sub-tab switcher */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black uppercase text-[#171C26] flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-[#D51F43]" />
+                      Player Performance & Career Stats
+                    </h2>
+                    <p className="text-xs text-[#667085]">
+                      Official season stats, milestone achievements, club leaderboards, and recent match form.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                    {[
+                      { key: "overview", label: "Overview" },
+                      { key: "leaderboard", label: "Club Leaderboard" },
+                      { key: "badges", label: "Badges & Honors" },
+                      { key: "timeline", label: "Match Form" }
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setPerfSubTab(tab.key as any)}
+                        className={`min-h-[44px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                          perfSubTab === tab.key
+                            ? "bg-[#D51F43] text-white shadow-xs font-black"
+                            : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sub-view 1: Overview */}
+                {perfSubTab === "overview" && (
+                  <div className="space-y-5">
+                    {/* Key Stats Cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Season Runs</span>
+                        <div className="text-2xl font-black text-[#171C26] mt-1">{MOCK_PERFORMANCE_METRICS.summary.runs}</div>
+                        <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+                          Avg: <span className="font-bold text-gray-700">{MOCK_PERFORMANCE_METRICS.summary.battingAvg}</span> • SR: <span className="font-bold text-gray-700">{MOCK_PERFORMANCE_METRICS.summary.strikeRate}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Wickets Taken</span>
+                        <div className="text-2xl font-black text-[#A30F2D] mt-1">{MOCK_PERFORMANCE_METRICS.summary.wickets}</div>
+                        <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+                          Avg: <span className="font-bold text-gray-700">{MOCK_PERFORMANCE_METRICS.summary.bowlingAvg}</span> • Econ: <span className="font-bold text-gray-700">{MOCK_PERFORMANCE_METRICS.summary.economy}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Highest Score</span>
+                        <div className="text-2xl font-black text-amber-600 mt-1">{MOCK_PERFORMANCE_METRICS.summary.highestScore}</div>
+                        <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+                          {MOCK_PERFORMANCE_METRICS.summary.hundreds} x 100 • {MOCK_PERFORMANCE_METRICS.summary.fifties} x 50
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#667085]">Catches & Field</span>
+                        <div className="text-2xl font-black text-emerald-600 mt-1">{MOCK_PERFORMANCE_METRICS.summary.catches}</div>
+                        <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+                          Rank #2 in Club Fielding
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Milestone Badges Teaser */}
+                    <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                          <Award className="w-4 h-4 text-[#D51F43]" />
+                          Milestone Badges & Club Honors
+                        </h3>
+                        <button
+                          onClick={() => setPerfSubTab("badges")}
+                          className="min-h-[44px] text-xs font-bold text-[#D51F43] hover:underline"
+                        >
+                          View All 5 Badges →
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {MOCK_PERFORMANCE_METRICS.milestoneBadges.slice(0, 3).map((badge) => (
+                          <div key={badge.id} className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-black shrink-0">
+                              <Trophy className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <div>
+                              <div className="font-bold text-xs text-[#171C26]">{badge.title}</div>
+                              <div className="text-[10px] text-gray-500">{badge.desc}</div>
+                              <span className="font-mono text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                                {badge.tier} Tier
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recent Match Form Teaser */}
+                    <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                          <Activity className="w-4 h-4 text-[#D51F43]" />
+                          Recent Match Performance Form
+                        </h3>
+                        <button
+                          onClick={() => setPerfSubTab("timeline")}
+                          className="min-h-[44px] text-xs font-bold text-[#D51F43] hover:underline"
+                        >
+                          Full Timeline →
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {MOCK_PERFORMANCE_METRICS.matchForm.slice(0, 3).map((f, i) => (
+                          <div key={i} className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
+                            <div>
+                              <div className="font-bold text-[#171C26] flex items-center gap-2">
+                                <span>{f.match}</span>
+                                {f.potm && (
+                                  <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-black rounded uppercase">
+                                    POTM 🏅
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-gray-500 mt-0.5">{f.date} • {f.result}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-[#171C26]">{f.runs}</div>
+                              <div className="text-[10px] text-gray-500">{f.bowling}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-view 2: Club Leaderboard */}
+                {perfSubTab === "leaderboard" && (
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                      <div>
+                        <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                          <Trophy className="w-4 h-4 text-amber-500" />
+                          2026 Season Club Leaderboards
+                        </h3>
+                        <p className="text-[11px] text-gray-500">Live rankings compiled from official verified match scorecards.</p>
+                      </div>
+
+                      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                        {(["batting", "bowling", "fielding"] as const).map((cat) => (
+                          <button
+                            key={cat}
+                            onClick={() => setLeaderboardCategory(cat)}
+                            className={`min-h-[44px] px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize ${
+                              leaderboardCategory === cat ? "bg-[#D51F43] text-white shadow-xs font-black" : "text-gray-600 hover:text-black"
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Batting Leaderboard Table */}
+                    {leaderboardCategory === "batting" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-200 text-gray-500 uppercase text-[10px] font-black">
+                              <th className="py-2.5 px-3">Rank</th>
+                              <th className="py-2.5 px-3">Batsman</th>
+                              <th className="py-2.5 px-3">Innings</th>
+                              <th className="py-2.5 px-3 text-right">Runs</th>
+                              <th className="py-2.5 px-3 text-right">Avg</th>
+                              <th className="py-2.5 px-3 text-right">SR</th>
+                              <th className="py-2.5 px-3 text-right">HS</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 font-medium">
+                            {MOCK_PERFORMANCE_METRICS.leaderboard.batting.map((row) => (
+                              <tr key={row.rank} className={row.kavachId === "KAV-002" ? "bg-rose-50/50 font-bold" : ""}>
+                                <td className="py-2.5 px-3 font-mono font-black">#{row.rank}</td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-[#171C26]">{row.name}</div>
+                                  <div className="font-mono text-[9px] text-gray-400">{row.kavachId}</div>
+                                </td>
+                                <td className="py-2.5 px-3">{row.inngs}</td>
+                                <td className="py-2.5 px-3 text-right font-black text-[#A30F2D]">{row.runs}</td>
+                                <td className="py-2.5 px-3 text-right">{row.avg}</td>
+                                <td className="py-2.5 px-3 text-right">{row.sr}</td>
+                                <td className="py-2.5 px-3 text-right">{row.hs}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Bowling Leaderboard Table */}
+                    {leaderboardCategory === "bowling" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-200 text-gray-500 uppercase text-[10px] font-black">
+                              <th className="py-2.5 px-3">Rank</th>
+                              <th className="py-2.5 px-3">Bowler</th>
+                              <th className="py-2.5 px-3">Overs</th>
+                              <th className="py-2.5 px-3 text-right">Wickets</th>
+                              <th className="py-2.5 px-3 text-right">Avg</th>
+                              <th className="py-2.5 px-3 text-right">Econ</th>
+                              <th className="py-2.5 px-3 text-right">Best</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 font-medium">
+                            {MOCK_PERFORMANCE_METRICS.leaderboard.bowling.map((row) => (
+                              <tr key={row.rank} className={row.kavachId === "KAV-002" ? "bg-rose-50/50 font-bold" : ""}>
+                                <td className="py-2.5 px-3 font-mono font-black">#{row.rank}</td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-[#171C26]">{row.name}</div>
+                                  <div className="font-mono text-[9px] text-gray-400">{row.kavachId}</div>
+                                </td>
+                                <td className="py-2.5 px-3">{row.overs}</td>
+                                <td className="py-2.5 px-3 text-right font-black text-[#A30F2D]">{row.wkts}</td>
+                                <td className="py-2.5 px-3 text-right">{row.avg}</td>
+                                <td className="py-2.5 px-3 text-right">{row.econ}</td>
+                                <td className="py-2.5 px-3 text-right">{row.bb}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Fielding Leaderboard Table */}
+                    {leaderboardCategory === "fielding" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-200 text-gray-500 uppercase text-[10px] font-black">
+                              <th className="py-2.5 px-3">Rank</th>
+                              <th className="py-2.5 px-3">Fielder</th>
+                              <th className="py-2.5 px-3">Matches</th>
+                              <th className="py-2.5 px-3 text-right">Catches</th>
+                              <th className="py-2.5 px-3 text-right">Run Outs</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 font-medium">
+                            {MOCK_PERFORMANCE_METRICS.leaderboard.fielding.map((row) => (
+                              <tr key={row.rank} className={row.kavachId === "KAV-002" ? "bg-rose-50/50 font-bold" : ""}>
+                                <td className="py-2.5 px-3 font-mono font-black">#{row.rank}</td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-[#171C26]">{row.name}</div>
+                                  <div className="font-mono text-[9px] text-gray-400">{row.kavachId}</div>
+                                </td>
+                                <td className="py-2.5 px-3">{row.matches}</td>
+                                <td className="py-2.5 px-3 text-right font-black text-[#A30F2D]">{row.catches}</td>
+                                <td className="py-2.5 px-3 text-right">{row.runOuts}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-view 3: Badges & Achievements */}
+                {perfSubTab === "badges" && (
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                    <div className="border-b border-gray-100 pb-3">
+                      <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-[#D51F43]" />
+                        Official Club Badges & Accolades
+                      </h3>
+                      <p className="text-[11px] text-gray-500">Badges are awarded automatically based on verified match scorecards and tenure.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {MOCK_PERFORMANCE_METRICS.milestoneBadges.map((badge) => (
+                        <div key={badge.id} className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 flex items-start gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#A30F2D] to-[#D51F43] text-white flex items-center justify-center font-black shrink-0 shadow-xs">
+                            <Trophy className="w-6 h-6 text-amber-300" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-sm text-[#171C26]">{badge.title}</h4>
+                              <span className="font-mono text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                                {badge.tier}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#667085] mt-0.5">{badge.desc}</p>
+                            <span className="text-[10px] text-gray-400 block mt-1">Earned on {badge.earnedDate}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-view 4: Timeline Form */}
+                {perfSubTab === "timeline" && (
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                    <div className="border-b border-gray-100 pb-3">
+                      <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-[#D51F43]" />
+                        2026 Match Form Timeline
+                      </h3>
+                      <p className="text-[11px] text-gray-500">Detailed performance ledger from the 2026 cricket season.</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {MOCK_PERFORMANCE_METRICS.matchForm.map((f, i) => (
+                        <div key={i} className="p-4 rounded-xl border border-gray-200 bg-white shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-[#171C26]">{f.match}</span>
+                              {f.potm && (
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded uppercase">
+                                  POTM 🏅
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">{f.date} • {f.result}</div>
+                          </div>
+                          <div className="flex items-center gap-4 bg-gray-50 px-3 py-2 rounded-xl">
+                            <div>
+                              <span className="text-[10px] text-gray-400 uppercase font-bold block">Batting</span>
+                              <span className="font-bold text-[#171C26]">{f.runs}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-gray-400 uppercase font-bold block">Bowling</span>
+                              <span className="font-bold text-[#171C26]">{f.bowling}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* PLAYER VIEW: CLUB EXPERIENCE & MEMBER SERVICES TAB                        */}
+            {/* ========================================================================= */}
+            {persona === "player" && activeTab === "club" && (
+              <div className="space-y-6">
+                {/* Header & Sub-tab switcher */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black uppercase text-[#171C26] flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-[#D51F43]" />
+                      Club Experience & Member Services
+                    </h2>
+                    <p className="text-xs text-[#667085]">
+                      Digital player card, studio training passes, merchandise shop, member polls, and club details.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                    {[
+                      { key: "card", label: "Player Card" },
+                      { key: "studio", label: "Nets Pass" },
+                      { key: "shop", label: "Merch Shop" },
+                      { key: "info", label: "Club & Polls" }
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setClubSubTab(tab.key as any)}
+                        className={`min-h-[44px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                          clubSubTab === tab.key
+                            ? "bg-[#D51F43] text-white shadow-xs font-black"
+                            : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sub-tab 1: Digital Player Card */}
+                {clubSubTab === "card" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Visual Digital Card */}
+                    <div className="bg-gradient-to-br from-[#A30F2D] via-[#B81538] to-[#D51F43] text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[320px]">
+                      {/* Watermark Crest */}
+                      <div className="absolute -right-8 -bottom-8 opacity-10 text-[180px] font-black pointer-events-none">
+                        KP
+                      </div>
+
+                      {/* Card Top */}
+                      <div className="flex items-start justify-between relative z-10">
+                        <div>
+                          <div className="text-[10px] font-mono tracking-widest uppercase text-amber-300 font-bold">
+                            Official Player Card
+                          </div>
+                          <h3 className="text-xl font-black uppercase tracking-tight mt-0.5">
+                            KAvach Cricket Club
+                          </h3>
+                        </div>
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-xl text-amber-300 border border-white/20">
+                          #{MOCK_CURRENT_PLAYER.jerseyNumber}
+                        </div>
+                      </div>
+
+                      {/* Card Middle */}
+                      <div className="flex items-center gap-4 my-4 relative z-10">
+                        <img
+                          src={MOCK_CURRENT_PLAYER.avatar}
+                          alt={MOCK_CURRENT_PLAYER.name}
+                          className="w-16 h-16 rounded-2xl object-cover ring-4 ring-white/30 shadow-md"
+                        />
+                        <div>
+                          <h4 className="text-lg font-black uppercase">{MOCK_CURRENT_PLAYER.name}</h4>
+                          <span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded-md text-amber-200">
+                            {MOCK_CURRENT_PLAYER.kavachId}
+                          </span>
+                          <div className="text-xs text-white/80 mt-1">
+                            {MOCK_CURRENT_PLAYER.role} • {MOCK_CURRENT_PLAYER.battingStyle}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Bottom */}
+                      <div className="pt-4 border-t border-white/20 flex items-center justify-between text-xs relative z-10">
+                        <div>
+                          <span className="text-[10px] text-white/60 uppercase block">Membership Tier</span>
+                          <span className="font-bold text-amber-300">Active Squad Member</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-white/60 uppercase block">Affiliation</span>
+                          <span className="font-bold">Delhi-NCR League</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Member Services & Profile Management */}
+                    <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                      <h3 className="font-black text-sm uppercase text-[#171C26]">Member Profile Details</h3>
+                      <div className="space-y-3 text-xs">
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-[#667085]">Phone (Registered):</span>
+                          <span className="font-mono font-bold text-[#171C26]">{MOCK_CURRENT_PLAYER.phone}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-[#667085]">Email:</span>
+                          <span className="font-bold text-[#171C26]">{MOCK_CURRENT_PLAYER.email}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-[#667085]">Bowling Style:</span>
+                          <span className="font-bold text-[#171C26]">{MOCK_CURRENT_PLAYER.bowlingStyle}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b border-gray-100">
+                          <span className="text-[#667085]">Account Status:</span>
+                          <span className="font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                            Verified Player
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => showSimulationToast("[PROTOTYPE SIMULATION] Profile edit requested. Local prototype state active.")}
+                        className="w-full min-h-[44px] border border-gray-200 text-[#171C26] font-bold text-xs rounded-xl hover:bg-gray-50 transition"
+                      >
+                        Request Profile Detail Update
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-tab 2: Studio & Nets Membership */}
+                {clubSubTab === "studio" && (
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                      <div>
+                        <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-[#D51F43]" />
+                          Indoor Studio & Nets Training Pass
+                        </h3>
+                        <p className="text-[11px] text-gray-500">Access multi-turf training lanes and automated bowling machine sessions.</p>
+                      </div>
+
+                      <button
+                        onClick={() => setBookSlotModalOpen(true)}
+                        className="min-h-[44px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold text-xs rounded-xl shadow-xs transition"
+                      >
+                        Reserve Net Slot
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60">
+                        <span className="text-[10px] text-gray-500 uppercase font-black">Active Package</span>
+                        <div className="font-bold text-base text-[#171C26] mt-0.5">10-Session Training Pass</div>
+                        <span className="text-xs text-gray-500">Expires: 15 Dec 2026</span>
+                      </div>
+
+                      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60">
+                        <span className="text-[10px] text-gray-500 uppercase font-black">Credits Remaining</span>
+                        <div className="font-black text-2xl text-[#D51F43] mt-0.5">7 of 10</div>
+                        <span className="text-xs text-emerald-700 font-medium">Valid for all 3 lanes</span>
+                      </div>
+
+                      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col justify-between">
+                        <span className="text-[10px] text-gray-500 uppercase font-black">Quick Action</span>
+                        <button
+                          onClick={() => showSimulationToast("[PROTOTYPE SIMULATION] Pass renewal simulated. No real transaction occurred.")}
+                          className="min-h-[44px] mt-2 px-3 py-1.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-lg transition"
+                        >
+                          Renew / Add 10 Sessions (₹2,000)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-tab 3: Official Merchandise Shop */}
+                {clubSubTab === "shop" && (
+                  <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                    <div className="border-b border-gray-100 pb-3">
+                      <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                        <ShoppingBag className="w-4 h-4 text-[#D51F43]" />
+                        Official Club Merchandise & Kit Store
+                      </h3>
+                      <p className="text-[11px] text-gray-500">Order customized matchwear and training gear directly to your ground.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {MOCK_CLUB_SHOP_ITEMS.map((item) => (
+                        <div key={item.id} className="p-4 rounded-2xl border border-gray-200 bg-white flex flex-col justify-between shadow-xs">
+                          <div>
+                            <div className="w-full h-32 rounded-xl bg-[#FCE8ED]/40 flex items-center justify-center text-[#A30F2D] mb-3">
+                              <Shirt className="w-12 h-12" />
+                            </div>
+                            <span className="font-mono text-[9px] font-black uppercase px-2 py-0.5 rounded bg-rose-100 text-rose-800">
+                              {item.badge}
+                            </span>
+                            <h4 className="font-bold text-sm text-[#171C26] mt-2">{item.title}</h4>
+                            <p className="text-[11px] text-[#667085] mt-1 line-clamp-2">{item.description}</p>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                            <span className="font-black text-base text-[#171C26]">₹{item.price}</span>
+                            <button
+                              onClick={() => setShopItemOrderModal(item)}
+                              className="min-h-[44px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl transition"
+                            >
+                              Order Kit
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-tab 4: Club Info & Polls */}
+                {clubSubTab === "info" && (
+                  <div className="space-y-5">
+                    {/* Member Decision Poll */}
+                    <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                      <div className="border-b border-gray-100 pb-3">
+                        <h3 className="font-black text-sm uppercase text-[#171C26] flex items-center gap-1.5">
+                          <Vote className="w-4 h-4 text-[#D51F43]" />
+                          Member Democratic Decision Poll
+                        </h3>
+                        <p className="text-[11px] text-gray-500">{pollData.title}</p>
+                      </div>
+
+                      <div className="space-y-3">
+                        {pollData.options.map((opt) => (
+                          <div
+                            key={opt.id}
+                            onClick={() => !hasVotedPoll && setSelectedPollOption(opt.id)}
+                            className={`p-3.5 rounded-xl border transition cursor-pointer ${
+                              selectedPollOption === opt.id ? "border-[#D51F43] bg-rose-50/50" : "border-gray-200 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                              <span className="text-[#171C26]">{opt.label}</span>
+                              <span className="font-mono text-[#D51F43]">{opt.percentage}% ({opt.votes} votes)</span>
+                            </div>
+                            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-[#A30F2D] to-[#D51F43] transition-all duration-500"
+                                style={{ width: `${opt.percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {!hasVotedPoll ? (
+                        <button
+                          onClick={handleVotePoll}
+                          disabled={!selectedPollOption}
+                          className="min-h-[44px] px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition"
+                        >
+                          Submit Member Vote
+                        </button>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          [PROTOTYPE SIMULATION] Your vote has been counted in real time!
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Club Governance & Grounds */}
+                    <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
+                      <h3 className="font-black text-sm uppercase text-[#171C26]">Club Operations & Ground Venues</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
+                          <span className="font-bold text-[#171C26] block">Home Ground</span>
+                          <span className="text-gray-600 block mt-0.5">Kavach Arena Ground 1 (Natural Turf, Floodlit)</span>
+                          <span className="text-[10px] text-gray-400">Sector 62 Sports Complex, Noida</span>
+                        </div>
+
+                        <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
+                          <span className="font-bold text-[#171C26] block">Executive Committee</span>
+                          <span className="text-gray-600 block mt-0.5">Captain: Vikram Sharma • Match Admin: Rahul Verma</span>
+                          <span className="text-[10px] text-gray-400">Affiliated to Delhi-NCR Cricket Association</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            </main>
+
+            {/* 3. DESKTOP RIGHT CONTEXTUAL PANEL (Visible on Desktop in Player View) */}
+            {persona === "player" && (
+              <aside
+                className={`w-80 bg-white border-l border-[#E5E7EB] shrink-0 p-5 space-y-5 overflow-y-auto hidden ${
+                  deviceFrame === "desktop" ? "!flex flex-col" : deviceFrame === "responsive" ? "xl:flex flex-col" : ""
+                }`}
+              >
+                {/* Next Fixture Widget */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-[#A30F2D] to-[#D51F43] text-white space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">Next Fixture</span>
+                    <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px]">{MOCK_MATCHES[0].countdown}</span>
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm uppercase">{MOCK_MATCHES[0].title}</h3>
+                    <p className="text-xs text-white/80 mt-0.5">{MOCK_MATCHES[0].dateString}</p>
+                  </div>
+                  <div className="pt-2 border-t border-white/20 flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-200">Playing XI Confirmed</span>
+                    <button
+                      onClick={() => setActiveTab("matches")}
+                      className="min-h-[44px] px-3 py-1 bg-white text-[#A30F2D] text-xs font-bold rounded-lg hover:bg-gray-100 transition"
+                    >
+                      Match Centre →
+                    </button>
+                  </div>
+                </div>
+
+                {/* Outstanding Dues Widget */}
+                <div className="p-4 rounded-2xl border border-gray-200 bg-gray-50/50 space-y-2">
+                  <span className="text-[10px] text-gray-500 font-black uppercase">Outstanding Balance</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-black text-[#D51F43]">₹{duesState.total}</span>
+                    <button
+                      onClick={() => {
+                        setActiveTab("payments");
+                        setPaymentModalOpen(true);
+                      }}
+                      className="min-h-[44px] px-3.5 py-1.5 bg-[#D51F43] hover:bg-[#A30F2D] text-white text-xs font-bold rounded-xl"
+                    >
+                      Pay Now
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-gray-500 block">3 active obligations pending settlement</span>
+                </div>
+
+                {/* Nets Credits Widget */}
+                <div className="p-4 rounded-2xl border border-gray-200 bg-gray-50/50 space-y-2">
+                  <span className="text-[10px] text-gray-500 font-black uppercase">Indoor Training Pass</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-[#171C26]">7 Credits Remaining</span>
+                    <button
+                      onClick={() => setBookSlotModalOpen(true)}
+                      className="min-h-[44px] px-3 py-1 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-lg transition"
+                    >
+                      Book Net
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-emerald-700 font-medium block">Valid until 15 Dec 2026</span>
+                </div>
+              </aside>
+            )}
+          </div>
+
+          {/* 2. PLAYER MOBILE BOTTOM NAVIGATION (Hidden in Admin Mode & on Desktop) */}
           {persona === "player" && (
             <nav
               role="navigation"
               aria-label="Player Primary Navigation"
-              className="sticky bottom-0 z-40 bg-white border-t border-[#E5E7EB] shadow-lg flex items-center justify-around h-[68px] px-2"
+              className={`sticky bottom-0 z-40 bg-white border-t border-[#E5E7EB] shadow-lg flex items-center justify-around h-[68px] px-2 ${
+                deviceFrame === "desktop" ? "hidden" : "lg:hidden"
+              }`}
             >
               <button
                 onClick={() => setActiveTab("home")}
@@ -2683,7 +3915,7 @@ export default function PlayerHomePrototype() {
                 <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
                   <button
                     onClick={() => {
-                      window.alert("Playing XI broadcast sent to team WhatsApp group!");
+                      setSimulationToast("[PROTOTYPE SIMULATION] Playing XI WhatsApp broadcast preview generated (no real WhatsApp message sent).");
                       setAdminMatchSquadDrawer(null);
                     }}
                     className="w-full min-h-[44px] bg-[#A30F2D] hover:bg-[#D51F43] text-white font-bold rounded-xl"
@@ -2803,10 +4035,10 @@ export default function PlayerHomePrototype() {
                   <button
                     onClick={() => {
                       if (jerseyValidationWarning) {
-                        window.alert("Cannot save profile while jersey validation error exists!");
+                        setSimulationToast("[VALIDATION ERROR] Cannot save profile while jersey validation collision exists!");
                         return;
                       }
-                      window.alert("Player profile and permissions updated successfully!");
+                      setSimulationToast("[PROTOTYPE SIMULATION] Player profile & granular permissions updated locally.");
                       setSelectedPlayerProfile(null);
                     }}
                     className="w-full min-h-[44px] bg-[#A30F2D] hover:bg-[#D51F43] text-white font-bold rounded-xl"
@@ -2865,7 +4097,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        window.alert("Player merger completed successfully! All relational references reparented without data loss.");
+                        setSimulationToast("[PROTOTYPE SIMULATION] Dry-run merge preview executed: references reparented in memory (no database mutation).");
                         setMergeModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-[#A30F2D] hover:bg-[#D51F43] text-white font-bold rounded-xl"
@@ -2933,7 +4165,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        window.alert("Match scheduled successfully! Added to upcoming fixtures.");
+                        setSimulationToast("[PROTOTYPE SIMULATION] Match fixture created locally (no database mutation).");
                         setCreateMatchModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
@@ -2982,7 +4214,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        window.alert("Cash payment of ₹500 recorded and receipt generated!");
+                        setSimulationToast("[PROTOTYPE SIMULATION] Pitch-side cash collection recorded locally (no financial ledger mutation).");
                         setRecordCashModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl"
@@ -3008,6 +4240,7 @@ export default function PlayerHomePrototype() {
                   </div>
                   <button
                     onClick={() => setSelectedMatch(null)}
+                    aria-label="Close match details"
                     className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white"
                   >
                     <X className="w-5 h-5" />
@@ -3213,7 +4446,7 @@ export default function PlayerHomePrototype() {
 
                   <div className="pt-3 text-center">
                     <button
-                      onClick={() => window.alert("Simulating receipt download PDF...")}
+                      onClick={() => setSimulationToast("[PROTOTYPE SIMULATION] PDF receipt download initiated (mock export).")}
                       className="min-h-[44px] w-full bg-[#171C26] hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-1.5"
                     >
                       <Download className="w-4 h-4" />
@@ -3315,7 +4548,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        window.alert("Ad-hoc fee levied successfully! Member notified via push & email.");
+                        setSimulationToast("[PROTOTYPE SIMULATION] Ad-hoc fee obligation levied locally (no database mutation).");
                         setAdHocFeeModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
@@ -3435,7 +4668,7 @@ export default function PlayerHomePrototype() {
                   <div className="pt-2">
                     <button
                       onClick={() => {
-                        window.alert("Nets lane reserved! Session credit deducted from member pass.");
+                        setSimulationToast("[PROTOTYPE SIMULATION] Net practice lane reserved locally; session credit deducted from mock balance.");
                         setBookSlotModalOpen(false);
                       }}
                       className="w-full min-h-[44px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
@@ -3457,7 +4690,11 @@ export default function PlayerHomePrototype() {
                     <CreditCard className="w-5 h-5 text-amber-300" />
                     <h3 className="text-sm font-black uppercase">Razorpay Secure Checkout</h3>
                   </div>
-                  <button onClick={() => setPaymentModalOpen(false)} className="text-white/80 hover:text-white">
+                  <button
+                    onClick={() => setPaymentModalOpen(false)}
+                    aria-label="Close Checkout"
+                    className="text-white/80 hover:text-white p-1"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -3482,9 +4719,12 @@ export default function PlayerHomePrototype() {
                   </div>
 
                   {paymentSuccess ? (
-                    <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold text-center flex items-center justify-center gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
-                      Payment Verified & Recorded! Settling dues...
+                    <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-900 text-xs font-bold text-center flex items-center justify-center gap-2 border border-emerald-200">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <div>
+                        <div className="font-mono text-[9px] font-black uppercase text-emerald-800">[PROTOTYPE SIMULATION]</div>
+                        <div>Test payment of ₹{duesState.total} completed locally. Real Razorpay & Firebase states untouched.</div>
+                      </div>
                     </div>
                   ) : (
                     <button
@@ -3494,6 +4734,93 @@ export default function PlayerHomePrototype() {
                       Simulate Test Payment (₹{duesState.total})
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 6 REMEDIATION: CLUB SHOP ITEM ORDER MODAL */}
+          {shopItemOrderModal && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-xs">
+                <div className="bg-[#A30F2D] text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-white" />
+                    <h3 className="text-sm font-black uppercase">Order Club Merchandise</h3>
+                  </div>
+                  <button onClick={() => setShopItemOrderModal(null)} className="text-white/80 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center font-black">
+                      <Shirt className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-[#171C26]">{shopItemOrderModal.title}</h4>
+                      <span className="font-black text-sm text-[#D51F43]">₹{shopItemOrderModal.price}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Select Size</label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {shopItemOrderModal.sizes.map((sz: string) => (
+                        <button
+                          key={sz}
+                          onClick={() => setSelectedShopSize(sz)}
+                          className={`min-h-[44px] rounded-xl font-bold text-xs border transition ${
+                            selectedShopSize === sz
+                              ? "bg-[#D51F43] text-white border-[#D51F43]"
+                              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          {sz}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Collection Preference</label>
+                    <select className="w-full min-h-[44px] p-2.5 rounded-xl border border-gray-300 bg-white">
+                      <option>Pitch-Side Collection (Next Fixture)</option>
+                      <option>Studio Front Desk Pickup (Noida Sector 62)</option>
+                      <option>Courier Delivery (+₹100)</option>
+                    </select>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-amber-50 text-amber-900 text-[11px] border border-amber-200">
+                    <span className="font-bold">[PROTOTYPE SIMULATION]:</span> Placing this order adds a simulated order record to local prototype state. No real payment or production dispatch occurs.
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        setMerchOrders(prev => [
+                          {
+                            id: `ORD-${Math.floor(1100 + Math.random() * 900)}`,
+                            playerName: MOCK_CURRENT_PLAYER.name,
+                            kavachId: MOCK_CURRENT_PLAYER.kavachId,
+                            item: shopItemOrderModal.title,
+                            size: selectedShopSize,
+                            qty: 1,
+                            total: shopItemOrderModal.price,
+                            status: "New Order",
+                            date: "Today"
+                          },
+                          ...prev
+                        ]);
+                        showSimulationToast(`[PROTOTYPE SIMULATION] Kit order for ${shopItemOrderModal.title} (Size: ${selectedShopSize}) placed in local memory.`);
+                        setShopItemOrderModal(null);
+                      }}
+                      className="w-full min-h-[48px] bg-[#D51F43] hover:bg-[#A30F2D] text-white font-bold rounded-xl"
+                    >
+                      Confirm Simulated Order (₹{shopItemOrderModal.price})
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
