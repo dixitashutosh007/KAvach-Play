@@ -4,22 +4,24 @@
 **Branch:** `mig-mov`  
 **Application:** https://play.kavachcricket.com  
 **Environment:** Local Staging / Firebase Emulator Suite  
-**Status:** All 4 Review Findings Remediated & Fully Verified  
+**Status:** Targeted Remediation Findings Fully Resolved & Verified  
 
 ---
 
 ## 1. Executive Summary
 
-In response to the independent review findings on the `mig-mov` branch, all four designated remediation areas were resolved and verified without restarting the completed remediation programme, refactoring unrelated code, or modifying the user interface.
+In response to the independent code review on the `mig-mov` branch, all designated security and payment remediation items were verified and tested directly against production implementations.
 
-No production Firestore rules, production environment variables, Firebase claims, or payment data were modified. No production deployment was conducted.
+No production Firestore rules, production environment variables, Firebase claims, or live payment data were modified. No production deployment was conducted.
 
 | Item / Finding | Scope | Status | Verification Evidence |
 |---|---|---|---|
 | **Finding 1 (SEC-001)** | Remove legacy server-side admin fallback (`ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`) and Firestore `appUsers.role` lookup from `lib/server-auth.ts`. | **Closed** | `lib/server-auth.ts` requires cryptographic Firebase Auth claim `admin: true`. All server routes audited. |
-| **Finding 2 (SEC-001)** | Test actual production authorization implementation in `tests/server-auth.test.mjs` (replace duplicate helper). | **Closed** | `tests/server-auth.test.mjs` imports production `requireAdmin(req)` across 8 comprehensive scenarios (8/8 pass). |
-| **Finding 3 (FIN-002)** | Repair Firestore Emulator concurrency test in `tests/emulator-webhook-concurrency.test.mjs` (initialize testEnv, eliminate silent early returns, seed downstream documents). | **Closed** | `@firebase/rules-unit-testing` and `firebase-admin` initialized against emulator; 4 concurrent race scenarios executed (4/4 pass). |
+| **Finding 2 (SEC-001)** | Test actual production authorization implementation in `tests/server-auth.test.mjs` (replace duplicate helper; test forged claim & genuine revocation). | **Closed** | `tests/server-auth.test.mjs` imports production `requireAdmin(req)` across 10 distinct scenarios (10/10 pass). |
+| **Finding 3 (FIN-002)** | Repair Firestore Emulator concurrency test in `tests/emulator-webhook-concurrency.test.mjs` (initialize testEnv, eliminate silent early returns, seed downstream documents). | **Closed** | `@firebase/rules-unit-testing` and `firebase-admin` initialized against emulator; 4 concurrent race scenarios executed directly against `processWebhookIntentTransaction` (4/4 pass). |
 | **Finding 4 (Specialist Roles)** | Verify specialist permissions (`isStudioAdmin`, `isMatchAdmin`, `isFinanceAdmin`, `isClubAdmin`, `isDesigner`, `canDesign`, `role`, `status`) in `firestore.rules` and add complete emulator assertions. | **Closed** | Rules verified least-privilege; `tests/firestore-rules.test.mjs` expanded with exhaustive emulator assertions (39/39 emulator tests pass). |
+
+> **Scope Separation Notice:** Navigation rationalisation and ARCH-001 listener teardown improvements were developed in separate, dedicated workstreams and are strictly decoupled from this security and financial remediation sign-off. This document certifies exclusively the security, payment integrity, and authorization findings.
 
 ---
 
@@ -53,16 +55,18 @@ No production Firestore rules, production environment variables, Firebase claims
 
 #### File Modified: `tests/server-auth.test.mjs`
 - **Previous state:** Replicated authorization logic inside a local dummy helper `mockRequireAdmin()`, leaving the production function unexercised.
-- **Corrected state:** Tests now dynamically import the actual production `requireAdmin` from `../lib/server-auth.ts` and mock only the external `firebase-admin/auth` verification step.
-- **Scenarios Executed (8/8 Passed):**
-  1. Valid Firebase ID token with custom claim `{ admin: true }` is authorized successfully.
-  2. Legitimate ordinary player without custom claim is rejected with HTTP 403 (`Forbidden: Super Admin access required`).
-  3. Caller with Firestore document `role: "admin"` but no custom claim is rejected with HTTP 403.
-  4. Caller with forged `isSuperAdmin: true` in token claims (without `admin: true`) is rejected with HTTP 403.
-  5. User with revoked or expired ID token is rejected with HTTP 401 (`Unauthorized: Invalid or expired token`).
-  6. Setting legacy environment variable `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK=true` does not restore bypass (still rejected with HTTP 403).
-  7. Malformed authorization header (non-Bearer prefix) is rejected with HTTP 401.
-  8. Missing authorization header is rejected with HTTP 401.
+- **Corrected state:** Tests dynamically import the actual production `requireAdmin` from `../lib/server-auth.ts` and mock only the external `firebase-admin/auth` verification step (`verifyIdToken`).
+- **Scenarios Executed (10/10 Passed):**
+  1. **Legitimate Super-Admin:** Valid Firebase ID token with custom claim `{ admin: true }` is authorized successfully (HTTP 200).
+  2. **Ordinary Player:** Legitimate ordinary player without custom claim is rejected with HTTP 403 Forbidden (`verified admin custom claim required`).
+  3. **Forged Firestore Document:** Caller with Firestore document `role: "admin"` but no custom claim is rejected with HTTP 403 Forbidden.
+  4. **Demoted Claim (`admin: false`):** Token with custom claim demoted to `false` is verified by Firebase Auth but rejected by `requireAdmin` with HTTP 403 Forbidden.
+  5. **Forged Secondary Claim (`isSuperAdmin: true`):** Token containing `isSuperAdmin: true` but lacking `admin: true` is strictly rejected with HTTP 403 Forbidden.
+  6. **Genuine Token Revocation (`auth/id-token-revoked`):** Token revocation triggers a verification failure in `verifyIdToken()` and is rejected with HTTP 401 Unauthorized (`Invalid or expired token`), clearly distinguished from claim demotion (HTTP 403).
+  7. **Legacy Environment Flag:** Setting `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK=true` has zero effect; caller without claim is rejected with HTTP 403 Forbidden.
+  8. **Missing Authorization Header:** Rejected with HTTP 401 Unauthorized.
+  9. **Empty Bearer Token:** Rejected with HTTP 401 Unauthorized.
+  10. **Expired Token:** Rejected with HTTP 401 Unauthorized.
 
 ---
 
@@ -73,9 +77,13 @@ No production Firestore rules, production environment variables, Firebase claims
 - **Corrected state:**
   - Initialized `@firebase/rules-unit-testing` `initializeTestEnvironment` using project ID `kavach-play-concurrency-test`.
   - Connected `firebase-admin` to the active `FIRESTORE_EMULATOR_HOST` (e.g. `127.0.0.1:8080`).
-  - Removed all silent early returns (`if (!testEnv) return;`). If the emulator is missing, the test suite explicitly fails or skips with an actionable message.
-  - Implemented `beforeEach` fixture seeding to seed realistic match fee obligations, players, otherFees, merchandise items, and studio memberships before every test run.
-  - Implemented strict cleanup (`testEnv.clearFirestore()`) after each test.
+  - Removed all silent early returns (`if (!testEnv) return;`). Missing emulator causes immediate explicit failure.
+  - Implemented `beforeEach` fixture seeding to seed realistic match fee obligations, players, otherFees, merchandise items, and studio memberships before every scenario.
+  - Implemented cleanup (`testEnv.clearFirestore()`) after each test.
+- **Test Architecture & Scope Distinction:**
+  > **IMPORTANT:** `tests/emulator-webhook-concurrency.test.mjs` directly executes the core transaction function `processWebhookIntentTransaction(db, intentId, eventName, payload)` against the live Firestore Emulator. This exercises and proves database-level transaction isolation, atomic locking, and duplicate-write prevention under high concurrency.
+  >
+  > It is **NOT** a full end-to-end HTTP webhook-route integration test across an active HTTP server stack. HTTP transport, body buffering, and HMAC SHA256 signature verification are separately tested in `tests/razorpay-webhook-negative.test.mjs`. Full HTTP network route integration was not executed as part of this database emulator suite.
 - **Concurrency & Race Scenarios Tested Against Live Emulator (4/4 Passed):**
   1. **Simultaneous `payment.captured` & `order.paid` for Match + Late Fee:**
      - Two concurrent `processWebhookIntentTransaction` workers fired concurrently via `Promise.all`.
@@ -142,7 +150,7 @@ KAvach Play Verification Results — mig-mov
 ================================================================================
 1. Functional Tests (Node.js test runner)
    Command: npm run test:functional
-   Result:  191 passed, 0 failed, 0 skipped (duration: 747ms)
+   Result:  193 passed, 0 failed, 0 skipped (duration: 720ms)
 
 2. Firebase Emulator Concurrency & Security Rules Suite
    Command: npm run test:emulator

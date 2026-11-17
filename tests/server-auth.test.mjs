@@ -6,10 +6,12 @@
  * 1. requireAdmin strictly enforces custom claim { admin: true } as the sole authority.
  * 2. Ordinary authenticated users without custom claim receive 403 Forbidden.
  * 3. Callers with forged role == 'admin' in Firestore receive 403 Forbidden.
- * 4. Callers with revoked admin claim (admin: false) receive 403 Forbidden.
- * 5. Environment variable attempts (ALLOW_LEGACY_ADMIN_ROLE_FALLBACK) have zero effect.
- * 6. Expired or invalid tokens receive 401 Unauthorized.
- * 7. Missing or empty Authorization header receives 401 Unauthorized.
+ * 4. Callers with demoted admin claim (admin: false) receive 403 Forbidden.
+ * 5. Callers with forged isSuperAdmin: true in token claims (lacking admin: true) receive 403 Forbidden.
+ * 6. Genuinely revoked tokens (auth/id-token-revoked) fail verification with 401 Unauthorized.
+ * 7. Environment variable attempts (ALLOW_LEGACY_ADMIN_ROLE_FALLBACK) have zero effect.
+ * 8. Expired or invalid tokens receive 401 Unauthorized.
+ * 9. Missing or empty Authorization header receives 401 Unauthorized.
  */
 
 import { describe, it, mock } from "node:test";
@@ -41,12 +43,27 @@ describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () 
         email: "player789@example.com",
       };
     }
-    if (token === "token-revoked-admin") {
+    if (token === "token-demoted-admin") {
+      // Token where admin custom claim was explicitly demoted to false
       return {
-        uid: "revoked_admin_999",
-        email: "revoked@kavachcricket.com",
+        uid: "demoted_admin_999",
+        email: "demoted@kavachcricket.com",
         admin: false,
       };
+    }
+    if (token === "token-forged-isSuperAdmin") {
+      // Token containing forged or secondary claim isSuperAdmin: true, but lacking admin: true
+      return {
+        uid: "attacker_superadmin_111",
+        email: "attacker@kavachcricket.com",
+        isSuperAdmin: true,
+      };
+    }
+    if (token === "token-revoked") {
+      // Genuinely revoked token where Firebase Auth checkRevoked throws auth/id-token-revoked
+      const err = new Error("Firebase ID token has been revoked.");
+      err.code = "auth/id-token-revoked";
+      throw err;
     }
     if (token === "token-expired") {
       const err = new Error("Firebase ID token has expired.");
@@ -102,11 +119,11 @@ describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () 
     assert.match(body.error, /verified admin custom claim required/i);
   });
 
-  it("rejects a caller whose admin custom claim was revoked (admin: false) with 403 Forbidden", async () => {
+  it("rejects a caller whose admin custom claim was demoted (admin: false) with 403 Forbidden", async () => {
     const req = new Request("http://localhost:3000/api/email/send", {
       method: "POST",
       headers: {
-        authorization: "Bearer token-revoked-admin",
+        authorization: "Bearer token-demoted-admin",
       },
     });
 
@@ -115,6 +132,36 @@ describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () 
     assert.equal(res.response.status, 403);
     const body = await res.response.json();
     assert.match(body.error, /verified admin custom claim required/i);
+  });
+
+  it("rejects a caller whose token contains isSuperAdmin: true but lacks admin: true with 403 Forbidden", async () => {
+    const req = new Request("http://localhost:3000/api/email/send", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer token-forged-isSuperAdmin",
+      },
+    });
+
+    const res = await requireAdmin(req);
+    assert.equal(res.ok, false);
+    assert.equal(res.response.status, 403);
+    const body = await res.response.json();
+    assert.match(body.error, /verified admin custom claim required/i);
+  });
+
+  it("rejects a genuinely revoked token (auth/id-token-revoked) at verification stage with 401 Unauthorized", async () => {
+    const req = new Request("http://localhost:3000/api/email/send", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer token-revoked",
+      },
+    });
+
+    const res = await requireAdmin(req);
+    assert.equal(res.ok, false);
+    assert.equal(res.response.status, 401);
+    const body = await res.response.json();
+    assert.match(body.error, /invalid or expired token/i);
   });
 
   it("strictly rejects callers without admin custom claim even when legacy fallback env vars are set", async () => {
