@@ -109,12 +109,12 @@ service cloud.firestore {
         isSignedIn()
         && request.auth.uid == userId
         && (!('role' in incoming()) || incoming().role == 'player')
-        && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'canDesign', 'status'])
+        && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status'])
       );
       allow update: if isSuperAdmin() || (
         isSignedIn()
         && (request.auth.uid == userId || isClubAdmin())
-        && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'canDesign', 'status'])
+        && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status'])
       );
       allow delete: if isSuperAdmin();
     }

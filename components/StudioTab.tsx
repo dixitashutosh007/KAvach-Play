@@ -22,7 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { dbToInputDate, normalizeIndianMobile } from "@/lib/utils";
+import { dbToInputDate, normalizeIndianMobile, parseExpiryDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 
 // Make sure to add Razorpay to window type if needed
@@ -254,16 +254,6 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
   type SubStatus = "Active" | "Expired" | "Inactive" | "Paused";
   let subscriptionStatus: SubStatus = "Inactive";
   let daysRemaining: number | null = null;
-
-  const parseExpiryDate = (raw: string): Date | null => {
-    try {
-      const parts = raw.includes("-") ? raw.split("-") : raw.split("/");
-      if (raw.includes("-")) {
-        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
-      }
-      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 23, 59, 59, 999);
-    } catch { return null; }
-  };
 
   if (endDateRaw) {
     const expDateObj = parseExpiryDate(endDateRaw);

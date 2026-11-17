@@ -116,7 +116,18 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
     return { ok: true, uid: decoded.uid, email: decoded.email };
   }
 
-  // Fallback: check appUsers doc
+  // If strict claim mode is enabled, reject non-claim requests immediately without appUsers fallback
+  if (process.env.REQUIRE_ADMIN_CLAIM_ONLY === "true") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Admin privilege required (custom claim required)." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  // Fallback: check appUsers doc during migration period
   try {
     const dbId =
       process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||

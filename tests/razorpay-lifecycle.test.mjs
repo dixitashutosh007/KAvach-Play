@@ -13,6 +13,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "crypto";
+import { calculateAuthoritativeMerchPrice } from "../lib/razorpay-order.ts";
 
 // ── Webhook Signature Verification Tests ─────────────────────────────────────
 
@@ -119,44 +120,6 @@ describe("Razorpay Order — FIN-001 Authoritative Amount Derivation", () => {
     return base + lateFeesTotal;
   }
 
-  function deriveMerchPrice(merch, customSelections = {}) {
-    let price = merch.basePrice ?? merch.price ?? 0;
-    if (merch.customFields) {
-      for (const field of merch.customFields) {
-        const selected = customSelections[field.name];
-        if (selected && field.options) {
-          const opt = field.options.find(o => o.value === selected);
-          if (opt && opt.priceModifierType === "Add" && opt.priceModifierValue) {
-            price += opt.priceModifierValue;
-          }
-        }
-      }
-    }
-    return price;
-  }
-
-  it("prioritizes feeOverride over match.fee", () => {
-    const match = { id: "m1", fee: 500 };
-    const payment = { id: "p1", feeOverride: 350 };
-    assert.equal(deriveMatchFee(match, payment), 350);
-  });
-
-  it("falls back to match.fee when feeOverride is not set", () => {
-    const match = { id: "m1", fee: 500 };
-    const payment = { id: "p1", feeOverride: undefined };
-    assert.equal(deriveMatchFee(match, payment), 500);
-  });
-
-  it("accurately adds late fee penalty items to match fee", () => {
-    const match = { id: "m1", fee: 500 };
-    const payment = { id: "p1" };
-    const lateFees = [
-      { label: "Late Fee Week 1", amount: 150 },
-      { label: "Late Fee Week 2", amount: 50 }
-    ];
-    assert.equal(deriveMatchFee(match, payment, lateFees), 700);
-  });
-
   it("calculates merchandise custom options price modifiers server-side", () => {
     const merch = {
       basePrice: 800,
@@ -178,7 +141,7 @@ describe("Razorpay Order — FIN-001 Authoritative Amount Derivation", () => {
       ]
     };
 
-    assert.equal(deriveMerchPrice(merch, { "Chest Size": "M", "Name Print": "No" }), 800);
-    assert.equal(deriveMerchPrice(merch, { "Chest Size": "XXL", "Name Print": "Yes" }), 950);
+    assert.equal(calculateAuthoritativeMerchPrice(merch, { "Chest Size": "M", "Name Print": "No" }), 800);
+    assert.equal(calculateAuthoritativeMerchPrice(merch, { "Chest Size": "XXL", "Name Print": "Yes" }), 950);
   });
 });

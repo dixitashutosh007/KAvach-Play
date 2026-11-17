@@ -241,3 +241,20 @@ export function inputToDbDate(inputDate: string | undefined | null): string {
   }
   return inputDate;
 }
+
+export function parseExpiryDate(raw: string | undefined | null): Date | null {
+  if (!raw) return null;
+  try {
+    const parts = raw.includes("-") ? raw.split("-") : raw.split("/");
+    if (raw.includes("-")) {
+      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
+    }
+    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 23, 59, 59, 999);
+  } catch {
+    return null;
+  }
+}
+
+export function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}

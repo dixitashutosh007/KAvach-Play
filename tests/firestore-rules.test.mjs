@@ -45,6 +45,9 @@ describe("Firestore Security Rules — AST Syntax Validation", () => {
 
   it("enforces SEC-001: appUsers keys cannot be escalated by non-superadmins", () => {
     assert.match(rulesContent, /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(\['role', 'isSuperAdmin', 'isStudioAdmin'/);
+    assert.match(rulesContent, /'isDesigner', 'canDesign'/);
+    // Enforce that create rules also forbid isDesigner and admin flags
+    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(\['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status'\]\)/);
   });
 
   it("enforces SEC-002: match payment status cannot be marked Paid by player", () => {
@@ -110,16 +113,40 @@ describe("Firestore Security Rules — Emulator Integration Tests", { skip: !emu
     // Can create own profile as player
     await assertSucceeds(userDoc.set({ name: "Player 123", role: "player" }));
 
+    // Cannot create own profile with escalated flags
+    await assertFails(playerContext.firestore().collection("appUsers").doc("evil_user").set({
+      name: "Evil",
+      role: "player",
+      isDesigner: true,
+    }));
+
     // Cannot update own role to admin
     await assertFails(userDoc.update({ role: "admin" }));
 
-    // Cannot update own admin flags
+    // Cannot update own admin or designer flags
     await assertFails(userDoc.update({ isSuperAdmin: true }));
     await assertFails(userDoc.update({ isFinanceAdmin: true }));
+    await assertFails(userDoc.update({ isDesigner: true }));
+    await assertFails(userDoc.update({ canDesign: true }));
+
+    // SuperAdmin with admin claim CAN manage roles
+    const adminContext = testEnv.authenticatedContext("admin_1", { admin: true });
+    await assertSucceeds(adminContext.firestore().collection("appUsers").doc("user_123").update({
+      isDesigner: true,
+      role: "admin",
+    }));
   });
 
   it("SEC-002: player cannot mark match payment as Paid", async () => {
     const { assertFails } = await import("@firebase/rules-unit-testing");
+    // Seed prerequisite match and payment documents
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore()
+        .collection("matches").doc("match_1")
+        .collection("payments").doc("pay_1")
+        .set({ playerId: "player_1", status: "Unpaid", feeCollectedAmount: 0 });
+    });
+
     const playerContext = testEnv.authenticatedContext("player_1");
     const paymentDoc = playerContext.firestore()
       .collection("matches").doc("match_1")
@@ -130,17 +157,37 @@ describe("Firestore Security Rules — Emulator Integration Tests", { skip: !emu
 
   it("SEC-003: player cannot create or delete otherFees", async () => {
     const { assertFails } = await import("@firebase/rules-unit-testing");
+    // Seed prerequisite otherFee document before testing delete
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore()
+        .collection("players").doc("player_1")
+        .collection("otherFees").doc("fee_1")
+        .set({ title: "Legit Fee", amount: 150, status: "Unpaid" });
+    });
+
     const playerContext = testEnv.authenticatedContext("player_1");
     const feeDoc = playerContext.firestore()
       .collection("players").doc("player_1")
-      .collection("otherFees").doc("fee_1");
+      .collection("otherFees").doc("fee_new");
 
     await assertFails(feeDoc.set({ title: "Late Fee", amount: 150, status: "Unpaid" }));
-    await assertFails(feeDoc.delete());
+
+    const existingFeeDoc = playerContext.firestore()
+      .collection("players").doc("player_1")
+      .collection("otherFees").doc("fee_1");
+    await assertFails(existingFeeDoc.delete());
   });
 
   it("SEC-004: player cannot read other players' otherFees", async () => {
     const { assertFails } = await import("@firebase/rules-unit-testing");
+    // Seed foreign player's otherFee
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore()
+        .collection("players").doc("player_2")
+        .collection("otherFees").doc("fee_2")
+        .set({ title: "Secret Fee", amount: 200, status: "Unpaid" });
+    });
+
     const playerContext = testEnv.authenticatedContext("player_1");
     const otherFeeDoc = playerContext.firestore()
       .collection("players").doc("player_2")
@@ -151,6 +198,13 @@ describe("Firestore Security Rules — Emulator Integration Tests", { skip: !emu
 
   it("SEC-005: player cannot update posts", async () => {
     const { assertFails } = await import("@firebase/rules-unit-testing");
+    // Seed prerequisite post document
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore()
+        .collection("posts").doc("post_1")
+        .set({ title: "Admin Announcement", content: "Original content" });
+    });
+
     const playerContext = testEnv.authenticatedContext("player_1");
     const postDoc = playerContext.firestore().collection("posts").doc("post_1");
 

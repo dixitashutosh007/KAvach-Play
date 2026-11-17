@@ -5,227 +5,25 @@
  *         inputToDbDate, computeLateFees, findExistingPlayer, validateJerseyNumber,
  *         parseExpiryDate (StudioTab logic), and webhook toYMD helper.
  *
+ * Directly imports actual production code from lib/utils.ts (resolving QA-001).
  * Uses only Node.js built-in test runner (node:test + node:assert).
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-// ── normalizeIndianMobile ───────────────────────────────────────────────────
-
-function normalizeIndianMobile(input) {
-  if (!input) return "";
-  const raw = String(input).trim();
-  let digits = raw.replace(/\D/g, "");
-  if (digits.length === 13 && digits.startsWith("091")) digits = digits.slice(3);
-  else if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
-  if (digits.length > 10) digits = digits.slice(-10);
-  if (digits.length !== 10) return raw;
-  return `+91${digits}`;
-}
-
-// ── normalizeEmail ──────────────────────────────────────────────────────────
-
-function normalizeEmail(input) {
-  if (!input) return "";
-  return String(input).trim().toLowerCase();
-}
-
-// ── formatDate ──────────────────────────────────────────────────────────────
-
-function formatDate(dateVal, fallback = "—") {
-  if (!dateVal) return fallback;
-  try {
-    let d;
-    if (typeof dateVal === "object" && typeof dateVal.toDate === "function") {
-      d = dateVal.toDate();
-    } else if (typeof dateVal === "object" && dateVal.seconds) {
-      d = new Date(dateVal.seconds * 1000);
-    } else if (dateVal instanceof Date) {
-      d = dateVal;
-    } else if (typeof dateVal === "string" && dateVal.includes("/")) {
-      const parts = dateVal.split("/");
-      if (parts.length === 3 && parts[2].length >= 4) {
-        d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-      } else {
-        d = new Date(dateVal);
-      }
-    } else if (typeof dateVal === "string" && dateVal.includes("-")) {
-      const parts = dateVal.split("-");
-      if (parts.length === 3 && parts[0].length === 4) {
-        d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      } else {
-        d = new Date(dateVal);
-      }
-    } else {
-      d = new Date(dateVal);
-    }
-    if (isNaN(d.getTime())) return fallback;
-    const day = String(d.getDate()).padStart(2, "0");
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = monthNames[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day}-${month}-${year}`;
-  } catch {
-    return fallback;
-  }
-}
-
-// ── dbToInputDate ───────────────────────────────────────────────────────────
-
-function dbToInputDate(dbDate) {
-  if (!dbDate) return "";
-  if (typeof dbDate !== "string") {
-    try {
-      let d;
-      if (typeof dbDate === "object" && typeof dbDate.toDate === "function") {
-        d = dbDate.toDate();
-      } else if (typeof dbDate === "object" && dbDate.seconds) {
-        d = new Date(dbDate.seconds * 1000);
-      } else if (dbDate instanceof Date) {
-        d = dbDate;
-      } else {
-        d = new Date(dbDate);
-      }
-      if (!isNaN(d.getTime())) {
-        const day = String(d.getDate()).padStart(2, "0");
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-      }
-    } catch {}
-    return "";
-  }
-  const parts = dbDate.split("-");
-  if (parts.length === 3) {
-    const [y, m, d] = parts;
-    if (y.length === 4 && m.length === 2 && d.length === 2) {
-      return `${d}/${m}/${y}`;
-    }
-  }
-  try {
-    const d = new Date(dbDate);
-    if (!isNaN(d.getTime())) {
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    }
-  } catch {}
-  return dbDate || "";
-}
-
-// ── inputToDbDate ───────────────────────────────────────────────────────────
-
-function inputToDbDate(inputDate) {
-  if (!inputDate) return "";
-  const parts = inputDate.split("/");
-  if (parts.length === 3) {
-    const [d, m, y] = parts;
-    if (d.length > 0 && m.length > 0 && y.length === 4) {
-      const day = d.padStart(2, "0");
-      const month = m.padStart(2, "0");
-      return `${y}-${month}-${day}`;
-    }
-  }
-  return inputDate;
-}
-
-// ── computeLateFees ─────────────────────────────────────────────────────────
-
-function computeLateFees(matchDate, matchId, playerId, matchLabel) {
-  if (!matchDate) return [];
-  const parts = matchDate.split("-");
-  const matchDateObj = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-  const dayOfWeek = matchDateObj.getDay();
-  if (dayOfWeek !== 0 && dayOfWeek !== 6) return [];
-
-  const daysToTuesdayEOD = dayOfWeek === 6 ? 3 : 2;
-  const deadlineDate = new Date(matchDateObj);
-  deadlineDate.setDate(deadlineDate.getDate() + daysToTuesdayEOD);
-  deadlineDate.setHours(23, 59, 59, 999);
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (today <= deadlineDate) return [];
-
-  const fees = [];
-  fees.push({
-    matchId,
-    playerId,
-    amount: 150,
-    label: `Late Fee: ${matchLabel}`,
-    weeks: 0,
-  });
-
-  const wednesdayDate = new Date(deadlineDate);
-  wednesdayDate.setDate(wednesdayDate.getDate() + 1);
-  const msSinceWednesday = today.getTime() - wednesdayDate.getTime();
-  const weeksPassed = Math.floor(msSinceWednesday / (7 * 86400000));
-  for (let w = 1; w <= weeksPassed; w++) {
-    fees.push({
-      matchId,
-      playerId,
-      amount: 50,
-      label: `Late Fee (Week ${w}): ${matchLabel}`,
-      weeks: w,
-    });
-  }
-  return fees;
-}
-
-// ── findExistingPlayer ──────────────────────────────────────────────────────
-
-function findExistingPlayer(players, mobile, email, excludeId) {
-  const normMobile = normalizeIndianMobile(mobile || "");
-  const normEmail = normalizeEmail(email);
-
-  for (const p of players) {
-    if (p.disabled || p.mergedInto) continue;
-    if (excludeId && p.id === excludeId) continue;
-
-    if (normMobile && normMobile.length >= 12) {
-      const pMobile = normalizeIndianMobile(p.mobile);
-      if (pMobile && pMobile === normMobile) return { player: p, matchedOn: "mobile" };
-    }
-
-    if (normEmail && normEmail.includes("@")) {
-      const pEmail = normalizeEmail(p.email);
-      if (pEmail && pEmail === normEmail) return { player: p, matchedOn: "email" };
-    }
-  }
-  return null;
-}
-
-// ── validateJerseyNumber ────────────────────────────────────────────────────
-
-function validateJerseyNumber(input) {
-  const value = String(input || "").trim();
-  if (!value) return "Jersey number is required.";
-  if (!/^\d{1,3}$/.test(value)) return "Jersey number must be up to 3 digits (numbers only).";
-  if (value === "10" || value === "010" || value === "0010") return "Jersey number 10 is reserved and cannot be used.";
-  return "";
-}
-
-// ── parseExpiryDate (StudioTab client-side logic) ───────────────────────────
-
-function parseExpiryDate(raw) {
-  try {
-    const parts = raw.includes("-") ? raw.split("-") : raw.split("/");
-    if (raw.includes("-")) {
-      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
-    }
-    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 23, 59, 59, 999);
-  } catch { return null; }
-}
-
-// ── toYMD (webhook helper — Phase 9 fix) ────────────────────────────────────
-
-function toYMD(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
+import {
+  normalizeIndianMobile,
+  normalizeEmail,
+  formatDate,
+  dbToInputDate,
+  inputToDbDate,
+  computeLateFees,
+  findExistingPlayer,
+  validateJerseyNumber,
+  parseExpiryDate,
+  toYMD,
+} from "../lib/utils.ts";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // TESTS
