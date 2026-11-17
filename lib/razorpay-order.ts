@@ -744,29 +744,13 @@ export async function reconcileAmbiguousReservation(
         };
       }
 
-      // Case A.3: Order is conclusively EXPIRED or CANCELLED (Finding 1)
-      // Only when previous order is conclusively unusable can reservation transition to failed
-      if (foundOrder.status === "expired" || foundOrder.status === "cancelled") {
-        await db.runTransaction(async (transaction: any) => {
-          const freshSnap = await transaction.get(reservationRef);
-          if (!freshSnap.exists) return;
-          const fresh = freshSnap.data() || {};
-          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
-          transaction.update(reservationRef, {
-            status: "failed",
-            error: `Previous order ${foundOrder.id} is conclusively ${foundOrder.status}. Safe reacquisition permitted.`,
-            expiresAt: now,
-            updatedAt: now,
-          });
-        });
-        return {
-          reconciled: true,
-          canRetry: true,
-          isExpired: true,
-        };
-      }
-
-      // Unrecognized status: retain safe blocked state
+      // Case A.3: Contract Validation (P1)
+      // Per official Razorpay Orders API contract (https://razorpay.com/docs/api/orders),
+      // Order entities strictly possess three enum statuses: 'created', 'attempted', and 'paid'.
+      // Core orders never possess 'expired' or 'cancelled' status (those belong to Payment Links/Subscriptions).
+      // An order stays created/attempted indefinitely until paid.
+      // If any unexpected/unsupported status is returned, the order cannot be proven unusable.
+      // Retain safe blocking in 'reconciliation_failed' to prevent duplicate order creation; manual administrative review required.
       await db.runTransaction(async (transaction: any) => {
         const freshSnap = await transaction.get(reservationRef);
         if (!freshSnap.exists) return;
@@ -774,11 +758,15 @@ export async function reconcileAmbiguousReservation(
         if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
         transaction.update(reservationRef, {
           status: "reconciliation_failed",
-          reconciliationError: `Unrecognized order status '${foundOrder.status}' from Razorpay.`,
+          reconciliationError: `Unrecognized or unsupported Razorpay order status '${foundOrder.status}'. Per official Razorpay Orders API contract, orders only possess 'created', 'attempted', and 'paid' statuses. Reservation remains safely blocked to prevent duplicate order creation; manual administrative review required.`,
           updatedAt: now,
         });
       });
-      return { reconciled: false, error: `Unrecognized order status: ${foundOrder.status}` };
+      return {
+        reconciled: false,
+        canRetry: false,
+        error: `Unrecognized or unsupported Razorpay order status: ${foundOrder.status}`,
+      };
     } catch (fetchErr: any) {
       if (fetchErr.message?.includes("Fencing conflict")) {
         return { reconciled: false, error: fetchErr.message };
@@ -885,8 +873,26 @@ export async function reconcileAmbiguousReservation(
       }
 
       if (foundOrder.status !== "created" && foundOrder.status !== "attempted" && foundOrder.status !== "paid") {
-        return { reconciled: false, error: `Invalid order status in reconciled order: ${foundOrder.status}` };
+        await db.runTransaction(async (transaction: any) => {
+          const freshSnap = await transaction.get(reservationRef);
+          if (!freshSnap.exists) return;
+          const fresh = freshSnap.data() || {};
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          transaction.update(reservationRef, {
+            status: "reconciliation_failed",
+            reconciliationError: `Unrecognized or unsupported Razorpay order status '${foundOrder.status}'. Per official Razorpay Orders API contract, orders only possess 'created', 'attempted', and 'paid' statuses. Reservation remains safely blocked to prevent duplicate order creation; manual administrative review required.`,
+            updatedAt: new Date(),
+          });
+        });
+        return {
+          reconciled: false,
+          canRetry: false,
+          error: `Unrecognized or unsupported Razorpay order status: ${foundOrder.status}`,
+        };
       }
+
+      const isPaid = foundOrder.status === "paid";
+      const now = new Date();
 
       // Authoritative order found and validated! Transition to active atomically in transaction
       await db.runTransaction(async (transaction: any) => {
@@ -898,20 +904,37 @@ export async function reconcileAmbiguousReservation(
         if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) {
           throw new Error("Fencing conflict: reservation was modified by another request during reconciliation.");
         }
-        if (fresh.status === "active") {
+        if (fresh.status === "active" && Boolean(fresh.isPaid) === isPaid) {
           return;
         }
 
-        const now = new Date();
         transaction.update(reservationRef, {
           status: "active",
           orderId: foundOrder.id,
           intentId: intentId || fresh.intentId || "",
           receipt,
+          isPaid,
           updatedAt: now,
         });
       });
 
+      // Item 1: If status is 'paid', persist the paid state, return isPaid: true,
+      // and do NOT return the order as a checkout opportunity
+      if (isPaid) {
+        return {
+          reconciled: true,
+          isPaid: true,
+          canRetry: false,
+          existingOrder: {
+            orderId: foundOrder.id,
+            intentId: intentId || data.intentId || "",
+            amount: data.amount || payableAmount,
+            currency: foundCurrency,
+          },
+        };
+      }
+
+      // Preserve existing created/attempted payable behavior
       return {
         reconciled: true,
         existingOrder: {

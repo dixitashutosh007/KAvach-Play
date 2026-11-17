@@ -363,7 +363,7 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     };
     const resStatus = await reconcileAmbiguousReservation(mockBadStatus, db, key, user, 500, "INR");
     assert.equal(resStatus.reconciled, false);
-    assert.match(resStatus.error, /Invalid order status/);
+    assert.match(resStatus.error, /Unrecognized or unsupported Razorpay order status|Invalid order status/);
   });
 
   // ── Scenario 8: Firestore Intent Update Failing After Order Creation ────────
@@ -637,28 +637,28 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     assert.equal(snapPayable.data()?.status, "active");
     assert.ok(snapPayable.data()?.expiresAt.toDate().getTime() > Date.now());
 
-    // Case C: Gateway status is 'expired' -> safely transitions to failed, allowing fresh acquisition
+    // Case C: Unsupported order status (e.g. 'expired' or 'cancelled') is rejected per Razorpay Orders contract
+    // Per official Razorpay Orders API contract, Order entities strictly possess only 'created', 'attempted', and 'paid'.
+    // Unsupported statuses remain safely blocked in 'reconciliation_failed' to prevent duplicate orders.
     const mockRzpExpired = {
       orders: {
         fetch: async (id) => ({ id, status: "expired", amount: 50000, currency: "INR" }),
       },
     };
     const recExpired = await reconcileAmbiguousReservation(mockRzpExpired, db, key, user, 500, "INR");
-    assert.equal(recExpired.reconciled, true);
-    assert.equal(recExpired.isExpired, true);
-    assert.equal(recExpired.canRetry, true);
+    assert.equal(recExpired.reconciled, false);
+    assert.equal(recExpired.canRetry, false);
+    assert.match(recExpired.error, /Unrecognized or unsupported Razorpay order status/);
 
-    const snapFailed = await db.collection("paymentReservations").doc(key).get();
-    assert.equal(snapFailed.data()?.status, "failed");
+    const snapBlocked = await db.collection("paymentReservations").doc(key).get();
+    assert.equal(snapBlocked.data()?.status, "reconciliation_failed");
 
-    // Fresh reacquisition now succeeds
-    const resRetry = await acquirePaymentReservation(db, key, user, 500, "INR");
-    assert.equal(resRetry.acquired, true);
+    // Lock takeover is safely blocked
+    const resBlocked = await acquirePaymentReservation(db, key, user, 500, "INR");
+    assert.equal(resBlocked.acquired, false);
+    assert.equal(resBlocked.needsReconciliation, true);
 
     // Case D: External status unavailable (network failure) -> retains safe blocked state
-    await activatePaymentReservation(db, key, resRetry.reservationToken, "order_net_err", intentRef.id);
-    await db.collection("paymentReservations").doc(key).update({ expiresAt: twentyMinsAgo });
-
     const mockRzpErr = {
       orders: {
         fetch: async () => { throw new Error("Gateway connection reset by peer"); },
@@ -773,6 +773,14 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     const apiProto = Object.getPrototypeOf(dummyRzp.api);
     const origPost = apiProto.post;
 
+    // Intercept DocumentReference.prototype.update to inject failure into route's intentRef.update()
+    const dummyDoc = db.collection("razorpayIntents").doc("temp_probe");
+    const docProto = Object.getPrototypeOf(dummyDoc);
+    const origDocUpdate = docProto.update;
+
+    let injectIntentUpdateFailure = true;
+    let capturedIntentId = null;
+
     try {
       apiProto.post = async ({ url, data }) => {
         if (url === "/orders") {
@@ -788,7 +796,19 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
         return origPost({ url, data });
       };
 
-      // Step 1: Client calls order API route (creates intent and acquires reservation)
+      docProto.update = async function (dataOrField, ...rest) {
+        // Intercept intentRef.update in the actual route when setting orderId
+        if (injectIntentUpdateFailure && this.parent?.id === "razorpayIntents" && dataOrField?.orderId) {
+          injectIntentUpdateFailure = false;
+          capturedIntentId = this.id;
+          throw new Error("Simulated Firestore timeout during route intentRef.update()");
+        }
+        return origDocUpdate.apply(this, [dataOrField, ...rest]);
+      };
+
+      const reservationKey = generateReservationKey({ type: "subscription", planId }, user);
+
+      // Step 1: Client calls actual order API route (creates intent, Razorpay order succeeds, but intentRef.update fails)
       const req1 = new Request("http://localhost:3000/api/razorpay/order", {
         method: "POST",
         headers: {
@@ -804,43 +824,24 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
       });
 
       const res1 = await orderPOST(req1);
-      assert.equal(res1.status, 200);
+      // 1. The actual route returns an appropriate failure response (HTTP 500)
+      assert.equal(res1.status, 500);
       const res1Body = await res1.json();
-      assert.equal(res1Body.id, externalOrderId);
-      assert.equal(res1Body.amount, 75000);
-      const intentId = res1Body.notes?.intentId;
-      assert.ok(intentId, "order response must include intentId in notes");
+      assert.match(res1Body.error, /Simulated Firestore timeout/);
+      assert.ok(capturedIntentId, "intentId must be captured during route execution");
 
-      const reservationKey = generateReservationKey({ type: "subscription", planId }, user);
-
-      // Step 2 & 3: Simulate failure updating intent.orderId by placing reservation in activation_failed
-      // and removing orderId from the intent doc (as happens if network drops right after Razorpay call)
-      const resSnap = await db.collection("paymentReservations").doc(reservationKey).get();
-      const currentToken = resSnap.data()?.reservationToken;
-
-      await db.collection("razorpayIntents").doc(intentId).update({
-        orderId: FieldValue.delete(),
-      });
-
-      await recordActivationFailure(
-        db,
-        reservationKey,
-        currentToken,
-        externalOrderId,
-        intentId,
-        user,
-        750,
-        "INR",
-        "Simulated database drop during intent.orderId write",
-      );
-
-      // Step 4: Confirm reservation document has 'activation_failed', retaining orderId & intentId
+      // 2. The actual route's catch handler records activation_failed
+      // 3. The reservation retains the external order ID and intent ID
       const failedResSnap = await db.collection("paymentReservations").doc(reservationKey).get();
       assert.equal(failedResSnap.data()?.status, "activation_failed");
       assert.equal(failedResSnap.data()?.orderId, externalOrderId);
-      assert.equal(failedResSnap.data()?.intentId, intentId);
+      assert.equal(failedResSnap.data()?.intentId, capturedIntentId);
 
-      // Step 5: Client retries POST on the order API route
+      // Verify the intent doc in Firestore does NOT have orderId set yet
+      const intentBeforeSnap = await db.collection("razorpayIntents").doc(capturedIntentId).get();
+      assert.equal(intentBeforeSnap.data()?.orderId, undefined);
+
+      // 4. A second actual route call repairs the intent and reuses the original order
       const req2 = new Request("http://localhost:3000/api/razorpay/order", {
         method: "POST",
         headers: {
@@ -861,13 +862,14 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
       // Must reuse existing order rather than creating a second one
       assert.equal(res2Body.id, externalOrderId);
       assert.equal(res2Body.notes?.reusedExistingOrder, true);
+      assert.equal(res2Body.notes?.intentId, capturedIntentId);
 
-      // Step 6: Verify intent.orderId was repaired in Firestore before returning
-      const repairedIntentSnap = await db.collection("razorpayIntents").doc(intentId).get();
+      // Verify intent.orderId was repaired in Firestore before returning
+      const repairedIntentSnap = await db.collection("razorpayIntents").doc(capturedIntentId).get();
       assert.equal(repairedIntentSnap.data()?.orderId, externalOrderId);
       assert.ok(repairedIntentSnap.data()?.repairedAt, "intent must record repair timestamp");
 
-      // Step 7: Gateway delivers webhook POST with valid HMAC signature (payment.captured)
+      // 5. The actual webhook handler processes the captured payment
       const webhookPayload = {
         event: "payment.captured",
         payload: {
@@ -879,7 +881,7 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
               currency: "INR",
               status: "captured",
               notes: {
-                intentId,
+                intentId: capturedIntentId,
               },
             },
           },
@@ -906,8 +908,8 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
       const webhookRes1Body = await webhookRes1.json();
       assert.equal(webhookRes1Body.success, true);
 
-      // Step 8: Verify subscription/player obligation is marked paid in Firestore
-      const finalIntentSnap = await db.collection("razorpayIntents").doc(intentId).get();
+      // Verify subscription/player obligation is marked paid in Firestore
+      const finalIntentSnap = await db.collection("razorpayIntents").doc(capturedIntentId).get();
       assert.equal(finalIntentSnap.data()?.status, "paid");
       assert.equal(finalIntentSnap.data()?.razorpayPaymentId, webhookPaymentId);
 
@@ -923,7 +925,7 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
       assert.equal(updatedPlayerSnap.data()?.isStudioMember, true);
       assert.ok(updatedPlayerSnap.data()?.studioExpiryDate > "2026-01-01");
 
-      // Step 9: Replay same webhook payload; verify idempotent 200 OK without duplicate write
+      // 6. Webhook replay does not duplicate fulfilment
       const webhookReq2 = new Request("http://localhost:3000/api/razorpay/webhook", {
         method: "POST",
         headers: {
@@ -946,7 +948,123 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
         .get();
       assert.equal(subHistoryReplay.size, 1, "Replay must NOT create duplicate history entries");
     } finally {
+      docProto.update = origDocUpdate;
       apiProto.post = origPost;
+    }
+  });
+
+  // ── Scenario 17 (Item 1): Paid Order in Receipt-Only Reconciliation ──────────
+  it("Scenario 17 (Item 1): Paid order discovered through receipt-only reconciliation persists isPaid: true and blocks checkout with HTTP 409", async () => {
+    const user = `user_rcpt_paid_${Date.now()}`;
+    const planId = `plan_rcpt_paid_${Date.now()}`;
+    const externalOrderId = `order_rcpt_paid_${Date.now()}`;
+
+    // Create plan doc
+    await db.collection("subscriptionPlans").doc(planId).set({
+      title: "Annual Membership",
+      fee: 1200,
+      durationDays: 365,
+    });
+
+    const reservationKey = generateReservationKey({ type: "subscription", planId }, user);
+    const receipt = generateAuthoritativeReceipt(reservationKey);
+
+    // Initial attempt acquires reservation, but external call suffered an ambiguous timeout
+    // placing reservation in reconciliation_required
+    const res1 = await acquirePaymentReservation(db, reservationKey, user, 1200, "INR", 30000);
+    await recordReconciliationRequired(
+      db,
+      reservationKey,
+      res1.reservationToken,
+      receipt,
+      user,
+      1200,
+      "INR",
+      "Gateway timeout during order creation",
+    );
+
+    // Mock Razorpay list endpoint returning 1 matching order for this receipt with status 'paid'
+    const dummyRzp = new Razorpay({ key_id: "mock", key_secret: "mock" });
+    const apiProto = Object.getPrototypeOf(dummyRzp.api);
+    const origGet = apiProto.get;
+
+    try {
+      apiProto.get = async ({ url, data }) => {
+        if (url === "/orders" || url === `/orders/${externalOrderId}`) {
+          if (url === "/orders") {
+            return {
+              items: [
+                {
+                  id: externalOrderId,
+                  receipt,
+                  amount: 120000,
+                  currency: "INR",
+                  status: "paid",
+                },
+              ],
+            };
+          }
+          return {
+            id: externalOrderId,
+            receipt,
+            amount: 120000,
+            currency: "INR",
+            status: "paid",
+          };
+        }
+        return origGet({ url, data });
+      };
+
+      // 1. Direct receipt-only reconciliation test:
+      const recResult = await reconcileAmbiguousReservation(dummyRzp, db, reservationKey, user, 1200, "INR");
+      assert.equal(recResult.reconciled, true);
+      assert.equal(recResult.isPaid, true);
+      assert.equal(recResult.canRetry, false);
+      assert.equal(recResult.existingOrder?.orderId, externalOrderId);
+
+      // Verify Firestore reservation doc persisted isPaid: true and status: "active"
+      const snap = await db.collection("paymentReservations").doc(reservationKey).get();
+      assert.equal(snap.data()?.status, "active");
+      assert.equal(snap.data()?.isPaid, true);
+      assert.equal(snap.data()?.orderId, externalOrderId);
+
+      // 2. Actual Order API route test with receipt-only reconciliation:
+      // Reset doc to reconciliation_required WITHOUT orderId to ensure route exercises receipt-only Branch B
+      await db.collection("paymentReservations").doc(reservationKey).delete();
+      const res2 = await acquirePaymentReservation(db, reservationKey, user, 1200, "INR", 30000);
+      await recordReconciliationRequired(
+        db,
+        reservationKey,
+        res2.reservationToken,
+        receipt,
+        user,
+        1200,
+        "INR",
+        "Gateway timeout during order creation",
+      );
+
+      const req = new Request("http://localhost:3000/api/razorpay/order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-uid": user,
+        },
+        body: JSON.stringify({
+          intentData: {
+            type: "subscription",
+            planId,
+          },
+        }),
+      });
+
+      const res = await orderPOST(req);
+      // Route must return HTTP 409 Conflict, NOT checkout opportunity
+      assert.equal(res.status, 409);
+      const resBody = await res.json();
+      assert.match(resBody.error, /Obligation has already been paid via order/);
+      assert.match(resBody.error, new RegExp(externalOrderId));
+    } finally {
+      apiProto.get = origGet;
     }
   });
 });

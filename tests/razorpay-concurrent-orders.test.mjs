@@ -505,23 +505,25 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
     assert.equal(snapPayable.data()?.status, "active");
     assert.ok(new Date(snapPayable.data()?.expiresAt).getTime() > Date.now());
 
-    // Case C: Gateway status is 'expired' or 'cancelled' -> safely transitions to failed, allowing fresh acquisition
+    // Case C: Unsupported order status (e.g. 'expired' or 'cancelled') is rejected per Razorpay Orders contract
+    // Razorpay Orders strictly support only 'created', 'attempted', and 'paid'. Unsupported statuses retain safe blocking.
     const mockRzpCancelled = {
       orders: {
         fetch: async (id) => ({ id, status: "cancelled", amount: 50000, currency: "INR" }),
       },
     };
     const recCancelled = await reconcileAmbiguousReservation(mockRzpCancelled, mockDb, reservationKey, authUid, 500, "INR");
-    assert.equal(recCancelled.reconciled, true);
-    assert.equal(recCancelled.isExpired, true);
-    assert.equal(recCancelled.canRetry, true);
+    assert.equal(recCancelled.reconciled, false);
+    assert.equal(recCancelled.canRetry, false);
+    assert.match(recCancelled.error, /Unrecognized or unsupported Razorpay order status/);
 
     const snapCancelled = await mockDb.collection("paymentReservations").doc(reservationKey).get();
-    assert.equal(snapCancelled.data()?.status, "failed");
+    assert.equal(snapCancelled.data()?.status, "reconciliation_failed");
 
-    // Safe reacquisition is now permitted
-    const resRetry = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
-    assert.equal(resRetry.acquired, true);
+    // Lock takeover is safely blocked
+    const resBlocked = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(resBlocked.acquired, false);
+    assert.equal(resBlocked.needsReconciliation, true);
 
     // Case D: External status unavailable (network/gateway failure) -> retains safe blocked state
     const mockRzpError = {
@@ -529,10 +531,6 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
         fetch: async () => { throw new Error("Gateway connection reset"); },
       },
     };
-    // Put reservation back in expired active state
-    await activatePaymentReservation(mockDb, reservationKey, resRetry.reservationToken, "order_rzp_error_1", "intent_456");
-    await mockDb.collection("paymentReservations").doc(reservationKey).update({ expiresAt: twentyMinsAgo });
-
     const recError = await reconcileAmbiguousReservation(mockRzpError, mockDb, reservationKey, authUid, 500, "INR");
     assert.equal(recError.reconciled, false);
     assert.equal(recError.canRetry, false);
@@ -540,6 +538,38 @@ describe("FIN-001: Concurrent Payment Initiation & Atomic Reservation", () => {
 
     const snapError = await mockDb.collection("paymentReservations").doc(reservationKey).get();
     assert.equal(snapError.data()?.status, "reconciliation_failed");
+  });
+
+  // ── Item 1: Receipt-Only Reconciliation for Paid Orders ─────────────────────
+  it("Item 1: receipt-only reconciliation persists paid state and returns isPaid: true without checkout opportunity", async () => {
+    const mockDb = createMockDb();
+    const reservationKey = "res_match_receipt_paid_1";
+    const authUid = "user_abc";
+    const receipt = "rcpt_receipt_paid_1";
+
+    const res1 = await acquirePaymentReservation(mockDb, reservationKey, authUid, 500, "INR");
+    await recordReconciliationRequired(mockDb, reservationKey, res1.reservationToken, receipt, authUid, 500, "INR", "Ambiguous timeout");
+
+    // Mock Razorpay returning a single order matching the receipt with status 'paid'
+    const mockRzpReceiptPaid = {
+      orders: {
+        all: async () => ({
+          items: [{ id: "order_rzp_rcpt_paid_99", receipt, amount: 50000, currency: "INR", status: "paid" }],
+        }),
+      },
+    };
+
+    const recResult = await reconcileAmbiguousReservation(mockRzpReceiptPaid, mockDb, reservationKey, authUid, 500, "INR");
+    assert.equal(recResult.reconciled, true);
+    assert.equal(recResult.isPaid, true);
+    assert.equal(recResult.canRetry, false);
+    assert.equal(recResult.existingOrder?.orderId, "order_rzp_rcpt_paid_99");
+
+    // Persists isPaid: true on the reservation document
+    const snap = await mockDb.collection("paymentReservations").doc(reservationKey).get();
+    assert.equal(snap.data()?.status, "active");
+    assert.equal(snap.data()?.isPaid, true);
+    assert.equal(snap.data()?.orderId, "order_rzp_rcpt_paid_99");
   });
 
   // ── Finding 2: Strict Currency Validation during Reconciliation ─────────────
