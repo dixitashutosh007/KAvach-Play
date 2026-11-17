@@ -6,15 +6,12 @@
  * the route rejects — this closes the door on external / AI /
  * link-preview-crawler calls that were hammering these endpoints.
  *
- * "Admin" is defined as: token has the `admin: true` custom claim OR the
- * caller's appUsers/{uid} doc has role == "admin". The claim path is
- * preferred (no Firestore read); the doc fallback keeps things working
- * during the rollout window before scripts/set-admin-claim.js is applied.
+ * "Admin" is defined strictly as: token has the `admin: true` custom claim (SEC-001).
+ * No client-writable Firestore document role fallback is permitted.
  */
 import { NextResponse } from "next/server.js";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
 import firebaseConfig from "../firebase-applet-config.json" with { type: "json" };
 
 function ensureAdminApp() {
@@ -49,7 +46,7 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
   }
 
   const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (!authHeader || (!authHeader.startsWith("Bearer ") && authHeader !== "Bearer")) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -58,7 +55,7 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
       ),
     };
   }
-  const token = authHeader.substring(7).trim();
+  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
   if (!token) {
     return {
       ok: false,
@@ -86,7 +83,7 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
 
 export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
   const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (!authHeader || (!authHeader.startsWith("Bearer ") && authHeader !== "Bearer")) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -95,7 +92,7 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
       ),
     };
   }
-  const token = authHeader.substring(7).trim();
+  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
   if (!token) {
     return {
       ok: false,
@@ -120,31 +117,9 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
     };
   }
 
-  // Fast path: custom claim
-  // Strict: custom claim is required by default (SEC-001)
+  // Strict: verified admin custom claim is strictly required (SEC-001)
   if (decoded.admin === true) {
     return { ok: true, uid: decoded.uid, email: decoded.email };
-  }
-
-  // Emergency legacy fallback: disabled by default. Only accessible if explicitly enabled.
-  if (process.env.ALLOW_LEGACY_ADMIN_ROLE_FALLBACK === "true") {
-    try {
-      const dbId =
-        process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
-        (firebaseConfig as any).firestoreDatabaseId;
-      let db;
-      try {
-        db = getFirestore(app, dbId);
-      } catch {
-        db = getFirestore(app);
-      }
-      const snap = await db.collection("appUsers").doc(decoded.uid).get();
-      if (snap.exists && snap.data()?.role === "admin") {
-        return { ok: true, uid: decoded.uid, email: decoded.email };
-      }
-    } catch {
-      // Fall through to reject
-    }
   }
 
   return {

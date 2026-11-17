@@ -11,54 +11,12 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import {
+  computeKeeperPatch,
+  planAppUsersReparent,
+} from "../lib/player-merge.ts";
 
-describe("Identity & Player Merge — Logic & Reparenting", () => {
-  const FILL_IF_EMPTY = [
-    "email",
-    "dob",
-    "locality",
-    "bloodGroup",
-    "emergencyContact",
-    "battingStyle",
-    "bowlingStyle",
-    "chestSize",
-    "waistSize",
-    "jerseyNumber",
-    "jerseyName",
-    "studioExpiryDate",
-    "studioEndDate",
-    "studioPlan",
-    "lastPaidDate",
-    "lastPaidAmount",
-    "photoURL",
-  ];
-
-  function computeKeeperPatch(keeper, loser) {
-    const patch = {};
-    for (const field of FILL_IF_EMPTY) {
-      const kVal = keeper[field];
-      const lVal = loser[field];
-      if (
-        (kVal === undefined || kVal === null || kVal === "") &&
-        lVal !== undefined &&
-        lVal !== null &&
-        lVal !== ""
-      ) {
-        patch[field] = lVal;
-      }
-    }
-    if (!keeper.isStudioMember && loser.isStudioMember) {
-      patch.isStudioMember = true;
-    }
-    if (!keeper.isWicketKeeper && loser.isWicketKeeper) {
-      patch.isWicketKeeper = true;
-    }
-    if (!keeper.authUid && loser.authUid) {
-      patch.authUid = loser.authUid;
-    }
-    return patch;
-  }
-
+describe("Identity & Player Merge — Logic & Reparenting (QA-001 Compliant)", () => {
   it("never overwrites existing non-empty keeper fields", () => {
     const keeper = {
       id: "keeper_1",
@@ -110,20 +68,6 @@ describe("Identity & Player Merge — Logic & Reparenting", () => {
 });
 
 describe("Identity & Player Merge — appUsers Reparenting (IDT-001)", () => {
-  function planAppUsersReparent(appUsers, loserId, keeperId) {
-    const updates = [];
-    for (const user of appUsers) {
-      if (user.playerId === loserId || user.id === loserId) {
-        updates.push({
-          uid: user.id,
-          oldPlayerId: user.playerId,
-          newPlayerId: keeperId,
-        });
-      }
-    }
-    return updates;
-  }
-
   it("reparents appUsers pointing to loserId to keeperId", () => {
     const appUsers = [
       { id: "uid_1", name: "Alice", playerId: "player_loser" },

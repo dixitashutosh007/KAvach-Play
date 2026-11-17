@@ -42,7 +42,12 @@ export function ProfileTab({
   const linkedPlayer =
     store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
     store.players.find((p) => p.mobile && userPhone && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(userPhone));
-  const isAdmin = appUser?.role === "admin" || hasAdminClaim;
+  const isAdmin =
+    !!hasAdminClaim ||
+    !!appUser?.isClubAdmin ||
+    !!appUser?.isMatchAdmin ||
+    !!appUser?.isFinanceAdmin ||
+    !!appUser?.isStudioAdmin;
 
   const hasMissingMandatory =
     !isAdmin &&

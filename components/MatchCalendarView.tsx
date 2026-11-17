@@ -52,7 +52,6 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
   const effectiveAdmin = Boolean(
     isAdmin ||
     hasAdminClaim ||
-    currentUser?.role === "admin" ||
     currentUser?.isMatchAdmin ||
     currentUser?.isClubAdmin
   );

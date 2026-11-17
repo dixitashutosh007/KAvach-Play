@@ -29,9 +29,9 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
   const { toast } = useToast();
   const { user, hasAdminClaim } = useAuth();
 
-  // Check if current user is admin
+  // Check if current user is admin (SEC-001: strictly enforced by verified custom claim)
   const currentUserRecord = store.appUsers.find((u) => u.id === user?.uid);
-  const isAdmin = currentUserRecord?.role === "admin" || hasAdminClaim;
+  const isAdmin = !!hasAdminClaim;
 
   const [clubName, setClubName] = useState(
     store.appConfig?.clubName || "KAVACH CRICKET CLUB",

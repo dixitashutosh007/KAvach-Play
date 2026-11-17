@@ -77,7 +77,19 @@ export async function POST(req: NextRequest) {
 
       const db = getDb();
       // FIN-002: Concurrency-safe atomic transaction
-      const result = await processWebhookIntentTransaction(db, details, payload);
+      let result;
+      try {
+        result = await processWebhookIntentTransaction(db, details, payload);
+      } catch (txError: any) {
+        console.error(
+          `[razorpay/webhook] Transaction validation/execution error for intent ${details.intentId}:`,
+          txError.message,
+        );
+        return NextResponse.json(
+          { error: txError.message || "Transaction failed." },
+          { status: 400 },
+        );
+      }
 
       if (!result.success) {
         return NextResponse.json(

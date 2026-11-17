@@ -74,6 +74,13 @@ describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
   });
 
   // 4. Missing Currency (No Silent Defaulting)
+  it("rejects when stored intent is missing a valid currency", () => {
+    const intentNoCurrency = { ...baseIntent, currency: "" };
+    const res = validateWebhookTransaction(intentNoCurrency, validCapturedDetails);
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Stored intent is missing a valid currency/);
+  });
+
   it("rejects when currency is missing from webhook payload", () => {
     const detailsNoCurrency = { ...validCapturedDetails, capturedCurrency: "" };
     const res = validateWebhookTransaction(baseIntent, detailsNoCurrency);
@@ -230,6 +237,40 @@ describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
     const res = validateWebhookTransaction(baseIntent, details);
     assert.equal(res.ok, false);
     assert.match(res.error, /Missing or invalid payment ID/);
+  });
+
+  it("rejects order.paid when payment ID is prefix-only 'pay_' with no identifier", () => {
+    const detailsPrefixOnly = {
+      ...validCapturedDetails,
+      paymentId: "pay_",
+    };
+    const res = validateWebhookTransaction(baseIntent, detailsPrefixOnly);
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Missing or invalid payment ID/);
+  });
+
+  it("filters out invalid order ID in payment entity that lacks 'order_' prefix", () => {
+    const payloadBadOrder = {
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: {
+            id: "pay_valid123",
+            order_id: "fake_order_without_prefix",
+            amount: 50000,
+            currency: "INR",
+            notes: { intentId: "intent_123" },
+          },
+        },
+      },
+    };
+    const details = extractWebhookEventDetails(payloadBadOrder);
+    assert.ok(details);
+    assert.equal(details.orderId, ""); // filtered out because no order_ prefix
+
+    const res = validateWebhookTransaction(baseIntent, details);
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Incoming webhook event is missing a valid orderId/);
   });
 
   it("ensures rejected event leaves intent and downstream records completely unchanged", async () => {

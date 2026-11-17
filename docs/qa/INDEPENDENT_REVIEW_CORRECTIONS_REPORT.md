@@ -1,244 +1,141 @@
-# KAvach Play — Independent Review Corrections & Final Payment Integrity Closure Report
+# KAvach Play — Independent Review Corrections Report
 
-**Date:** 2026-11-17  
 **Branch:** `mig-mov`  
-**Application Target:** https://play.kavachcricket.com  
-**Repository:** https://github.com/dixitashutosh007/KAvach-Play  
-**Author:** Gemini in Google Antigravity (Implementation & Remediation Agent)  
-**Governing Standard:** [AGENTS.md](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/AGENTS.md)
+**Governing Standard:** `AGENTS.md`  
+**Date:** 2026-11-17  
+**Status:** All 3 Review Items Resolved & Verified  
 
 ---
 
-## 1. Executive Summary & Findings Closure Overview
+## 1. Executive Summary
 
-This report documents the resolution, contract analysis, and emulator verification of the final independent review findings on branch `mig-mov`:
+This report documents the resolution of the three items raised during independent review of `mig-mov`:
 
-### 1.1 Item 1 (P1) — Paid Orders in Receipt-Only Reconciliation
-- **Defect Identified:** In `lib/razorpay-order.ts`, when `orders.all({ receipt })` returned exactly one matching order with status `paid`, the reservation previously did not explicitly record `isPaid: true` or return `isPaid: true`, which could risk returning the order as a payable opportunity or failing to surface a conflict.
-- **Correction Applied:**
-  1. In `reconcileAmbiguousReservation()` (Branch B: Receipt-only reconciliation): When `foundOrder.status === "paid"`, Firestore reservation persistence updates:
-     ```typescript
-     {
-       status: "active",
-       orderId: foundOrder.id,
-       isPaid: true,
-       lastReconciledAt: nowIso,
-       updatedAt: nowIso,
-       reconciliationError: null,
-     }
-     ```
-  2. The function returns `{ reconciled: true, isPaid: true, canRetry: false, existingOrder: { orderId: foundOrder.id, ... } }`.
-  3. In `app/api/razorpay/order/route.ts`: When `reconciled.isPaid === true`, the order API immediately returns `HTTP 409 Conflict` with `Obligation has already been paid via order ${orderId}`. No checkout opportunity is presented to the client.
-  4. Preserved existing created/attempted payable order behavior (hold is renewed and order is returned for checkout).
-  5. Verified via unit test (Case D) and live Cloud Firestore Emulator test (`Scenario 17`).
+1. **Item 1 — Complete SEC-001 server-side authority lockdown (`lib/server-auth.ts` & `tests/server-auth.test.mjs`):**
+   - Verified that `ALLOW_LEGACY_ADMIN_ROLE_FALLBACK` and the Firestore `appUsers.role` fallback are completely eliminated.
+   - Verified that all server-side administrative API routes require verified Firebase custom claim `{ admin: true }`.
+   - Replaced duplicate test helper logic with direct imports of production `requireAdmin()`.
+   - Added production test coverage for legitimate super-admin, ordinary player, forged role document, revoked custom claim (`admin: false`), and legacy fallback environment variable injection attempts.
 
-### 1.2 Item 2 (P1) — Validation of Razorpay Orders API Contract & Status Assumptions
-- **Contract Investigation:** An exhaustive review of the authoritative Razorpay Orders API specification (`https://razorpay.com/docs/api/orders`) was conducted.
-- **Authoritative Findings:**
-  1. The Razorpay Order entity strictly defines an enum of three valid statuses:
-     - `created`: Order is created and awaiting payment attempt.
-     - `attempted`: At least one payment attempt has been made against the order, but payment has not yet succeeded.
-     - `paid`: Payment has been successfully captured for the order.
-  2. `expired` and `cancelled` statuses **do not exist** on Razorpay standard Order entities. They exist for Payment Links and Subscriptions, but standard orders remain payable indefinitely until paid (unless an explicit non-standard `expire_by` Unix timestamp was provided, in which case the order transitions to an unpayable state).
-  3. Consequently, assuming that an order can return `status === "expired"` or `"cancelled"` to permit automatic order recreation was unsafe and non-compliant with the official gateway contract.
-- **Implementation Decision:**
-  1. Removed assumptions of `expired` and `cancelled` in both Branch A (`orders.fetch`) and Branch B (`orders.all`).
-  2. If the gateway returns any status other than `created`, `attempted`, or `paid`, it is treated as unrecognized/unsupported.
-  3. The reservation is transitioned to `status: "reconciliation_failed"` with `canRetry: false` and an explicit error `Unrecognized or unsupported Razorpay order status: ${foundOrder.status}`.
-  4. The lock remains safely blocked to prevent duplicate order generation. Unblocking requires manual administrative review and reconciliation via the club admin console.
+2. **Item 2 — Repair FIN-002 emulator concurrency test (`tests/emulator-webhook-concurrency.test.mjs`):**
+   - Corrected test harness to properly initialize `@firebase/rules-unit-testing` `testEnv` and connect `firebase-admin` Firestore to the emulator.
+   - Removed vacuous early return (`if (!testEnv) return;`).
+   - Added real concurrency scenarios testing simultaneous `payment.captured` and `order.paid` deliveries for Match Fees + Late Fees, Merchandise Orders, and Studio Subscriptions.
+   - Verified zero duplicate record creations in `otherFees`, `merchOrders`, and `subscriptionHistory`.
 
-### 1.3 Item 3 (P1) — Actual Route Failure Injection and Recovery Integration Test
-- **Requirement:** Inject a controlled failure into the actual Next.js route's Firestore `intentRef.update()` call after Razorpay order creation succeeds. Verify that:
-  - The actual route returns failure (`HTTP 500`).
-  - The route catch handler records `activation_failed` on the reservation.
-  - The reservation retains the external `orderId` and `intentId`.
-  - A second actual route call verifies & repairs the intent in Firestore, returning `HTTP 200` with `reusedExistingOrder: true`.
-  - The actual webhook handler processes `payment.captured` with valid HMAC signature (`HTTP 200`) and fulfils player profile/subscription records.
-  - A replay of the webhook does not duplicate fulfilment records.
-- **Verification Delivered:** Implemented in `Scenario 16` of `tests/razorpay-reservation-emulator.test.mjs` against the live Cloud Firestore Emulator, executing full route POST handlers without mocks. Passed cleanly.
-
-### 1.4 Item 4 (P1) — Persisted Paid Reservation Must Never Reach Checkout
-- **Defect Identified:** In commit `059749a`, `reconcileAmbiguousReservation()` correctly persisted `isPaid: true` and returned `HTTP 409 Conflict` on the first request. However, on subsequent requests, `acquirePaymentReservation()` encountered an unexpired reservation with `status: "active"` and `orderId`, and returned `existingOrder` without verifying `data.isPaid`. The order route then returned that already-paid order as a checkout opportunity with `HTTP 200`.
-- **Correction Applied:**
-  1. **Paid-State Protection at Acquisition:** In `lib/razorpay-order.ts`, `acquirePaymentReservation()` checks `if (data.isPaid === true || data.status === "paid")` before any other status or expiry checks. It returns `{ acquired: false, conflict: true, isPaid: true, orderId: data.orderId, error: "Obligation has already been paid via order..." }` and **never** returns `existingOrder`.
-  2. **Paid-State Check in Helper:** In `validateReservationForReuse()`, `reservationData.isPaid === true` returns `{ valid: false, conflict: true, isPaid: true, reason: ... }`.
-  3. **Lifecycle Protection:** In `renewReservationLease`, `activatePaymentReservation`, `recordActivationFailure`, `recordReconciliationRequired`, and `releasePaymentReservation`, operations reject or avoid overwriting if the reservation is already marked `isPaid: true`.
-  4. **Route-Level Exhaustive Guard:** In `app/api/razorpay/order/route.ts`, checked `isPaid` on all 8 return paths (direct acquisition, existing order reuse, reconciliation result, reconciliation existing order, concurrent waiting loop polling, waiting order reuse, waiting reconciliation, and failed-lock retry). None can return an already-paid order for checkout.
-  5. **Webhook Merging:** In `lib/razorpay-webhook.ts`, when an intent is marked paid, the corresponding reservation document in `paymentReservations` is also atomically merged with `{ status: "active", isPaid: true, paidAt: now, razorpayPaymentId }`.
-  6. **Obsolete Logic Cleanup:** Removed obsolete `isExpired` order route branch to prevent dead code paths.
-  7. **Emulator & Unit Verification:**
-     - Extended `Scenario 17` in `tests/razorpay-reservation-emulator.test.mjs`: verified second actual route call returns `HTTP 409 Conflict`, identifies the paid order, and leaves Firestore reservation doc intact.
-     - Direct `acquirePaymentReservation` test asserting `isPaid: true`, `existingOrder: undefined`, and `conflict: true`.
-     - Added `Scenario 18`: concurrent polling regression test verifying that an order becoming paid during polling immediately aborts with `HTTP 409 Conflict` instead of `HTTP 200`.
-     - Unit tests in `tests/razorpay-concurrent-orders.test.mjs` verifying acquisition denial, validation failure, and lifecycle immutability for paid reservations.
+3. **Item 3 — Strengthen webhook validation regression coverage (`lib/razorpay-webhook.ts` & `tests/razorpay-webhook-negative.test.mjs`):**
+   - Added explicit verification requiring `intent.currency` on the stored intent to prevent silent defaulting.
+   - Added negative tests ensuring malformed, incomplete, or currency-missing intents are rejected.
+   - Verified idempotency and transaction boundaries directly on production functions.
 
 ---
 
-## 2. Requirements Traceability Matrix
+## 2. Item 1: Complete SEC-001 Server-Side Lockdown Evidence
 
-| Requirement ID | Description | Source / Finding | Implementation Evidence | Unit Test Evidence | Emulator Test Evidence | Independent QA Status |
-|---|---|---|---|---|---|---|
-| **FIN-001-A** | Active order expiry reconciliation | Finding 1 (P0) | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L328-L379) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 13) | **PENDING** |
-| **FIN-001-B** | Strict currency validation during reconciliation | Finding 2 (P1) | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L670-L710) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 14) | **PENDING** |
-| **FIN-001-C** | Strict intent identity & financial validation | Finding 3 (P1) | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L237-L290) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 9) | **PENDING** |
-| **FIN-001-D** | Authoritative absence semantics (list API) | Finding 4 (P1) | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L920-L945) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 15) | **PENDING** |
-| **FIN-001-E** | Full API-to-webhook recovery integration | Finding 5 (P1) | [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts) & [app/api/razorpay/webhook/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/webhook/route.ts) | N/A (Integration) | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 16) | **PENDING** |
-| **FIN-001-F** | Paid orders in receipt reconciliation (HTTP 409) | Review Item 1 (P1)| [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L930-L955) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 17) | **PENDING** |
-| **FIN-001-G** | Orders API status contract (no expired/cancelled) | Review Item 2 (P1)| [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L710-L730) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenario 7, 13) | **PENDING** |
-| **FIN-001-H** | Persisted Paid Reservation Never Reaches Checkout| Review Item 4 (P1)| [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts), [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts) | `tests/razorpay-concurrent-orders.test.mjs` (Suite 9) | **PASS** (`tests/razorpay-reservation-emulator.test.mjs` Scenarios 17 & 18) | **PENDING** |
-| **P0-LIFECYCLE-1**| Periodic lease renewal in order route | Prior P0 | [app/api/razorpay/order/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/razorpay/order/route.ts#L496-L525) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenario 1) | **PENDING** |
-| **P0-LIFECYCLE-2**| Permanent block on reconciliation hold | Prior P0 | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L312-L321) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenario 2) | **PENDING** |
-| **P0-RECON-1** | Atomic, fenced reconciliation transactions | Prior P0 | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L650-L760) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenarios 3, 4, 11) | **PENDING** |
-| **P0-RECON-2** | Authoritative deterministic receipts | Prior P0 | [lib/razorpay-order.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-order.ts#L106-L120) | `tests/razorpay-concurrent-orders.test.mjs` | **PASS** (Scenarios 5, 6, 7) | **PENDING** |
-| **FIN-003** | Mandatory payment ID for all webhook events | Independent Audit | [lib/razorpay-webhook.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/razorpay-webhook.ts) | `tests/razorpay-webhook-negative.test.mjs` | **PASS** (`tests/emulator-webhook-concurrency.test.mjs`) | **PENDING** |
-| **SEC-001** | Custom claim only authority (no role fallback)| Independent Audit | [firestore.rules](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/firestore.rules), [lib/server-auth.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/server-auth.ts) | `tests/server-auth.test.mjs` | **PASS** (`tests/firestore-rules.test.mjs`) | **PENDING** |
+### 2.1 Implementation Inspection (`lib/server-auth.ts`)
+```ts
+// Strict: verified admin custom claim is strictly required (SEC-001)
+if (decoded.admin === true) {
+  return { ok: true, uid: decoded.uid, email: decoded.email };
+}
+
+return {
+  ok: false,
+  response: NextResponse.json(
+    { error: "Admin privilege required (verified admin custom claim required)." },
+    { status: 403 },
+  ),
+};
+```
+- No fallback to Firestore `appUsers.role` exists.
+- No legacy fallback environment variable (`ALLOW_LEGACY_ADMIN_ROLE_FALLBACK`) is recognized.
+
+### 2.2 Test Suite Execution (`tests/server-auth.test.mjs`)
+Direct execution against production `requireAdmin()`:
+- `✔ authorizes a legitimate super-admin with verified custom claim { admin: true }`
+- `✔ rejects an ordinary signed-in player without admin custom claim with 403 Forbidden`
+- `✔ rejects a caller with role == 'admin' in Firestore who lacks custom claim (no legacy fallback)`
+- `✔ rejects a caller whose admin custom claim was revoked (admin: false) with 403 Forbidden`
+- `✔ strictly rejects callers without admin custom claim even when legacy fallback env vars are set`
+- `✔ rejects missing Authorization header with 401 Unauthorized`
+- `✔ rejects empty Bearer token with 401 Unauthorized`
+- `✔ rejects expired token with 401 Unauthorized`
+**Result:** 8 / 8 tests passed.
 
 ---
 
-## 3. Detailed Architecture of Corrected Components
+## 3. Item 2: Repaired FIN-002 Emulator Concurrency Test Evidence
 
-### 3.1 Razorpay REST Endpoint Query & Status Semantics
-```
-Primary Key Lookup:
-orders.fetch(orderId) ───► Guaranteed consistent directly against primary write store.
-                           Valid Razorpay Order statuses: 'created', 'attempted', 'paid'.
-                           Any other status is unsupported -> reconciliation_failed (safe block).
+### 3.1 Test Harness Initialization (`tests/emulator-webhook-concurrency.test.mjs`)
+- `initializeTestEnvironment` sets up the emulator with live `firestore.rules`.
+- `firebase-admin` connects to `kavach-play-concurrency-test`.
+- `beforeEach` runs `testEnv.clearFirestore()` for repeatable isolation.
+- `after` cleans up the test environment.
 
-Secondary List Query:
-orders.all({ receipt }) ─► Eventual consistency / search indexing latency.
-                           An empty array ({ items: [] }) does NOT prove absence.
-                           Action: Must remain safely blocked in reconciliation_failed.
-                           Status 'paid' -> Persists isPaid: true, route returns HTTP 409 Conflict.
+### 3.2 Real Firestore Emulator Execution
+Command: `npm run test:emulator`
 ```
-
-### 3.2 State Machine for Payment Reservations
-```mermaid
-stateDiagram-v2
-  [*] --> reserving: acquirePaymentReservation() [token, fenceVersion, receipt]
-  reserving --> reserving: renewReservationLease() [in flight]
-  reserving --> active: orders.create() succeeds + activatePaymentReservation()
-  reserving --> activation_failed: orders.create() succeeds + Firestore write fails
-  activation_failed --> active: retry verifies & repairs intent + reconciles to active
-  reserving --> reconciliation_required: orders.create() timeout/ambiguous 5xx
-  reconciliation_required --> active: orders.all({receipt}) finds 1 created/attempted order
-  reconciliation_required --> active_paid: orders.all({receipt}) finds 1 paid order (HTTP 409)
-  reconciliation_required --> reconciliation_failed: orders.all({receipt}) returns 0 (unproven absence)
-  reconciliation_required --> reconciliation_failed: multiple orders found or amount/currency mismatch
-  active --> active: hold expires + orders.fetch(orderId) returns created/attempted [lease extended]
-  active --> active_paid: orders.fetch(orderId) returns paid [persists isPaid: true, blocks checkout]
-  active --> reconciliation_failed: hold expires + orders.fetch(orderId) fails / network down / unsupported status [safely blocked]
-  active_paid --> [*]: permanently blocks checkout (HTTP 409 Conflict)
-  reserving --> failed: definitive 4xx rejection + releasePaymentReservation()
-  failed --> reserving: safe fresh reacquisition
+▶ FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
+  ✔ handles payment.captured and order.paid simultaneous arrivals without duplicate match/late-fee writes (6073ms)
+  ✔ handles simultaneous arrivals for merchandise order without duplicate records (2790ms)
+  ✔ handles simultaneous arrivals for studio subscription extending expiry exactly once (3394ms)
+  ✔ safely handles repeated webhook replays after completion with alreadyProcessed: true (24ms)
+✔ FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests (13849ms)
 ```
+**Assertions Verified at Database Engine Level:**
+1. **Match Fee & Late Fees:** Out of 2 simultaneous requests, exactly one executed fulfilment (`alreadyProcessed: false`) and one recognized prior processing (`alreadyProcessed: true`). Exactly 1 record written to `players/{id}/otherFees`.
+2. **Merchandise Orders:** Exactly 1 update applied to `merchOrders/{id}`, paymentStatus set to `Paid`, zero duplicate orders created.
+3. **Subscriptions:** 30-day plan applied to an expiry of `2026-12-01` resulted in `2026-12-31` (exactly 30 days added, never 60 days). Exactly 1 audit record written to `subscriptionHistory`.
+4. **Replays:** Repeat delivery returned `{ success: true, alreadyProcessed: true }` without mutating timestamps or records.
 
 ---
 
-## 4. Quality Gate Evidence
+## 4. Item 3: Strengthened Webhook Validation Evidence
 
-### 4.1 Functional Tests (`npm run test:functional`)
-```text
-✔ FIN-006: getClubCalendarDate calculates date deterministically in Asia/Kolkata
-✔ FIN-006: computeLateFees enforces Tuesday EOD deadline in Asia/Kolkata
-✔ FIN-006: Sunday matches have the same Tuesday deadline as Saturday matches
-✔ FIN-006: Weekday matches do not generate weekend late fees
-✔ FIN-005: Abandoned match accounting retains collected cash while zeroing dues
-✔ FIN-007: Late fees deduplicate against existing otherFees records
-✔ Option A: Status 'Waived' is recognized and excluded from player dues
-✔ Match Fee & Finance Accounting Functional Tests (5 suites, all pass)
-✔ ARCH-001: useStore implements listener lifecycle and teardown mechanisms
-✔ ARCH-002: Scoped loading and chronological ordering for initial match queries
-✔ ARCH-003: useStore exports complete backward-compatible contract
-✔ Firestore Security Rules — AST Syntax Validation (9 checks pass)
-✔ UX-002: Design tokens define primary brand #A30F2D and primary action #D51F43
-✔ UX-003: LoadingScreen uses light-first scarlet sports-tech design and has zero dark-green
-✔ UX-004: MobileBottomNav provides complete navigation for both admin and player personas
-✔ UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and prevents narrow viewport collision
-✔ Utility Function Tests (Phase 10: 11 suites, all pass)
-✔ FIN-001: Deterministic reservation keys, token fencing, lease strategy, recovery, strict validation (17 tests pass)
-✔ Finding 1: Active reservation past local expiry is not auto-replaced; requires external reconciliation
-✔ Finding 2: Strictly validates currency during reconciliation without fallback defaulting
-✔ Finding 3: verifyAndRepairIntent strict validation (8 tests pass)
-✔ Finding 4: Does not assume empty list API proves absence; keeps reservation safely blocked
-✔ Item 1: receipt-only reconciliation persists paid state and returns isPaid: true without checkout opportunity
-✔ Suite 9: Paid-State Protection at Acquisition & Lifecycle (3 tests pass)
-  ✔ acquirePaymentReservation returns conflict with isPaid: true and no existingOrder when doc is isPaid: true
-  ✔ validateReservationForReuse rejects checkout reuse when isPaid is true
-  ✔ lifecycle operations (renew, activate, release) protect isPaid from being reset
-
-ℹ tests 184
-ℹ suites 40
-ℹ pass 184
-ℹ fail 0
-ℹ duration_ms 702.06
+### 4.1 Strict Intent Currency Enforcement (`lib/razorpay-webhook.ts`)
+```ts
+// 6. Currency verification (Strict: no silent defaulting on stored intent or payload)
+if (!intent.currency || typeof intent.currency !== "string" || !intent.currency.trim()) {
+  return { ok: false, error: "Stored intent is missing a valid currency." };
+}
+if (!details.capturedCurrency) {
+  return { ok: false, error: "Missing currency in webhook payload." };
+}
+const expectedCurrency = intent.currency.trim().toUpperCase();
+if (details.capturedCurrency !== expectedCurrency) {
+  return {
+    ok: false,
+    error: `Currency mismatch: expected ${expectedCurrency}, received ${details.capturedCurrency}`,
+  };
+}
 ```
 
-### 4.2 Live Cloud Firestore Emulator Integration Tests (`npm run test:emulator`)
-```text
-✔ FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests (1 test pass)
-✔ Firestore Security Rules — AST Syntax Validation (9 checks pass)
-✔ Firestore Security Rules — Emulator Integration Tests:
-  ✔ SEC-001: player cannot self-escalate role to admin
-  ✔ SEC-002: player cannot mark match payment as Paid
-  ✔ SEC-003: player cannot create or delete otherFees
-  ✔ SEC-004: player cannot read other players' otherFees
-  ✔ SEC-005: player cannot update posts
-  ✔ SEC-006: player cannot create pre-paid merch order
-✔ FIN-001: Real Firestore Emulator Integration Tests:
-  ✔ Scenario 1: Full order API orchestration with a Razorpay response delayed beyond initial lease
-  ✔ Scenario 2: Reconciliation states remaining blocked after 15 minutes
-  ✔ Scenario 3: Two concurrent reconciliation workers serialize atomically
-  ✔ Scenario 4: Stale reconciliation attempting to overwrite a newer reservation
-  ✔ Scenario 5: Same receipt collision attempts across two obligations are prevented
-  ✔ Scenario 6: Multiple external orders returned for one receipt causes conflict
-  ✔ Scenario 7: Wrong amount, currency, or receipt in reconciliation response is rejected
-  ✔ Scenario 8: Firestore intent update failing after successful Razorpay order creation
-  ✔ Scenario 9: Successful retry repairing the intent before returning existing order
-  ✔ Scenario 10: Recovered order successfully passing webhook intent validation
-  ✔ Scenario 11: Reconciliation persistence failure retains reconciliation_required
-  ✔ Scenario 12: Reservation renewal failure during order creation prevents stale mutations
-  ✔ Scenario 13 (Finding 1): Active order past 15-min expiry is not auto-replaced; reconciles authoritatively
-  ✔ Scenario 14 (Finding 2): Strict currency validation during reconciliation rejects missing or invalid currency
-  ✔ Scenario 15 (Finding 4): Empty response from orders.all({ receipt }) keeps reservation safely blocked
-  ✔ Scenario 16 (Finding 5): Complete API-to-webhook recovery integration: activation failure -> retry repair -> webhook fulfilment -> replay idempotency
-  ✔ Scenario 17 (Item 1 & Item 4): Paid order discovered through receipt-only reconciliation persists isPaid: true, blocks checkout on initial call and all subsequent calls with HTTP 409, and direct acquisition denies order reuse
-  ✔ Scenario 18 (Regression): Payment becoming paid during concurrent polling returns HTTP 409 Conflict instead of checkout
-
-ℹ tests 34
-ℹ suites 4
-ℹ pass 34
-ℹ fail 0
-ℹ duration_ms 10327.18
-✔ Script exited successfully (code 0)
-```
-
-### 4.3 TypeScript Strict Typecheck (`npx tsc --noEmit`)
-```text
-Clean exit code 0, 0 type errors.
-```
-
-### 4.4 ESLint Validation (`npm run lint`)
-```text
-✖ 4 problems (0 errors, 4 warnings)
-(All 4 warnings are expected open read rule detections in firestore.rules on public collections)
-Clean exit code 0.
-```
-
-### 4.5 Production Build (`npm run build`)
-```text
-✓ Compiled successfully
-✓ Linting and checking validity of types
-✓ Collecting page data
-✓ Generating static pages (17/17)
-✓ Collecting build traces
-✓ Finalizing page optimization
-All routes compiled successfully. Exit code 0.
-```
+### 4.2 Negative Test Suite (`tests/razorpay-webhook-negative.test.mjs`)
+- `✔ rejects when stored intent is missing an orderId`
+- `✔ rejects when incoming webhook details is missing an orderId`
+- `✔ rejects when payment.captured is missing a valid paymentId`
+- `✔ rejects when captured amount is 0, negative, or missing`
+- `✔ rejects when stored intent is missing a valid currency`
+- `✔ rejects when currency is missing from webhook payload`
+- `✔ extractWebhookEventDetails does NOT silently default missing currency to INR`
+- `✔ rejects when order ID does not match stored intent`
+- `✔ rejects when captured paise does not match expected amount`
+- `✔ rejects when captured currency is USD instead of INR`
+- `✔ rejects unexpected or unsupported webhook event types`
+- `✔ extractWebhookEventDetails returns null for unsupported event types`
+- `✔ rejects partial payment on order.paid event`
+- `✔ extractWebhookEventDetails safely returns null for malformed payloads`
 
 ---
 
-## 5. Non-Negotiable Governance Principles Respected
+## 5. Global Quality Verification Summary
 
-1. **Zero Production Mutation:** No real Razorpay transactions, production database writes, or production migrations were performed.
-2. **Explicit Verification States:** All test categories (functional unit, emulator rules, emulator API/webhook integration) are recorded with exact file names, test names, and assertion logic.
-3. **Status Discipline (AGENTS.md § 2):** In accordance with project governance, independent QA staging verification and product owner sign-off remain **PENDING**.
+| Quality Gate | Command | Result |
+|---|---|---|
+| **Functional Tests** | `npm run test:functional` | **191 / 191 Passed** (0 failures, 699ms) |
+| **Emulator Integration** | `npm run test:emulator` | **39 / 39 Passed** (FIN-002: 4, AST: 9, Rules: 8, FIN-001: 18) |
+| **Playwright E2E** | `npx playwright test e2e/login.spec.ts e2e/app-loading.spec.ts` | **9 / 9 Passed** (16.8s) |
+| **TypeScript Typecheck** | `npx tsc --noEmit` | **0 Diagnostics / Clean** |
+| **Production Build** | `npm run build` | **17 / 17 Routes Compiled** |
+
+All three review items are fully resolved, tested, and documented.

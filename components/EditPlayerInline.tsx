@@ -18,7 +18,7 @@ export function EditPlayerInline({
   const { toast } = useToast();
   const { user, hasAdminClaim } = useAuth();
   const currentAppUser = store.appUsers.find(u => u.id === user?.uid);
-  const isSuperAdmin = currentAppUser?.role === "admin" || hasAdminClaim;
+  const isSuperAdmin = !!hasAdminClaim;
 
   const appUserMatch = store.appUsers.find(
     (u) => u.id === player.id || (u.mobile && player.mobile && normalizeIndianMobile(u.mobile) === normalizeIndianMobile(player.mobile)),
@@ -379,25 +379,11 @@ export function EditPlayerInline({
             }[] = [
               {
                 label: "Super Admin",
-                desc: "Full access to every admin surface.",
+                desc: "Governed via server custom claim (scripts/set-admin-claim.js). Client toggle disabled for security (SEC-001).",
                 checked: isSuperAdminNow,
-                disabled: isLastSuper,
+                disabled: true,
                 accent: true,
-                onChange: async (checked) => {
-                  const updates: any = { role: checked ? "admin" : "player" };
-                  if (checked) {
-                    updates.isStudioAdmin = true;
-                    updates.isMatchAdmin = true;
-                    updates.isFinanceAdmin = true;
-                    updates.isClubAdmin = true;
-                  } else {
-                    updates.isStudioAdmin = false;
-                    updates.isMatchAdmin = false;
-                    updates.isFinanceAdmin = false;
-                    updates.isClubAdmin = false;
-                  }
-                  await store.updateAppUserProfile(appUserMatch.id, updates);
-                },
+                onChange: async () => {},
               },
               {
                 label: "Studio Admin",

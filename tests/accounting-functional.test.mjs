@@ -307,16 +307,17 @@ describe("Match Fee & Finance Accounting Functional Tests", () => {
   });
 
   describe("5. Permissions & Calendar View Actions", () => {
-    it("evaluates effectiveAdmin correctly across custom claims and roles", () => {
+    it("evaluates effectiveAdmin correctly across custom claims and roles (SEC-001 decoupled)", () => {
       const checkAdmin = (user, hasClaim = false, isAdminProp = false) =>
         isAdminProp ||
         hasClaim ||
-        user?.role === "admin" ||
         user?.isMatchAdmin === true ||
         user?.isClubAdmin === true;
 
       assert.equal(checkAdmin({ role: "player" }, false, false), false);
-      assert.equal(checkAdmin({ role: "admin" }, false, false), true);
+      // SEC-001: role: 'admin' in Firestore without verified custom claim is rejected
+      assert.equal(checkAdmin({ role: "admin" }, false, false), false);
+      assert.equal(checkAdmin({ role: "admin" }, true, false), true);
       assert.equal(checkAdmin({ role: "player" }, true, false), true);
       assert.equal(checkAdmin({ role: "player", isMatchAdmin: true }, false, false), true);
       assert.equal(checkAdmin({ role: "player", isClubAdmin: true }, false, false), true);

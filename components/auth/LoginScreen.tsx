@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { Shield, Trophy } from "lucide-react";
+import { Shield, Trophy, ChevronRight } from "lucide-react";
 import { PhoneLoginForm } from "@/components/PhoneLoginForm";
 
 /**
@@ -13,6 +13,7 @@ import { PhoneLoginForm } from "@/components/PhoneLoginForm";
  */
 export function LoginScreen({
   onGoogleSignIn,
+  onEmailSignIn,
   themeStyles,
   accentColor,
   textAccentColor,
@@ -24,7 +25,11 @@ export function LoginScreen({
   textAccentColor: string;
 }) {
   const [authMethod, setAuthMethod] = useState<"phone" | "google_email">("phone");
+  const [emailForm, setEmailForm] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
@@ -119,7 +124,7 @@ export function LoginScreen({
             themeAccent={accentColor}
             themeTextAccent={textAccentColor}
           />
-        ) : (
+        ) : !emailForm ? (
           <div className="space-y-4">
             <motion.button
               whileHover={{ scale: 1.03, y: -1 }}
@@ -144,7 +149,7 @@ export function LoginScreen({
             </motion.button>
 
             {authError && (
-              <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg mt-2">
+              <div className="text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg mt-2">
                 {authError}
               </div>
             )}
@@ -153,9 +158,21 @@ export function LoginScreen({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
-              className="pt-2 text-center"
+              className="pt-2 text-center space-y-2"
             >
               <button
+                type="button"
+                onClick={() => {
+                  setEmailForm(true);
+                  setAuthError("");
+                }}
+                data-testid="email-login-toggle"
+                className="block w-full text-center font-medium text-text-secondary hover:text-text-primary text-xs transition underline-offset-4 cursor-pointer focus:outline-none"
+              >
+                Log in with Email & Password
+              </button>
+              <button
+                type="button"
                 onClick={() => setAuthMethod("phone")}
                 className="font-medium text-text-secondary hover:text-text-primary text-xs transition underline-offset-4 cursor-pointer focus:outline-none"
               >
@@ -163,6 +180,94 @@ export function LoginScreen({
               </button>
             </motion.div>
           </div>
+        ) : (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!email || !password) {
+                setAuthError("Please fill in both email and password.");
+                return;
+              }
+              setAuthError("");
+              setIsSubmitting(true);
+              try {
+                if (onEmailSignIn) {
+                  await onEmailSignIn(email, password);
+                }
+              } catch (err: any) {
+                setAuthError(err.message || "Authentication failed.");
+              } finally {
+                setIsSubmitting(false);
+              }
+            }}
+            className="space-y-4 text-left"
+          >
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                data-testid="email-input"
+                className="w-full px-3.5 py-2 rounded-xl bg-surface border border-border text-text-primary text-sm focus:outline-none focus:border-accent transition"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                data-testid="password-input"
+                className="w-full px-3.5 py-2 rounded-xl bg-surface border border-border text-text-primary text-sm focus:outline-none focus:border-accent transition"
+                required
+                minLength={6}
+              />
+            </div>
+
+            {authError && (
+              <div className="text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg">
+                {authError}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailForm(false);
+                  setAuthError("");
+                }}
+                className="flex-1 py-3 px-4 rounded-xl border border-border text-text-primary text-xs font-bold hover:bg-black/5 transition cursor-pointer"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                data-testid="submit-login"
+                className="flex-1 py-3 px-4 rounded-xl bg-accent text-white text-xs font-bold hover:opacity-95 transition shadow-sm flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                style={{ color: textAccentColor }}
+              >
+                {isSubmitting ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span>Submit</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         )}
       </motion.div>
 

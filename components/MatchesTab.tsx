@@ -284,7 +284,6 @@ export function MatchesTab({
     isSuperAdmin ||
     isMatchAdmin ||
     hasAdminClaim ||
-    currentUserObj?.role === "admin" ||
     currentUserObj?.isMatchAdmin ||
     currentUserObj?.isClubAdmin;
 

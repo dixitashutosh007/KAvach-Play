@@ -88,6 +88,7 @@ export default function Home() {
     hasAdminClaim,
     signIn,
     signInDemo,
+    signInWithEmail,
     logOut,
   } = useAuth();
   const store = useStore(user);
@@ -180,24 +181,21 @@ export default function Home() {
     store.isLoaded && user
       ? store.appUsers.find((u) => u.id === user.uid)
       : null;
+  const isSuperAdminUser = !!hasAdminClaim;
   const isAdminUser =
     store.isLoaded &&
     user &&
-    (currentUserObj?.role === "admin" ||
+    (isSuperAdminUser ||
       currentUserObj?.isStudioAdmin ||
       currentUserObj?.isMatchAdmin ||
       currentUserObj?.isFinanceAdmin ||
-      currentUserObj?.isClubAdmin ||
-      hasAdminClaim);
+      currentUserObj?.isClubAdmin);
 
   useEffect(() => {
     if (isAdminUser && !hasInitializedAdminRef.current) {
       hasInitializedAdminRef.current = true;
       setPersona("admin");
-      if (
-        currentUserObj?.role === "admin" ||
-        hasAdminClaim
-      ) {
+      if (isSuperAdminUser) {
         setActiveTab("home");
       } else if (currentUserObj?.isFinanceAdmin) {
         setActiveTab("finance");
@@ -271,6 +269,22 @@ export default function Home() {
   const OUT_OF_PLAY_TABS = new Set(["profile", "studio"]);
   useEffect(() => {
     if (!store.isLoaded) return;
+    // ARCH-001: Detach listeners when domain tab is no longer active
+    if (!PAYMENT_TABS.has(activeTab)) store.detachDomain?.("allPayments");
+    if (!OTHER_FEE_TABS.has(activeTab)) store.detachDomain?.("allOtherFees");
+    if (!POSTS_TABS.has(activeTab)) store.detachDomain?.("posts");
+    if (!STATS_TABS.has(activeTab)) store.detachDomain?.("playerStats");
+    if (!MERCH_TABS.has(activeTab)) store.detachDomain?.("merchOrders");
+    if (!POLL_TABS.has(activeTab)) {
+      store.detachDomain?.("polls");
+      store.detachDomain?.("pollResponses");
+    }
+    if (!OUT_OF_PLAY_TABS.has(activeTab)) store.detachDomain?.("outOfPlays");
+    if (!BADGE_TABS.has(activeTab)) {
+      store.detachDomain?.("badges");
+      store.detachDomain?.("badgeTypeDefs");
+    }
+
     const playerScope = isAdminUser ? undefined : user?.uid;
     if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.(playerScope);
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
@@ -290,21 +304,8 @@ export default function Home() {
     if (BADGE_TABS.has(activeTab)) { store.ensureBadges?.(); store.ensureBadgeTypeDefs?.(); }
 
     return () => {
-      // ARCH-001: Detach listeners when domain tab is no longer active
-      if (!PAYMENT_TABS.has(activeTab)) store.detachDomain?.("allPayments");
-      if (!OTHER_FEE_TABS.has(activeTab)) store.detachDomain?.("allOtherFees");
-      if (!POSTS_TABS.has(activeTab)) store.detachDomain?.("posts");
-      if (!STATS_TABS.has(activeTab)) store.detachDomain?.("playerStats");
-      if (!MERCH_TABS.has(activeTab)) store.detachDomain?.("merchOrders");
-      if (!POLL_TABS.has(activeTab)) {
-        store.detachDomain?.("polls");
-        store.detachDomain?.("pollResponses");
-      }
-      if (!OUT_OF_PLAY_TABS.has(activeTab)) store.detachDomain?.("outOfPlays");
-      if (!BADGE_TABS.has(activeTab)) {
-        store.detachDomain?.("badges");
-        store.detachDomain?.("badgeTypeDefs");
-      }
+      // ARCH-001: Teardown on unmount / navigation
+      store.detachAllLazy?.();
     };
   }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain]);
 
@@ -402,6 +403,7 @@ export default function Home() {
     return (
       <LoginScreen
         onGoogleSignIn={signIn}
+        onEmailSignIn={signInWithEmail}
         themeStyles={themeStyles}
         accentColor={currentThemeObj.accent}
         textAccentColor={currentThemeObj.textAccent}
@@ -554,8 +556,7 @@ export default function Home() {
     );
   }
 
-  const isSuperAdmin =
-    appUser?.role === "admin" || hasAdminClaim;
+  const isSuperAdmin = !!hasAdminClaim;
   const isFinanceAdmin = isSuperAdmin || appUser?.isFinanceAdmin;
   const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
   const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;
@@ -710,9 +711,9 @@ export default function Home() {
                   }
                 }}
                 className="min-h-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center"
-                title={persona === "admin" ? "Switch to Player View" : "Switch to Admin View"}
+                title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
               >
-                <span className="hidden xs:inline">{persona === "admin" ? "View Player" : "Manage Admin"}</span>
+                <span className="hidden xs:inline">{persona === "admin" ? "Player View" : "Admin Console"}</span>
                 <span className="xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>
               </button>
             )}
@@ -896,110 +897,76 @@ export default function Home() {
                     </button>
                   )}
 
+                  {isFeatureEnabled("matches") && (
+                    <button
+                      onClick={() => setActiveTab("matches")}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                        activeTab === "matches"
+                          ? "bg-accent text-text-accent"
+                          : "text-text-secondary hover:bg-surface-hover"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <CalendarDays className="w-4.5 h-4.5 shrink-0" /> Matches
+                      </span>
+                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setActiveTab("finance")}
                     className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                      activeTab === "finance"
+                      activeTab === "finance" || activeTab === "dues_and_reminders"
                         ? "bg-accent text-text-accent"
                         : "text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     <span className="flex items-center gap-3">
-                      <Wallet className="w-4.5 h-4.5 shrink-0" /> My Finance
+                      <Wallet className="w-4.5 h-4.5 shrink-0" /> Payments
                     </span>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                   </button>
 
-                  <a
-                    href={`/pay/${player?.id || user?.uid}`}
-                    className="w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer text-accent hover:bg-accent/10"
-                  >
-                    <span className="flex items-center gap-3">
-                      <CreditCard className="w-4.5 h-4.5 shrink-0" /> Pay Now
-                    </span>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                  </a>
+                  {isFeatureEnabled("leaderboard") && (
+                    <button
+                      onClick={() => setActiveTab("leaderboard")}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                        activeTab === "leaderboard"
+                          ? "bg-accent text-text-accent"
+                          : "text-text-secondary hover:bg-surface-hover"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <Trophy className="w-4.5 h-4.5 shrink-0" /> Performance
+                      </span>
+                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  )}
 
                   <button
-                    onClick={() => setActiveTab("profile")}
+                    onClick={() => setActiveTab("club")}
                     className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                      activeTab === "profile"
+                      activeTab === "club"
                         ? "bg-accent text-text-accent"
                         : "text-text-secondary hover:bg-surface-hover"
                     }`}
                   >
                     <span className="flex items-center gap-3">
-                      <Users className="w-4.5 h-4.5 shrink-0" /> Profile
+                      <Users className="w-4.5 h-4.5 shrink-0" /> Club
                     </span>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                   </button>
-
-                  <div className="border-t border-border mt-2 pt-2">
-                    <div className="text-[9px] text-text-primary/30 uppercase font-black tracking-wider px-3 mb-1.5">
-                      More
-                    </div>
-                    {isFeatureEnabled("matches") && (
-                      <button
-                        onClick={() => setActiveTab("matches")}
-                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "matches" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                        }`}
-                      >
-                        <CalendarDays className="w-4 h-4 shrink-0" /> Matches
-                      </button>
-                    )}
-                    {isFeatureEnabled("leaderboard") && (
-                      <button
-                        onClick={() => setActiveTab("leaderboard")}
-                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "leaderboard" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                        }`}
-                      >
-                        <Trophy className="w-4 h-4 shrink-0" /> Leaderboard
-                      </button>
-                    )}
-                    {isFeatureEnabled("studio") && (
-                      <button
-                        onClick={() => setActiveTab("studio")}
-                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "studio" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                        }`}
-                      >
-                        <Video className="w-4 h-4 shrink-0" /> Studio
-                      </button>
-                    )}
-                    {isFeatureEnabled("shop") && (
-                      <button
-                        onClick={() => setActiveTab("shop")}
-                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "shop" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                        }`}
-                      >
-                        <ShoppingBag className="w-4 h-4 shrink-0" /> Shop
-                      </button>
-                    )}
-                    {canDesign && (
-                      <button
-                        onClick={() => setActiveTab("design")}
-                        className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                          activeTab === "design" ? "bg-accent text-text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                        }`}
-                      >
-                        <ImageIcon className="w-4 h-4 shrink-0" /> Design
-                      </button>
-                    )}
-                  </div>
                 </>
               ) : (
                 <div className="space-y-1">
                   {([
-                    { tab: "home", label: "Dashboard Hub", icon: HomeIcon, show: true },
+                    { tab: "home", label: "Overview", icon: HomeIcon, show: true },
                     { tab: "matches", label: "Match Centre", icon: CalendarDays, show: isMatchAdmin },
-                    { tab: "finance", label: "Finance Command", icon: Shield, show: isFinanceAdmin },
-                    { tab: "club", label: "People & Teams", icon: Users, show: isClubAdmin },
+                    { tab: "club", label: "Player Roster", icon: Users, show: isClubAdmin },
+                    { tab: "finance", label: "Finance & Dues", icon: Shield, show: isFinanceAdmin },
+                    { tab: "studio", label: "Studio & Nets", icon: Video, show: isStudioAdmin },
                     { tab: "design", label: "Design Studio", icon: ImageIcon, show: canDesign },
-                    { tab: "settings", label: "Club Settings", icon: SettingsIcon, show: isSuperAdmin },
-                    { tab: "studio", label: "Studio / Coaching", icon: Video, show: isStudioAdmin },
+                    { tab: "settings", label: "Settings & Access", icon: SettingsIcon, show: isSuperAdmin },
                   ] as const)
                     .filter((item) => item.show)
                     .map((item) => {

@@ -31,21 +31,24 @@ export function extractWebhookEventDetails(payload: any): WebhookEventDetails | 
 
   // Ensure paymentId and orderId are never confused (order.entity.id is ALWAYS orderId)
   let paymentId = "";
-  if (paymentEntity?.id && String(paymentEntity.id).startsWith("pay_")) {
-    paymentId = String(paymentEntity.id);
-  } else if (orderEntity?.payment_id && String(orderEntity.payment_id).startsWith("pay_")) {
-    paymentId = String(orderEntity.payment_id);
+  if (paymentEntity?.id && String(paymentEntity.id).trim().startsWith("pay_")) {
+    paymentId = String(paymentEntity.id).trim();
+  } else if (orderEntity?.payment_id && String(orderEntity.payment_id).trim().startsWith("pay_")) {
+    paymentId = String(orderEntity.payment_id).trim();
   } else if (Array.isArray(orderEntity?.payments) && orderEntity.payments.length > 0) {
     const p0 = orderEntity.payments[0];
     const pid = typeof p0 === "string" ? p0 : p0?.id;
-    if (pid && String(pid).startsWith("pay_")) {
-      paymentId = String(pid);
+    if (pid && String(pid).trim().startsWith("pay_")) {
+      paymentId = String(pid).trim();
     }
   }
 
-  const orderId =
-    paymentEntity?.order_id ||
-    (orderEntity?.id && String(orderEntity.id).startsWith("order_") ? String(orderEntity.id) : "");
+  let orderId = "";
+  if (paymentEntity?.order_id && String(paymentEntity.order_id).trim().startsWith("order_")) {
+    orderId = String(paymentEntity.order_id).trim();
+  } else if (orderEntity?.id && String(orderEntity.id).trim().startsWith("order_")) {
+    orderId = String(orderEntity.id).trim();
+  }
 
   // Raw amount check - do NOT default to valid number if missing
   const rawAmount =
@@ -120,7 +123,7 @@ export function validateWebhookTransaction(
 
   // 3. Mandatory Payment ID verification for BOTH events (payment.captured AND order.paid)
   // Prevents financial fulfilment without an authoritative payment identifier
-  if (!details.paymentId || !details.paymentId.startsWith("pay_")) {
+  if (!details.paymentId || !details.paymentId.startsWith("pay_") || details.paymentId.trim() === "pay_") {
     return {
       ok: false,
       error: `Missing or invalid payment ID (must start with 'pay_') for event '${details.event}'.`,
@@ -144,11 +147,14 @@ export function validateWebhookTransaction(
     };
   }
 
-  // 6. Currency verification (Strict: no silent default)
+  // 6. Currency verification (Strict: no silent defaulting on stored intent or payload)
+  if (!intent.currency || typeof intent.currency !== "string" || !intent.currency.trim()) {
+    return { ok: false, error: "Stored intent is missing a valid currency." };
+  }
   if (!details.capturedCurrency) {
     return { ok: false, error: "Missing currency in webhook payload." };
   }
-  const expectedCurrency = String(intent.currency || "INR").toUpperCase();
+  const expectedCurrency = intent.currency.trim().toUpperCase();
   if (details.capturedCurrency !== expectedCurrency) {
     return {
       ok: false,

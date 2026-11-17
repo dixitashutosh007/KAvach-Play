@@ -7,8 +7,7 @@
  * (in particular, the payments rule that forbids changing playerId).
  *
  * Body: { loserId: string, keeperId: string, dryRun?: boolean }
- * Auth: requireAdmin (Firebase ID token with the admin claim or
- *       an appUsers/{uid}.role === 'admin' fallback).
+ * Auth: requireAdmin (Firebase ID token with verified admin custom claim { admin: true }).
  *
  * Semantics:
  *   1. Reparent every matches/{matchId}/payments doc owned by loser → keeper
@@ -21,10 +20,14 @@
  *   8. Supports dryRun flag to preview changes without modifying data
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import firebaseConfig from "@/firebase-applet-config.json";
+import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
+import {
+  computeKeeperPatch,
+  normalizeIndianMobile,
+} from "../../../../lib/player-merge.ts";
 
 function ensureAdminApp() {
   const apps = getApps();
@@ -46,38 +49,6 @@ function getDb() {
     return getFirestore(app);
   }
 }
-
-// Same normalization as lib/utils.ts — duplicated here so the server
-// route has no client-side import surface.
-function normalizeIndianMobile(m: string): string {
-  if (!m) return "";
-  const digits = String(m).replace(/\D/g, "");
-  if (digits.length === 10) return `+91${digits}`;
-  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
-  if (digits.length === 11 && digits.startsWith("0"))
-    return `+91${digits.slice(1)}`;
-  return m; // give up, return as-is
-}
-
-const FILL_IF_EMPTY = [
-  "email",
-  "dob",
-  "locality",
-  "bloodGroup",
-  "emergencyContact",
-  "battingStyle",
-  "bowlingStyle",
-  "chestSize",
-  "waistSize",
-  "jerseyNumber",
-  "jerseyName",
-  "studioExpiryDate",
-  "studioEndDate",
-  "studioPlan",
-  "lastPaidDate",
-  "lastPaidAmount",
-  "photoURL",
-] as const;
 
 /**
  * PATCH /api/admin/merge-players
@@ -231,34 +202,7 @@ export async function POST(req: Request) {
     }
 
     // 5. Fill-in-empties on keeper
-    const keeperPatch: Record<string, any> = {};
-    for (const field of FILL_IF_EMPTY) {
-      const kVal = (keeper as any)[field];
-      const lVal = (loser as any)[field];
-      if (
-        (kVal === undefined || kVal === null || kVal === "") &&
-        lVal !== undefined &&
-        lVal !== null &&
-        lVal !== ""
-      ) {
-        keeperPatch[field] = lVal;
-      }
-    }
-    if (!(keeper as any).isStudioMember && (loser as any).isStudioMember) {
-      keeperPatch.isStudioMember = true;
-    }
-    if (!(keeper as any).isWicketKeeper && (loser as any).isWicketKeeper) {
-      keeperPatch.isWicketKeeper = true;
-    }
-    // Reparent authUid if keeper has none and loser has one
-    if (!(keeper as any).authUid && (loser as any).authUid) {
-      keeperPatch.authUid = (loser as any).authUid;
-    }
-
-    const canonicalMobile =
-      (keeper as any).mobile || (loser as any).mobile || "";
-    const normalized = normalizeIndianMobile(canonicalMobile);
-    if (normalized) keeperPatch.mobile = normalized;
+    const keeperPatch = computeKeeperPatch(keeper, loser);
 
     // Dry Run early exit
     if (dryRun) {

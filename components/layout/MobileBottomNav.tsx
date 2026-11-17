@@ -8,6 +8,7 @@ import {
   Users,
   CalendarDays,
   MoreHorizontal,
+  Trophy,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
 import { MoreDrawer } from "./MoreDrawer";
@@ -156,33 +157,21 @@ export function MobileBottomNav({
           <HomeIcon className="w-5 h-5" />
           <span className={labelCls}>Home</span>
         </button>
-        <button onClick={() => onSelectTab("finance")} className={btnCls(activeTab === "finance")}>
+        <button onClick={() => onSelectTab("matches")} className={btnCls(activeTab === "matches")}>
+          <CalendarDays className="w-5 h-5" />
+          <span className={labelCls}>Matches</span>
+        </button>
+        <button onClick={() => onSelectTab("finance")} className={btnCls(activeTab === "finance" || activeTab === "dues_and_reminders")}>
           <Wallet className="w-5 h-5" />
-          <span className={labelCls}>Finance</span>
+          <span className={labelCls}>Payments</span>
         </button>
-        {currentPlayerId ? (
-          <a
-            href={`/pay/${currentPlayerId}`}
-            className="flex-1 min-h-[48px] py-1.5 flex flex-col items-center justify-center gap-0.5 cursor-pointer text-accent hover:text-accent/80 transition"
-          >
-            <span className="w-9 h-9 rounded-full bg-accent flex items-center justify-center shadow-lg shadow-accent/30 -mt-3">
-              <CreditCard className="w-5 h-5 text-text-accent" />
-            </span>
-            <span className={`${labelCls} text-accent`}>Pay</span>
-          </a>
-        ) : (
-          <button onClick={() => onSelectTab("finance")} className={btnCls(false)}>
-            <CreditCard className="w-5 h-5" />
-            <span className={labelCls}>Pay</span>
-          </button>
-        )}
-        <button onClick={() => onSelectTab("profile")} className={btnCls(activeTab === "profile")}>
+        <button onClick={() => onSelectTab("leaderboard")} className={btnCls(activeTab === "leaderboard")}>
+          <Trophy className="w-5 h-5" />
+          <span className={labelCls}>Performance</span>
+        </button>
+        <button onClick={() => onSelectTab("club")} className={btnCls(activeTab === "club" || activeTab === "profile" || activeTab === "shop" || activeTab === "studio" || activeTab === "opinion" || activeTab === "design")}>
           <Users className="w-5 h-5" />
-          <span className={labelCls}>Profile</span>
-        </button>
-        <button onClick={() => setMoreOpen(true)} className={btnCls(isMoreActive)}>
-          <MoreHorizontal className="w-5 h-5" />
-          <span className={labelCls}>More</span>
+          <span className={labelCls}>Club</span>
         </button>
       </nav>
     </>

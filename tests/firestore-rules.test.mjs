@@ -108,7 +108,7 @@ describe("Firestore Security Rules — Emulator Integration Tests", { skip: !emu
     if (testEnv) await testEnv.clearFirestore();
   });
 
-  it("SEC-001: player cannot self-escalate role to admin", async () => {
+  it("SEC-001: player cannot self-escalate role or specialist permissions", async () => {
     const { assertFails, assertSucceeds } = await import("@firebase/rules-unit-testing");
     const playerContext = testEnv.authenticatedContext("user_123");
     const userDoc = playerContext.firestore().collection("appUsers").doc("user_123");
@@ -116,28 +116,114 @@ describe("Firestore Security Rules — Emulator Integration Tests", { skip: !emu
     // Can create own profile as player
     await assertSucceeds(userDoc.set({ name: "Player 123", role: "player" }));
 
-    // Cannot create own profile with escalated flags
-    await assertFails(playerContext.firestore().collection("appUsers").doc("evil_user").set({
-      name: "Evil",
-      role: "player",
-      isDesigner: true,
-    }));
+    // Cannot create own profile with escalated flags or non-player role
+    const prohibitedFlags = [
+      { isSuperAdmin: true },
+      { isStudioAdmin: true },
+      { isMatchAdmin: true },
+      { isFinanceAdmin: true },
+      { isClubAdmin: true },
+      { isDesigner: true },
+      { canDesign: true },
+      { status: "Active" },
+      { role: "admin" },
+    ];
+
+    for (const flag of prohibitedFlags) {
+      await assertFails(playerContext.firestore().collection("appUsers").doc("evil_user_" + Object.keys(flag)[0]).set({
+        name: "Evil",
+        role: "player",
+        ...flag,
+      }));
+    }
 
     // Cannot update own role to admin
     await assertFails(userDoc.update({ role: "admin" }));
 
-    // Cannot update own admin or designer flags
+    // Cannot update own admin, specialist, status, or designer flags
     await assertFails(userDoc.update({ isSuperAdmin: true }));
+    await assertFails(userDoc.update({ isStudioAdmin: true }));
+    await assertFails(userDoc.update({ isMatchAdmin: true }));
     await assertFails(userDoc.update({ isFinanceAdmin: true }));
+    await assertFails(userDoc.update({ isClubAdmin: true }));
     await assertFails(userDoc.update({ isDesigner: true }));
     await assertFails(userDoc.update({ canDesign: true }));
+    await assertFails(userDoc.update({ status: "Active" }));
 
-    // SuperAdmin with admin claim CAN manage roles
+    // Cannot update another user's document
+    const otherUserDoc = playerContext.firestore().collection("appUsers").doc("other_user");
+    await assertFails(otherUserDoc.set({ name: "Hacked", role: "player" }));
+    await assertFails(otherUserDoc.update({ name: "Hacked" }));
+
+    // SuperAdmin with admin claim CAN manage roles, status, and specialist flags
     const adminContext = testEnv.authenticatedContext("admin_1", { admin: true });
     await assertSucceeds(adminContext.firestore().collection("appUsers").doc("user_123").update({
+      isStudioAdmin: true,
+      isMatchAdmin: true,
+      isFinanceAdmin: true,
+      isClubAdmin: true,
       isDesigner: true,
+      canDesign: true,
+      status: "Active",
       role: "admin",
     }));
+  });
+
+  it("SEC-001: user with forged role: 'admin' in Firestore without custom claim cannot perform super-admin operations", async () => {
+    const { assertFails, assertSucceeds } = await import("@firebase/rules-unit-testing");
+    // Seed appUsers document with role: "admin"
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore()
+        .collection("appUsers").doc("fake_admin_uid")
+        .set({ role: "admin", name: "Forged Admin" });
+      await context.firestore()
+        .collection("auditLogs").doc("log_1")
+        .set({ action: "critical_action", timestamp: new Date() });
+    });
+
+    // Authenticated user with NO custom claim (even though their Firestore doc says role: "admin")
+    const fakeAdminContext = testEnv.authenticatedContext("fake_admin_uid");
+    const appConfigDoc = fakeAdminContext.firestore().collection("appConfig").doc("global");
+    const auditLogDoc = fakeAdminContext.firestore().collection("auditLogs").doc("log_1");
+
+    // Must fail to write appConfig
+    await assertFails(appConfigDoc.set({ clubName: "Hacked Club" }));
+
+    // Must fail to read or delete auditLogs
+    await assertFails(auditLogDoc.get());
+    await assertFails(auditLogDoc.delete());
+
+    // Verified super-admin with custom claim { admin: true } succeeds
+    const realAdminContext = testEnv.authenticatedContext("real_admin_uid", { admin: true });
+    await assertSucceeds(realAdminContext.firestore().collection("appConfig").doc("global").set({ clubName: "Legit Club" }));
+    await assertSucceeds(realAdminContext.firestore().collection("auditLogs").doc("log_1").get());
+  });
+
+  it("SEC-001: specialist admin (isFinanceAdmin) can manage otherFees but cannot access super-admin boundaries", async () => {
+    const { assertFails, assertSucceeds } = await import("@firebase/rules-unit-testing");
+    // Seed finance admin appUsers doc
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore()
+        .collection("appUsers").doc("finance_admin_uid")
+        .set({ role: "player", isFinanceAdmin: true });
+      await context.firestore()
+        .collection("players").doc("p_1")
+        .set({ name: "Player 1", status: "Active" });
+    });
+
+    const financeContext = testEnv.authenticatedContext("finance_admin_uid");
+
+    // Finance admin can manage otherFees
+    const feeDoc = financeContext.firestore().collection("players").doc("p_1").collection("otherFees").doc("fee_fin");
+    await assertSucceeds(feeDoc.set({ title: "Kit Fee", amount: 500, status: "Unpaid" }));
+
+    // Finance admin CANNOT write appConfig (super-admin only)
+    const appConfigDoc = financeContext.firestore().collection("appConfig").doc("global");
+    await assertFails(appConfigDoc.set({ clubName: "Finance Takeover" }));
+
+    // Finance admin CANNOT alter other user's appUsers document roles
+    const victimUserDoc = financeContext.firestore().collection("appUsers").doc("victim_uid");
+    await assertFails(victimUserDoc.set({ name: "Victim", role: "admin" }));
   });
 
   it("SEC-002: player cannot mark match payment as Paid", async () => {
