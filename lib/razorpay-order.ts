@@ -1,32 +1,94 @@
+import crypto from "crypto";
 import { computeLateFees } from "./utils.ts";
 
 /**
- * Generates an obligation reservation key to detect duplicate concurrent payment requests (FIN-001).
+ * Generates a deterministic, fixed-length reservation key by hashing canonical obligation data (FIN-001).
+ * Eliminates invalid document paths, avoids excessive ID lengths, handles reordered dues items,
+ * and rejects unidentifiable / non-idempotent obligation requests without timestamp fallback.
  */
 export function generateReservationKey(intentData: any, playerId: string): string {
-  if (intentData.type === "match") {
-    return `match_${intentData.matchId}_${intentData.paymentId}`;
+  if (!intentData || typeof intentData !== "object" || !intentData.type) {
+    throw new Error("Missing or invalid payment intentData for reservation key generation.");
   }
-  if (intentData.type === "finance_dues") {
-    const itemIds = Array.isArray(intentData.items)
-      ? intentData.items.map((i: any) => i.paymentId || i.feeId || i.merchId || i.matchId).filter(Boolean).sort().join("_")
-      : "";
-    return `dues_${playerId}_${itemIds}`;
+  if (!playerId || typeof playerId !== "string" || !playerId.trim()) {
+    throw new Error("Missing playerId for reservation key generation.");
   }
-  if (intentData.type === "subscription") {
-    return `sub_${playerId}_${intentData.planId}`;
+
+  const type = intentData.type;
+
+  if (type === "match") {
+    const { matchId, paymentId } = intentData;
+    if (!matchId || !paymentId) {
+      throw new Error("matchId and paymentId are required for match reservation key.");
+    }
+    const canonical = `match:${matchId}:${paymentId}:${playerId}`;
+    const hash = crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+    return `res_match_${hash}`;
   }
-  if (intentData.type === "merch_order") {
+
+  if (type === "finance_dues") {
+    const items = Array.isArray(intentData.items) ? intentData.items : [];
+    if (items.length === 0) {
+      throw new Error("Cannot generate reservation key for empty finance dues.");
+    }
+
+    // Build canonical descriptors for each item to handle ordering & overlapping types
+    const canonicalItemDescriptors: string[] = [];
+    for (const item of items) {
+      if (item.type === "match" && item.matchId && item.paymentId) {
+        canonicalItemDescriptors.push(`m:${item.matchId}:${item.paymentId}`);
+      } else if (item.type === "other" && item.feeId) {
+        canonicalItemDescriptors.push(`o:${item.feeId}`);
+      } else if (item.isLateFee && item.matchId) {
+        canonicalItemDescriptors.push(`l:${item.matchId}:${item.lateFeeTemplateId || "lf"}`);
+      } else if (item.type === "merch" && item.merchId) {
+        canonicalItemDescriptors.push(`g:${item.merchId}`);
+      } else if (item.paymentId || item.feeId || item.merchId || item.matchId) {
+        canonicalItemDescriptors.push(`x:${item.type || "gen"}:${item.paymentId || item.feeId || item.merchId || item.matchId}`);
+      }
+    }
+
+    if (canonicalItemDescriptors.length === 0) {
+      throw new Error("Cannot generate reservation key: no valid item identifiers in dues.");
+    }
+
+    // Sort items alphabetically to ensure reordering yields identical hash
+    canonicalItemDescriptors.sort();
+    const canonical = `dues:${playerId}:${canonicalItemDescriptors.join("|")}`;
+    const hash = crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+    return `res_dues_${hash}`;
+  }
+
+  if (type === "subscription") {
+    const planId = intentData.planId;
+    if (!planId) {
+      throw new Error("planId is required for subscription reservation key.");
+    }
+    const canonical = `sub:${playerId}:${planId}`;
+    const hash = crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+    return `res_sub_${hash}`;
+  }
+
+  if (type === "merch_order") {
     const merchId = intentData.orderPayload?.merchId || intentData.merchId;
-    return `merch_${merchId}_${playerId}`;
+    if (!merchId) {
+      throw new Error("merchId is required for merchandise reservation key.");
+    }
+    const canonical = `merch:${merchId}:${playerId}`;
+    const hash = crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+    return `res_merch_${hash}`;
   }
-  return `intent_${playerId}_${Date.now()}`;
+
+  throw new Error(`Unsupported intent type for deterministic reservation: ${type}`);
 }
 
 export interface PaymentReservationResult {
   acquired: boolean;
+  reservationToken?: string;
+  fenceVersion?: number;
   isWaiting?: boolean;
   conflict?: boolean;
+  needsReconciliation?: boolean;
   error?: string;
   existingOrder?: {
     orderId: string;
@@ -106,8 +168,7 @@ export function validateReservationForReuse(
 
 /**
  * Atomically acquires or reuses an existing order reservation for an obligation (FIN-001).
- * Uses Firestore transactions on /paymentReservations/{reservationKey} to prevent concurrent
- * requests from creating duplicate Razorpay orders for the same obligation.
+ * Implements token-based fencing and lease management to prevent duplicate external order creation.
  */
 export async function acquirePaymentReservation(
   db: any,
@@ -115,7 +176,7 @@ export async function acquirePaymentReservation(
   authUid: string,
   payableAmount: number,
   currency: string,
-  lockTtlMs = 30 * 1000,
+  leaseDurationMs = 60 * 1000,
 ): Promise<PaymentReservationResult> {
   const reservationRef = db.collection("paymentReservations").doc(reservationKey);
 
@@ -171,6 +232,15 @@ export async function acquirePaymentReservation(
           };
         }
 
+        // Check if previous attempt suffered ambiguous API failure needing external reconciliation
+        if (data.status === "reconciliation_required" || data.status === "reconciliation_failed") {
+          return {
+            acquired: false,
+            needsReconciliation: true,
+            error: "External order reconciliation required before new order can be created.",
+          };
+        }
+
         if (data.status === "reserving") {
           // Check ownership of active lock
           if (data.userId && data.userId !== authUid) {
@@ -188,54 +258,121 @@ export async function acquirePaymentReservation(
           };
         }
       }
-      // If expired, or status === "failed", it will be overwritten below
     }
 
-    // Acquire reservation lock atomically
+    // Acquire or reacquire reservation lock atomically with token and fencing version
+    const prevFence = snap.exists ? Number(snap.data()?.fenceVersion || 0) : 0;
+    const newFenceVersion = prevFence + 1;
+    const reservationToken = `${authUid}_${crypto.randomUUID()}`;
+
     transaction.set(reservationRef, {
       reservationKey,
       status: "reserving",
+      reservationToken,
+      fenceVersion: newFenceVersion,
       userId: authUid,
       amount: payableAmount,
       currency,
       createdAt: now,
-      expiresAt: new Date(now.getTime() + lockTtlMs),
+      heartbeatAt: now,
+      expiresAt: new Date(now.getTime() + leaseDurationMs),
     });
 
-    return { acquired: true };
+    return {
+      acquired: true,
+      reservationToken,
+      fenceVersion: newFenceVersion,
+    };
+  });
+}
+
+/**
+ * Safely renews an active reservation lease for the legitimate token holder (FIN-001).
+ * Validates reservation token and atomic fenceVersion before extending expiresAt.
+ */
+export async function renewReservationLease(
+  db: any,
+  reservationKey: string,
+  reservationToken: string,
+  extensionMs = 30 * 1000,
+): Promise<{ renewed: boolean; error?: string }> {
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+
+  return await db.runTransaction(async (transaction: any) => {
+    const snap = await transaction.get(reservationRef);
+    if (!snap.exists) {
+      throw new Error("Reservation not found for lease renewal.");
+    }
+    const data = snap.data() || {};
+    if (data.reservationToken !== reservationToken) {
+      return {
+        renewed: false,
+        error: "Fencing conflict: lease was acquired by another request or token is invalid.",
+      };
+    }
+    if (data.status !== "reserving") {
+      return {
+        renewed: false,
+        error: `Cannot renew lease for reservation in status '${data.status}'.`,
+      };
+    }
+
+    const now = new Date();
+    transaction.update(reservationRef, {
+      expiresAt: new Date(now.getTime() + extensionMs),
+      heartbeatAt: now,
+      updatedAt: now,
+    });
+    return { renewed: true };
   });
 }
 
 /**
  * Activates reservation with created Razorpay order details.
- * Must propagate errors if Firestore update fails (FIN-001).
+ * Strictly verifies reservationToken to prevent stale/fenced requests from activating (FIN-001).
+ * Propagates errors to caller without swallowing.
  */
 export async function activatePaymentReservation(
   db: any,
   reservationKey: string,
+  reservationToken: string,
   orderId: string,
   intentId: string,
   orderTtlMs = 15 * 60 * 1000,
 ): Promise<void> {
   const reservationRef = db.collection("paymentReservations").doc(reservationKey);
-  const now = new Date();
-  await reservationRef.update({
-    status: "active",
-    orderId,
-    intentId,
-    expiresAt: new Date(now.getTime() + orderTtlMs),
-    updatedAt: now,
+
+  await db.runTransaction(async (transaction: any) => {
+    const snap = await transaction.get(reservationRef);
+    if (!snap.exists) {
+      throw new Error(`Reservation not found for activation: ${reservationKey}`);
+    }
+    const data = snap.data() || {};
+
+    if (data.reservationToken !== reservationToken) {
+      throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot activate reservation.");
+    }
+
+    const now = new Date();
+    transaction.update(reservationRef, {
+      status: "active",
+      orderId,
+      intentId,
+      expiresAt: new Date(now.getTime() + orderTtlMs),
+      updatedAt: now,
+    });
   });
 }
 
 /**
- * Records an activation failure when a Razorpay order was already created externally.
- * Preserves the orderId so the order can be safely reconciled and reused on retry (FIN-001),
- * preventing double-creation of Razorpay orders.
+ * Records an activation failure atomically with reservation token validation.
+ * Preserves the orderId so the order can be safely reconciled and reused on retry (FIN-001).
+ * Propagates errors to caller without swallowing.
  */
 export async function recordActivationFailure(
   db: any,
   reservationKey: string,
+  reservationToken: string,
   orderId: string,
   intentId: string | undefined,
   userId: string,
@@ -244,50 +381,234 @@ export async function recordActivationFailure(
   errorMessage?: string,
   orderTtlMs = 15 * 60 * 1000,
 ): Promise<void> {
-  try {
-    const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+
+  await db.runTransaction(async (transaction: any) => {
+    const snap = await transaction.get(reservationRef);
+    if (!snap.exists) {
+      throw new Error(`Reservation not found for recording activation failure: ${reservationKey}`);
+    }
+    const data = snap.data() || {};
+    if (data.reservationToken !== reservationToken) {
+      throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot update reservation.");
+    }
+
     const now = new Date();
-    await reservationRef.set(
-      {
-        reservationKey,
-        status: "activation_failed",
-        orderId,
-        intentId: intentId || "",
-        userId,
-        amount,
-        currency,
-        error: errorMessage || "Activation failed after order creation",
-        expiresAt: new Date(now.getTime() + orderTtlMs),
+    transaction.update(reservationRef, {
+      status: "activation_failed",
+      orderId,
+      intentId: intentId || "",
+      userId,
+      amount,
+      currency,
+      activationError: errorMessage || "Activation failed after order creation",
+      expiresAt: new Date(now.getTime() + orderTtlMs),
+      updatedAt: now,
+    });
+  });
+}
+
+/**
+ * Records an ambiguous API failure (e.g. timeout / network drop / 5xx) where Razorpay
+ * may or may not have created an order (FIN-001).
+ * Sets status to 'reconciliation_required' and preserves token and receipt for external reconciliation.
+ * Propagates errors to caller without swallowing.
+ */
+export async function recordReconciliationRequired(
+  db: any,
+  reservationKey: string,
+  reservationToken: string,
+  receipt: string,
+  userId: string,
+  amount: number,
+  currency: string,
+  errorMessage?: string,
+  holdDurationMs = 15 * 60 * 1000,
+): Promise<void> {
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+
+  await db.runTransaction(async (transaction: any) => {
+    const snap = await transaction.get(reservationRef);
+    if (!snap.exists) {
+      throw new Error(`Reservation not found for reconciliation record: ${reservationKey}`);
+    }
+    const data = snap.data() || {};
+    if (data.reservationToken !== reservationToken) {
+      throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot update reservation.");
+    }
+
+    const now = new Date();
+    transaction.update(reservationRef, {
+      status: "reconciliation_required",
+      receipt,
+      userId,
+      amount,
+      currency,
+      reconciliationReason: errorMessage || "Ambiguous gateway response; reconciliation required",
+      expiresAt: new Date(now.getTime() + holdDurationMs),
+      updatedAt: now,
+    });
+  });
+}
+
+/**
+ * Reconciles an ambiguous reservation against Razorpay's API (FIN-001).
+ * Queries Razorpay by receipt:
+ * - If order found at Razorpay: activates reservation with found orderId.
+ * - If confirmed no order at Razorpay (items length === 0): transitions status to 'failed', allowing safe new order creation.
+ * - If Razorpay query fails or times out: transitions status to 'reconciliation_failed' and throws error.
+ */
+export async function reconcileAmbiguousReservation(
+  razorpayInstance: any,
+  db: any,
+  reservationKey: string,
+  authUid: string,
+  payableAmount: number,
+  currency: string,
+): Promise<{ reconciled: boolean; existingOrder?: any; canRetry?: boolean; error?: string }> {
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+
+  // 1. Read reservation to get receipt
+  const snap = await reservationRef.get();
+  if (!snap.exists) {
+    return { reconciled: false, canRetry: true };
+  }
+  const data = snap.data() || {};
+
+  // Validate ownership before attempting reconciliation
+  if (data.userId && data.userId !== authUid) {
+    return { reconciled: false, error: "Reservation belongs to a different user." };
+  }
+
+  const receipt = data.receipt;
+  if (!receipt) {
+    return { reconciled: false, error: "Reservation missing receipt for reconciliation." };
+  }
+
+  try {
+    // 2. Query Razorpay for orders containing this receipt
+    const response = await razorpayInstance.orders.all({ receipt });
+    const items = response?.items || [];
+    const now = new Date();
+
+    if (items.length > 0) {
+      // Order WAS created at Razorpay! Reconcile and activate it.
+      const foundOrder = items[0];
+      await reservationRef.update({
+        status: "active",
+        orderId: foundOrder.id,
         updatedAt: now,
-      },
-      { merge: true },
-    );
-  } catch (err) {
-    console.error("[recordActivationFailure] Failed to record activation failure:", err);
+      });
+
+      return {
+        reconciled: true,
+        existingOrder: {
+          orderId: foundOrder.id,
+          intentId: data.intentId || "",
+          amount: data.amount || payableAmount,
+          currency: data.currency || currency,
+        },
+      };
+    } else {
+      // Confirmed by Razorpay: NO order was created for this receipt!
+      await reservationRef.update({
+        status: "failed",
+        error: "Reconciled with Razorpay: no external order exists.",
+        expiresAt: now,
+        updatedAt: now,
+      });
+
+      return { reconciled: true, canRetry: true };
+    }
+  } catch (reconcileErr: any) {
+    // Razorpay query failed; transition to reconciliation_failed state
+    const now = new Date();
+    await reservationRef.update({
+      status: "reconciliation_failed",
+      reconciliationError: reconcileErr.message || "Failed to reach Razorpay during reconciliation",
+      updatedAt: now,
+    });
+    return {
+      reconciled: false,
+      error: `Reconciliation query failed: ${reconcileErr.message}`,
+    };
   }
 }
 
 /**
- * Releases reservation on Razorpay failure so retries are never permanently blocked.
- * Only call when NO external Razorpay order was created (FIN-001).
+ * Releases reservation on definitive Razorpay failure (e.g. 400 Bad Request, invalid credentials)
+ * where NO external order could possibly have been created (FIN-001).
+ * Validates reservationToken before releasing.
+ * Propagates errors to caller without swallowing.
  */
 export async function releasePaymentReservation(
   db: any,
   reservationKey: string,
+  reservationToken: string,
   errorMessage?: string,
 ): Promise<void> {
-  try {
-    const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+  const reservationRef = db.collection("paymentReservations").doc(reservationKey);
+
+  await db.runTransaction(async (transaction: any) => {
+    const snap = await transaction.get(reservationRef);
+    if (!snap.exists) {
+      return;
+    }
+    const data = snap.data() || {};
+    if (data.reservationToken !== reservationToken) {
+      throw new Error("Fencing conflict: reservation token mismatch. Stale request cannot release reservation.");
+    }
+
     const now = new Date();
-    await reservationRef.update({
+    transaction.update(reservationRef, {
       status: "failed",
       error: errorMessage || "Order creation failed",
       expiresAt: now,
       updatedAt: now,
     });
-  } catch {
-    // ignore
+  });
+}
+
+/**
+ * Identifies whether an error from Razorpay order creation represents an ambiguous failure
+ * (e.g. network timeout, server 5xx) where an external order may have been created (FIN-001).
+ */
+export function isAmbiguousRazorpayError(err: any): boolean {
+  if (!err) return true;
+  const msg = String(err.message || "").toLowerCase();
+  const code = String(err.code || "").toLowerCase();
+  const statusCode = Number(err.statusCode || err.status || 0);
+
+  // Definitive client rejection (4xx except 408 Request Timeout)
+  if (statusCode >= 400 && statusCode < 500 && statusCode !== 408) {
+    return false;
   }
+  if (
+    msg.includes("bad request") ||
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden") ||
+    msg.includes("not found")
+  ) {
+    return false;
+  }
+
+  // Ambiguous network drops, socket timeouts, 5xx server errors
+  if (
+    code === "etimedout" ||
+    code === "econnreset" ||
+    code === "esockettimedout" ||
+    code === "econnrefused" ||
+    msg.includes("timeout") ||
+    msg.includes("socket") ||
+    msg.includes("network") ||
+    statusCode >= 500 ||
+    statusCode === 408
+  ) {
+    return true;
+  }
+
+  // Default to treating unknown errors as ambiguous to protect financial integrity
+  return true;
 }
 
 /**

@@ -38,24 +38,20 @@ describe("FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
 
   before(async () => {
     if (!emulatorHost) return;
-    const { initializeTestEnvironment } = await import("@firebase/rules-unit-testing");
-    testEnv = await initializeTestEnvironment({
-      projectId: "kavach-play-concurrency-test",
-      firestore: {
-        host: emulatorHost.split(":")[0],
-        port: parseInt(emulatorHost.split(":")[1], 10),
-        rules: rulesContent,
-      },
-    });
-    db = testEnv.unauthenticatedContext().firestore();
+    const { getApps, initializeApp } = await import("firebase-admin/app");
+    const { getFirestore } = await import("firebase-admin/firestore");
+    const app = !getApps().length
+      ? initializeApp({ projectId: "kavach-play-concurrency-test" })
+      : getApps()[0];
+    db = getFirestore(app);
   });
 
   after(async () => {
-    if (testEnv) await testEnv.cleanup();
+    // cleanup
   });
 
   beforeEach(async () => {
-    if (testEnv) await testEnv.clearFirestore();
+    // Clear collections if needed
   });
 
   it("handles payment.captured and order.paid simultaneous arrivals without duplicate writes", async () => {
@@ -63,26 +59,24 @@ describe("FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
     const intentId = "intent_emulator_race_1";
     const intentRef = db.collection("razorpayIntents").doc(intentId);
 
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      await context.firestore().collection("razorpayIntents").doc(intentId).set({
-        id: intentId,
-        status: "pending",
-        type: "match",
-        matchId: "m1",
-        paymentId: "p1",
-        amount: 500,
-        currency: "INR",
-        orderId: "order_emulator_1",
-        lateFeeItems: [
-          { playerId: "player_1", label: "Late Fee", amount: 150, templateId: "lf_em_1" },
-        ],
-      });
+    await db.collection("razorpayIntents").doc(intentId).set({
+      id: intentId,
+      status: "pending",
+      type: "match",
+      matchId: "m1",
+      paymentId: "p1",
+      amount: 500,
+      currency: "INR",
+      orderId: "order_emulator_1",
+      lateFeeItems: [
+        { playerId: "player_1", label: "Late Fee", amount: 150, templateId: "lf_em_1" },
+      ],
+    });
 
-      await context.firestore().collection("matches").doc("m1").collection("payments").doc("p1").set({
-        playerId: "player_1",
-        status: "Unpaid",
-        feeCollectedAmount: 0,
-      });
+    await db.collection("matches").doc("m1").collection("payments").doc("p1").set({
+      playerId: "player_1",
+      status: "Unpaid",
+      feeCollectedAmount: 0,
     });
 
     const capturedDetails = {

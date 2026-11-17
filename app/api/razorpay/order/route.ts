@@ -10,6 +10,9 @@ import {
   activatePaymentReservation,
   releasePaymentReservation,
   recordActivationFailure,
+  recordReconciliationRequired,
+  reconcileAmbiguousReservation,
+  isAmbiguousRazorpayError,
   validateReservationForReuse,
 } from "@/lib/razorpay-order";
 import firebaseConfig from "@/firebase-applet-config.json";
@@ -95,6 +98,7 @@ export async function POST(req: Request) {
 
     const reservationKey = storedIntentData.reservationKey;
     let reservationAcquired = false;
+    let reservationToken: string | undefined;
 
     if (reservationKey) {
       const resResult = await acquirePaymentReservation(
@@ -123,11 +127,46 @@ export async function POST(req: Request) {
         });
       }
 
+      if (resResult.needsReconciliation) {
+        // Previous attempt suffered ambiguous gateway failure; reconcile with Razorpay
+        const rzInstance = new Razorpay({
+          key_id: finalKeyId,
+          key_secret: finalKeySecret,
+        });
+        const recResult = await reconcileAmbiguousReservation(
+          rzInstance,
+          db,
+          reservationKey,
+          auth.uid,
+          payableAmount,
+          currency,
+        );
+
+        if (recResult.existingOrder && recResult.existingOrder.orderId) {
+          return NextResponse.json({
+            id: recResult.existingOrder.orderId,
+            amount: Math.round(recResult.existingOrder.amount * 100),
+            currency: recResult.existingOrder.currency || currency,
+            receipt,
+            status: "created",
+            notes: { ...notes, intentId: recResult.existingOrder.intentId, reusedExistingOrder: true },
+          });
+        }
+
+        if (!recResult.canRetry) {
+          return NextResponse.json(
+            { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
+            { status: 503 },
+          );
+        }
+      }
+
       if (resResult.isWaiting) {
         // Another concurrent request is actively creating the order right now.
         // Poll for up to 3 seconds (6 attempts x 500ms).
         let waitOrder: any = null;
         let reservationFailed = false;
+        let reservationNeedsReconciliation = false;
 
         for (let attempt = 0; attempt < 6; attempt++) {
           await new Promise((resolve) => setTimeout(resolve, 500));
@@ -136,6 +175,10 @@ export async function POST(req: Request) {
             const data = docSnap.data() || {};
             if ((data.status === "active" || data.status === "activation_failed") && data.orderId) {
               waitOrder = data;
+              break;
+            }
+            if (data.status === "reconciliation_required") {
+              reservationNeedsReconciliation = true;
               break;
             }
             if (data.status === "failed") {
@@ -172,6 +215,40 @@ export async function POST(req: Request) {
           });
         }
 
+        if (reservationNeedsReconciliation) {
+          const rzInstance = new Razorpay({
+            key_id: finalKeyId,
+            key_secret: finalKeySecret,
+          });
+          const recResult = await reconcileAmbiguousReservation(
+            rzInstance,
+            db,
+            reservationKey,
+            auth.uid,
+            payableAmount,
+            currency,
+          );
+
+          if (recResult.existingOrder && recResult.existingOrder.orderId) {
+            return NextResponse.json({
+              id: recResult.existingOrder.orderId,
+              amount: Math.round(recResult.existingOrder.amount * 100),
+              currency: recResult.existingOrder.currency || currency,
+              receipt,
+              status: "created",
+              notes: { ...notes, intentId: recResult.existingOrder.intentId, reusedExistingOrder: true },
+            });
+          }
+
+          if (!recResult.canRetry) {
+            return NextResponse.json(
+              { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
+              { status: 503 },
+            );
+          }
+          reservationFailed = true;
+        }
+
         if (reservationFailed) {
           // The other concurrent request failed. Safely attempt to reacquire reservation through a new atomic transaction.
           const retryRes = await acquirePaymentReservation(
@@ -202,6 +279,7 @@ export async function POST(req: Request) {
 
           if (retryRes.acquired) {
             reservationAcquired = true;
+            reservationToken = retryRes.reservationToken;
           } else {
             return NextResponse.json(
               { error: "Payment order creation failed and reservation could not be reacquired. Please retry." },
@@ -217,10 +295,11 @@ export async function POST(req: Request) {
         }
       } else {
         reservationAcquired = resResult.acquired;
+        reservationToken = resResult.reservationToken;
       }
 
       // Safety assertion: NEVER proceed to order creation without acquiring reservation (FIN-001)
-      if (!reservationAcquired) {
+      if (!reservationAcquired || !reservationToken) {
         return NextResponse.json(
           { error: "Unable to acquire payment reservation. Please retry." },
           { status: 409 },
@@ -246,7 +325,7 @@ export async function POST(req: Request) {
         status: "pending",
       });
 
-      const finalNotes = { ...notes, intentId: intentRef.id };
+      const finalNotes = { ...notes, intentId: intentRef.id, reservationKey };
 
       const options = {
         amount: Math.round(payableAmount * 100), // amount in smallest currency unit (paise)
@@ -263,20 +342,21 @@ export async function POST(req: Request) {
         updatedAt: new Date(),
       });
 
-      // Activate reservation with created order ID (FIN-001)
-      if (reservationKey) {
-        await activatePaymentReservation(db, reservationKey, order.id, intentRef.id);
+      // Activate reservation with created order ID using fenced token (FIN-001)
+      if (reservationKey && reservationToken) {
+        await activatePaymentReservation(db, reservationKey, reservationToken, order.id, intentRef.id);
       }
 
       return NextResponse.json(order);
     } catch (orderErr: any) {
-      if (reservationKey && reservationAcquired) {
+      if (reservationKey && reservationAcquired && reservationToken) {
         if (order && order.id) {
           // Razorpay order was successfully created, but Firestore activation (or intent update) failed.
           // Do NOT release reservation blindly! Record activation failure with orderId so it can be reconciled and reused (FIN-001).
           await recordActivationFailure(
             db,
             reservationKey,
+            reservationToken,
             order.id,
             intentRef?.id,
             auth.uid,
@@ -285,8 +365,25 @@ export async function POST(req: Request) {
             orderErr.message,
           );
         } else {
-          // Razorpay call itself failed (no external Razorpay order exists)
-          await releasePaymentReservation(db, reservationKey, orderErr.message);
+          // Razorpay order creation call threw an error.
+          // Distinguish between ambiguous gateway errors (timeout, 5xx) vs definitive rejections (4xx)
+          const isAmbiguous = isAmbiguousRazorpayError(orderErr);
+          if (isAmbiguous) {
+            // Ambiguous failure: Razorpay may have created order. Mark reconciliation_required.
+            await recordReconciliationRequired(
+              db,
+              reservationKey,
+              reservationToken,
+              receipt,
+              auth.uid,
+              payableAmount,
+              currency,
+              orderErr.message,
+            );
+          } else {
+            // Definitive client/validation failure before order could exist
+            await releasePaymentReservation(db, reservationKey, reservationToken, orderErr.message);
+          }
         }
       }
       throw orderErr;

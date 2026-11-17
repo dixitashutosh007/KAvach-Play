@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "clean": "next clean",
     "test:functional": "node --test tests/*.test.mjs",
+    "test:emulator": "export PATH=\"/opt/homebrew/opt/openjdk@21/bin:$PATH\"; npx firebase emulators:exec --only firestore \"node --test tests/*emulator*.test.mjs tests/firestore-rules.test.mjs\"",
     "test": "npx playwright test",
     "test:ui": "npx playwright test --ui",
     "test:headed": "npx playwright test --headed",
