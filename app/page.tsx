@@ -262,11 +262,11 @@ export default function Home() {
   const POLL_TABS = new Set(["club"]);
   const BADGE_TABS = new Set(["club", "home", "profile"]);
   const TOURNAMENT_TABS = new Set(["matches"]);
-  const SUB_PLAN_TABS = new Set(["studio"]);
+  const SUB_PLAN_TABS = new Set(["studio", "club"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
   const FEE_PLAN_TABS = new Set(["matches", "finance", "club"]);
   const MERCH_CATALOG_TABS = new Set(["club"]);
-  const OUT_OF_PLAY_TABS = new Set(["profile", "studio"]);
+  const OUT_OF_PLAY_TABS = new Set(["profile", "studio", "club"]);
   useEffect(() => {
     if (!store.isLoaded) return;
     // ARCH-001: Detach listeners when domain tab is no longer active
@@ -710,9 +710,10 @@ export default function Home() {
                     else setActiveTab("home");
                   }
                 }}
-                className="min-h-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center"
+                className="min-h-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center gap-1"
                 title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
               >
+                <Shield className="w-3.5 h-3.5 shrink-0 text-brand" />
                 <span className="hidden xs:inline">{persona === "admin" ? "Player View" : "Admin Console"}</span>
                 <span className="xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>
               </button>
@@ -720,7 +721,7 @@ export default function Home() {
 
             <button
               onClick={() => setActiveTab("notifications")}
-              className="relative min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0 text-text-secondary hover:text-text-primary"
+              className="relative min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0 text-text-secondary hover:text-text-primary cursor-pointer"
               title="Notifications"
             >
               <Bell className="w-5 h-5" />
@@ -732,7 +733,7 @@ export default function Home() {
             {(user.photoURL || appUser?.photoURL) && (
               <button
                 onClick={() => setActiveTab("profile")}
-                className="min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0"
+                className="min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0 cursor-pointer"
                 title="My Profile"
               >
                 <Image
@@ -748,10 +749,11 @@ export default function Home() {
 
             <button
               onClick={() => logOut()}
-              className="min-h-[44px] text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-border text-text-secondary px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-surface-hover hover:text-text-primary transition flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+              className="min-h-[44px] text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-border text-text-secondary px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-surface-hover hover:text-text-primary transition hidden sm:flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+              title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Exit</span>
+              <span className="hidden md:inline">Exit</span>
             </button>
           </div>
         </div>
@@ -1158,6 +1160,20 @@ export default function Home() {
                     <DesignTab store={store} />
                   )}
                   {activeTab === "profile" && <ProfileTab store={store} />}
+                  {activeTab === "club" && (
+                    <ClubTab
+                      store={store}
+                      persona={persona}
+                      canDesign={canDesign}
+                      isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                      isClubAdmin={isClubAdmin || isSuperAdmin}
+                      isSuperAdmin={isSuperAdmin}
+                      currentUserId={user?.uid || ""}
+                      currentUserName={player?.name || user?.displayName || "Player"}
+                      isFeatureEnabled={isFeatureEnabled}
+                      defaultSubTab={tabAction as any}
+                    />
+                  )}
                 </motion.div>
               </AnimatePresence>
             ) : (

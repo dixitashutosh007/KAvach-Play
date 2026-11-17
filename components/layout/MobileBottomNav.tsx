@@ -135,45 +135,31 @@ export function MobileBottomNav({
   }
 
   // Player persona navigation
-  const PLAYER_OVERFLOW_TABS: Tab[] = ["matches", "leaderboard", "studio", "shop", "design", "notifications"];
-  const isMoreActive = PLAYER_OVERFLOW_TABS.includes(activeTab);
-
   return (
-    <>
-      <MoreDrawer
-        open={moreOpen}
-        onClose={() => setMoreOpen(false)}
-        onSelectTab={onSelectTab}
-        activeTab={activeTab}
-        isFeatureEnabled={isFeatureEnabled}
-        canDesign={canDesign ?? false}
-        persona="player"
-      />
-      <nav
-        data-testid="player-mobile-bottom-nav"
-        className="fixed bottom-0 left-0 right-0 w-full bg-surface/95 backdrop-blur-2xl !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-lg justify-around border-t border-border px-1"
-      >
-        <button onClick={() => onSelectTab("home")} className={btnCls(activeTab === "home")}>
-          <HomeIcon className="w-5 h-5" />
-          <span className={labelCls}>Home</span>
-        </button>
-        <button onClick={() => onSelectTab("matches")} className={btnCls(activeTab === "matches")}>
-          <CalendarDays className="w-5 h-5" />
-          <span className={labelCls}>Matches</span>
-        </button>
-        <button onClick={() => onSelectTab("finance")} className={btnCls(activeTab === "finance" || activeTab === "dues_and_reminders")}>
-          <Wallet className="w-5 h-5" />
-          <span className={labelCls}>Payments</span>
-        </button>
-        <button onClick={() => onSelectTab("leaderboard")} className={btnCls(activeTab === "leaderboard")}>
-          <Trophy className="w-5 h-5" />
-          <span className={labelCls}>Performance</span>
-        </button>
-        <button onClick={() => onSelectTab("club")} className={btnCls(activeTab === "club" || activeTab === "profile" || activeTab === "shop" || activeTab === "studio" || activeTab === "opinion" || activeTab === "design")}>
-          <Users className="w-5 h-5" />
-          <span className={labelCls}>Club</span>
-        </button>
-      </nav>
-    </>
+    <nav
+      data-testid="player-mobile-bottom-nav"
+      className="fixed bottom-0 left-0 right-0 w-full bg-surface/95 backdrop-blur-2xl !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-lg justify-around border-t border-border px-1"
+    >
+      <button onClick={() => onSelectTab("home")} className={btnCls(activeTab === "home")}>
+        <HomeIcon className="w-5 h-5" />
+        <span className={labelCls}>Home</span>
+      </button>
+      <button onClick={() => onSelectTab("matches")} className={btnCls(activeTab === "matches")}>
+        <CalendarDays className="w-5 h-5" />
+        <span className={labelCls}>Matches</span>
+      </button>
+      <button onClick={() => onSelectTab("finance")} className={btnCls(activeTab === "finance" || activeTab === "dues_and_reminders")}>
+        <Wallet className="w-5 h-5" />
+        <span className={labelCls}>Payments</span>
+      </button>
+      <button onClick={() => onSelectTab("leaderboard")} className={btnCls(activeTab === "leaderboard")}>
+        <Trophy className="w-5 h-5" />
+        <span className={labelCls}>Performance</span>
+      </button>
+      <button onClick={() => onSelectTab("club")} className={btnCls(activeTab === "club" || activeTab === "profile" || activeTab === "shop" || activeTab === "studio" || activeTab === "opinion" || activeTab === "design")}>
+        <Users className="w-5 h-5" />
+        <span className={labelCls}>Club</span>
+      </button>
+    </nav>
   );
 }

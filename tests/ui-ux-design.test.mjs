@@ -64,3 +64,50 @@ test("UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and preven
   assert.ok(pageCode.includes("truncate leading-tight uppercase"), "Header title must truncate to prevent line collision");
   assert.ok(pageCode.includes('xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>'), "Header must use compact label on narrow mobile");
 });
+
+test("UX-P0-01: Player Club Screen is connected and renders player sub-views", () => {
+  const pageCode = fs.readFileSync(path.resolve("app/page.tsx"), "utf-8");
+  const clubTabCode = fs.readFileSync(path.resolve("components/ClubTab.tsx"), "utf-8");
+
+  // Verify app/page.tsx connects activeTab === "club" under persona === "player"
+  assert.ok(
+    pageCode.includes('{activeTab === "club" && (\n                    <ClubTab'),
+    "app/page.tsx must connect ClubTab under persona === 'player'",
+  );
+
+  // Verify ClubTab handles player persona
+  assert.ok(
+    clubTabCode.includes("const isPlayer = persona === \"player\";"),
+    "ClubTab must check for player persona",
+  );
+  assert.ok(
+    clubTabCode.includes('key: "profile", label: "My Card"'),
+    "ClubTab player view must offer My Card profile",
+  );
+  assert.ok(
+    clubTabCode.includes('key: "studio", label: "Studio & Nets"'),
+    "ClubTab player view must offer Studio & Nets passes",
+  );
+  assert.ok(
+    clubTabCode.includes('key: "shop", label: "Shop"'),
+    "ClubTab player view must offer Shop",
+  );
+  assert.ok(
+    clubTabCode.includes('key: "pulse", label: "Pulse"'),
+    "ClubTab player view must offer Pulse polls",
+  );
+  assert.ok(
+    clubTabCode.includes('isAdmin={!isPlayer}'),
+    "ClubTab must pass isAdmin=false to ShopTab when in player mode",
+  );
+});
+
+test("UX-P0-03: Player MobileBottomNav renders the 5 approved primary items", () => {
+  const navCode = fs.readFileSync(path.resolve("components/layout/MobileBottomNav.tsx"), "utf-8");
+
+  assert.ok(navCode.includes('<span className={labelCls}>Home</span>'), "Nav must include Home");
+  assert.ok(navCode.includes('<span className={labelCls}>Matches</span>'), "Nav must include Matches");
+  assert.ok(navCode.includes('<span className={labelCls}>Payments</span>'), "Nav must include Payments");
+  assert.ok(navCode.includes('<span className={labelCls}>Performance</span>'), "Nav must include Performance");
+  assert.ok(navCode.includes('<span className={labelCls}>Club</span>'), "Nav must include Club");
+});
