@@ -161,8 +161,29 @@ export async function executeLinkingTransaction(
   if (playerData.mergedInto) {
     throw new LinkingError(403, "Player record has been merged into another profile.");
   }
-  if (playerData.mergeStatus === "in_progress") {
-    throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+  // Active merge coordination & stale worker protection (SEC-1F-A)
+  if (playerData.mergeStatus === "in_progress" || playerData.mergeJobId) {
+    if (playerData.mergeJobId) {
+      const jobSnap = await transaction.get(db.collection("mergeJobs").doc(playerData.mergeJobId));
+      if (jobSnap.exists) {
+        const jobData = jobSnap.data() || {};
+        if (jobData.status === "in_progress") {
+          if (Date.now() < (jobData.leaseExpiresAt || 0)) {
+            throw new LinkingError(409, "Player record is currently undergoing an active administrative merge.");
+          } else {
+            // Lease is expired, but merge was not completed: partial / stale worker state
+            throw new LinkingError(409, "Player record is locked by an interrupted or expired merge job.");
+          }
+        }
+        if (jobData.status !== "completed") {
+          throw new LinkingError(409, "Player record is in an incomplete or unfinalized merge state.");
+        }
+      } else {
+        throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+      }
+    } else {
+      throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+    }
   }
 
   // Strictly parse stored mobile on player document
@@ -384,13 +405,6 @@ export async function linkPlayerAccount(
   }
 
   const resolvedCandidate = eligibleCandidates[0];
-  if (resolvedCandidate.data?.mergeStatus === "in_progress") {
-    return {
-      ok: false,
-      status: 409,
-      error: "Player record is currently undergoing an administrative merge. Please retry later.",
-    };
-  }
   const resolvedPlayerId = resolvedCandidate.id;
   if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
     return {
