@@ -41,27 +41,32 @@ service cloud.firestore {
     }
 
     function isStudioAdmin() {
-      return isSuperAdmin() || (isAccountActive()
-        && getUserData().get('isStudioAdmin', false) == true);
+      return isAccountActive()
+        && (request.auth.token.get('admin', false) == true || getUserData().get('isStudioAdmin', false) == true);
     }
 
     function isMatchAdmin() {
-      return isSuperAdmin() || (isAccountActive()
-        && getUserData().get('isMatchAdmin', false) == true);
+      return isAccountActive()
+        && (request.auth.token.get('admin', false) == true || getUserData().get('isMatchAdmin', false) == true);
     }
 
     function isFinanceAdmin() {
-      return isSuperAdmin() || (isAccountActive()
-        && getUserData().get('isFinanceAdmin', false) == true);
+      return isAccountActive()
+        && (request.auth.token.get('admin', false) == true || getUserData().get('isFinanceAdmin', false) == true);
     }
 
     function isClubAdmin() {
-      return isSuperAdmin() || (isAccountActive()
-        && getUserData().get('isClubAdmin', false) == true);
+      return isAccountActive()
+        && (request.auth.token.get('admin', false) == true || getUserData().get('isClubAdmin', false) == true);
     }
 
     function isAnyAdmin() {
-      return isSuperAdmin() || isStudioAdmin() || isMatchAdmin() || isFinanceAdmin() || isClubAdmin();
+      return isAccountActive()
+        && (request.auth.token.get('admin', false) == true
+            || getUserData().get('isStudioAdmin', false) == true
+            || getUserData().get('isMatchAdmin', false) == true
+            || getUserData().get('isFinanceAdmin', false) == true
+            || getUserData().get('isClubAdmin', false) == true);
     }
 
     function isVerified() {
@@ -145,6 +150,26 @@ service cloud.firestore {
         && data.inviteStatus in ['Pending', 'Accepted', 'Invited', 'Unverified', 'Verified', 'Rejected']
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
+    }
+
+    function isValidPlayerSelfUpdate(incoming, existing) {
+      return (!('name' in incoming) || (incoming.name is string && incoming.name.size() > 0 && incoming.name.size() <= 100))
+        && (!('email' in incoming) || (incoming.email is string && incoming.email.size() <= 100))
+        && (!('mobile' in incoming) || (incoming.mobile is string && incoming.mobile.size() <= 20))
+        && (!('dob' in incoming) || (incoming.dob is string && incoming.dob.size() <= 20))
+        && (!('locality' in incoming) || (incoming.locality is string && incoming.locality.size() <= 100))
+        && (!('bloodGroup' in incoming) || (incoming.bloodGroup is string && incoming.bloodGroup.size() <= 10))
+        && (!('emergencyContact' in incoming) || (incoming.emergencyContact is string && incoming.emergencyContact.size() <= 20))
+        && (!('battingStyle' in incoming) || (incoming.battingStyle is string && incoming.battingStyle.size() <= 50))
+        && (!('bowlingStyle' in incoming) || (incoming.bowlingStyle is string && incoming.bowlingStyle.size() <= 50))
+        && (!('isWicketKeeper' in incoming) || incoming.isWicketKeeper is bool)
+        && (!('chestSize' in incoming) || (incoming.chestSize is string && incoming.chestSize.size() <= 20))
+        && (!('waistSize' in incoming) || (incoming.waistSize is string && incoming.waistSize.size() <= 20))
+        && (!('jerseyNumber' in incoming) || (incoming.jerseyNumber is string && incoming.jerseyNumber.size() <= 10))
+        && (!('jerseyName' in incoming) || (incoming.jerseyName is string && incoming.jerseyName.size() <= 50))
+        && (!('photoURL' in incoming) || (incoming.photoURL is string && incoming.photoURL.size() <= 500))
+        && (!('inviteStatus' in incoming) || incoming.inviteStatus == existing.get('inviteStatus', '') || (incoming.inviteStatus == 'Pending' && existing.get('inviteStatus', '') in ['Pending', 'Unverified', 'Invited']))
+        && (!('updatedAt' in incoming) || incoming.updatedAt == request.time);
     }
 
     function isValidMatch(data) {
@@ -306,7 +331,7 @@ service cloud.firestore {
     }
 
     match /{path=**}/otherFees/{feeId} {
-      allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.get('playerId', '')));
+      allow read: if isFinanceAdmin() || isSuperAdmin() || (isSignedIn() && isSelf(resource.data.get('playerId', '')));
     }
 
     match /admins/{userId} {
@@ -455,8 +480,30 @@ service cloud.firestore {
     match /players/{playerId} {
       allow read: if isSignedIn();
       allow create: if isAnyAdmin() || isSelf(playerId);
-      allow update: if isAnyAdmin() || isSelf(playerId) ||
-        (isSignedIn() && existing().get('authUid', null) == null && incoming().get('authUid', null) == request.auth.uid && request.auth.token.phone_number != null && existing().get('mobile', '') != null && (request.auth.token.phone_number.matches('.*' + existing().mobile + '.*') || existing().mobile.matches('.*' + request.auth.token.phone_number.replace('\\+', '') + '.*')));
+      allow update: if isAnyAdmin()
+        || (
+          isSelf(playerId)
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'email', 'mobile', 'dob', 'locality', 'bloodGroup',
+            'emergencyContact', 'battingStyle', 'bowlingStyle', 'isWicketKeeper',
+            'chestSize', 'waistSize', 'jerseyNumber', 'jerseyName', 'photoURL',
+            'inviteStatus', 'updatedAt'
+          ])
+          && isValidPlayerSelfUpdate(incoming(), existing())
+        )
+        || (
+          isSignedIn()
+          && isAccountActive()
+          && existing().get('authUid', null) == null
+          && existing().get('disabled', false) != true
+          && existing().get('mergedInto', null) == null
+          && incoming().get('authUid', null) == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['authUid', 'updatedAt'])
+          && (!('updatedAt' in incoming()) || incoming().updatedAt == request.time)
+          && request.auth.token.phone_number != null
+          && existing().get('mobile', '') != null
+          && (request.auth.token.phone_number.matches('.*' + existing().mobile + '.*') || existing().mobile.matches('.*' + request.auth.token.phone_number.replace('\\+', '') + '.*'))
+        );
       allow delete: if isAnyAdmin() && isValidId(playerId);
 
       match /otherFees/{feeId} {
