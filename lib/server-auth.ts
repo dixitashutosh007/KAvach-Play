@@ -41,7 +41,7 @@ export function isTestAuthBypassAllowed(): boolean {
   );
 }
 
-function ensureAdminApp() {
+export function ensureAdminApp() {
   const apps = getApps();
   if (apps.length) return apps[0];
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
@@ -75,7 +75,7 @@ export function setAuthDbForTesting(db: any) {
   }
 }
 
-function getEffectiveDb(app: any) {
+export function getEffectiveDb(app: any) {
   if (testDbOverride && process.env.NODE_ENV !== "production") {
     return testDbOverride;
   }
@@ -87,6 +87,7 @@ export type AuthGuardResult =
       ok: true;
       uid: string;
       email?: string;
+      phoneNumber?: string;
       playerId?: string;
       status?: string;
       roles?: Set<AppRole>;
@@ -216,6 +217,7 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
       ok: true,
       uid: req.headers.get("x-test-uid")!,
       email: req.headers.get("x-test-email") || "test@kavachcricket.com",
+      phoneNumber: req.headers.get("x-test-phone") || undefined,
       playerId: req.headers.get("x-test-player-id") || undefined,
       status: testStatus,
     };
@@ -282,6 +284,7 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
     ok: true,
     uid: decoded.uid,
     email: decoded.email,
+    phoneNumber: decoded.phone_number,
     playerId: accountResult.playerId,
     status: accountResult.status,
   };

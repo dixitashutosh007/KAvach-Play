@@ -490,19 +490,6 @@ service cloud.firestore {
             'inviteStatus', 'updatedAt'
           ])
           && isValidPlayerSelfUpdate(incoming(), existing())
-        )
-        || (
-          isSignedIn()
-          && isAccountActive()
-          && existing().get('authUid', null) == null
-          && existing().get('disabled', false) != true
-          && existing().get('mergedInto', null) == null
-          && incoming().get('authUid', null) == request.auth.uid
-          && incoming().diff(existing()).affectedKeys().hasOnly(['authUid', 'updatedAt'])
-          && (!('updatedAt' in incoming()) || incoming().updatedAt == request.time)
-          && request.auth.token.phone_number != null
-          && existing().get('mobile', '') != null
-          && (request.auth.token.phone_number.matches('.*' + existing().mobile + '.*') || existing().mobile.matches('.*' + request.auth.token.phone_number.replace('\\+', '') + '.*'))
         );
       allow delete: if isAnyAdmin() && isValidId(playerId);
 

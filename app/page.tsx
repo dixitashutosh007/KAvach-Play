@@ -448,45 +448,30 @@ export default function Home() {
     if (!user || !existingMatch) return;
     setIsRegistering(true);
     try {
-      const oldUserDoc = doc(db, "appUsers", existingMatch.id);
-      const oldUserSnap = await getDoc(oldUserDoc);
-      const oldUserData = oldUserSnap.exists() ? oldUserSnap.data() : {};
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/player/link-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          playerId: existingMatch.id,
+        }),
+      });
 
-      const userDoc = doc(db, "appUsers", user.uid);
-      const userSnap = await getDoc(userDoc);
-
-      if (!userSnap.exists()) {
-        await setDoc(userDoc, {
-          ...oldUserData,
-          email:
-            existingMatch.email ||
-            user.email ||
-            oldUserData.email ||
-            "",
-          name:
-            existingMatch.name ||
-            user.displayName ||
-            oldUserData.name ||
-            "",
-          photoURL: user.photoURL || oldUserData.photoURL || "",
-          role: oldUserData.role || "player",
-          mobile: normalizeIndianMobile(user.phoneNumber || existingMatch.mobile || ""),
-          isStudioMember: existingMatch.isStudioMember || false,
-        });
-      } else {
-        if (user.photoURL && !userSnap.data().photoURL) {
-          await updateDoc(userDoc, { photoURL: user.photoURL });
-        }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to link player account");
       }
 
-      const playerDoc = doc(db, "players", existingMatch.id);
-      await updateDoc(playerDoc, {
-        authUid: user.uid,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (err) {
+      toast("Profile linked successfully!", "success");
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (err: any) {
       console.error("Error syncing profile:", err);
-      toast("Failed to sync your profile. Please try again.", "error");
+      toast(err.message || "Failed to sync your profile. Please try again.", "error");
     } finally {
       setIsRegistering(false);
     }

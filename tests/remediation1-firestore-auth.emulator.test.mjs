@@ -540,15 +540,15 @@ describe(
     // 3. Secure Account Linking
     // ─────────────────────────────────────────────────────────────
     describe("3. Secure Account Linking & Identity Protection", () => {
-      it("allows authenticated user with matching phone token to link unlinked player profile", async () => {
-        const { assertSucceeds } = await import("@firebase/rules-unit-testing");
+      it("denies direct client-side account linking on unlinked player profile (all linking must use server API)", async () => {
+        const { assertFails } = await import("@firebase/rules-unit-testing");
         const { serverTimestamp } = await import("firebase/firestore");
         // User with phone number matching p_unlinked ("9876543299")
         const linkingDb = testEnv.authenticatedContext("uid_new_user", {
           phone_number: "+919876543299",
         }).firestore();
 
-        await assertSucceeds(
+        await assertFails(
           linkingDb.collection("players").doc("p_unlinked").update({
             authUid: "uid_new_user",
             updatedAt: serverTimestamp(),
