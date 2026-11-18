@@ -45,6 +45,8 @@ function findJavaBin() {
 }
 
 const env = { ...process.env };
+env.NODE_ENV = "test";
+env.KAVACH_TEST_AUTH_BYPASS = "true";
 const javaDir = findJavaBin();
 if (javaDir) {
   env.PATH = `${javaDir}${path.delimiter}${env.PATH || ""}`;

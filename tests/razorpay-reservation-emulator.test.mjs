@@ -54,6 +54,7 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
   before(async () => {
     if (!emulatorHost) return;
     process.env.NODE_ENV = "test";
+    process.env.KAVACH_TEST_AUTH_BYPASS = "true";
     process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID = "(default)";
     process.env.RAZORPAY_KEY_ID = "rzp_test_emulator_mock";
     process.env.RAZORPAY_KEY_SECRET = "rzp_secret_emulator_mock";
