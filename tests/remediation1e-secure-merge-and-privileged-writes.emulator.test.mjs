@@ -588,17 +588,28 @@ describe("Security Remediation 1E: Secure Merge, Privileged Writes & Bootstrap S
       canonicalPhone: "+919876500117",
     });
 
-    // Attempting linking when transaction aborts with contention will fail consistency check
-    // and must return 409 (not alreadyLinked: true)
-    const res = await linkPlayerAccount(db, {
+    // Genuinely force transaction contention abort error (code 10 ABORTED)
+    let contentionTriggered = false;
+    const contendingDb = Object.create(db);
+    contendingDb.runTransaction = async () => {
+      contentionTriggered = true;
+      const abortErr = new Error("10 ABORTED: Transaction was aborted due to concurrent contention.");
+      abortErr.code = 10;
+      throw abortErr;
+    };
+
+    // Attempting linking when transaction aborts with contention will execute the post-contention
+    // idempotency verification against real Firestore, detect the inconsistent state, and return 409
+    const res = await linkPlayerAccount(contendingDb, {
       uid: "uid_contention_17",
       verifiedPhoneNumber: "+919876500117",
       requestedPlayerId: "p_contention_17",
     });
 
-    // Pre-transaction check or transaction correctly rejects or fails closed (SEC-1F Section 12)
+    assert.equal(contentionTriggered, true);
     assert.equal(res.ok, false);
     assert.equal(res.status, 409);
+    assert.match(res.error || "", /Concurrent update conflict detected/);
   });
 
   it("Test 18: Generic INVALID_ARGUMENT is not misclassified as contention", async () => {

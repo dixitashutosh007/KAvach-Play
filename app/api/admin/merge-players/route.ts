@@ -95,108 +95,19 @@ export async function PUT(req: Request) {
 
 /**
  * PATCH /api/admin/merge-players
- * Repair previously-merged records: otherFees, appUsers, uidIndex, phoneIndex.
+ * DECOMMISSIONED / RETIRED (Finding 1F-R R5).
+ * Unauthenticated or raw batch repair paths bypass player locks, worker leases, fencing,
+ * and financial collision controls. All player merges and repairs MUST use the atomic,
+ * recoverable POST /api/admin/merge-players workflow.
  */
-export async function PATCH(req: Request) {
-  try {
-    const { requireClubAdmin } = await import("../../../../lib/server-auth.ts");
-    const guard = await requireClubAdmin(req);
-    if (!guard.ok) return guard.response;
-
-    const db = getDb();
-    const mergedSnap = await db
-      .collection("players")
-      .where("mergedInto", "!=", "")
-      .get();
-
-    let totalFeesRepaired = 0;
-    let totalUsersRepaired = 0;
-    let totalUidIndexesRepaired = 0;
-    let totalPhoneIndexesRepaired = 0;
-
-    for (const loserDoc of mergedSnap.docs) {
-      const loserId = loserDoc.id;
-      const keeperId = loserDoc.data().mergedInto;
-      if (!keeperId) continue;
-
-      const keeperRef = db.collection("players").doc(keeperId);
-      const feesSnap = await keeperRef.collection("otherFees").get();
-      const batch = db.batch();
-      let batchCount = 0;
-
-      for (const feeDoc of feesSnap.docs) {
-        if (feeDoc.data().playerId === loserId) {
-          batch.update(feeDoc.ref, {
-            playerId: keeperId,
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-          batchCount++;
-          totalFeesRepaired++;
-        }
-      }
-
-      // Repair any appUsers still linked to this loser
-      const usersSnap = await db
-        .collection("appUsers")
-        .where("playerId", "==", loserId)
-        .get();
-
-      for (const userDoc of usersSnap.docs) {
-        batch.update(userDoc.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        batchCount++;
-        totalUsersRepaired++;
-      }
-
-      // Repair any uidIndex still linked to this loser
-      const uidSnap = await db
-        .collection("uidIndex")
-        .where("playerId", "==", loserId)
-        .get();
-      for (const uidDoc of uidSnap.docs) {
-        batch.update(uidDoc.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        batchCount++;
-        totalUidIndexesRepaired++;
-      }
-
-      // Repair any phoneIndex still linked to this loser
-      const phoneSnap = await db
-        .collection("phoneIndex")
-        .where("playerId", "==", loserId)
-        .get();
-      for (const phoneDoc of phoneSnap.docs) {
-        batch.update(phoneDoc.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        batchCount++;
-        totalPhoneIndexesRepaired++;
-      }
-
-      if (batchCount > 0) {
-        await batch.commit();
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      feesRepaired: totalFeesRepaired,
-      usersRepaired: totalUsersRepaired,
-      uidIndexesRepaired: totalUidIndexesRepaired,
-      phoneIndexesRepaired: totalPhoneIndexesRepaired,
-    });
-  } catch (err: any) {
-    console.error("merge-players repair failed", err);
-    return NextResponse.json(
-      { error: err?.message || "repair failed", code: err?.code },
-      { status: 500 },
-    );
-  }
+export async function PATCH() {
+  return NextResponse.json(
+    {
+      error: "PATCH /api/admin/merge-players has been retired. Use POST /api/admin/merge-players for secure, atomic merge operations.",
+      code: "METHOD_NOT_ALLOWED",
+    },
+    { status: 405, headers: { Allow: "POST, PUT" } }
+  );
 }
 
 /**
@@ -352,7 +263,8 @@ export async function POST(req: Request) {
     };
 
     // 2. Stage 1: Atomic Identity State Transition & 14 Invariant Checks
-    if (currentJobStage === "pending" || currentJobStage === "validated") {
+    // Always align identity state and reservations on initiation or retry unless already completed
+    if (currentJobStage !== "completed") {
       await executeMergeIdentityStage(
         db,
         jobId,

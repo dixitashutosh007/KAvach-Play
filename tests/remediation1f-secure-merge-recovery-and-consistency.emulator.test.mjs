@@ -1084,4 +1084,353 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     assert.equal(report.duplicatePhones, 1);
     assert.ok(report.blockingIssueCount > 0);
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Group 5: 1F-R Concurrency, Fencing, Financial Collision & Recovery (Scenarios 35 - 43)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  it("Scenario 35: Two distinct merge jobs compete for the same keeper: second job rejected with 409 (R3)", async () => {
+    await db.collection("players").doc("p_loser_35a").set({ name: "Loser 35A" });
+    await db.collection("players").doc("p_loser_35b").set({ name: "Loser 35B" });
+    await db.collection("players").doc("p_keeper_35").set({ name: "Keeper 35" });
+
+    // Job A acquires lease on keeper 35
+    const resA = await playerMergeModule.acquireMergeLease(db, "job_35a", "p_loser_35a", "p_keeper_35");
+    assert.equal(resA.ok, true);
+
+    // Verify keeper document is locked
+    const kSnap = await db.collection("players").doc("p_keeper_35").get();
+    assert.equal(kSnap.data()?.mergeStatus, "in_progress");
+    assert.equal(kSnap.data()?.mergeJobId, "job_35a");
+
+    // Job B attempts to acquire lease with the SAME keeper
+    const resB = await playerMergeModule.acquireMergeLease(db, "job_35b", "p_loser_35b", "p_keeper_35");
+    assert.equal(resB.ok, false);
+    assert.equal(resB.status, 409);
+    assert.match(resB.code, /MERGE_IN_PROGRESS|KEEPER_LOCKED/);
+  });
+
+  it("Scenario 36: Cross-role conflict: keeper in Job A is loser in Job B: rejected with 409 (R3)", async () => {
+    await db.collection("players").doc("p_loser_36a").set({ name: "Loser 36A" });
+    await db.collection("players").doc("p_pivot_36").set({ name: "Pivot Player 36" });
+    await db.collection("players").doc("p_target_36").set({ name: "Target 36" });
+
+    // Job A locks p_pivot_36 as keeper
+    const resA = await playerMergeModule.acquireMergeLease(db, "job_36a", "p_loser_36a", "p_pivot_36");
+    assert.equal(resA.ok, true);
+
+    // Job B attempts to lock p_pivot_36 as LOSER
+    const resB = await playerMergeModule.acquireMergeLease(db, "job_36b", "p_pivot_36", "p_target_36");
+    assert.equal(resB.ok, false);
+    assert.equal(resB.status, 409);
+    assert.match(resB.code, /MERGE_IN_PROGRESS|PLAYER_LOCKED/);
+  });
+
+  it("Scenario 37: Worker fencing on EVERY migration mutation: stale worker rejected on chunk commit (R1)", async () => {
+    await db.collection("players").doc("p_loser_37").set({ name: "Loser 37" });
+    await db.collection("players").doc("p_keeper_37").set({ name: "Keeper 37" });
+
+    // Seed a match payment
+    await db.collection("matches").doc("m_37").collection("payments").doc("pay_37").set({
+      playerId: "p_loser_37",
+      status: "Unpaid",
+      feeCollectedAmount: 500,
+    });
+
+    // Seed merge job with fencing token 1
+    await db.collection("mergeJobs").doc("job_37").set({
+      jobId: "job_37",
+      loserId: "p_loser_37",
+      keeperId: "p_keeper_37",
+      status: "in_progress",
+      stage: "identity_locked",
+      leaseOwner: "worker_37a",
+      leaseToken: "token_37a",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const staleWorker = {
+      leaseOwner: "worker_37a",
+      leaseToken: "token_37a",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    // Worker B reclaims job with fencingToken 2
+    await db.collection("mergeJobs").doc("job_37").update({
+      leaseOwner: "worker_37b",
+      leaseToken: "token_37b",
+      fencingToken: 2,
+    });
+
+    // Stale Worker A attempts to migrate payment chunk
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migratePaymentsStage(db, "job_37", "p_loser_37", "p_keeper_37", staleWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Verify payment was NOT reparented by stale worker
+    const paySnap = await db.collection("matches").doc("m_37").collection("payments").doc("pay_37").get();
+    assert.equal(paySnap.data()?.playerId, "p_loser_37");
+  });
+
+  it("Scenario 38: Financial collision protection: different payment reference: HTTP 409 (R4)", async () => {
+    await db.collection("players").doc("p_loser_38").set({ name: "Loser 38" });
+    await db.collection("players").doc("p_keeper_38").set({ name: "Keeper 38" });
+
+    // Seed otherFee on keeper
+    await db.collection("players").doc("p_keeper_38").collection("otherFees").doc("fee_38").set({
+      title: "Late Fee",
+      amount: 100,
+      status: "Paid",
+      paymentMethod: "razorpay",
+      razorpayPaymentId: "pay_keeper_ref_111",
+    });
+
+    // Seed otherFee on loser with DIFFERENT payment reference
+    await db.collection("players").doc("p_loser_38").collection("otherFees").doc("fee_38").set({
+      title: "Late Fee",
+      amount: 100,
+      status: "Paid",
+      paymentMethod: "razorpay",
+      razorpayPaymentId: "pay_loser_ref_999",
+    });
+
+    await db.collection("mergeJobs").doc("job_38").set({
+      jobId: "job_38",
+      loserId: "p_loser_38",
+      keeperId: "p_keeper_38",
+      status: "in_progress",
+      stage: "identity_locked",
+      leaseOwner: "worker_38",
+      leaseToken: "token_38",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_38",
+      leaseToken: "token_38",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migrateOtherFeesStage(db, "job_38", "p_loser_38", "p_keeper_38", worker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "FINANCIAL_RECORD_COLLISION");
+        return true;
+      }
+    );
+
+    // Both source and destination records remain intact
+    const loserFeeSnap = await db.collection("players").doc("p_loser_38").collection("otherFees").doc("fee_38").get();
+    const keeperFeeSnap = await db.collection("players").doc("p_keeper_38").collection("otherFees").doc("fee_38").get();
+    assert.equal(loserFeeSnap.exists, true);
+    assert.equal(keeperFeeSnap.exists, true);
+    assert.equal(loserFeeSnap.data()?.razorpayPaymentId, "pay_loser_ref_999");
+    assert.equal(keeperFeeSnap.data()?.razorpayPaymentId, "pay_keeper_ref_111");
+  });
+
+  it("Scenario 39: Financial collision protection: different paid amounts: HTTP 409 (R4)", async () => {
+    await db.collection("players").doc("p_loser_39").set({ name: "Loser 39" });
+    await db.collection("players").doc("p_keeper_39").set({ name: "Keeper 39" });
+
+    await db.collection("players").doc("p_keeper_39").collection("otherFees").doc("fee_39").set({
+      title: "Jersey Fee",
+      amount: 500,
+      paidAmount: 500,
+      status: "Paid",
+    });
+    await db.collection("players").doc("p_loser_39").collection("otherFees").doc("fee_39").set({
+      title: "Jersey Fee",
+      amount: 500,
+      paidAmount: 250, // Partial paid mismatch
+      status: "Paid",
+    });
+
+    await db.collection("mergeJobs").doc("job_39").set({
+      jobId: "job_39",
+      loserId: "p_loser_39",
+      keeperId: "p_keeper_39",
+      status: "in_progress",
+      stage: "identity_locked",
+      leaseOwner: "worker_39",
+      leaseToken: "token_39",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_39",
+      leaseToken: "token_39",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migrateOtherFeesStage(db, "job_39", "p_loser_39", "p_keeper_39", worker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "FINANCIAL_RECORD_COLLISION");
+        return true;
+      }
+    );
+  });
+
+  it("Scenario 40: Financial collision protection: different refund reference: HTTP 409 (R4)", async () => {
+    await db.collection("players").doc("p_loser_40").set({ name: "Loser 40" });
+    await db.collection("players").doc("p_keeper_40").set({ name: "Keeper 40" });
+
+    await db.collection("players").doc("p_keeper_40").collection("otherFees").doc("fee_40").set({
+      title: "Camp Fee",
+      amount: 1000,
+      status: "Paid",
+      refundId: "rfnd_keeper_123",
+    });
+    await db.collection("players").doc("p_loser_40").collection("otherFees").doc("fee_40").set({
+      title: "Camp Fee",
+      amount: 1000,
+      status: "Paid",
+      refundId: "rfnd_loser_789",
+    });
+
+    await db.collection("mergeJobs").doc("job_40").set({
+      jobId: "job_40",
+      loserId: "p_loser_40",
+      keeperId: "p_keeper_40",
+      status: "in_progress",
+      stage: "identity_locked",
+      leaseOwner: "worker_40",
+      leaseToken: "token_40",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_40",
+      leaseToken: "token_40",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migrateOtherFeesStage(db, "job_40", "p_loser_40", "p_keeper_40", worker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "FINANCIAL_RECORD_COLLISION");
+        return true;
+      }
+    );
+  });
+
+  it("Scenario 41: Retired PATCH endpoint rejects with HTTP 405 Method Not Allowed (R5)", async () => {
+    const res = await mergeRoute.PATCH();
+    assert.equal(res.status, 405);
+    const body = await res.json();
+    assert.equal(body.code, "METHOD_NOT_ALLOWED");
+    assert.match(body.error, /retired/);
+  });
+
+  it("Scenario 42: Fail-closed final verification: missing phone reservation on keeper with mobile (R10)", async () => {
+    await db.collection("players").doc("p_loser_42").set({ name: "Loser 42", mergedInto: "p_keeper_42" });
+    await db.collection("players").doc("p_keeper_42").set({
+      name: "Keeper 42",
+      mobile: "+919876540142",
+      disabled: false,
+    });
+
+    // Deliberately do NOT create phoneIndex for +919876540142
+    await db.collection("mergeJobs").doc("job_42").set({
+      jobId: "job_42",
+      loserId: "p_loser_42",
+      keeperId: "p_keeper_42",
+      status: "in_progress",
+      stage: "app_users_reparented",
+      leaseOwner: "worker_42",
+      leaseToken: "token_42",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_42",
+      leaseToken: "token_42",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.executeIndependentFinalVerification(db, "job_42", "p_loser_42", "p_keeper_42", worker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "FINAL_VERIFICATION_FAILED");
+        assert.match(err.message, /phone reservation missing/);
+        return true;
+      }
+    );
+  });
+
+  it("Scenario 43: Fail-closed final verification: missing UID reservation on keeper with authUid (R10)", async () => {
+    await db.collection("players").doc("p_loser_43").set({ name: "Loser 43", mergedInto: "p_keeper_43" });
+    await db.collection("players").doc("p_keeper_43").set({
+      name: "Keeper 43",
+      authUid: "uid_keeper_43",
+      disabled: false,
+    });
+
+    // Deliberately do NOT create uidIndex for uid_keeper_43
+    await db.collection("mergeJobs").doc("job_43").set({
+      jobId: "job_43",
+      loserId: "p_loser_43",
+      keeperId: "p_keeper_43",
+      status: "in_progress",
+      stage: "app_users_reparented",
+      leaseOwner: "worker_43",
+      leaseToken: "token_43",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_43",
+      leaseToken: "token_43",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.executeIndependentFinalVerification(db, "job_43", "p_loser_43", "p_keeper_43", worker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "FINAL_VERIFICATION_FAILED");
+        assert.match(err.message, /UID reservation missing/);
+        return true;
+      }
+    );
+  });
 });

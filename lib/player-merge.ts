@@ -123,6 +123,7 @@ export interface MergeWorkerInfo {
 
 /**
  * Acquire exclusive merge lease on mergeJobs/{jobId} atomically in a transaction.
+ * Also atomically establishes exclusive player-level locks for BOTH loser and keeper (Finding 1F-R R3).
  */
 export async function acquireMergeLease(
   db: FirebaseFirestore.Firestore,
@@ -139,6 +140,15 @@ export async function acquireMergeLease(
   code?: string;
   status?: number;
 }> {
+  if (loserId === keeperId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Cannot merge a player into themselves.",
+      code: "INVALID_MERGE_TARGET",
+    };
+  }
+
   const leaseDurationMs = options?.leaseDurationMs || 60000;
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
   const loserRef = db.collection("players").doc(loserId);
@@ -193,7 +203,8 @@ export async function acquireMergeLease(
       };
     }
 
-    // Check if loser is locked by a DIFFERENT active merge job
+    // Check player-level locks for BOTH loser and keeper (Finding 1F-R R3)
+    // 1. Loser lock check
     if (loser.mergeStatus === "in_progress" && loser.mergeJobId && loser.mergeJobId !== jobId) {
       const competingJobSnap = await transaction.get(db.collection("mergeJobs").doc(loser.mergeJobId));
       if (competingJobSnap.exists) {
@@ -207,9 +218,15 @@ export async function acquireMergeLease(
           };
         }
       }
+      return {
+        ok: false,
+        status: 409,
+        error: "Loser player is locked by another merge job.",
+        code: "PLAYER_LOCKED_BY_ANOTHER_JOB",
+      };
     }
 
-    // Check if keeper is locked by a DIFFERENT active merge job
+    // 2. Keeper lock check
     if (keeper.mergeStatus === "in_progress" && keeper.mergeJobId && keeper.mergeJobId !== jobId) {
       const competingJobSnap = await transaction.get(db.collection("mergeJobs").doc(keeper.mergeJobId));
       if (competingJobSnap.exists) {
@@ -223,6 +240,12 @@ export async function acquireMergeLease(
           };
         }
       }
+      return {
+        ok: false,
+        status: 409,
+        error: "Keeper player is locked by another merge job.",
+        code: "KEEPER_LOCKED_BY_ANOTHER_JOB",
+      };
     }
 
     // Check existing lease on THIS job
@@ -241,7 +264,7 @@ export async function acquireMergeLease(
       };
     }
 
-    // Lease is free to acquire (new job, expired lease, or recovering from failed status)
+    // Lease is free to acquire
     const fencingToken = (existingJob?.fencingToken || 0) + 1;
     const attemptCount = (existingJob?.attemptCount || 0) + 1;
     const leaseOwner = options?.workerId || `worker_${crypto.randomUUID()}`;
@@ -256,6 +279,7 @@ export async function acquireMergeLease(
       leaseExpiresAt,
     };
 
+    // Atomically set job lease
     transaction.set(
       mergeJobRef,
       {
@@ -278,6 +302,25 @@ export async function acquireMergeLease(
       },
       { merge: true }
     );
+
+    // Atomically lock BOTH loser and keeper player documents (Finding 1F-R R3)
+    transaction.update(loserRef, {
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeFencingToken: fencingToken,
+      mergeLeaseOwner: leaseOwner,
+      mergeLeaseExpiresAt: leaseExpiresAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    transaction.update(keeperRef, {
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeFencingToken: fencingToken,
+      mergeLeaseOwner: leaseOwner,
+      mergeLeaseExpiresAt: leaseExpiresAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
     return {
       ok: true,
@@ -318,12 +361,31 @@ export async function renewMergeLease(
       );
     }
 
+    // ALL READS BEFORE WRITES (Firestore transaction requirement)
+    const loserSnap = job.loserId ? await transaction.get(db.collection("players").doc(job.loserId)) : null;
+    const keeperSnap = job.keeperId ? await transaction.get(db.collection("players").doc(job.keeperId)) : null;
+
+    // ALL WRITES AFTER READS
     const newExpiresAt = now + additionalDurationMs;
     transaction.update(mergeJobRef, {
       leaseExpiresAt: newExpiresAt,
       lastHeartbeatAt: new Date().toISOString(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    // Update lease expiration on locked player documents
+    if (loserSnap?.exists && loserSnap.data()?.mergeJobId === jobId && loserSnap.data()?.mergeStatus === "in_progress") {
+      transaction.update(loserSnap.ref, {
+        mergeLeaseExpiresAt: newExpiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (keeperSnap?.exists && keeperSnap.data()?.mergeJobId === jobId && keeperSnap.data()?.mergeStatus === "in_progress") {
+      transaction.update(keeperSnap.ref, {
+        mergeLeaseExpiresAt: newExpiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     return { ok: true, newExpiresAt };
   });
@@ -384,9 +446,9 @@ export async function executeMergeIdentityStage(
   loserId: string,
   keeperId: string,
   worker: MergeWorkerInfo,
-  keeperPatch: Record<string, any>,
-  targetUid: string,
-  targetCanonicalPhone: string,
+  keeperPatch?: Record<string, any>,
+  targetUid?: string,
+  targetCanonicalPhone?: string,
   stats?: Record<string, any>
 ): Promise<void> {
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
@@ -436,9 +498,13 @@ export async function executeMergeIdentityStage(
       throw new MergeConflictError(409, `Loser player has already been merged into player ${loser.mergedInto}.`, "LOSER_ALREADY_MERGED");
     }
 
+    // Derive identity values and patch FRESH from transactional snapshots (Finding 1F-R R6)
+    const freshKeeperPatch = computeKeeperPatch(keeper, loser);
+
     // Identity state identifiers
     const loserUid = loser.authUid ? String(loser.authUid).trim() : "";
     const keeperUid = keeper.authUid ? String(keeper.authUid).trim() : "";
+    const freshTargetUid = keeperUid || loserUid || "";
 
     const loserPhoneRaw = loser.mobile !== undefined ? String(loser.mobile).trim() : "";
     const keeperPhoneRaw = keeper.mobile !== undefined ? String(keeper.mobile).trim() : "";
@@ -460,6 +526,8 @@ export async function executeMergeIdentityStage(
       }
       keeperCanonicalPhone = parsed.canonical;
     }
+
+    const freshTargetCanonicalPhone = keeperCanonicalPhone || loserCanonicalPhone || "";
 
     // Condition 1: Conflicting auth UIDs
     if (loserUid && keeperUid && loserUid !== keeperUid) {
@@ -574,12 +642,42 @@ export async function executeMergeIdentityStage(
       }
     }
 
-    // Condition 6 & 8: Multiple / ambiguous UID reservations or appUsers
+    // Condition 6 & 8: Multiple / ambiguous / orphaned UID reservations or appUsers (Finding 1F-R R7)
     for (const doc of uidIndexKeeperSnap.docs) {
       if (keeperUid && doc.id !== keeperUid) {
         throw new MergeConflictError(409, "Keeper player has conflicting UID reservations.", "KEEPER_MULTIPLE_UID_RESERVATIONS");
       }
+      if (!keeperUid) {
+        throw new MergeConflictError(409, "Keeper player has orphaned UID reservation but no authUid.", "ORPHANED_UID_RESERVATION");
+      }
     }
+    for (const doc of uidIndexLoserSnap.docs) {
+      if (loserUid && doc.id !== loserUid) {
+        throw new MergeConflictError(409, "Loser player has conflicting UID reservations.", "LOSER_MULTIPLE_UID_RESERVATIONS");
+      }
+      if (!loserUid) {
+        throw new MergeConflictError(409, "Loser player has orphaned UID reservation but no authUid.", "ORPHANED_UID_RESERVATION");
+      }
+    }
+
+    // Check multiple / orphaned phone reservations (Finding 1F-R R7)
+    for (const doc of phoneIndexKeeperSnap.docs) {
+      if (keeperCanonicalPhone && doc.id !== keeperCanonicalPhone) {
+        throw new MergeConflictError(409, "Keeper player has conflicting phone reservations.", "KEEPER_MULTIPLE_PHONE_RESERVATIONS");
+      }
+      if (!keeperCanonicalPhone) {
+        throw new MergeConflictError(409, "Keeper player has orphaned phone reservation but no mobile.", "ORPHANED_PHONE_RESERVATION");
+      }
+    }
+    for (const doc of phoneIndexLoserSnap.docs) {
+      if (loserCanonicalPhone && doc.id !== loserCanonicalPhone) {
+        throw new MergeConflictError(409, "Loser player has conflicting phone reservations.", "LOSER_MULTIPLE_PHONE_RESERVATIONS");
+      }
+      if (!loserCanonicalPhone) {
+        throw new MergeConflictError(409, "Loser player has orphaned phone reservation but no mobile.", "ORPHANED_PHONE_RESERVATION");
+      }
+    }
+
     const keeperAppUserUids = Array.from(new Set(appUsersKeeperSnap.docs.map((d) => d.id)));
     if (keeperAppUserUids.length > 1) {
       throw new MergeConflictError(409, "Multiple conflicting user accounts reference the keeper player.", "MULTIPLE_KEEPER_APP_USERS");
@@ -648,27 +746,27 @@ export async function executeMergeIdentityStage(
       mergeJobId: jobId,
       updatedAt: FieldValue.serverTimestamp(),
     };
-    if (Object.keys(keeperPatch).length > 0) {
-      Object.assign(keeperTxPatch, keeperPatch);
+    if (Object.keys(freshKeeperPatch).length > 0) {
+      Object.assign(keeperTxPatch, freshKeeperPatch);
     }
     transaction.update(keeperRef, keeperTxPatch);
 
     // Reparent target uidIndex reservation (no unconditional overwrites)
-    if (targetUid) {
-      const targetUidRef = db.collection("uidIndex").doc(targetUid);
-      const targetSnap = targetUid === loserUid ? directLoserUidDoc : (targetUid === keeperUid ? directKeeperUidDoc : null);
+    if (freshTargetUid) {
+      const targetUidRef = db.collection("uidIndex").doc(freshTargetUid);
+      const targetSnap = freshTargetUid === loserUid ? directLoserUidDoc : (freshTargetUid === keeperUid ? directKeeperUidDoc : null);
       if (targetSnap?.exists) {
         transaction.update(targetUidRef, {
           playerId: keeperId,
-          authUid: targetUid,
-          canonicalPhone: targetCanonicalPhone || "",
+          authUid: freshTargetUid,
+          canonicalPhone: freshTargetCanonicalPhone || "",
           updatedAt: FieldValue.serverTimestamp(),
         });
       } else {
         transaction.set(targetUidRef, {
           playerId: keeperId,
-          authUid: targetUid,
-          canonicalPhone: targetCanonicalPhone || "",
+          authUid: freshTargetUid,
+          canonicalPhone: freshTargetCanonicalPhone || "",
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -676,21 +774,21 @@ export async function executeMergeIdentityStage(
     }
 
     // Reparent target phoneIndex reservation (no unconditional overwrites)
-    if (targetCanonicalPhone) {
-      const targetPhoneRef = db.collection("phoneIndex").doc(targetCanonicalPhone);
-      const targetSnap = targetCanonicalPhone === loserCanonicalPhone ? directLoserPhoneDoc : (targetCanonicalPhone === keeperCanonicalPhone ? directKeeperPhoneDoc : null);
+    if (freshTargetCanonicalPhone) {
+      const targetPhoneRef = db.collection("phoneIndex").doc(freshTargetCanonicalPhone);
+      const targetSnap = freshTargetCanonicalPhone === loserCanonicalPhone ? directLoserPhoneDoc : (freshTargetCanonicalPhone === keeperCanonicalPhone ? directKeeperPhoneDoc : null);
       if (targetSnap?.exists) {
         transaction.update(targetPhoneRef, {
           playerId: keeperId,
-          authUid: targetUid || "",
-          canonicalPhone: targetCanonicalPhone,
+          authUid: freshTargetUid || "",
+          canonicalPhone: freshTargetCanonicalPhone,
           updatedAt: FieldValue.serverTimestamp(),
         });
       } else {
         transaction.set(targetPhoneRef, {
           playerId: keeperId,
-          authUid: targetUid || "",
-          canonicalPhone: targetCanonicalPhone,
+          authUid: freshTargetUid || "",
+          canonicalPhone: freshTargetCanonicalPhone,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -765,9 +863,20 @@ export async function executeMergeCompletionStage(
 
 export function areFeesIdentical(src: Record<string, any>, dest: Record<string, any>): boolean {
   if (Number(src.amount) !== Number(dest.amount)) return false;
-  if ((src.title || "") !== (dest.title || "")) return false;
+  if ((src.title || "").trim() !== (dest.title || "").trim()) return false;
   if ((src.status || "") !== (dest.status || "")) return false;
   if ((src.templateId || "") !== (dest.templateId || "")) return false;
+  if ((src.paymentMethod || "") !== (dest.paymentMethod || "")) return false;
+  if ((src.razorpayPaymentId || "") !== (dest.razorpayPaymentId || "")) return false;
+  const srcPaid = Number(src.paidAmount || src.feeCollectedAmount || 0);
+  const destPaid = Number(dest.paidAmount || dest.feeCollectedAmount || 0);
+  if (srcPaid !== destPaid) return false;
+  if ((src.receiptId || "") !== (dest.receiptId || "")) return false;
+  if ((src.waivedReason || "") !== (dest.waivedReason || "")) return false;
+  const srcRefund = (src.refundId || src.refundReference || "");
+  const destRefund = (dest.refundId || dest.refundReference || "");
+  if (srcRefund !== destRefund) return false;
+  if ((src.cancelledBy || "") !== (dest.cancelledBy || "")) return false;
   return true;
 }
 
@@ -777,7 +886,8 @@ export interface MigrationStageOptions {
 }
 
 /**
- * Stage 2: Bounded, Resumable Migration of Match Payments (Finding 1F-04).
+ * Stage 2: Bounded, Resumable Migration of Match Payments (Finding 1F-R R1, R2, R4, R9).
+ * Every chunk commit is transactionally guarded by worker fencing and lease validation.
  */
 export async function migratePaymentsStage(
   db: FirebaseFirestore.Firestore,
@@ -788,45 +898,86 @@ export async function migratePaymentsStage(
   options?: MigrationStageOptions
 ): Promise<{ count: number }> {
   const batchLimit = options?.batchLimit || 100;
-  const paySnap = await db
-    .collectionGroup("payments")
-    .where("playerId", "==", loserId)
-    .get();
+  const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
-  let count = 0;
-  for (let i = 0; i < paySnap.docs.length; i += batchLimit) {
-    const chunk = paySnap.docs.slice(i, i + batchLimit);
-    const batch = db.batch();
-    for (const d of chunk) {
-      batch.update(d.ref, {
-        playerId: keeperId,
+  let hasMore = true;
+  let totalProcessed = 0;
+  let chunkIndex = 0;
+
+  while (hasMore) {
+    const pageSnap = await db
+      .collectionGroup("payments")
+      .where("playerId", "==", loserId)
+      .limit(batchLimit)
+      .get();
+
+    if (pageSnap.empty) {
+      hasMore = false;
+      break;
+    }
+
+    await db.runTransaction(async (transaction) => {
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) {
+        throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      }
+      const job = jobSnap.data() || {};
+      const now = Date.now();
+      if (
+        job.leaseOwner !== worker.leaseOwner ||
+        job.leaseToken !== worker.leaseToken ||
+        job.fencingToken !== worker.fencingToken ||
+        job.status !== "in_progress" ||
+        now >= (job.leaseExpiresAt || 0)
+      ) {
+        throw new StaleWorkerError(
+          409,
+          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
+          "STALE_WORKER_FENCING_ERROR"
+        );
+      }
+
+      // 2. Process payments in chunk with financial collision protection
+      for (const d of pageSnap.docs) {
+        transaction.update(d.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 3. Atomically update job progress, heartbeat, and extend lease (Finding 1F-R R2, R8)
+      chunkIndex++;
+      totalProcessed += pageSnap.docs.length;
+      const newExpiresAt = now + 60000;
+      transaction.update(mergeJobRef, {
+        "stats.paymentsReparented": totalProcessed,
+        "stats.paymentsReparentedChunks": chunkIndex,
+        "stats.lastCommittedChunk": `payments_chunk_${chunkIndex}`,
+        leaseExpiresAt: newExpiresAt,
+        lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      count++;
-    }
-    await batch.commit();
-
-    // Persist intermediate chunk progress
-    await db.collection("mergeJobs").doc(jobId).update({
-      "stats.paymentsReparentedProgress": count,
-      "stats.paymentsReparentedChunks": Math.floor(i / batchLimit) + 1,
-      lastHeartbeatAt: new Date().toISOString(),
-      updatedAt: FieldValue.serverTimestamp(),
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+      await options.onAfterChunkCommit(chunkIndex - 1, totalProcessed);
+    }
+
+    if (pageSnap.docs.length < batchLimit) {
+      hasMore = false;
     }
   }
 
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "payments_reparented", {
-    paymentsReparented: count,
+    paymentsReparented: totalProcessed,
   });
-  return { count };
+  return { count: totalProcessed };
 }
 
 /**
- * Stage 3: Collision-Protected, Resumable Migration of OtherFees (Finding 1F-03).
+ * Stage 3: Collision-Protected, Resumable Migration of OtherFees (Finding 1F-R R1, R4).
+ * Compares authoritative financial identity, value, and audit fields. Rejects conflicts with 409.
  */
 export async function migrateOtherFeesStage(
   db: FirebaseFirestore.Firestore,
@@ -838,77 +989,122 @@ export async function migrateOtherFeesStage(
 ): Promise<{ count: number }> {
   const loserRef = db.collection("players").doc(loserId);
   const keeperRef = db.collection("players").doc(keeperId);
+  const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
-  const feeSnap = await loserRef.collection("otherFees").get();
   const batchLimit = options?.batchLimit || 50;
-  let count = 0;
+  let hasMore = true;
+  let totalMoved = 0;
+  let totalSkipped = 0;
+  let chunkIndex = 0;
 
-  for (let i = 0; i < feeSnap.docs.length; i += batchLimit) {
-    const chunk = feeSnap.docs.slice(i, i + batchLimit);
-
-    for (const feeDoc of chunk) {
-      const srcData = feeDoc.data() || {};
-      const destRef = keeperRef.collection("otherFees").doc(feeDoc.id);
-      const destSnap = await destRef.get();
-
-      if (destSnap.exists) {
-        const destData = destSnap.data() || {};
-        if (areFeesIdentical(srcData, destData)) {
-          // Idempotent duplicate: Destination already has identical fee record. Safe to remove source.
-          await feeDoc.ref.delete();
-          count++;
-        } else {
-          // Dest exists with different financial content: Collision!
-          await db.collection("mergeJobs").doc(jobId).update({
-            lastError: `Financial record collision: keeper already has fee ${feeDoc.id} with different content.`,
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-          throw new MergeConflictError(
-            409,
-            `Financial record collision detected: keeper already has fee ${feeDoc.id} with different content. Manual resolution required.`,
-            "FINANCIAL_RECORD_COLLISION"
-          );
-        }
-      } else {
-        // Destination does not exist: copy source record
-        await destRef.set({
-          ...srcData,
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-
-        // Verify destination has been written with expected data
-        const verifySnap = await destRef.get();
-        if (!verifySnap.exists || Number(verifySnap.data()?.amount) !== Number(srcData.amount)) {
-          throw new Error(`Destination fee verification failed for fee ${feeDoc.id}.`);
-        }
-
-        // Delete source only after successful destination verification
-        await feeDoc.ref.delete();
-        count++;
-      }
+  while (hasMore) {
+    const pageSnap = await loserRef.collection("otherFees").limit(batchLimit).get();
+    if (pageSnap.empty) {
+      hasMore = false;
+      break;
     }
 
-    await db.collection("mergeJobs").doc(jobId).update({
-      "stats.feesMovedProgress": count,
-      "stats.feesMovedChunks": Math.floor(i / batchLimit) + 1,
-      lastHeartbeatAt: new Date().toISOString(),
-      updatedAt: FieldValue.serverTimestamp(),
+    const destRefs = pageSnap.docs.map((d) => keeperRef.collection("otherFees").doc(d.id));
+
+    await db.runTransaction(async (transaction) => {
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) {
+        throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      }
+      const job = jobSnap.data() || {};
+      const now = Date.now();
+      if (
+        job.leaseOwner !== worker.leaseOwner ||
+        job.leaseToken !== worker.leaseToken ||
+        job.fencingToken !== worker.fencingToken ||
+        job.status !== "in_progress" ||
+        now >= (job.leaseExpiresAt || 0)
+      ) {
+        throw new StaleWorkerError(
+          409,
+          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
+          "STALE_WORKER_FENCING_ERROR"
+        );
+      }
+
+      // 2. Read destination fees in transaction
+      const destSnaps = await Promise.all(destRefs.map((ref) => transaction.get(ref)));
+
+      let chunkMoved = 0;
+      let chunkSkipped = 0;
+
+      for (let idx = 0; idx < pageSnap.docs.length; idx++) {
+        const srcDoc = pageSnap.docs[idx];
+        const srcData = srcDoc.data() || {};
+        const destSnap = destSnaps[idx];
+
+        if (destSnap.exists) {
+          const destData = destSnap.data() || {};
+          if (areFeesIdentical(srcData, destData)) {
+            // Identical authoritative record: safe idempotent deduplication
+            transaction.delete(srcDoc.ref);
+            chunkSkipped++;
+          } else {
+            // Conflicting financial record: abort without modifying either doc (Finding 1F-R R4)
+            transaction.update(mergeJobRef, {
+              lastError: `Financial record collision: keeper already has fee ${srcDoc.id} with different content.`,
+              "stats.conflicts": FieldValue.increment(1),
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            throw new MergeConflictError(
+              409,
+              `Financial record collision detected: keeper already has fee ${srcDoc.id} with different content. Manual resolution required.`,
+              "FINANCIAL_RECORD_COLLISION"
+            );
+          }
+        } else {
+          // Destination does not exist: copy to keeper and delete from loser
+          transaction.set(destRefs[idx], {
+            ...srcData,
+            playerId: keeperId,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          transaction.delete(srcDoc.ref);
+          chunkMoved++;
+        }
+      }
+
+      chunkIndex++;
+      totalMoved += chunkMoved;
+      totalSkipped += chunkSkipped;
+      const newExpiresAt = now + 60000;
+
+      transaction.update(mergeJobRef, {
+        "stats.feesMoved": totalMoved,
+        "stats.feesSkipped": totalSkipped,
+        "stats.feesMovedChunks": chunkIndex,
+        "stats.lastCommittedChunk": `fees_chunk_${chunkIndex}`,
+        leaseExpiresAt: newExpiresAt,
+        lastHeartbeatAt: new Date().toISOString(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+      await options.onAfterChunkCommit(chunkIndex - 1, totalMoved + totalSkipped);
+    }
+
+    if (pageSnap.docs.length < batchLimit) {
+      hasMore = false;
     }
   }
 
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "fees_moved", {
-    feesMoved: count,
+    feesMoved: totalMoved,
+    feesSkipped: totalSkipped,
   });
-  return { count };
+  return { count: totalMoved + totalSkipped };
 }
 
 /**
- * Stage 4: Bounded Migration of Merch Orders (Finding 1F-04).
+ * Stage 4: Bounded Migration of Merch Orders (Finding 1F-R R1, R9).
+ * Every chunk commit is transactionally guarded by worker fencing and lease validation.
  */
 export async function migrateMerchOrdersStage(
   db: FirebaseFirestore.Firestore,
@@ -920,45 +1116,87 @@ export async function migrateMerchOrdersStage(
   options?: MigrationStageOptions
 ): Promise<{ count: number }> {
   const batchLimit = options?.batchLimit || 100;
-  const orderSnap = await db
-    .collection("merchOrders")
-    .where("playerId", "==", loserId)
-    .get();
+  const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
-  let count = 0;
-  for (let i = 0; i < orderSnap.docs.length; i += batchLimit) {
-    const chunk = orderSnap.docs.slice(i, i + batchLimit);
-    const batch = db.batch();
-    for (const d of chunk) {
-      batch.update(d.ref, {
-        playerId: keeperId,
-        playerName: keeperName || d.data().playerName || "",
+  let hasMore = true;
+  let totalProcessed = 0;
+  let chunkIndex = 0;
+
+  while (hasMore) {
+    const pageSnap = await db
+      .collection("merchOrders")
+      .where("playerId", "==", loserId)
+      .limit(batchLimit)
+      .get();
+
+    if (pageSnap.empty) {
+      hasMore = false;
+      break;
+    }
+
+    await db.runTransaction(async (transaction) => {
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) {
+        throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      }
+      const job = jobSnap.data() || {};
+      const now = Date.now();
+      if (
+        job.leaseOwner !== worker.leaseOwner ||
+        job.leaseToken !== worker.leaseToken ||
+        job.fencingToken !== worker.fencingToken ||
+        job.status !== "in_progress" ||
+        now >= (job.leaseExpiresAt || 0)
+      ) {
+        throw new StaleWorkerError(
+          409,
+          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
+          "STALE_WORKER_FENCING_ERROR"
+        );
+      }
+
+      // 2. Update each merch order
+      for (const d of pageSnap.docs) {
+        transaction.update(d.ref, {
+          playerId: keeperId,
+          playerName: keeperName || d.data().playerName || "",
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 3. Update job progress and renew lease
+      chunkIndex++;
+      totalProcessed += pageSnap.docs.length;
+      const newExpiresAt = now + 60000;
+      transaction.update(mergeJobRef, {
+        "stats.ordersReparented": totalProcessed,
+        "stats.ordersReparentedChunks": chunkIndex,
+        "stats.lastCommittedChunk": `orders_chunk_${chunkIndex}`,
+        leaseExpiresAt: newExpiresAt,
+        lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      count++;
-    }
-    await batch.commit();
-
-    await db.collection("mergeJobs").doc(jobId).update({
-      "stats.ordersReparentedProgress": count,
-      "stats.ordersReparentedChunks": Math.floor(i / batchLimit) + 1,
-      lastHeartbeatAt: new Date().toISOString(),
-      updatedAt: FieldValue.serverTimestamp(),
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+      await options.onAfterChunkCommit(chunkIndex - 1, totalProcessed);
+    }
+
+    if (pageSnap.docs.length < batchLimit) {
+      hasMore = false;
     }
   }
 
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "orders_reparented", {
-    ordersReparented: count,
+    ordersReparented: totalProcessed,
   });
-  return { count };
+  return { count: totalProcessed };
 }
 
 /**
- * Stage 5: Bounded Migration of AppUsers and Identity Indexes (Finding 1F-04).
+ * Stage 5: Bounded Migration of AppUsers and Identity Indexes (Finding 1F-R R1, R9).
+ * Every chunk commit is transactionally guarded by worker fencing and lease validation.
  */
 export async function migrateAppUsersAndIndexesStage(
   db: FirebaseFirestore.Firestore,
@@ -969,6 +1207,7 @@ export async function migrateAppUsersAndIndexesStage(
   options?: MigrationStageOptions
 ): Promise<{ count: number }> {
   const batchLimit = options?.batchLimit || 100;
+  const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
   const [freshUserSnap, directUserDoc, freshUidSnap, freshPhoneSnap] = await Promise.all([
     db.collection("appUsers").where("playerId", "==", loserId).get(),
@@ -991,28 +1230,58 @@ export async function migrateAppUsersAndIndexesStage(
     operations.push(p.ref);
   }
 
-  let count = 0;
+  let totalProcessed = 0;
+  let chunkIndex = 0;
+
   for (let i = 0; i < operations.length; i += batchLimit) {
     const chunk = operations.slice(i, i + batchLimit);
-    const batch = db.batch();
-    for (const ref of chunk) {
-      batch.update(ref, {
-        playerId: keeperId,
+
+    await db.runTransaction(async (transaction) => {
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) {
+        throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      }
+      const job = jobSnap.data() || {};
+      const now = Date.now();
+      if (
+        job.leaseOwner !== worker.leaseOwner ||
+        job.leaseToken !== worker.leaseToken ||
+        job.fencingToken !== worker.fencingToken ||
+        job.status !== "in_progress" ||
+        now >= (job.leaseExpiresAt || 0)
+      ) {
+        throw new StaleWorkerError(
+          409,
+          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
+          "STALE_WORKER_FENCING_ERROR"
+        );
+      }
+
+      // 2. Update each doc in chunk
+      for (const ref of chunk) {
+        transaction.update(ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 3. Update job progress and renew lease
+      chunkIndex++;
+      totalProcessed += chunk.length;
+      const newExpiresAt = now + 60000;
+      transaction.update(mergeJobRef, {
+        "stats.appUsersReparented": totalProcessed,
+        "stats.appUsersReparentedChunks": chunkIndex,
+        "stats.lastCommittedChunk": `appusers_chunk_${chunkIndex}`,
+        leaseExpiresAt: newExpiresAt,
+        lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      count++;
-    }
-    await batch.commit();
-
-    await db.collection("mergeJobs").doc(jobId).update({
-      "stats.appUsersReparentedProgress": count,
-      "stats.appUsersReparentedChunks": Math.floor(i / batchLimit) + 1,
-      lastHeartbeatAt: new Date().toISOString(),
-      updatedAt: FieldValue.serverTimestamp(),
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+      await options.onAfterChunkCommit(chunkIndex - 1, totalProcessed);
     }
   }
 
@@ -1021,11 +1290,12 @@ export async function migrateAppUsersAndIndexesStage(
     uidIndexReparented: freshUidSnap.docs.length,
     phoneIndexReparented: freshPhoneSnap.docs.length,
   });
-  return { count };
+  return { count: totalProcessed };
 }
 
 /**
- * Stage 6: Independent Final Verification & Completion (Finding 1F-05).
+ * Stage 6: Independent Final Verification & Completion (Finding 1F-R R10).
+ * Fail-closed verification proves complete migration before soft-delete and completion.
  */
 export async function executeIndependentFinalVerification(
   db: FirebaseFirestore.Firestore,
@@ -1107,28 +1377,33 @@ export async function executeIndependentFinalVerification(
     throw new MergeConflictError(409, "Keeper player is disabled or merged into another record.", "FINAL_VERIFICATION_FAILED");
   }
 
-  // 8. Verify keeper authoritative phone reservation
+  // 8. Verify keeper authoritative phone reservation (Finding 1F-R R10: fail closed if missing)
   if (keeperData.mobile) {
     const parsed = parseStrictIndianMobile(keeperData.mobile);
-    if (parsed.ok) {
-      const piSnap = await db.collection("phoneIndex").doc(parsed.canonical).get();
-      if (piSnap.exists && piSnap.data()?.playerId !== keeperId) {
-        throw new MergeConflictError(
-          409,
-          `Final verification failed: keeper phone reservation does not map to keeper playerId.`,
-          "FINAL_VERIFICATION_FAILED"
-        );
-      }
+    if (!parsed.ok) {
+      throw new MergeConflictError(
+        409,
+        "Final verification failed: keeper mobile number is invalid.",
+        "FINAL_VERIFICATION_FAILED"
+      );
+    }
+    const piSnap = await db.collection("phoneIndex").doc(parsed.canonical).get();
+    if (!piSnap.exists || piSnap.data()?.playerId !== keeperId) {
+      throw new MergeConflictError(
+        409,
+        `Final verification failed: expected keeper phone reservation missing or does not map to keeper playerId.`,
+        "FINAL_VERIFICATION_FAILED"
+      );
     }
   }
 
-  // 9. Verify keeper authoritative UID reservation
+  // 9. Verify keeper authoritative UID reservation (Finding 1F-R R10: fail closed if missing)
   if (keeperData.authUid) {
     const uiSnap = await db.collection("uidIndex").doc(keeperData.authUid).get();
-    if (uiSnap.exists && uiSnap.data()?.playerId !== keeperId) {
+    if (!uiSnap.exists || uiSnap.data()?.playerId !== keeperId) {
       throw new MergeConflictError(
         409,
-        `Final verification failed: keeper UID reservation does not map to keeper playerId.`,
+        `Final verification failed: expected keeper UID reservation missing or does not map to keeper playerId.`,
         "FINAL_VERIFICATION_FAILED"
       );
     }
