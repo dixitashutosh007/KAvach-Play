@@ -515,8 +515,8 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
   });
 
   it("Scenario 15: Failure after a committed migration chunk: loser remains incomplete", async () => {
-    await db.collection("players").doc("p_loser_s15").set({ name: "Loser S15", mergeStatus: "in_progress" });
-    await db.collection("players").doc("p_keeper_s15").set({ name: "Keeper S15", mergeStatus: "in_progress" });
+    await db.collection("players").doc("p_loser_s15").set({ name: "Loser S15" });
+    await db.collection("players").doc("p_keeper_s15").set({ name: "Keeper S15" });
 
     // Seed 250 payments (chunk size = 100)
     for (let i = 0; i < 250; i++) {
@@ -562,8 +562,8 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
   });
 
   it("Scenario 16: Retry after genuine partial migration resumes from verified progress", async () => {
-    await db.collection("players").doc("p_loser_s16").set({ name: "Loser S16", mergeStatus: "in_progress" });
-    await db.collection("players").doc("p_keeper_s16").set({ name: "Keeper S16", mergeStatus: "in_progress" });
+    await db.collection("players").doc("p_loser_s16").set({ name: "Loser S16", mergeStatus: "in_progress", mergeJobId: "job_s16" });
+    await db.collection("players").doc("p_keeper_s16").set({ name: "Keeper S16", mergeStatus: "in_progress", mergeJobId: "job_s16" });
 
     // Seed 100 already migrated payments (chunk 0) and 150 remaining payments (chunks 1 & 2)
     for (let i = 0; i < 100; i++) {
@@ -665,8 +665,8 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
   });
 
   it("Scenario 18: Final verification detects a deliberately retained loser reference and refuses completion", async () => {
-    await db.collection("players").doc("p_loser_s18").set({ name: "Loser S18", mergeStatus: "in_progress" });
-    await db.collection("players").doc("p_keeper_s18").set({ name: "Keeper S18", mergeStatus: "in_progress" });
+    await db.collection("players").doc("p_loser_s18").set({ name: "Loser S18" });
+    await db.collection("players").doc("p_keeper_s18").set({ name: "Keeper S18" });
 
     const lease = await playerMergeModule.acquireMergeLease(db, "job_s18", "p_loser_s18", "p_keeper_s18");
     assert.equal(lease.ok, true);
@@ -1738,6 +1738,8 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
       jobId,
       status: "in_progress",
       stage: "stage_2_payments",
+      leaseOwner: "worker_52",
+      leaseToken: "token_52",
       fencingToken: 1,
       stats: { paymentsReparented: 50 },
     });
@@ -1769,8 +1771,8 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     const loserId = "p_loser_race_53";
     const keeperId = "p_keeper_race_53";
 
-    await db.collection("players").doc(loserId).set({ id: loserId, mergeStatus: "in_progress", mergeJobId: jobId, mergeFencingToken: 1 });
-    await db.collection("players").doc(keeperId).set({ id: keeperId, mergeStatus: "in_progress", mergeJobId: jobId, mergeFencingToken: 1 });
+    await db.collection("players").doc(loserId).set({ id: loserId, mergeStatus: "in_progress", mergeJobId: jobId, mergeFencingToken: 1, mergeLeaseOwner: "worker_53" });
+    await db.collection("players").doc(keeperId).set({ id: keeperId, mergeStatus: "in_progress", mergeJobId: jobId, mergeFencingToken: 1, mergeLeaseOwner: "worker_53" });
 
     await db.collection("mergeJobs").doc(jobId).set({
       jobId,
@@ -1895,5 +1897,416 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
 
     const isAuthorized = await verifyPlayerOwnership(db, "uid_active_55", "p_active_55");
     assert.equal(isAuthorized, false, "Actively merging player must not be authorized to initiate new payments.");
+  });
+
+  it("Scenario 56 (R10 Genuine Emulator Concurrency: Payments vs Completion Window): Detects concurrent payment and fails closed", async () => {
+    const jobId = "job_s56";
+    const loserId = "p_loser_s56";
+    const keeperId = "p_keeper_s56";
+
+    await db.collection("players").doc(loserId).set({
+      id: loserId,
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeFencingToken: 1,
+      mergeLeaseOwner: "worker_56",
+    });
+    await db.collection("players").doc(keeperId).set({
+      id: keeperId,
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeFencingToken: 1,
+      mergeLeaseOwner: "worker_56",
+    });
+
+    await db.collection("mergeJobs").doc(jobId).set({
+      jobId,
+      loserId,
+      keeperId,
+      status: "in_progress",
+      stage: "app_users_reparented",
+      leaseOwner: "worker_56",
+      leaseToken: "token_56",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_56",
+      leaseToken: "token_56",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    // Concurrently insert a payment referencing loser while completion stage runs
+    let completionError = null;
+    const [writeRes, compRes] = await Promise.allSettled([
+      db.collection("matches").doc("m_s56").collection("payments").doc("pay_race_56").set({
+        playerId: loserId,
+        amount: 350,
+        status: "Paid",
+      }),
+      playerMergeModule.executeMergeCompletionStage(db, jobId, loserId, keeperId, worker),
+    ]);
+
+    assert.equal(compRes.status, "rejected", "Completion must reject when concurrent payment exists.");
+    assert.equal(compRes.reason?.status, 409);
+    assert.equal(compRes.reason?.code, "FINAL_VERIFICATION_FAILED");
+
+    // Database remains consistent: loser is NOT marked completed, job is NOT marked completed
+    const loserSnap = await db.collection("players").doc(loserId).get();
+    assert.notEqual(loserSnap.data().mergeStatus, "completed");
+    assert.notEqual(loserSnap.data().disabled, true);
+
+    const jobSnap = await db.collection("mergeJobs").doc(jobId).get();
+    assert.notEqual(jobSnap.data().status, "completed");
+  });
+
+  it("Scenario 57 (R10 Genuine Emulator Concurrency: OtherFees vs Completion Window): Detects concurrent fee and fails closed", async () => {
+    const jobId = "job_s57";
+    const loserId = "p_loser_s57";
+    const keeperId = "p_keeper_s57";
+
+    await db.collection("players").doc(loserId).set({
+      id: loserId,
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeFencingToken: 1,
+      mergeLeaseOwner: "worker_57",
+    });
+    await db.collection("players").doc(keeperId).set({
+      id: keeperId,
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeFencingToken: 1,
+      mergeLeaseOwner: "worker_57",
+    });
+
+    await db.collection("mergeJobs").doc(jobId).set({
+      jobId,
+      loserId,
+      keeperId,
+      status: "in_progress",
+      stage: "app_users_reparented",
+      leaseOwner: "worker_57",
+      leaseToken: "token_57",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    });
+
+    const worker = {
+      leaseOwner: "worker_57",
+      leaseToken: "token_57",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    // Concurrently insert an otherFee referencing loser while completion stage runs
+    const [writeRes, compRes] = await Promise.allSettled([
+      db.collection("players").doc(loserId).collection("otherFees").doc("fee_race_57").set({
+        playerId: loserId,
+        amount: 500,
+        title: "Concurrent Annual Fee",
+        status: "Pending",
+      }),
+      playerMergeModule.executeMergeCompletionStage(db, jobId, loserId, keeperId, worker),
+    ]);
+
+    assert.equal(compRes.status, "rejected", "Completion must reject when concurrent fee exists.");
+    assert.equal(compRes.reason?.status, 409);
+    assert.equal(compRes.reason?.code, "FINAL_VERIFICATION_FAILED");
+
+    // Database remains consistent: loser is NOT marked completed, job is NOT marked completed
+    const loserSnap = await db.collection("players").doc(loserId).get();
+    assert.notEqual(loserSnap.data().mergeStatus, "completed");
+    assert.notEqual(loserSnap.data().disabled, true);
+
+    const jobSnap = await db.collection("mergeJobs").doc(jobId).get();
+    assert.notEqual(jobSnap.data().status, "completed");
+  });
+
+  it("Scenario 58 (R2/R3 Malformed Lock — in_progress without mergeJobId): Rejects with 409 MALFORMED_PLAYER_LOCK", async () => {
+    await db.collection("players").doc("p_loser_s58").set({ name: "Loser 58", mergeStatus: "in_progress" });
+    await db.collection("players").doc("p_keeper_s58").set({ name: "Keeper 58" });
+
+    const lease = await playerMergeModule.acquireMergeLease(db, "job_s58", "p_loser_s58", "p_keeper_s58");
+    assert.equal(lease.ok, false);
+    assert.equal(lease.status, 409);
+    assert.equal(lease.code, "MALFORMED_PLAYER_LOCK");
+  });
+
+  it("Scenario 59 (R2/R3 Mismatched Lock — fencing token or lease owner mismatch): Rejects with 409 PLAYER_LOCK_MISMATCH", async () => {
+    await db.collection("players").doc("p_loser_s59").set({
+      name: "Loser 59",
+      mergeStatus: "in_progress",
+      mergeJobId: "job_s59",
+      mergeFencingToken: 99,
+      mergeLeaseExpiresAt: Date.now() + 60000,
+    });
+    await db.collection("players").doc("p_keeper_s59").set({
+      name: "Keeper 59",
+      mergeStatus: "in_progress",
+      mergeJobId: "job_s59",
+      mergeFencingToken: 99,
+      mergeLeaseExpiresAt: Date.now() + 60000,
+    });
+    await db.collection("mergeJobs").doc("job_s59").set({
+      id: "job_s59",
+      jobId: "job_s59",
+      status: "in_progress",
+      fencingToken: 1,
+      leaseExpiresAt: Date.now() + 60000,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date(),
+    });
+
+    const lease = await playerMergeModule.acquireMergeLease(db, "job_s59", "p_loser_s59", "p_keeper_s59");
+    assert.equal(lease.ok, false);
+    assert.equal(lease.status, 409);
+    assert.equal(lease.code, "PLAYER_LOCK_MISMATCH");
+  });
+
+  it("Scenario 60 (R2/R3 Cross-Job Lock Conflict): Rejects with 409 CROSS_JOB_LOCK_CONFLICT", async () => {
+    await db.collection("players").doc("p_loser_s60").set({
+      name: "Loser 60",
+      mergeStatus: "in_progress",
+      mergeJobId: "job_A_60",
+      mergeLeaseExpiresAt: Date.now() + 60000,
+    });
+    await db.collection("players").doc("p_keeper_s60").set({
+      name: "Keeper 60",
+      mergeStatus: "in_progress",
+      mergeJobId: "job_B_60",
+      mergeLeaseExpiresAt: Date.now() + 60000,
+    });
+
+    const lease = await playerMergeModule.acquireMergeLease(db, "job_s60", "p_loser_s60", "p_keeper_s60");
+    assert.equal(lease.ok, false);
+    assert.equal(lease.status, 409);
+    assert.equal(lease.code, "CROSS_JOB_LOCK_CONFLICT");
+  });
+
+  it("Scenario 61 (R2/R3 Incomplete Completed Job): Rejects with 409 INCOMPLETE_COMPLETED_JOB", async () => {
+    await db.collection("mergeJobs").doc("job_s61").set({
+      id: "job_s61",
+      jobId: "job_s61",
+      status: "completed",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date(),
+    });
+    await db.collection("players").doc("p_loser_s61").set({
+      name: "Loser 61",
+      mergeStatus: "in_progress",
+      disabled: false,
+    });
+    await db.collection("players").doc("p_keeper_s61").set({
+      name: "Keeper 61",
+    });
+
+    const lease = await playerMergeModule.acquireMergeLease(db, "job_s61", "p_loser_s61", "p_keeper_s61");
+    assert.equal(lease.ok, false);
+    assert.equal(lease.status, 409);
+    assert.equal(lease.code, "INCOMPLETE_COMPLETED_JOB");
+  });
+
+  it("Scenario 62 (Failure Lifecycle: Worker Identity & Lease Token Mismatch): Refuses to record failure from superseded worker", async () => {
+    const jobId = "job_s62";
+    await db.collection("mergeJobs").doc(jobId).set({
+      id: jobId,
+      jobId,
+      status: "in_progress",
+      stage: "stage_2_payments",
+      leaseOwner: "worker_original_62",
+      leaseToken: "token_original_62",
+      fencingToken: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date(),
+    });
+
+    const supersededWorker = {
+      leaseOwner: "worker_superseded_62",
+      leaseToken: "token_superseded_62",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    const res = await playerMergeModule.recordMergeJobFailure(
+      db,
+      jobId,
+      supersededWorker,
+      new Error("Simulated network drop"),
+      "stage_2_payments"
+    );
+
+    assert.equal(res.recorded, false);
+    assert.equal(res.reason, "WORKER_SUPERSEDED_OR_MISMATCH");
+
+    const jobSnap = await db.collection("mergeJobs").doc(jobId).get();
+    assert.equal(jobSnap.data().status, "in_progress");
+  });
+
+  it("Scenario 63 (Failure Lifecycle: Completed Job Downgrade Prevention): Stale worker cannot downgrade completed job", async () => {
+    const jobId = "job_s63";
+    await db.collection("mergeJobs").doc(jobId).set({
+      id: jobId,
+      jobId,
+      status: "completed",
+      leaseOwner: "worker_63",
+      leaseToken: "token_63",
+      fencingToken: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date(),
+    });
+
+    const worker = {
+      leaseOwner: "worker_63",
+      leaseToken: "token_63",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: Date.now() + 60000,
+    };
+
+    const res = await playerMergeModule.recordMergeJobFailure(
+      db,
+      jobId,
+      worker,
+      new Error("Delayed failure event"),
+      "stage_completion"
+    );
+
+    assert.equal(res.recorded, false);
+    assert.equal(res.reason, "JOB_NOT_IN_PROGRESS_COMPLETED");
+
+    const jobSnap = await db.collection("mergeJobs").doc(jobId).get();
+    assert.equal(jobSnap.data().status, "completed");
+  });
+
+  it("Scenario 64 (R4 Financial Comparator Exhaustive Matrix): Validates numerical amounts, aliases and currency", () => {
+    const { parseAuthoritativeAmount, resolveFinancialRecordValues } = playerMergeModule;
+
+    // 1. Non-numeric string
+    const resNonNumeric = parseAuthoritativeAmount("invalid_amount");
+    assert.equal(resNonNumeric.ok, false);
+    assert.match(resNonNumeric.error, /invalid non-numeric string/);
+
+    // 2. NaN
+    const resNaN = parseAuthoritativeAmount(NaN);
+    assert.equal(resNaN.ok, false);
+    assert.match(resNaN.error, /NaN or non-finite/);
+
+    // 3. Infinity
+    const resInf = parseAuthoritativeAmount(Infinity);
+    assert.equal(resInf.ok, false);
+    assert.match(resInf.error, /NaN or non-finite/);
+
+    // 4. Negative amount
+    const resNeg = parseAuthoritativeAmount(-150);
+    assert.equal(resNeg.ok, false);
+    assert.match(resNeg.error, /cannot be negative/);
+
+    // 5. String with decimal precision and whitespace
+    const resTrimmed = parseAuthoritativeAmount("  249.995  ");
+    assert.equal(resTrimmed.ok, true);
+    assert.equal(resTrimmed.value, 250); // Paise rounding
+
+    // 6. Contradictory paidAmount vs feeCollectedAmount
+    const resContradictoryPaid = resolveFinancialRecordValues({
+      amount: 500,
+      paidAmount: 500,
+      feeCollectedAmount: 600,
+    });
+    assert.equal(resContradictoryPaid.ok, false);
+    assert.match(resContradictoryPaid.conflictReason, /Contradictory paid amount aliases/);
+
+    // 7. Equivalence of refundAmount (Rs) and refundedPaise (Paise)
+    const resRefundEquivalent = resolveFinancialRecordValues({
+      amount: 500,
+      refundAmount: 5,
+      refundedPaise: 500,
+    });
+    assert.equal(resRefundEquivalent.ok, true);
+    assert.equal(resRefundEquivalent.values?.refundAmount, 5);
+
+    // 8. Contradictory refundAmount vs refundedPaise
+    const resRefundContradictory = resolveFinancialRecordValues({
+      amount: 500,
+      refundAmount: 5,
+      refundedPaise: 600,
+    });
+    assert.equal(resRefundContradictory.ok, false);
+    assert.match(resRefundContradictory.conflictReason, /Contradictory refund amount aliases/);
+
+    // 9. Unsupported currency
+    const resCurrency = resolveFinancialRecordValues({
+      amount: 100,
+      currency: "USD",
+    });
+    assert.equal(resCurrency.ok, false);
+    assert.match(resCurrency.conflictReason, /Unsupported currency/);
+  });
+
+  it("Scenario 65 (R10 Webhook Redirection): Webhook transaction safely redirects fees from merged player to keeper", async () => {
+    const { processWebhookIntentTransaction } = await import("../lib/razorpay-webhook.ts");
+
+    const loserId = "p_loser_s65";
+    const keeperId = "p_keeper_s65";
+
+    await db.collection("players").doc(loserId).set({
+      id: loserId,
+      name: "Merged Loser 65",
+      mergedInto: keeperId,
+      disabled: true,
+      mergeStatus: "completed",
+    });
+    await db.collection("players").doc(keeperId).set({
+      id: keeperId,
+      name: "Active Keeper 65",
+    });
+
+    const intentId = "intent_dues_s65";
+    const orderId = "order_rzp_s65";
+    await db.collection("razorpayIntents").doc(intentId).set({
+      id: intentId,
+      orderId,
+      type: "match",
+      amount: 250,
+      currency: "INR",
+      status: "created",
+      lateFeeItems: [
+        {
+          playerId: loserId,
+          amount: 50,
+          label: "Late Squad Penalty",
+          templateId: "tpl_late_65",
+        },
+      ],
+    });
+
+    const eventDetails = {
+      event: "payment.captured",
+      intentId,
+      paymentId: "pay_rzp_s65",
+      orderId,
+      capturedPaise: 25000,
+      capturedCurrency: "INR",
+    };
+
+    const res = await processWebhookIntentTransaction(db, eventDetails);
+    assert.equal(res.success, true);
+
+    // Verify late fee was created under keeper, NOT loser
+    const loserFees = await db.collection("players").doc(loserId).collection("otherFees").get();
+    assert.equal(loserFees.empty, true, "No fees should be created under merged loser.");
+
+    const keeperFees = await db.collection("players").doc(keeperId).collection("otherFees").get();
+    assert.equal(keeperFees.docs.length, 1, "Fee must be safely redirected to keeper.");
+    const feeData = keeperFees.docs[0].data();
+    assert.equal(feeData.playerId, keeperId);
+    assert.equal(feeData.originalPlayerId, loserId);
+    assert.equal(feeData.amount, 50);
+    assert.equal(feeData.status, "Paid");
   });
 });

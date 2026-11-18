@@ -175,11 +175,53 @@ export async function acquireMergeLease(
     const existingJob = jobSnap.exists ? jobSnap.data() || {} : null;
 
     // Check if merge is already completed
-    if (existingJob?.status === "completed" && loser.mergedInto === keeperId && loser.disabled === true) {
+    if (existingJob?.status === "completed") {
+      if (loser.mergedInto === keeperId && loser.disabled === true && loser.mergeStatus === "completed") {
+        return {
+          ok: true,
+          alreadyCompleted: true,
+          existingJob,
+        };
+      }
       return {
-        ok: true,
-        alreadyCompleted: true,
-        existingJob,
+        ok: false,
+        status: 409,
+        error: "Merge job is marked completed but player records are in incomplete merge state. Requires operator resolution.",
+        code: "INCOMPLETE_COMPLETED_JOB",
+      };
+    }
+
+    // Check for malformed player locks (mergeStatus in_progress without mergeJobId)
+    if (loser.mergeStatus === "in_progress" && (!loser.mergeJobId || typeof loser.mergeJobId !== "string" || !loser.mergeJobId.trim())) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Loser player has mergeStatus in_progress but is missing mergeJobId. Ambiguous lock requires operator resolution.",
+        code: "MALFORMED_PLAYER_LOCK",
+      };
+    }
+    if (keeper.mergeStatus === "in_progress" && (!keeper.mergeJobId || typeof keeper.mergeJobId !== "string" || !keeper.mergeJobId.trim())) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Keeper player has mergeStatus in_progress but is missing mergeJobId. Ambiguous lock requires operator resolution.",
+        code: "MALFORMED_PLAYER_LOCK",
+      };
+    }
+
+    // Check cross-job lock conflict (loser and keeper locked to different merge jobs)
+    if (
+      loser.mergeJobId &&
+      keeper.mergeJobId &&
+      loser.mergeJobId !== keeper.mergeJobId &&
+      loser.mergeStatus === "in_progress" &&
+      keeper.mergeStatus === "in_progress"
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Loser is locked by job ${loser.mergeJobId} while keeper is locked by job ${keeper.mergeJobId}. Cross-job conflict requires operator resolution.`,
+        code: "CROSS_JOB_LOCK_CONFLICT",
       };
     }
 
@@ -288,6 +330,20 @@ export async function acquireMergeLease(
       now < currentLeaseExpiresAt;
 
     if (hasActiveLease) {
+      if (
+        (loser.mergeFencingToken !== undefined && existingJob.fencingToken !== undefined && loser.mergeFencingToken !== existingJob.fencingToken) ||
+        (keeper.mergeFencingToken !== undefined && existingJob.fencingToken !== undefined && keeper.mergeFencingToken !== existingJob.fencingToken) ||
+        (loser.mergeLeaseOwner && existingJob.leaseOwner && loser.mergeLeaseOwner !== existingJob.leaseOwner) ||
+        (keeper.mergeLeaseOwner && existingJob.leaseOwner && keeper.mergeLeaseOwner !== existingJob.leaseOwner) ||
+        (loser.mergeFencingToken !== undefined && keeper.mergeFencingToken !== undefined && loser.mergeFencingToken !== keeper.mergeFencingToken)
+      ) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Active player lock metadata disagrees with active merge job fencing or lease owner. Requires operator resolution.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
       return {
         ok: false,
         status: 409,
@@ -883,6 +939,7 @@ export async function executeMergeCompletionStage(
       jobSnap,
       loserSnap,
       keeperSnap,
+      residualPaymentsSnap,
       residualFeesSnap,
       residualUsersSnap,
       residualUidSnap,
@@ -892,6 +949,7 @@ export async function executeMergeCompletionStage(
       transaction.get(mergeJobRef),
       transaction.get(loserRef),
       transaction.get(keeperRef),
+      transaction.get(db.collectionGroup("payments").where("playerId", "==", loserId).limit(1)),
       transaction.get(loserRef.collection("otherFees").limit(1)),
       transaction.get(db.collection("appUsers").where("playerId", "==", loserId).limit(1)),
       transaction.get(db.collection("uidIndex").where("playerId", "==", loserId).limit(1)),
@@ -929,20 +987,23 @@ export async function executeMergeCompletionStage(
     if (
       loser.mergeJobId !== jobId ||
       loser.mergeStatus !== "in_progress" ||
-      loser.mergeFencingToken !== worker.fencingToken
+      loser.mergeFencingToken !== worker.fencingToken ||
+      (loser.mergeLeaseOwner && loser.mergeLeaseOwner !== worker.leaseOwner)
     ) {
       throw new MergeConflictError(409, "Loser player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
     }
     if (
       keeper.mergeJobId !== jobId ||
       keeper.mergeStatus !== "in_progress" ||
-      keeper.mergeFencingToken !== worker.fencingToken
+      keeper.mergeFencingToken !== worker.fencingToken ||
+      (keeper.mergeLeaseOwner && keeper.mergeLeaseOwner !== worker.leaseOwner)
     ) {
       throw new MergeConflictError(409, "Keeper player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
     }
 
     // Verify zero residual documents created during verification window (Finding 1F-R R10)
     if (
+      !residualPaymentsSnap.empty ||
       !residualFeesSnap.empty ||
       !residualUsersSnap.empty ||
       !residualUidSnap.empty ||
@@ -980,6 +1041,51 @@ export async function executeMergeCompletionStage(
 }
 
 /**
+ * Strict numeric parser and validator for financial fields (Finding 1F-R R4).
+ * Enforces finite numbers, non-negative bounds, decimal rounding (paise precision),
+ * and rejects NaN, Infinity, non-numeric strings, and out-of-boundary values.
+ */
+export function parseAuthoritativeAmount(
+  val: any,
+  fieldName: string,
+  options?: { allowZero?: boolean; allowNegative?: boolean; maxAmount?: number }
+): { ok: boolean; value?: number; error?: string } {
+  if (val === undefined || val === null) {
+    return { ok: true, value: undefined };
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (trimmed === "") {
+      return { ok: true, value: undefined };
+    }
+    // Must be valid numeric representation (digits, optional single decimal point)
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      return { ok: false, error: `${fieldName} contains invalid non-numeric string: '${val}'.` };
+    }
+    val = Number(trimmed);
+  }
+  if (typeof val !== "number") {
+    return { ok: false, error: `${fieldName} has invalid type: ${typeof val}.` };
+  }
+  if (!Number.isFinite(val) || Number.isNaN(val)) {
+    return { ok: false, error: `${fieldName} is NaN or non-finite.` };
+  }
+  if (!options?.allowNegative && val < 0) {
+    return { ok: false, error: `${fieldName} cannot be negative: ${val}.` };
+  }
+  if (options?.allowZero === false && val === 0) {
+    return { ok: false, error: `${fieldName} cannot be zero.` };
+  }
+  const max = options?.maxAmount ?? Number.MAX_SAFE_INTEGER;
+  if (Math.abs(val) > max) {
+    return { ok: false, error: `${fieldName} exceeds maximum allowable numerical boundary: ${val}.` };
+  }
+  // Decimal precision: round to 2 decimal places (Paise precision in INR)
+  const rounded = Math.round(val * 100) / 100;
+  return { ok: true, value: rounded };
+}
+
+/**
  * Resolves authoritative and legacy financial alias values for a record (Finding 1F-R R4).
  * Fails closed (returns ok: false, conflictReason: string) if contradictory alias values
  * are populated on the same document.
@@ -1003,35 +1109,79 @@ export function resolveFinancialRecordValues(record: Record<string, any>): {
     currency: string;
   };
 } {
-  // 1. Paid Amount Aliases: paidAmount vs feeCollectedAmount
-  const hasPaidAmount = record.paidAmount !== undefined && record.paidAmount !== null && record.paidAmount !== "";
-  const hasFeeCollected = record.feeCollectedAmount !== undefined && record.feeCollectedAmount !== null && record.feeCollectedAmount !== "";
+  if (!record || typeof record !== "object") {
+    return { ok: false, conflictReason: "Record must be a valid object." };
+  }
+
+  // 1. Authoritative base amount
+  const parsedAmt = parseAuthoritativeAmount(record.amount, "amount");
+  if (!parsedAmt.ok) {
+    return { ok: false, conflictReason: parsedAmt.error };
+  }
+  const amount = parsedAmt.value ?? 0;
+
+  // 2. Paid Amount Aliases: paidAmount vs feeCollectedAmount
+  const parsedPaid = parseAuthoritativeAmount(record.paidAmount, "paidAmount");
+  if (!parsedPaid.ok) {
+    return { ok: false, conflictReason: parsedPaid.error };
+  }
+  const parsedCollected = parseAuthoritativeAmount(record.feeCollectedAmount, "feeCollectedAmount");
+  if (!parsedCollected.ok) {
+    return { ok: false, conflictReason: parsedCollected.error };
+  }
+
+  const hasPaidAmount = parsedPaid.value !== undefined;
+  const hasFeeCollected = parsedCollected.value !== undefined;
+
   if (hasPaidAmount && hasFeeCollected) {
-    if (Number(record.paidAmount) !== Number(record.feeCollectedAmount)) {
-      return { ok: false, conflictReason: `Contradictory paid amount aliases: paidAmount=${record.paidAmount} vs feeCollectedAmount=${record.feeCollectedAmount}` };
+    if (parsedPaid.value !== parsedCollected.value) {
+      return {
+        ok: false,
+        conflictReason: `Contradictory paid amount aliases: paidAmount=${parsedPaid.value} vs feeCollectedAmount=${parsedCollected.value}`,
+      };
     }
   }
-  const paidAmount = hasPaidAmount ? Number(record.paidAmount) : (hasFeeCollected ? Number(record.feeCollectedAmount) : 0);
+  const paidAmount = hasPaidAmount ? parsedPaid.value! : (hasFeeCollected ? parsedCollected.value! : 0);
 
-  // 2. Refund Identifier Aliases: refundId vs refundReference
+  // 3. Refund Identifier Aliases: refundId vs refundReference
   const refId = record.refundId !== undefined && record.refundId !== null ? String(record.refundId).trim() : "";
   const refRef = record.refundReference !== undefined && record.refundReference !== null ? String(record.refundReference).trim() : "";
   if (refId && refRef && refId !== refRef) {
-    return { ok: false, conflictReason: `Contradictory refund identifier aliases: refundId=${refId} vs refundReference=${refRef}` };
+    return {
+      ok: false,
+      conflictReason: `Contradictory refund identifier aliases: refundId=${refId} vs refundReference=${refRef}`,
+    };
   }
   const refundId = refId || refRef;
 
-  // 3. Refund Amount Aliases: refundAmount vs refundedPaise
-  const hasRefundAmount = record.refundAmount !== undefined && record.refundAmount !== null && record.refundAmount !== "";
-  const hasRefundedPaise = record.refundedPaise !== undefined && record.refundedPaise !== null && record.refundedPaise !== "";
+  // 4. Refund Amount Aliases: refundAmount (Rupees) vs refundedPaise (Paise)
+  const parsedRefAmt = parseAuthoritativeAmount(record.refundAmount, "refundAmount");
+  if (!parsedRefAmt.ok) {
+    return { ok: false, conflictReason: parsedRefAmt.error };
+  }
+  const parsedRefPaise = parseAuthoritativeAmount(record.refundedPaise, "refundedPaise");
+  if (!parsedRefPaise.ok) {
+    return { ok: false, conflictReason: parsedRefPaise.error };
+  }
+
+  const hasRefundAmount = parsedRefAmt.value !== undefined;
+  const hasRefundedPaise = parsedRefPaise.value !== undefined;
+
   if (hasRefundAmount && hasRefundedPaise) {
-    if (Math.round(Number(record.refundAmount) * 100) !== Number(record.refundedPaise)) {
-      return { ok: false, conflictReason: `Contradictory refund amount aliases: refundAmount=${record.refundAmount} vs refundedPaise=${record.refundedPaise}` };
+    const expectedPaise = Math.round(parsedRefAmt.value! * 100);
+    const actualPaise = Math.round(parsedRefPaise.value!);
+    if (expectedPaise !== actualPaise) {
+      return {
+        ok: false,
+        conflictReason: `Contradictory refund amount aliases: refundAmount=${parsedRefAmt.value} (${expectedPaise} paise) vs refundedPaise=${parsedRefPaise.value}`,
+      };
     }
   }
-  const refundAmount = hasRefundAmount ? Number(record.refundAmount) : (hasRefundedPaise ? Number(record.refundedPaise) / 100 : 0);
+  const refundAmount = hasRefundAmount
+    ? parsedRefAmt.value!
+    : (hasRefundedPaise ? Math.round(parsedRefPaise.value!) / 100 : 0);
 
-  // 4. Payment Method Aliases: paymentMethod vs paymentMode vs channel
+  // 5. Payment Method Aliases: paymentMethod vs paymentMode vs channel
   const pm = record.paymentMethod !== undefined && record.paymentMethod !== null ? String(record.paymentMethod).trim() : "";
   const pMode = record.paymentMode !== undefined && record.paymentMode !== null ? String(record.paymentMode).trim() : "";
   const ch = record.channel !== undefined && record.channel !== null ? String(record.channel).trim() : "";
@@ -1046,7 +1196,7 @@ export function resolveFinancialRecordValues(record: Record<string, any>): {
   }
   const paymentMethod = pm || pMode || ch;
 
-  // 5. Payment Status Aliases: status vs paymentStatus
+  // 6. Payment Status Aliases: status vs paymentStatus
   const st = record.status !== undefined && record.status !== null ? String(record.status).trim() : "";
   const pSt = record.paymentStatus !== undefined && record.paymentStatus !== null ? String(record.paymentStatus).trim() : "";
   if (st && pSt && st.toLowerCase() !== pSt.toLowerCase()) {
@@ -1054,22 +1204,28 @@ export function resolveFinancialRecordValues(record: Record<string, any>): {
   }
   const status = st || pSt;
 
+  // 7. Currency
+  const rawCurrency = record.currency !== undefined && record.currency !== null ? String(record.currency).trim().toUpperCase() : "INR";
+  if (rawCurrency !== "INR") {
+    return { ok: false, conflictReason: `Unsupported currency: '${rawCurrency}'. Only INR is supported.` };
+  }
+
   return {
     ok: true,
     values: {
-      amount: Number(record.amount || 0),
-      title: (record.title || "").trim(),
+      amount,
+      title: record.title !== undefined && record.title !== null ? String(record.title).trim() : "",
       status,
-      templateId: (record.templateId || "").trim(),
+      templateId: record.templateId !== undefined && record.templateId !== null ? String(record.templateId).trim() : "",
       paymentMethod,
-      razorpayPaymentId: (record.razorpayPaymentId || "").trim(),
+      razorpayPaymentId: record.razorpayPaymentId !== undefined && record.razorpayPaymentId !== null ? String(record.razorpayPaymentId).trim() : "",
       paidAmount,
-      receiptId: (record.receiptId || "").trim(),
-      waivedReason: (record.waivedReason || "").trim(),
+      receiptId: record.receiptId !== undefined && record.receiptId !== null ? String(record.receiptId).trim() : "",
+      waivedReason: record.waivedReason !== undefined && record.waivedReason !== null ? String(record.waivedReason).trim() : "",
       refundId,
       refundAmount,
-      cancelledBy: (record.cancelledBy || "").trim(),
-      currency: (record.currency || "INR").trim().toUpperCase(),
+      cancelledBy: record.cancelledBy !== undefined && record.cancelledBy !== null ? String(record.cancelledBy).trim() : "",
+      currency: "INR",
     },
   };
 }
@@ -1297,6 +1453,20 @@ export async function migrateOtherFeesStage(
             );
           }
         } else {
+          // Destination does not exist: validate source financial record before copying (Finding 1F-R R4)
+          const srcRes = resolveFinancialRecordValues(srcData);
+          if (!srcRes.ok) {
+            transaction.update(mergeJobRef, {
+              lastError: `Malformed financial record: fee ${srcDoc.id} failed validation: ${srcRes.conflictReason}`,
+              "stats.conflicts": FieldValue.increment(1),
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            throw new MergeConflictError(
+              409,
+              `Malformed financial record detected in fee ${srcDoc.id}: ${srcRes.conflictReason}. Manual resolution required.`,
+              "FINANCIAL_RECORD_MALFORMED"
+            );
+          }
           // Destination does not exist: copy to keeper and delete from loser
           transaction.set(destRefs[idx], {
             ...srcData,
@@ -1829,6 +1999,8 @@ export async function executeIndependentFinalVerification(
 /**
  * Persists structured failure state in mergeJobs/{jobId} (Finding 1F-R R2/R3).
  * Records failed stage, error code, and error message while preserving committed progress.
+ * Strictly verifies worker lease identity, fencing generation, and active in-progress status
+ * inside an atomic transaction, preventing stale workers from downgrading completed or superseded jobs.
  */
 export async function recordMergeJobFailure(
   db: FirebaseFirestore.Firestore,
@@ -1836,19 +2008,35 @@ export async function recordMergeJobFailure(
   worker: MergeWorkerInfo | null,
   error: any,
   currentStage: string
-): Promise<void> {
+): Promise<{ recorded: boolean; reason?: string }> {
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
   try {
-    await db.runTransaction(async (transaction) => {
+    return await db.runTransaction(async (transaction) => {
       const jobSnap = await transaction.get(mergeJobRef);
-      if (!jobSnap.exists) return;
+      if (!jobSnap.exists) {
+        return { recorded: false, reason: "JOB_NOT_FOUND" };
+      }
       const job = jobSnap.data() || {};
 
-      // If worker info provided, do not overwrite if job has been superseded by a newer fencing token
-      if (worker && typeof job.fencingToken === "number" && job.fencingToken > worker.fencingToken) {
-        return;
+      // 1. Never overwrite a completed or recovered/failed job
+      if (job.status !== "in_progress") {
+        return { recorded: false, reason: `JOB_NOT_IN_PROGRESS_${job.status.toUpperCase()}` };
       }
 
+      // 2. Strict worker identity and fencing validation
+      if (!worker) {
+        return { recorded: false, reason: "MISSING_WORKER_INFO" };
+      }
+
+      if (
+        (job.leaseOwner && job.leaseOwner !== worker.leaseOwner) ||
+        (job.leaseToken && job.leaseToken !== worker.leaseToken) ||
+        (job.fencingToken !== undefined && job.fencingToken !== worker.fencingToken)
+      ) {
+        return { recorded: false, reason: "WORKER_SUPERSEDED_OR_MISMATCH" };
+      }
+
+      // 3. Atomically persist structured failure state
       transaction.update(mergeJobRef, {
         status: "failed",
         failedStage: currentStage || job.stage || "unknown",
@@ -1858,8 +2046,11 @@ export async function recordMergeJobFailure(
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      return { recorded: true };
     });
   } catch (logErr) {
     console.error("Failed to persist merge job failure state:", logErr);
+    return { recorded: false, reason: "TRANSACTION_ERROR" };
   }
 }

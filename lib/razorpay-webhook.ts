@@ -216,14 +216,46 @@ export async function processWebhookIntentTransaction(
     let currentExpiry: string | undefined;
     let playerDocRef: any = null;
 
-    if (type === "subscription" && intent.userId) {
-      const directPlayerSnap = await transaction.get(
-        db.collection("players").doc(intent.userId),
-      );
-      if (directPlayerSnap.exists) {
-        playerDocRef = directPlayerSnap.ref;
-        const pData = directPlayerSnap.data() || {};
-        currentExpiry = pData.studioExpiryDate || pData.studioEndDate;
+    // Collect and resolve all player references before writes to safely redirect merged players
+    // and block active merges with retryable abort (Finding 1F-R R10).
+    const playerIdsToRead = new Set<string>();
+    if (intent.userId) playerIdsToRead.add(String(intent.userId).trim());
+    if (intent.playerId) playerIdsToRead.add(String(intent.playerId).trim());
+    if (Array.isArray(intent.lateFeeItems)) {
+      for (const lf of intent.lateFeeItems) {
+        if (lf?.playerId) playerIdsToRead.add(String(lf.playerId).trim());
+      }
+    }
+
+    const resolvedPlayerMap: Record<string, string> = {};
+    for (const pid of playerIdsToRead) {
+      if (!pid) continue;
+      const pSnap = await transaction.get(db.collection("players").doc(pid));
+      if (pSnap.exists) {
+        const pData = pSnap.data() || {};
+        if (pData.mergeStatus === "in_progress") {
+          throw new Error(`Player ${pid} merge is currently in progress; retry requested.`);
+        }
+        if (pData.mergedInto && typeof pData.mergedInto === "string" && pData.mergedInto.trim()) {
+          resolvedPlayerMap[pid] = pData.mergedInto.trim();
+        } else {
+          resolvedPlayerMap[pid] = pid;
+        }
+
+        if (type === "subscription" && (pid === intent.userId || resolvedPlayerMap[pid] === intent.userId)) {
+          let subPlayerSnap = pSnap;
+          if (pData.mergedInto) {
+            const keeperSnap = await transaction.get(db.collection("players").doc(pData.mergedInto.trim()));
+            if (keeperSnap.exists) {
+              subPlayerSnap = keeperSnap;
+            }
+          }
+          playerDocRef = subPlayerSnap.ref;
+          const subData = subPlayerSnap.data() || {};
+          currentExpiry = subData.studioExpiryDate || subData.studioEndDate;
+        }
+      } else {
+        resolvedPlayerMap[pid] = pid;
       }
     }
 
@@ -247,16 +279,18 @@ export async function processWebhookIntentTransaction(
 
       if (Array.isArray(intent.lateFeeItems)) {
         for (const lf of intent.lateFeeItems) {
+          const targetPlayerId = resolvedPlayerMap[lf.playerId] || lf.playerId;
           const feeDocId = crypto.randomUUID();
           const feeRef = db
             .collection("players")
-            .doc(lf.playerId)
+            .doc(targetPlayerId)
             .collection("otherFees")
             .doc(feeDocId);
 
           transaction.set(feeRef, {
             id: feeDocId,
-            playerId: lf.playerId,
+            playerId: targetPlayerId,
+            ...(targetPlayerId !== lf.playerId ? { originalPlayerId: lf.playerId } : {}),
             title: lf.label || "Late Fee",
             amount: lf.amount || 0,
             comment: "Auto-levied late fee penalty",
@@ -287,9 +321,10 @@ export async function processWebhookIntentTransaction(
             updatedAt: now,
           });
         } else if (item.type === "other" && item.feeId && intent.playerId) {
+          const targetPlayerId = resolvedPlayerMap[intent.playerId] || intent.playerId;
           const feeRef = db
             .collection("players")
-            .doc(intent.playerId)
+            .doc(targetPlayerId)
             .collection("otherFees")
             .doc(item.feeId);
 
@@ -300,16 +335,18 @@ export async function processWebhookIntentTransaction(
             updatedAt: now,
           });
         } else if (item.isLateFee && intent.playerId) {
+          const targetPlayerId = resolvedPlayerMap[intent.playerId] || intent.playerId;
           const feeDocId = crypto.randomUUID();
           const feeRef = db
             .collection("players")
-            .doc(intent.playerId)
+            .doc(targetPlayerId)
             .collection("otherFees")
             .doc(feeDocId);
 
           transaction.set(feeRef, {
             id: feeDocId,
-            playerId: intent.playerId,
+            playerId: targetPlayerId,
+            ...(targetPlayerId !== intent.playerId ? { originalPlayerId: intent.playerId } : {}),
             title: item.lateFeeLabel || "Late Fee",
             amount: item.lateFeeAmount || 0,
             comment: "Auto-levied late fee penalty",
@@ -331,6 +368,7 @@ export async function processWebhookIntentTransaction(
       }
     } else if (type === "subscription") {
       if (intent.planId && intent.userId) {
+        const targetUserId = resolvedPlayerMap[intent.userId] || intent.userId;
         const durationDays = Number(intent.durationDays || 30);
         const toYMD = (d: Date) =>
           `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -348,7 +386,8 @@ export async function processWebhookIntentTransaction(
         const subHistoryRef = db.collection("subscriptionHistory").doc();
         transaction.set(subHistoryRef, {
           planId: intent.planId,
-          playerId: intent.userId,
+          playerId: targetUserId,
+          ...(targetUserId !== intent.userId ? { originalPlayerId: intent.userId } : {}),
           adminId: "webhook",
           adminName: "Razorpay Webhook",
           oldExpiryDate: currentExpiry || undefined,
