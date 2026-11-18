@@ -11,6 +11,10 @@ on:
       - main
   workflow_dispatch:
 
+# Least-privilege permissions: read-only access to repository contents
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -23,10 +27,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install Dependencies
@@ -45,10 +49,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install Dependencies
@@ -64,10 +68,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Set up Java 21 (Temurin)
@@ -76,9 +80,6 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install Dependencies
-        run: npm ci
-
       - name: Cache Firebase Emulator Binaries
         uses: actions/cache@v4
         with:
@@ -86,6 +87,9 @@ jobs:
           key: ${{ runner.os }}-firebase-emulators-${{ hashFiles('firebase.json') }}
           restore-keys: |
             ${{ runner.os }}-firebase-emulators-
+
+      - name: Install Dependencies
+        run: npm ci
 
       - name: Run Firebase Emulator Security Rules Tests
         run: npm run test:emulator
@@ -97,10 +101,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install Dependencies
@@ -125,7 +129,7 @@ jobs:
         run: npx playwright test e2e/production-app.spec.ts
 
       - name: Upload E2E Test Report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-e2e-report
@@ -139,10 +143,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install Dependencies
@@ -163,11 +167,14 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Build Next.js Production Bundle
+        run: npm run build
+
       - name: Run Production Smoke Suite
-        run: npm run test:e2e:prod
+        run: npx playwright test --config=playwright.prod.config.ts
 
       - name: Upload Production Smoke Report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-prod-smoke-report

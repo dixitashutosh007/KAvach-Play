@@ -445,10 +445,55 @@ test.describe("Production Route (/) Verification Suite", () => {
     await expect(page.locator('nav[data-testid="player-mobile-bottom-nav"]')).not.toBeVisible();
   });
 
-  // ── 6. Granular RBAC Role Enforcement for All 7 Roles (E2E-02) ─────────────
-  test.describe("6. Granular RBAC Role Enforcement for All 7 Roles", () => {
-    // 6A. Super Admin
-    test("6A. Super Admin: full access to Admin Console and all 7 administrative hubs", async ({
+  // ── 6. Complete 7-Role x 7-Hub Granular RBAC Authorization Matrix ───────────
+  test.describe("6. Complete 7-Role x 7-Hub Granular RBAC Authorization Matrix", () => {
+    const ALL_7_HUBS = [
+      { tab: "home", name: "Overview", rejectionMsg: "Your administrative role does not grant access to the Overview hub." },
+      { tab: "matches", name: "Match Centre", rejectionMsg: "You do not have Match Admin permissions for Match Centre management." },
+      { tab: "club", name: "Player Roster", rejectionMsg: "You do not have Club Admin permissions for Player Roster management." },
+      { tab: "finance", name: "Finance & Dues", rejectionMsg: "You do not have Finance Admin permissions for Finance & Dues operations." },
+      { tab: "studio", name: "Studio & Nets", rejectionMsg: "You do not have Studio Admin permissions for Studio & Nets management." },
+      { tab: "design", name: "Club Operations", rejectionMsg: "You do not have Designer permissions for Design Studio." },
+      { tab: "settings", name: "Settings & Access", rejectionMsg: "Only Super Admins may access Settings & Access." },
+    ] as const;
+
+    // Helper to evaluate a role across all 7 hubs
+    async function verifyHubAccessMatrix(
+      page: Page,
+      authorizedTabs: Set<string>,
+    ) {
+      for (const hub of ALL_7_HUBS) {
+        // Direct navigation attempt via non-production navigation hook
+        await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__?.(t), hub.tab);
+        await page.waitForTimeout(50);
+
+        if (authorizedTabs.has(hub.tab)) {
+          // Positive Authorization: Hub Restricted card MUST NOT be visible
+          await expect(
+            page.locator("text=Hub Restricted"),
+            `Hub '${hub.name}' (${hub.tab}) should be authorized but displayed Hub Restricted`,
+          ).not.toBeVisible();
+
+          if (hub.tab === "settings") {
+            await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
+          }
+        } else {
+          // Negative Authorization: Hub Restricted card MUST be visible with exact error message
+          await expect(
+            page.locator("text=Hub Restricted"),
+            `Hub '${hub.name}' (${hub.tab}) should be restricted but Hub Restricted card was missing`,
+          ).toBeVisible({ timeout: 5000 });
+
+          await expect(
+            page.locator(`text=${hub.rejectionMsg}`),
+            `Hub '${hub.name}' rejection message was missing or incorrect`,
+          ).toBeVisible();
+        }
+      }
+    }
+
+    // 6A. Super Admin: Authorized for ALL 7 hubs
+    test("6A. Super Admin: full positive authorization across all 7 administrative hubs", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -465,14 +510,11 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Authorized direct navigation to Settings & Access hub
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
-      await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
-
-      // Authorized direct navigation to Finance & Dues hub
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+      // Test all 7 hubs: all 7 are authorized
+      await verifyHubAccessMatrix(
+        page,
+        new Set(["home", "matches", "club", "finance", "studio", "design", "settings"]),
+      );
 
       // Return to Player View button restores player session without persona switching
       const returnBtn = page
@@ -484,8 +526,8 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(page.locator("h1", { hasText: /KAVACH/i })).toBeVisible();
     });
 
-    // 6B. Club Admin
-    test("6B. Club Admin: authorized for Player Roster & Match Centre; rejected from Finance & Settings", async ({
+    // 6B. Club Admin: Overview, Match Centre, Player Roster, Club Operations (design) authorized; Finance, Studio, Settings rejected
+    test("6B. Club Admin: 7-hub authorization matrix (authorized: Overview, Matches, Roster, Ops; rejected: Finance, Studio, Settings)", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -499,23 +541,14 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Positive check: Player Roster hub (club) is authorized
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("club"));
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
-
-      // Negative check: Direct navigation to Finance & Dues is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
-      await expect(page.locator("text=You do not have Finance Admin permissions")).toBeVisible();
-
-      // Negative check: Direct navigation to Settings & Access is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
-      await expect(page.locator("text=Only Super Admins may access Settings & Access.")).toBeVisible();
+      await verifyHubAccessMatrix(
+        page,
+        new Set(["home", "matches", "club", "design"]),
+      );
     });
 
-    // 6C. Match Admin
-    test("6C. Match Admin: authorized for Match Centre; rejected from Finance & Settings", async ({
+    // 6C. Match Admin: Match Centre authorized; remaining 6 hubs rejected
+    test("6C. Match Admin: 7-hub authorization matrix (authorized: Match Centre; rejected: remaining 6 hubs)", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -529,22 +562,14 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Positive check: Match Centre hub (matches) is authorized
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
-
-      // Negative check: Direct navigation to Finance & Dues is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
-      await expect(page.locator("text=You do not have Finance Admin permissions")).toBeVisible();
-
-      // Negative check: Direct navigation to Settings & Access is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await verifyHubAccessMatrix(
+        page,
+        new Set(["matches"]),
+      );
     });
 
-    // 6D. Finance Admin
-    test("6D. Finance Admin: authorized for Finance & Dues; rejected from Match Centre & Settings", async ({
+    // 6D. Finance Admin: Finance & Dues authorized; remaining 6 hubs rejected
+    test("6D. Finance Admin: 7-hub authorization matrix (authorized: Finance & Dues; rejected: remaining 6 hubs)", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -558,22 +583,14 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Positive check: Finance & Dues hub (finance) is authorized
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
-
-      // Negative check: Direct navigation to Match Centre is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
-      await expect(page.locator("text=You do not have Match Admin permissions")).toBeVisible();
-
-      // Negative check: Direct navigation to Settings & Access is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await verifyHubAccessMatrix(
+        page,
+        new Set(["finance"]),
+      );
     });
 
-    // 6E. Studio Admin
-    test("6E. Studio Admin: authorized for Studio & Nets; rejected from Finance & Matches", async ({
+    // 6E. Studio Admin: Studio & Nets authorized; remaining 6 hubs rejected
+    test("6E. Studio Admin: 7-hub authorization matrix (authorized: Studio & Nets; rejected: remaining 6 hubs)", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -587,21 +604,14 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Positive check: Studio & Nets hub (studio) is authorized
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("studio"));
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
-
-      // Negative check: Direct navigation to Finance & Dues is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
-
-      // Negative check: Direct navigation to Match Centre is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await verifyHubAccessMatrix(
+        page,
+        new Set(["studio"]),
+      );
     });
 
-    // 6F. Designer
-    test("6F. Designer: authorized for Design Studio; rejected from Finance & Settings", async ({
+    // 6F. Designer: Club Operations (design) authorized; remaining 6 hubs rejected
+    test("6F. Designer: 7-hub authorization matrix (authorized: Club Operations; rejected: remaining 6 hubs)", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -615,20 +625,13 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Positive check: Design Studio hub (design) is authorized
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("design"));
-      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
-
-      // Negative check: Direct navigation to Finance & Dues is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
-
-      // Negative check: Direct navigation to Settings & Access is rejected
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
-      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await verifyHubAccessMatrix(
+        page,
+        new Set(["design"]),
+      );
     });
 
-    // 6G. Standard Player
+    // 6G. Standard Player: No Admin Console access; client-side tampering rejected
     test("6G. Standard Player: player view only; no Admin Console; client-side tampering rejected", async ({
       page,
     }) => {
@@ -640,7 +643,7 @@ test.describe("Production Route (/) Verification Suite", () => {
       await page.goto("/");
       await page.waitForLoadState("domcontentloaded");
 
-      // Negative check: Admin Console entry must NOT be rendered in header
+      // Negative check: Admin Console entry must NOT be rendered in header or sidebar
       const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console")');
       await expect(adminEntry).not.toBeVisible();
 
@@ -652,6 +655,14 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(page.locator("text=Return to Player View")).not.toBeVisible();
       await expect(page.locator("text=Admin Hub Context Banner")).not.toBeVisible();
       await expect(page.locator("h1", { hasText: /KAVACH/i })).toBeVisible();
+
+      // Verifying that navigating while unprivileged keeps player in standard player experience
+      for (const hub of ALL_7_HUBS) {
+        await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__?.(t), hub.tab);
+        await page.waitForTimeout(50);
+        // Standard player mode renders Player tabs, never the admin error card 'Hub Restricted'
+        await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+      }
     });
   });
 
