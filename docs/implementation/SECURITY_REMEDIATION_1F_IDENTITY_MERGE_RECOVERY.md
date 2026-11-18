@@ -125,16 +125,16 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 
 | Test Suite | Command | Total | Passed | Failed | Skipped | Status |
 |---|---|---|---|---|---|---|
-| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 55 | 55 | 0 | 0 | **PASSED** |
+| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 65 | 65 | 0 | 0 | **PASSED** |
 | **Remediation 1F-A Suite** | `npm run test:emulator -- tests/remediation1fa-*.mjs` | 29 | 29 | 0 | 0 | **PASSED** |
 | **Remediation 1E Hardened Suite** | `npm run test:emulator -- tests/remediation1e-*.mjs` | 20 | 20 | 0 | 0 | **PASSED** |
-| **Full Emulator Regression** | `npm run test:emulator` | 238 | 238 | 0 | 0 | **PASSED** |
+| **Full Emulator Regression** | `npm run test:emulator` | 248 | 248 | 0 | 0 | **PASSED** |
 | **Functional Tests Suite** | `npm run test:functional` | 254 | 254 | 0 | 0 | **PASSED** |
 | **TypeScript Typecheck** | `npx tsc --noEmit` | - | 0 errors | 0 | 0 | **PASSED** |
 | **ESLint** | `npm run lint` | - | 0 errors | 0 | 0 | **PASSED** (4 open-read warnings) |
 | **Production Build** | `npm run build` | 19 pages | 19 static/dynamic | 0 | 0 | **PASSED** |
 
-### 4.2 Adversarial Remediation 1F & 1F-R Test Details (55 Scenarios)
+### 4.2 Adversarial Remediation 1F & 1F-R Test Details (65 Scenarios)
 
 1. `Scenario 1`: Reservation changes after pre-flight but before transaction: rejected inside transaction (`LOSER_PHONE_RESERVATION_THIRD_PARTY`).
 2. `Scenario 2`: Keeper and loser have distinct active UIDs: HTTP 409 (`CONFLICTING_AUTH_UIDS`).
@@ -191,6 +191,16 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 53. `Scenario 53` (1F-R R10): Atomic completion guard: detects concurrent record created in verification window and fails closed.
 54. `Scenario 54` (1F-R R4): Strengthened financial comparator: detects contradictory internal alias pairs across 12 authoritative fields.
 55. `Scenario 55` (1F-R R10): Write paths block merging players: `verifyPlayerOwnership` in `lib/razorpay-order.ts` strictly rejects actively merging players (`mergeStatus: "in_progress"`).
+56. `Scenario 56` (1F-R R10): Genuine emulator concurrency between `executeMergeCompletionStage()` and concurrent payment insertion: optimistic read set invalidation triggers transaction retry, detects residual payment via collection group query, and fails closed with HTTP 409 (`FINAL_VERIFICATION_FAILED`). Job and player remain incomplete.
+57. `Scenario 57` (1F-R R10): Genuine emulator concurrency between `executeMergeCompletionStage()` and concurrent `otherFees` insertion: transaction detects residual fee and aborts with HTTP 409 (`FINAL_VERIFICATION_FAILED`).
+58. `Scenario 58` (1F-R R2/R3): Malformed player lock rejection: player with `mergeStatus: "in_progress"` but missing `mergeJobId` is rejected with HTTP 409 (`MALFORMED_PLAYER_LOCK`).
+59. `Scenario 59` (1F-R R2/R3): Mismatched lock rejection: player lock metadata disagreeing with active job fencing token is rejected with HTTP 409 (`PLAYER_LOCK_MISMATCH`).
+60. `Scenario 60` (1F-R R2/R3): Cross-job lock conflict: loser and keeper locked to distinct merge jobs rejected with HTTP 409 (`CROSS_JOB_LOCK_CONFLICT`).
+61. `Scenario 61` (1F-R R2/R3): Incomplete completed job: job marked `completed` but loser remains uncompleted/enabled rejected with HTTP 409 (`INCOMPLETE_COMPLETED_JOB`).
+62. `Scenario 62` (Failure Lifecycle): Worker identity and lease token mismatch: stale worker cannot record failure on active job (`WORKER_SUPERSEDED_OR_MISMATCH`).
+63. `Scenario 63` (Failure Lifecycle): Completed job downgrade prevention: stale or late failure handler cannot downgrade completed job (`JOB_NOT_IN_PROGRESS_COMPLETED`).
+64. `Scenario 64` (1F-R R4): Strengthened financial comparator input validation: `parseAuthoritativeAmount` and `resolveFinancialRecordValues` reject NaN, Infinity, negative amounts, non-numeric strings, contradictory paid amount aliases, contradictory refund aliases, and unsupported currencies while enforcing paise precision.
+65. `Scenario 65` (1F-R R10): Webhook transactional redirection: late fee webhook for merged player reads player state before write and safely redirects fee creation to keeper with `originalPlayerId: loserId`.
 
 ---
 
