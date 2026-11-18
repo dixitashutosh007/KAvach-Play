@@ -5,6 +5,7 @@
 **Phase:** Phase 6 — UI Implementation & Match Display  
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
+**Phase 6 Implementation Milestone Commit:** [`61af7fe34a80c9dda05d7de0685349e2d5a276db`](https://github.com/dixitashutosh007/KAvach-Play/commit/61af7fe34a80c9dda05d7de0685349e2d5a276db)  
 **Baseline SHA at Phase Start:** [`9e5d682cea44a4a98843151e6355046d6009c22b`](https://github.com/dixitashutosh007/KAvach-Play/commit/9e5d682cea44a4a98843151e6355046d6009c22b)  
 **Parent of Baseline:** [`246712a69a2b918f46bec2fb50389fdc3e0fbe8a`](https://github.com/dixitashutosh007/KAvach-Play/commit/246712a69a2b918f46bec2fb50389fdc3e0fbe8a)  
 **Authoritative References:** `AGENTS.md`, `DECISION-LOG.md` (D-08, D-09, D-10, D-11), `PHASE-TRACKER.md`  
