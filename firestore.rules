@@ -10,42 +10,54 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function getUserData() {
+      return isSignedIn() && exists(/databases/$(database)/documents/appUsers/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data
+        : {};
+    }
+
+    function isAccountActive() {
+      return isSignedIn() && getUserData().get('status', 'Active') != 'Disabled';
+    }
+
     function isSelf(playerId) {
-      return isSignedIn() && (
-        request.auth.uid == playerId ||
-        (exists(/databases/$(database)/documents/players/$(playerId)) && 
-         get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == request.auth.uid)
-      );
+      return isSignedIn()
+        && isAccountActive()
+        && (
+          getUserData().get('playerId', null) == playerId ||
+          (exists(/databases/$(database)/documents/players/$(playerId)) &&
+           get(/databases/$(database)/documents/players/$(playerId)).data.get('disabled', false) != true &&
+           (get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == request.auth.uid ||
+            (request.auth.uid == playerId && get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', request.auth.uid) == request.auth.uid)))
+        );
     }
 
     function isSuperAdmin() {
-      // Super-admin authority is granted strictly via the `admin: true` Firebase Auth custom claim (SEC-001).
-      // The legacy appUsers.role fallback has been removed to prevent privilege escalation.
-      return isSignedIn() && request.auth.token.get('admin', false) == true;
+      // Super-admin authority is granted strictly via the `admin: true` Firebase Auth custom claim (SEC-001)
+      // and requires an active (non-disabled) account status once the appUsers document exists (Bootstrap Policy).
+      return isSignedIn()
+        && isAccountActive()
+        && request.auth.token.get('admin', false) == true;
     }
 
     function isStudioAdmin() {
-      return isSuperAdmin() || (isSignedIn() && 
-        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isStudioAdmin', false) == true);
+      return isSuperAdmin() || (isAccountActive()
+        && getUserData().get('isStudioAdmin', false) == true);
     }
 
     function isMatchAdmin() {
-      return isSuperAdmin() || (isSignedIn() && 
-        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isMatchAdmin', false) == true);
+      return isSuperAdmin() || (isAccountActive()
+        && getUserData().get('isMatchAdmin', false) == true);
     }
 
     function isFinanceAdmin() {
-      return isSuperAdmin() || (isSignedIn() &&
-        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isFinanceAdmin', false) == true);
+      return isSuperAdmin() || (isAccountActive()
+        && getUserData().get('isFinanceAdmin', false) == true);
     }
 
     function isClubAdmin() {
-      return isSuperAdmin() || (isSignedIn() &&
-        exists(/databases/$(database)/documents/appUsers/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/appUsers/$(request.auth.uid)).data.get('isClubAdmin', false) == true);
+      return isSuperAdmin() || (isAccountActive()
+        && getUserData().get('isClubAdmin', false) == true);
     }
 
     function isAnyAdmin() {
@@ -290,11 +302,11 @@ service cloud.firestore {
     }
 
     match /{path=**}/payments/{paymentId} {
-      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.playerId == request.auth.uid);
+      allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.get('playerId', '')));
     }
 
     match /{path=**}/otherFees/{feeId} {
-      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.playerId == request.auth.uid);
+      allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.get('playerId', '')));
     }
 
     match /admins/{userId} {
@@ -540,17 +552,17 @@ service cloud.firestore {
     }
 
     match /merchOrders/{orderId} {
-      allow read: if isAnyAdmin() || (isSignedIn() && (resource.data.playerId == request.auth.uid || isSelf(resource.data.playerId)));
+      allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.playerId));
       allow create: if isSignedIn()
         && isValidId(orderId)
         && isValidMerchOrder(incoming())
-        && (incoming().playerId == request.auth.uid || isSelf(incoming().playerId))
+        && isSelf(incoming().playerId)
         && incoming().paymentStatus == 'Unpaid'
         && incoming().orderStatus == 'Order Placed'
         && incoming().createdAt == request.time;
       allow update: if isAnyAdmin() || (
         isSignedIn()
-        && (existing().playerId == request.auth.uid || isSelf(existing().playerId))
+        && isSelf(existing().playerId)
         && isValidMerchOrder(incoming())
         && incoming().paymentStatus == existing().paymentStatus
         && incoming().price == existing().price
