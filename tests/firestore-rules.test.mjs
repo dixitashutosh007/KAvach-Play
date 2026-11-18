@@ -46,8 +46,8 @@ describe("Firestore Security Rules — AST Syntax Validation", () => {
   it("enforces SEC-001: appUsers keys cannot be escalated by non-superadmins", () => {
     assert.match(rulesContent, /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(\['role', 'isSuperAdmin', 'isStudioAdmin'/);
     assert.match(rulesContent, /'isDesigner', 'canDesign'/);
-    // Enforce that create rules also forbid isDesigner and admin flags
-    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(\['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status'\]\)/);
+    // Enforce that create rules also forbid isDesigner, admin flags, and playerId
+    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(\['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'\]\)/);
     // Enforce that isSuperAdmin strictly relies on auth token custom claim and no longer has appUsers.role fallback
     assert.match(rulesContent, /request\.auth\.token\.get\('admin', false\) == true;/);
     assert.ok(!rulesContent.includes("data.role == 'admin'"), "legacy appUsers.role fallback must be completely removed");

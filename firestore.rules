@@ -120,14 +120,18 @@ service cloud.firestore {
         isSignedIn()
         && request.auth.uid == userId
         && (!('role' in incoming()) || incoming().role == 'player')
-        && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status'])
+        && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
       );
       allow update: if isSuperAdmin() || (
         isSignedIn()
         && (request.auth.uid == userId || isClubAdmin())
-        && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status'])
+        && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
       );
       allow delete: if isSuperAdmin();
+    }
+
+    match /phoneIndex/{phone} {
+      allow read, write: if false; // Internal authoritative identity index: Server Admin SDK only
     }
 
     function isValidGround(data) {

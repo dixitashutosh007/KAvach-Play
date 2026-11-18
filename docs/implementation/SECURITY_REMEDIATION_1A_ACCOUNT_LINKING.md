@@ -267,6 +267,6 @@ When a verified phone number is processed:
 
 ## 11. Implementation Commit
 
-- **Implementation Commit SHA:** `00eba198ccdbe1682bf17e4e4deebdf55c98345a`
+- **Implementation Commit SHA:** `00eba198ccdbe1682bf17e4e4deebdf55c98345a` (Documentation: `b6f3fd69e2348689992107523317429396b5ee64`)
 - **Branch:** `mig-mov`
 - **Reviewer Status:** Developer remediated and emulator-verified. Ready for independent review and owner acceptance.
