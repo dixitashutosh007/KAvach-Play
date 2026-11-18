@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { format, isToday, isWithinInterval, addDays, parseISO } from "date-fns";
 import { motion } from "motion/react";
+import { isMatchBillable } from "@/lib/matchBillable";
 import { PlayerFinanceView } from "./FinanceTab";
 import { PollInteraction, PollResults } from "./OpinionTab";
 import {
@@ -186,8 +187,9 @@ export function HomeTab({
     (p) =>
       p.id === currentUserId ||
       p.authUid === currentUserId ||
+      (appUser?.playerId && p.id === appUser.playerId) ||
       (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
-  ), [store.players, currentUserId, appUser?.mobile]);
+  ), [store.players, currentUserId, appUser?.mobile, appUser?.playerId]);
   
   const mePlayer = myPlayers[0] || null;
 
@@ -302,20 +304,27 @@ export function HomeTab({
         myPlayers.some((mp) => mp.id === p.playerId) &&
         p.status === "Unpaid",
     );
+    const billablePayments = myPayments.filter((p) => {
+      const match = store.matches.find((m) => m.id === p.matchId);
+      return match && isMatchBillable(match);
+    });
     const otherFees = store.otherFees.filter(
       (f) =>
         myPlayers.some((mp) => mp.id === f.playerId) &&
         f.status === "Unpaid",
     );
-    const matchDue = myPayments.reduce(
-      (total, p) =>
-        total + (store.matches.find((m) => m.id === p.matchId)?.fee || 0),
+    const matchDue = billablePayments.reduce(
+      (total, p) => {
+        const match = store.matches.find((m) => m.id === p.matchId);
+        const fee = p.feeOverride !== undefined ? p.feeOverride : (match?.fee || 0);
+        return total + fee;
+      },
       0,
     );
     const otherDue = otherFees.reduce((total, f) => total + (f.amount || 0), 0);
     return {
       totalDue: matchDue + otherDue,
-      dueCount: myPayments.length + otherFees.length,
+      dueCount: billablePayments.length + otherFees.length,
     };
   }, [store.payments, store.otherFees, store.matches, myPlayers]);
 
@@ -590,6 +599,8 @@ export function HomeTab({
                   Confirm Your Availability
                 </label>
                 <button
+                  type="button"
+                  aria-expanded={showRsvpNote}
                   onClick={() => setShowRsvpNote(!showRsvpNote)}
                   className="min-h-[44px] px-2 py-1 flex items-center text-xs font-semibold text-accent hover:underline cursor-pointer"
                 >
@@ -599,6 +610,9 @@ export function HomeTab({
 
               <div className="grid grid-cols-3 gap-2">
                 <button
+                  type="button"
+                  aria-pressed={heroIsPlaying}
+                  aria-label="Confirm attendance as Playing"
                   onClick={() => handleRsvp(heroMatch.id, "Confirmed", rsvpNote)}
                   className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                     heroIsPlaying
@@ -611,6 +625,9 @@ export function HomeTab({
                 </button>
 
                 <button
+                  type="button"
+                  aria-pressed={heroIsTentative}
+                  aria-label="Set attendance as Tentative"
                   onClick={() => handleRsvp(heroMatch.id, "Tentative", rsvpNote)}
                   className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                     heroIsTentative
@@ -623,6 +640,9 @@ export function HomeTab({
                 </button>
 
                 <button
+                  type="button"
+                  aria-pressed={heroIsOut}
+                  aria-label="Set attendance as Out / Unavailable"
                   onClick={() => handleRsvp(heroMatch.id, "No", rsvpNote)}
                   className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                     heroIsOut
@@ -642,9 +662,12 @@ export function HomeTab({
                     value={rsvpNote}
                     onChange={(e) => setRsvpNote(e.target.value)}
                     placeholder="e.g. Arriving 15m early / bat top order..."
+                    aria-label="Tactical note for captain"
                     className="flex-1 min-h-[44px] text-xs px-3 py-2 rounded-lg border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-accent/30"
                   />
                   <button
+                    type="button"
+                    aria-label="Save tactical note for captain"
                     onClick={() => {
                       const currentAvail = heroIsPlaying ? "Confirmed" : heroIsTentative ? "Tentative" : heroIsOut ? "No" : "Confirmed";
                       handleRsvp(heroMatch.id, currentAvail, rsvpNote);
@@ -688,6 +711,8 @@ export function HomeTab({
               </div>
 
               <button
+                type="button"
+                aria-label="Pay outstanding club dues"
                 onClick={() => onNavigateToPayments?.()}
                 className="min-h-[44px] w-full sm:w-auto px-5 py-2.5 bg-accent hover:bg-brand text-text-accent font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >

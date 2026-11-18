@@ -290,7 +290,78 @@ describe(
       );
     });
 
-    // ── 7. Match Discussion & Comments ──
+    // ── 7. Scope B: Strict Field Allowlists & Malformed Payload Rejection ──
+    it("rejects player update containing unexpected, malformed, or admin-only fields", async () => {
+      const { assertFails } = await import("@firebase/rules-unit-testing");
+      const { serverTimestamp } = await import("firebase/firestore");
+      const player = testEnv.authenticatedContext("player_uid_1").firestore();
+
+      const payDoc = player
+        .collection("matches")
+        .doc("match_101")
+        .collection("payments")
+        .doc("pay_101_p1");
+
+      // 1. Malformed / unexpected field
+      await assertFails(
+        payDoc.update({
+          availability: "Confirmed",
+          unexpectedField: "malicious_injection",
+          updatedAt: serverTimestamp(),
+        }),
+      );
+
+      // 2. Admin-only field included with tactical note
+      await assertFails(
+        payDoc.update({
+          tacticalNote: "Ready to bat",
+          manualMethod: "cash",
+          updatedAt: serverTimestamp(),
+        }),
+      );
+
+      // 3. Attempting to modify immutable playerId
+      await assertFails(
+        payDoc.update({
+          playerId: "player_doc_2",
+          updatedAt: serverTimestamp(),
+        }),
+      );
+
+      // 4. Over-length tactical note (> 500 characters)
+      await assertFails(
+        payDoc.update({
+          tacticalNote: "X".repeat(501),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    // ── 8. Scope D: Match Display Data Privacy (Permitted and Denied Reads) ──
+    it("enforces match payment data privacy: players read own payments; non-admins denied foreign payments; admins permitted", async () => {
+      const { assertSucceeds, assertFails } = await import("@firebase/rules-unit-testing");
+      const playerOne = testEnv.authenticatedContext("player_uid_1").firestore();
+      const playerTwo = testEnv.authenticatedContext("player_uid_2").firestore();
+      const matchAdmin = testEnv.authenticatedContext("admin_match_uid").firestore();
+
+      const p1PayDocRef = (dbInstance) =>
+        dbInstance
+          .collection("matches")
+          .doc("match_101")
+          .collection("payments")
+          .doc("pay_101_p1");
+
+      // Player One can read their own payment record
+      await assertSucceeds(p1PayDocRef(playerOne).get());
+
+      // Player Two (non-admin) CANNOT read Player One's payment record (Scope D data privacy)
+      await assertFails(p1PayDocRef(playerTwo).get());
+
+      // Match Admin CAN read Player One's payment record for match management
+      await assertSucceeds(p1PayDocRef(matchAdmin).get());
+    });
+
+    // ── 9. Match Discussion & Comments ──
     it("allows players to post comments on matches; rejects impersonation", async () => {
       const { assertSucceeds, assertFails } = await import("@firebase/rules-unit-testing");
       const { serverTimestamp } = await import("firebase/firestore");

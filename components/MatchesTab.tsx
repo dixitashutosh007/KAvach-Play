@@ -1412,6 +1412,8 @@ export function MatchesTab({
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-surface p-3.5 rounded-2xl border border-border shadow-xs">
                       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                         <button
+                          type="button"
+                          aria-pressed={playerFilter === "all"}
                           onClick={() => setPlayerFilter("all")}
                           className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                             playerFilter === "all" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
@@ -1420,6 +1422,8 @@ export function MatchesTab({
                           All Matches ({allMatches.length})
                         </button>
                         <button
+                          type="button"
+                          aria-pressed={playerFilter === "upcoming"}
                           onClick={() => setPlayerFilter("upcoming")}
                           className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                             playerFilter === "upcoming" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
@@ -1428,6 +1432,8 @@ export function MatchesTab({
                           Upcoming ({allMatches.filter(m => m.result === "Pending" || !m.result).length})
                         </button>
                         <button
+                          type="button"
+                          aria-pressed={playerFilter === "past"}
                           onClick={() => setPlayerFilter("past")}
                           className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                             playerFilter === "past" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
@@ -1436,6 +1442,8 @@ export function MatchesTab({
                           Past Results ({allMatches.filter(m => m.result && m.result !== "Pending" && m.result !== "Abandoned").length})
                         </button>
                         <button
+                          type="button"
+                          aria-pressed={playerFilter === "abandoned"}
                           onClick={() => setPlayerFilter("abandoned")}
                           className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                             playerFilter === "abandoned" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
@@ -1449,6 +1457,7 @@ export function MatchesTab({
                         <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
+                          aria-label="Search matches by opponent or venue"
                           placeholder="Search opponent or venue..."
                           value={playerSearch}
                           onChange={(e) => setPlayerSearch(e.target.value)}

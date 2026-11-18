@@ -189,7 +189,8 @@ export default function Home() {
       currentUserObj?.isStudioAdmin ||
       currentUserObj?.isMatchAdmin ||
       currentUserObj?.isFinanceAdmin ||
-      currentUserObj?.isClubAdmin);
+      currentUserObj?.isClubAdmin ||
+      currentUserObj?.isDesigner);
 
   useEffect(() => {
     if (isAdminUser && !hasInitializedAdminRef.current) {
@@ -200,6 +201,15 @@ export default function Home() {
       // provided in the header.
     }
   }, [isAdminUser, currentUserObj, user]);
+
+  // Guard: if persona is set to admin but the user lacks authoritative administrative privileges,
+  // revert strictly to player view to prevent client-side state or URL tampering.
+  useEffect(() => {
+    if (persona === "admin" && store.isLoaded && !isAdminUser) {
+      setPersona("player");
+      setActiveTab("home");
+    }
+  }, [persona, store.isLoaded, isAdminUser, setActiveTab]);
 
   // Set local current time for pure render and ticking countdowns
   useEffect(() => {
@@ -486,7 +496,7 @@ export default function Home() {
   // Guard: just submitted registration — player doc may still be propagating
   // from the batch write. Show PendingApproval briefly instead of flashing
   // the registration form again.
-  if (justRegistered && !currentPlayerObj && currentUserObj && currentUserObj.role !== "admin" && !user?.isAnonymous) {
+  if (justRegistered && !currentPlayerObj && currentUserObj && !isSuperAdminUser && !user?.isAnonymous) {
     return (
       <PendingApprovalScreen
         variant="pending"
@@ -499,7 +509,7 @@ export default function Home() {
   // No player doc — show registration form. This handles both first-time
   // registration AND the case where a previous attempt created the appUser
   // doc but not the player doc (e.g. old non-atomic writes or a failed batch).
-  if (!currentPlayerObj && !user?.isAnonymous && user && currentUserObj?.role !== "admin") {
+  if (!currentPlayerObj && !user?.isAnonymous && user && !isSuperAdminUser) {
     const existingMatch = existingPlayerWithSamePhone || existingPlayerWithSameEmail;
     if (existingMatch) {
       return (
@@ -534,13 +544,13 @@ export default function Home() {
 
   const appUser = store.appUsers.find((u) => u.id === user.uid);
   const player =
-    store.players.find((p) => p.id === user.uid || p.authUid === user.uid) ||
+    store.players.find((p) => p.id === user.uid || p.authUid === user.uid || (appUser?.playerId && p.id === appUser.playerId)) ||
     store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
 
-  if (player?.disabled) {
+  if (player?.disabled || appUser?.status === "Disabled") {
     return (
       <AccountDisabledScreen
-        player={player}
+        player={player || ({ id: user.uid, name: appUser?.name || "Player", mobile: appUser?.mobile || "" } as any)}
         user={user}
         store={store}
         now={now}
@@ -553,10 +563,10 @@ export default function Home() {
   const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
   const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;
   const isClubAdmin = isSuperAdmin || appUser?.isClubAdmin;
-
-  const isAdmin =
-    isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isClubAdmin;
   const canDesign = isClubAdmin || !!appUser?.isDesigner;
+  const isAuthorizedAdmin = isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isClubAdmin || canDesign;
+  const isAdmin = isAuthorizedAdmin;
+  const effectiveIsAdminMode = persona === "admin" && isAuthorizedAdmin;
   // Mandatory profile fields every non-admin player must have populated
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
@@ -873,7 +883,7 @@ export default function Home() {
                 Navigation Console
               </div>
 
-              {persona === "player" ? (
+              {!effectiveIsAdminMode ? (
                 <>
                   {isFeatureEnabled("feed") && (
                     <button
@@ -1116,7 +1126,7 @@ export default function Home() {
                 </div>
                 <ProfileTab store={store} forceEdit={true} />
               </div>
-            ) : persona === "player" ? (
+            ) : !effectiveIsAdminMode ? (
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeTab}
@@ -1226,67 +1236,118 @@ export default function Home() {
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
                     {activeTab === "home" && (
-                      <AdminDashboard
-                        store={store}
-                        setActiveTab={setActiveTab}
-                        isSuperAdmin={isSuperAdmin}
-                        isFinanceAdmin={isFinanceAdmin}
-                        isMatchAdmin={isMatchAdmin}
-                        isStudioAdmin={isStudioAdmin}
-                        isClubAdmin={isClubAdmin}
-                      />
+                      isSuperAdmin || isClubAdmin ? (
+                        <AdminDashboard
+                          store={store}
+                          setActiveTab={setActiveTab}
+                          isSuperAdmin={isSuperAdmin}
+                          isFinanceAdmin={isFinanceAdmin}
+                          isMatchAdmin={isMatchAdmin}
+                          isStudioAdmin={isStudioAdmin}
+                          isClubAdmin={isClubAdmin}
+                        />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">Your administrative role does not grant access to the Overview hub.</p>
+                        </div>
+                      )
                     )}
                     {activeTab === "club" && (
-                      <ClubTab
-                        store={store}
-                        persona={persona}
-                        canDesign={canDesign}
-                        isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
-                        isClubAdmin={isClubAdmin || isSuperAdmin}
-                        isSuperAdmin={isSuperAdmin}
-                        currentUserId={user?.uid || ""}
-                        currentUserName={player?.name || user?.displayName || "Admin"}
-                        isFeatureEnabled={isFeatureEnabled}
-                        defaultSubTab={tabAction as any}
-                      />
+                      isClubAdmin || isSuperAdmin ? (
+                        <ClubTab
+                          store={store}
+                          persona={persona}
+                          canDesign={canDesign}
+                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                          isClubAdmin={isClubAdmin || isSuperAdmin}
+                          isSuperAdmin={isSuperAdmin}
+                          currentUserId={user?.uid || ""}
+                          currentUserName={player?.name || user?.displayName || "Admin"}
+                          isFeatureEnabled={isFeatureEnabled}
+                          defaultSubTab={tabAction as any}
+                        />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Club Admin permissions for Player Roster management.</p>
+                        </div>
+                      )
                     )}
                     {activeTab === "matches" && (
-                      <MatchesTab
-                        store={store}
-                        persona={persona}
-                        isMatchAdmin={isMatchAdmin || isSuperAdmin || isClubAdmin}
-                        isSuperAdmin={isSuperAdmin}
-                        defaultAction={tabAction}
-                      />
+                      isMatchAdmin || isSuperAdmin || isClubAdmin ? (
+                        <MatchesTab
+                          store={store}
+                          persona={persona}
+                          isMatchAdmin={isMatchAdmin || isSuperAdmin || isClubAdmin}
+                          isSuperAdmin={isSuperAdmin}
+                          defaultAction={tabAction}
+                        />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Match Admin permissions for Match Centre management.</p>
+                        </div>
+                      )
                     )}
                     {activeTab === "studio" && (
-                      <StudioAdminTab
-                        store={store}
-                        adminId={user.uid}
-                        adminName={appUser?.name || "Admin"}
-                        persona={persona}
-                        isStudioAdmin={isStudioAdmin || isSuperAdmin}
-                        isSuperAdmin={isSuperAdmin}
-                        defaultAction={tabAction}
-                        isFeatureEnabled={isFeatureEnabled}
-                      />
+                      isStudioAdmin || isSuperAdmin ? (
+                        <StudioAdminTab
+                          store={store}
+                          adminId={user.uid}
+                          adminName={appUser?.name || "Admin"}
+                          persona={persona}
+                          isStudioAdmin={isStudioAdmin || isSuperAdmin}
+                          isSuperAdmin={isSuperAdmin}
+                          defaultAction={tabAction}
+                          isFeatureEnabled={isFeatureEnabled}
+                        />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Studio Admin permissions for Studio & Nets management.</p>
+                        </div>
+                      )
                     )}
                     {activeTab === "notifications" && (
                       <NotificationsTab store={store} persona={persona} />
                     )}
-                    {activeTab === "design" && canDesign && (
-                      <DesignTab store={store} />
+                    {activeTab === "design" && (
+                      canDesign ? (
+                        <DesignTab store={store} />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Designer permissions for Design Studio.</p>
+                        </div>
+                      )
                     )}
-                    {activeTab === "settings" && <SettingsTab store={store} setPreviewTheme={setPreviewThemeId} />}
+                    {activeTab === "settings" && (
+                      isSuperAdmin ? (
+                        <SettingsTab store={store} setPreviewTheme={setPreviewThemeId} />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">Only Super Admins may access Settings & Access.</p>
+                        </div>
+                      )
+                    )}
                     {activeTab === "profile" && <ProfileTab store={store} />}
                     {activeTab === "finance" && (
-                      <FinanceTab
-                        store={store}
-                        persona={persona}
-                        isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
-                        isSuperAdmin={isSuperAdmin}
-                        defaultAction={tabAction}
-                      />
+                      isFinanceAdmin || isSuperAdmin ? (
+                        <FinanceTab
+                          store={store}
+                          persona={persona}
+                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                          isSuperAdmin={isSuperAdmin}
+                          defaultAction={tabAction}
+                        />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Finance Admin permissions for Finance & Dues operations.</p>
+                        </div>
+                      )
                     )}
                   </motion.div>
                 </AnimatePresence>
@@ -1300,7 +1361,7 @@ export default function Home() {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         isFeatureEnabled={isFeatureEnabled}
-        persona={persona}
+        persona={effectiveIsAdminMode ? "admin" : "player"}
         hasMissingMandatory={hasMissingMandatory}
         canDesign={canDesign}
         currentPlayerId={player?.id || user?.uid}

@@ -80,6 +80,8 @@ export type AppUser = {
   email: string;
   photoURL?: string;
   role: "admin" | "player";
+  status?: "Active" | "Disabled" | string;
+  playerId?: string;
   isStudioAdmin?: boolean;
   isMatchAdmin?: boolean;
   isFinanceAdmin?: boolean;
