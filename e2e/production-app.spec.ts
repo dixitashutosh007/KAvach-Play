@@ -1,8 +1,10 @@
 import { test, expect, Page } from "@playwright/test";
 
 // =============================================================================
-// Synthetic Deterministic Fixtures for Isolated Production Route Testing
+// Deterministic Synthetic Fixtures (Strictly Non-Production)
 // =============================================================================
+
+const FIXED_TEST_TIMESTAMP = 1764000000; // Fixed deterministic timestamp: 2025-11-24T16:00:00.000Z
 
 function createSyntheticStore(roleConfig: {
   uid: string;
@@ -101,7 +103,7 @@ function createSyntheticStore(roleConfig: {
       opponent: "Gurgaon Strikers",
       ourScore: "45/1 (5.2 ov)",
       opponentScore: "",
-      result: "Abandoned", // Option A: Zero match-fee obligation
+      result: "Abandoned", // Option A policy: Zero match-fee obligation
       fee: 550,
       squadPlayerIds: [playerId],
     },
@@ -119,7 +121,7 @@ function createSyntheticStore(roleConfig: {
       id: `pay-abandoned-${playerId}`,
       playerId: playerId,
       matchId: "match-abandoned-1",
-      status: "Unpaid", // Unpaid on Abandoned match -> must be excluded from dues
+      status: "Unpaid", // Unpaid on Abandoned match -> MUST be excluded from dues
       availability: "Confirmed",
     },
     {
@@ -167,7 +169,7 @@ function createSyntheticStore(roleConfig: {
       authorName: `Player ${uid}`,
       title: "Weekend Practice Session",
       text: "Nets session scheduled for Saturday 6 AM at KAvach Studio.",
-      createdAt: { seconds: Math.floor(Date.now() / 1000) },
+      createdAt: { seconds: FIXED_TEST_TIMESTAMP },
       comments: [],
     },
   ];
@@ -255,7 +257,7 @@ function getNavigationTab(page: Page, label: string) {
 }
 
 // =============================================================================
-// TEST SUITE: Production Route (/) End-to-End Verification
+// TEST SUITE: Hardened Production Route (/) End-to-End Verification
 // =============================================================================
 
 test.describe("Production Route (/) Verification Suite", () => {
@@ -263,11 +265,6 @@ test.describe("Production Route (/) Verification Suite", () => {
   test("1. Renders default Player View on / with approved primary navigation tabs", async ({
     page,
   }) => {
-    page.on("pageerror", (err) => console.log("PAGE ERROR:", err.message, err.stack));
-    page.on("console", (msg) => {
-      if (msg.type() === "error") console.log("CONSOLE ERROR:", msg.text());
-    });
-
     await injectSyntheticSession(page, {
       uid: "player-standard",
       role: "player",
@@ -299,11 +296,16 @@ test.describe("Production Route (/) Verification Suite", () => {
     // Navigate to Club Tab
     await clubTab.click();
     await expect(
-      page.locator("text=Digital Player Card").or(page.locator("text=Player Profile")).or(page.locator("text=Studio & Nets")).or(page.locator("text=Club")).first(),
+      page
+        .locator("text=Digital Player Card")
+        .or(page.locator("text=Player Profile"))
+        .or(page.locator("text=Studio & Nets"))
+        .or(page.locator("text=Club"))
+        .first(),
     ).toBeVisible({ timeout: 5000 });
   });
 
-  // ── 2. Dues Calculation (Read-Only & Abandoned Match Exclusion) ─────────────
+  // ── 2. Dues Calculation (Mandatory Assertions & Abandoned Match Exclusion) ──
   test("2. Correctly displays calculated billable dues, excluding abandoned match obligations", async ({
     page,
   }) => {
@@ -315,32 +317,35 @@ test.describe("Production Route (/) Verification Suite", () => {
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // In our synthetic fixture:
+    // 1. Mandatory Home Tab Dues Card assertion
     // - match-upcoming-1: fee = 650 (Unpaid, Billable)
-    // - match-abandoned-1: fee = 550 (Unpaid, Abandoned -> EXCLUDED)
+    // - match-abandoned-1: fee = 550 (Unpaid, Abandoned -> MUST BE EXCLUDED)
     // - otherFee: amount = 150 (Unpaid)
-    // Expected Billable Dues = 650 + 150 = ₹800 (Abandonment policy Option A)
+    // Expected Total Due = 650 + 150 = ₹800 (Abandonment policy Option A)
+    const duesCard = page.locator("section:has-text('Outstanding Club Dues')").first();
+    await expect(duesCard).toBeVisible({ timeout: 10000 });
+    await expect(duesCard.locator("text=/2 pending obligations?/i")).toBeVisible();
+    await expect(duesCard.locator("text=₹800")).toBeVisible();
+
+    // Abandoned match obligation (₹550) must NOT be included (total must not be ₹1,350)
+    await expect(page.locator("text=₹1,350")).not.toBeVisible();
+    await expect(page.locator("text=₹1350")).not.toBeVisible();
+
+    // 2. Mandatory Payments Tab Line-Item assertion
     const paymentsTab = getNavigationTab(page, "Payments");
     await paymentsTab.click();
 
-    // Billable match and other fee must appear in Pending Dues
+    // Billable match fee (₹650) and late fee (₹150) must appear in pending dues
     await expect(page.locator("text=Delhi Challengers").first()).toBeVisible({ timeout: 10000 });
     await expect(page.locator("text=₹650").first()).toBeVisible();
     await expect(page.locator("text=₹150").first()).toBeVisible();
 
-    // Abandoned match fee (550) must not be included (Option A policy)
+    // Abandoned match (Gurgaon Strikers) must NOT appear in pending dues
     await expect(page.locator("text=Gurgaon Strikers")).not.toBeVisible();
-
-    // On desktop, the total due sidebar card also displays ₹800
-    const totalDueLabel = page.locator("text=Total Due").filter({ visible: true });
-    if (await totalDueLabel.isVisible()) {
-      await expect(page.locator("text=₹800").filter({ visible: true }).first()).toBeVisible();
-      await expect(page.locator("text=₹1350")).not.toBeVisible();
-    }
   });
 
-  // ── 3. RSVP and Tactical Notes ─────────────────────────────────────────────
-  test("3. Displays upcoming match card, RSVP status, and tactical notes toggle", async ({
+  // ── 3. RSVP and Tactical Notes (Mandatory Interactive Toggle) ───────────────
+  test("3. Displays upcoming match card, RSVP status, and interacts with tactical notes toggle", async ({
     page,
   }) => {
     await injectSyntheticSession(page, {
@@ -351,22 +356,41 @@ test.describe("Production Route (/) Verification Suite", () => {
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // Check upcoming match display
+    // Verify upcoming fixture and RSVP badge
     await expect(page.locator("text=Delhi Challengers").first()).toBeVisible({ timeout: 10000 });
-
-    // Check RSVP Confirmed badge
     await expect(page.locator("text=Confirmed").or(page.locator("text=Playing")).first()).toBeVisible();
 
-    // Switch to Matches tab to view tactical notes
-    const matchesTab = getNavigationTab(page, "Matches");
-    await matchesTab.click();
+    // Tactical Notes Interactive Toggle Verification
+    const addNoteButton = page.locator('button:has-text("+ Add Note for Captain"), button:has-text("Add Note")').first();
+    await expect(addNoteButton).toBeVisible({ timeout: 5000 });
+    expect(await addNoteButton.getAttribute("aria-expanded")).toBe("false");
 
-    // Match opponent card visible
-    await expect(page.locator("text=Delhi Challengers").first()).toBeVisible({ timeout: 5000 });
+    const noteInput = page.locator('input[aria-label="Tactical note for captain"]');
+    await expect(noteInput).not.toBeVisible();
+
+    // Click toggle button to open tactical note input
+    await addNoteButton.click();
+    await expect(noteInput).toBeVisible({ timeout: 5000 });
+
+    const hideButton = page.locator('button:has-text("Hide Note")').first();
+    await expect(hideButton).toBeVisible();
+    expect(await hideButton.getAttribute("aria-expanded")).toBe("true");
+
+    // Enter tactical note text
+    await noteInput.fill("Available for opening bowling spell");
+    await expect(noteInput).toHaveValue("Available for opening bowling spell");
+
+    // Click toggle button again to hide tactical note input
+    await hideButton.click();
+    await expect(noteInput).not.toBeVisible();
+    await expect(addNoteButton).toBeVisible();
+    expect(await addNoteButton.getAttribute("aria-expanded")).toBe("false");
   });
 
-  // ── 4. Match Search and Filtering ──────────────────────────────────────────
-  test("4. Filters matches by query and result status", async ({ page }) => {
+  // ── 4. Match Search and Filtering (Mandatory Non-Conditional Assertions) ────
+  test("4. Filters matches by query and result status with mandatory search input assertion", async ({
+    page,
+  }) => {
     await injectSyntheticSession(page, {
       uid: "player-filter-test",
       role: "player",
@@ -376,18 +400,23 @@ test.describe("Production Route (/) Verification Suite", () => {
     const matchesTab = getNavigationTab(page, "Matches");
     await matchesTab.click();
 
-    await expect(page.locator("text=Delhi Challengers").first()).toBeVisible({ timeout: 10000 });
+    // Mandatory Search Input Assertion
+    const searchInput = page.locator('input[aria-label="Search matches by opponent or venue"], input[placeholder="Search opponent or venue..."]').first();
+    await expect(searchInput).toBeVisible({ timeout: 10000 });
 
-    // Search input
-    const searchInput = page.locator('input[placeholder*="Search"], input[placeholder*="search"]').first();
-    if (await searchInput.isVisible()) {
-      await searchInput.fill("Delhi");
-      await expect(page.locator("text=Delhi Challengers").first()).toBeVisible();
-      await expect(page.locator("text=NCR Tigers")).not.toBeVisible();
+    // Both matches initially rendered
+    await expect(page.locator("text=Delhi Challengers").first()).toBeVisible();
+    await expect(page.locator("text=NCR Tigers").first()).toBeVisible();
 
-      // Clear search
-      await searchInput.fill("");
-    }
+    // Search for "Delhi"
+    await searchInput.fill("Delhi");
+    await expect(page.locator("text=Delhi Challengers").first()).toBeVisible();
+    await expect(page.locator("text=NCR Tigers")).not.toBeVisible();
+
+    // Clear search
+    await searchInput.fill("");
+    await expect(page.locator("text=Delhi Challengers").first()).toBeVisible();
+    await expect(page.locator("text=NCR Tigers").first()).toBeVisible();
   });
 
   // ── 5. Disabled Account Redirection ────────────────────────────────────────
@@ -416,9 +445,10 @@ test.describe("Production Route (/) Verification Suite", () => {
     await expect(page.locator('nav[data-testid="player-mobile-bottom-nav"]')).not.toBeVisible();
   });
 
-  // ── 6. Granular RBAC & Restricted Admin Hubs ───────────────────────────────
-  test.describe("6. Granular RBAC Role Enforcement on Admin Console", () => {
-    test("6A. Super Admin: full authorized access to Admin Console and Return to Player View", async ({
+  // ── 6. Granular RBAC Role Enforcement for All 7 Roles (E2E-02) ─────────────
+  test.describe("6. Granular RBAC Role Enforcement for All 7 Roles", () => {
+    // 6A. Super Admin
+    test("6A. Super Admin: full access to Admin Console and all 7 administrative hubs", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -435,25 +465,33 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Admin mode active: check for "Admin Console" header or "Player View" return action
+      // Authorized direct navigation to Settings & Access hub
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
+      await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Authorized direct navigation to Finance & Dues hub
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Return to Player View button restores player session without persona switching
       const returnBtn = page
         .locator('button:has-text("Player View"), button:has-text("Return to Player View"), button[title*="Player View"]')
         .filter({ visible: true })
         .first();
-      await expect(returnBtn).toBeVisible({ timeout: 10000 });
-
-      // "Return to Player View" preserves player session without persona switching
+      await expect(returnBtn).toBeVisible({ timeout: 5000 });
       await returnBtn.click();
       await expect(page.locator("h1", { hasText: /KAVACH/i })).toBeVisible();
     });
 
-    test("6B. Finance Admin: has authorized Admin Console entry", async ({
+    // 6B. Club Admin
+    test("6B. Club Admin: authorized for Player Roster & Match Centre; rejected from Finance & Settings", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
-        uid: "user-finance-admin",
+        uid: "user-club-admin",
         role: "player",
-        isFinanceAdmin: true,
+        isClubAdmin: true,
       });
 
       await page.goto("/");
@@ -461,15 +499,23 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Authorized entry into Admin Console
-      const returnBtn = page
-        .locator('button:has-text("Player View"), button:has-text("Return to Player View"), button[title*="Player View"]')
-        .filter({ visible: true })
-        .first();
-      await expect(returnBtn).toBeVisible({ timeout: 10000 });
+      // Positive check: Player Roster hub (club) is authorized
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("club"));
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Negative check: Direct navigation to Finance & Dues is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await expect(page.locator("text=You do not have Finance Admin permissions")).toBeVisible();
+
+      // Negative check: Direct navigation to Settings & Access is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await expect(page.locator("text=Only Super Admins may access Settings & Access.")).toBeVisible();
     });
 
-    test("6C. Match Admin: has authorized Admin Console entry", async ({
+    // 6C. Match Admin
+    test("6C. Match Admin: authorized for Match Centre; rejected from Finance & Settings", async ({
       page,
     }) => {
       await injectSyntheticSession(page, {
@@ -483,15 +529,81 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
       await adminEntry.click();
 
-      // Match admin access granted
-      const returnBtn = page
-        .locator('button:has-text("Player View"), button:has-text("Return to Player View"), button[title*="Player View"]')
-        .filter({ visible: true })
-        .first();
-      await expect(returnBtn).toBeVisible({ timeout: 10000 });
+      // Positive check: Match Centre hub (matches) is authorized
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Negative check: Direct navigation to Finance & Dues is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await expect(page.locator("text=You do not have Finance Admin permissions")).toBeVisible();
+
+      // Negative check: Direct navigation to Settings & Access is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
     });
 
-    test("6D. Designer: has authorized Design Hub entry", async ({ page }) => {
+    // 6D. Finance Admin
+    test("6D. Finance Admin: authorized for Finance & Dues; rejected from Match Centre & Settings", async ({
+      page,
+    }) => {
+      await injectSyntheticSession(page, {
+        uid: "user-finance-admin",
+        role: "player",
+        isFinanceAdmin: true,
+      });
+
+      await page.goto("/");
+      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
+      await expect(adminEntry).toBeVisible({ timeout: 10000 });
+      await adminEntry.click();
+
+      // Positive check: Finance & Dues hub (finance) is authorized
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Negative check: Direct navigation to Match Centre is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+      await expect(page.locator("text=You do not have Match Admin permissions")).toBeVisible();
+
+      // Negative check: Direct navigation to Settings & Access is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+    });
+
+    // 6E. Studio Admin
+    test("6E. Studio Admin: authorized for Studio & Nets; rejected from Finance & Matches", async ({
+      page,
+    }) => {
+      await injectSyntheticSession(page, {
+        uid: "user-studio-admin",
+        role: "player",
+        isStudioAdmin: true,
+      });
+
+      await page.goto("/");
+      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
+      await expect(adminEntry).toBeVisible({ timeout: 10000 });
+      await adminEntry.click();
+
+      // Positive check: Studio & Nets hub (studio) is authorized
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("studio"));
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Negative check: Direct navigation to Finance & Dues is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+
+      // Negative check: Direct navigation to Match Centre is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+    });
+
+    // 6F. Designer
+    test("6F. Designer: authorized for Design Studio; rejected from Finance & Settings", async ({
+      page,
+    }) => {
       await injectSyntheticSession(page, {
         uid: "user-designer",
         role: "player",
@@ -501,11 +613,50 @@ test.describe("Production Route (/) Verification Suite", () => {
       await page.goto("/");
       const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
       await expect(adminEntry).toBeVisible({ timeout: 10000 });
+      await adminEntry.click();
+
+      // Positive check: Design Studio hub (design) is authorized
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("design"));
+      await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+
+      // Negative check: Direct navigation to Finance & Dues is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+
+      // Negative check: Direct navigation to Settings & Access is rejected
+      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
+      await expect(page.locator("text=Hub Restricted")).toBeVisible({ timeout: 5000 });
+    });
+
+    // 6G. Standard Player
+    test("6G. Standard Player: player view only; no Admin Console; client-side tampering rejected", async ({
+      page,
+    }) => {
+      await injectSyntheticSession(page, {
+        uid: "user-standard-player",
+        role: "player",
+      });
+
+      await page.goto("/");
+      await page.waitForLoadState("domcontentloaded");
+
+      // Negative check: Admin Console entry must NOT be rendered in header
+      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console")');
+      await expect(adminEntry).not.toBeVisible();
+
+      // Negative check: Attempt client-side persona tampering
+      await page.evaluate(() => (window as any).__KAVACH_SET_PERSONA__?.("admin"));
+      await page.waitForTimeout(500);
+
+      // Guard in app/page.tsx immediately forces persona back to player
+      await expect(page.locator("text=Return to Player View")).not.toBeVisible();
+      await expect(page.locator("text=Admin Hub Context Banner")).not.toBeVisible();
+      await expect(page.locator("h1", { hasText: /KAVACH/i })).toBeVisible();
     });
   });
 
-  // ── 7. Responsive Ergonomics & Viewport Layouts ─────────────────────────────
-  test.describe("7. Responsive Ergonomics & Viewport Layouts", () => {
+  // ── 7. Responsive Ergonomics & Minimum 44px Touch Targets (E2E-03) ─────────
+  test.describe("7. Responsive Ergonomics & Touch Target Sizing (>= 44px)", () => {
     const viewports = [
       { name: "360x800 Mobile", width: 360, height: 800 },
       { name: "390x844 Mobile", width: 390, height: 844 },
@@ -513,7 +664,7 @@ test.describe("Production Route (/) Verification Suite", () => {
     ];
 
     for (const vp of viewports) {
-      test(`Renders cleanly at ${vp.name} with zero horizontal overflow`, async ({
+      test(`Renders cleanly at ${vp.name} with zero horizontal overflow and >= 44px touch targets`, async ({
         page,
       }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -525,7 +676,7 @@ test.describe("Production Route (/) Verification Suite", () => {
         await page.goto("/");
         await page.waitForLoadState("domcontentloaded");
 
-        // Verify no horizontal overflow
+        // Verify zero horizontal scroll overflow
         const isOverflowing = await page.evaluate(() => {
           return document.documentElement.scrollWidth > window.innerWidth;
         });
@@ -535,17 +686,24 @@ test.describe("Production Route (/) Verification Suite", () => {
         const header = page.locator("header").first();
         await expect(header).toBeVisible({ timeout: 10000 });
 
-        // Check interactive touch target sizes on mobile
+        // Check interactive touch target sizes on mobile (>= 44px)
         if (vp.width < 768) {
-          const navButtons = page.locator('nav[data-testid="player-mobile-bottom-nav"] button');
+          const nav = page.locator('nav[data-testid="player-mobile-bottom-nav"]');
+          await expect(nav).toBeVisible({ timeout: 5000 });
+
+          const navButtons = nav.locator("button");
           const count = await navButtons.count();
+
+          // Exactly 5 primary buttons (Home, Matches, Payments, Performance, Club)
+          expect(count).toBe(5);
+
           for (let i = 0; i < count; i++) {
             const btn = navButtons.nth(i);
             const box = await btn.boundingBox();
-            if (box) {
-              // Minimum 36px touch target height
-              expect(box.height).toBeGreaterThanOrEqual(36);
-            }
+            expect(box).not.toBeNull();
+            // Strict 44px touch target ergonomics requirement
+            expect(box!.height).toBeGreaterThanOrEqual(44);
+            expect(box!.width).toBeGreaterThanOrEqual(44);
           }
         }
       });

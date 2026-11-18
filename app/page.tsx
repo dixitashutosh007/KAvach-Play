@@ -213,6 +213,18 @@ export default function Home() {
     }
   }, [persona, store.isLoaded, isAdminUser, setActiveTab]);
 
+  // Test-only navigation hooks (strictly isolated behind non-production runtime)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
+      (window as any).__KAVACH_NAVIGATE_TAB__ = (tab: any, action?: string) => {
+        setActiveTab(tab, action);
+      };
+      (window as any).__KAVACH_SET_PERSONA__ = (p: "player" | "admin") => {
+        setPersona(p);
+      };
+    }
+  }, [setActiveTab]);
+
   // Set local current time for pure render and ticking countdowns
   useEffect(() => {
     const interval = setInterval(() => {
