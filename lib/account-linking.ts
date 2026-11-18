@@ -161,6 +161,9 @@ export async function executeLinkingTransaction(
   if (playerData.mergedInto) {
     throw new LinkingError(403, "Player record has been merged into another profile.");
   }
+  if (playerData.mergeStatus === "in_progress") {
+    throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+  }
 
   // Strictly parse stored mobile on player document
   const storedMobileParsed = parseStrictIndianMobile(playerData.mobile);
@@ -310,7 +313,8 @@ export async function linkPlayerAccount(
   db: FirebaseFirestore.Firestore,
   params: LinkAccountParams,
 ): Promise<LinkAccountResult> {
-  const { uid, verifiedPhoneNumber, requestedPlayerId } = params;
+  try {
+    const { uid, verifiedPhoneNumber, requestedPlayerId } = params;
 
   // 1. Parameter Validation
   if (!uid || typeof uid !== "string" || !uid.trim()) {
@@ -379,7 +383,15 @@ export async function linkPlayerAccount(
     };
   }
 
-  const resolvedPlayerId = eligibleCandidates[0].id;
+  const resolvedCandidate = eligibleCandidates[0];
+  if (resolvedCandidate.data?.mergeStatus === "in_progress") {
+    return {
+      ok: false,
+      status: 409,
+      error: "Player record is currently undergoing an administrative merge. Please retry later.",
+    };
+  }
+  const resolvedPlayerId = resolvedCandidate.id;
   if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
     return {
       ok: false,
@@ -505,13 +517,21 @@ export async function linkPlayerAccount(
       return { ok: false, status: err.status, error: err.message };
     }
     console.error(`[linkPlayerAccount] Transaction failed for user ${uid} -> player ${resolvedPlayerId}:`, err);
-    const isContention =
-      err?.code === 10 || // ABORTED
-      err?.code === 3 || // INVALID_ARGUMENT / Transaction is invalid or closed (emulator contention)
-      err?.code === "failed-precondition" ||
-      err?.details?.includes?.("Transaction is invalid or closed") ||
-      err?.message?.includes?.("Transaction is invalid or closed") ||
-      err?.message?.includes?.("aborted");
+    const errMessage = String(err?.message || "");
+    const errDetails = String(err?.details || "");
+    const isTransactionClosed =
+      errMessage.includes("Transaction is invalid or closed") ||
+      errDetails.includes("Transaction is invalid or closed");
+    const isAborted =
+      err?.code === 10 ||
+      err?.code === "aborted" ||
+      errMessage.toLowerCase().includes("aborted");
+    const isContentionPrecondition =
+      (err?.code === 9 || err?.code === "failed-precondition") &&
+      (errMessage.toLowerCase().includes("contention") ||
+        errMessage.toLowerCase().includes("concurrent"));
+
+    const isContention = isTransactionClosed || isAborted || isContentionPrecondition;
     if (isContention) {
       // If the transaction aborted due to contention, check if the concurrent request already committed
       // the complete four-way link for this exact user and player (idempotent concurrency success)
@@ -522,23 +542,38 @@ export async function linkPlayerAccount(
           db.collection("players").doc(resolvedPlayerId).get(),
           db.collection("appUsers").doc(uid).get(),
         ]);
-        const pData = playerSnap.data() || {};
-        const uData = userSnap.data() || {};
-        const piData = phoneSnap.data() || {};
-        const uiData = uidSnap.data() || {};
 
-        if (
-          piData.authUid === uid &&
-          piData.playerId === resolvedPlayerId &&
-          uiData.authUid === uid &&
-          uiData.playerId === resolvedPlayerId &&
-          pData.authUid === uid &&
-          uData.playerId === resolvedPlayerId
-        ) {
-          return { ok: true, status: 200, playerId: resolvedPlayerId, alreadyLinked: true };
+        if (phoneSnap.exists && uidSnap.exists && playerSnap.exists && userSnap.exists) {
+          const pData = playerSnap.data() || {};
+          const uData = userSnap.data() || {};
+          const piData = phoneSnap.data() || {};
+          const uiData = uidSnap.data() || {};
+
+          if (
+            piData.authUid === uid &&
+            piData.playerId === resolvedPlayerId &&
+            piData.canonicalPhone === canonicalAuthPhone &&
+            uiData.authUid === uid &&
+            uiData.playerId === resolvedPlayerId &&
+            uiData.canonicalPhone === canonicalAuthPhone &&
+            pData.authUid === uid &&
+            uData.playerId === resolvedPlayerId
+          ) {
+            return { ok: true, status: 200, playerId: resolvedPlayerId, alreadyLinked: true };
+          } else {
+            console.warn(
+              `[linkPlayerAccount] Contention idempotency verification rejected: Inconsistent four-way state found.`,
+              {
+                pi: { authUid: piData.authUid, playerId: piData.playerId, phone: piData.canonicalPhone },
+                ui: { authUid: uiData.authUid, playerId: uiData.playerId, phone: uiData.canonicalPhone },
+                player: { authUid: pData.authUid },
+                user: { playerId: uData.playerId },
+              },
+            );
+          }
         }
-      } catch {
-        // Fall through to 409
+      } catch (checkErr) {
+        console.error(`[linkPlayerAccount] Contention verification check failed:`, checkErr);
       }
 
       return {
@@ -553,4 +588,15 @@ export async function linkPlayerAccount(
       error: "Failed to link player account due to internal transaction error.",
     };
   }
+} catch (topErr: any) {
+  if (topErr instanceof LinkingError) {
+    return { ok: false, status: topErr.status, error: topErr.message };
+  }
+  console.error(`[linkPlayerAccount] Top-level failure:`, topErr);
+  return {
+    ok: false,
+    status: 500,
+    error: "Failed to link player account due to internal server error.",
+  };
+}
 }

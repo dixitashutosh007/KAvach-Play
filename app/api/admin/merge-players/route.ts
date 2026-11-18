@@ -1,33 +1,26 @@
 /**
- * POST /api/admin/merge-players
+ * POST & PATCH /api/admin/merge-players
  *
- * Server-side duplicate-profile merge. Uses the Firebase Admin SDK,
- * which bypasses Firestore security rules — so the merge succeeds
- * regardless of the strict rules that govern client-side writes
- * (in particular, the payments rule that forbids changing playerId).
- *
- * Body: { loserId: string, keeperId: string, dryRun?: boolean }
- * Auth: requireAdmin (Firebase ID token with verified admin custom claim { admin: true }).
- *
- * Semantics:
- *   1. Reparent every matches/{matchId}/payments doc owned by loser → keeper
- *   2. Move every players/{loserId}/otherFees doc to players/{keeperId}
- *   3. Reparent every merchOrders doc owned by loser → keeper
- *   4. Reparent every appUsers doc linked to loser → keeper (IDT-001)
- *   5. Fill any empty field on keeper from loser (never overwrites)
- *   6. Normalize keeper's mobile to +91XXXXXXXXXX
- *   7. Mark loser as disabled + mergedInto: keeperId (soft delete)
- *   8. Supports dryRun flag to preview changes without modifying data
+ * Implements SEC-1D-01 & SEC-1D-02:
+ * 1. Strict Identity State Resolution & Validation:
+ *    - Reads loser, keeper, appUsers, uidIndex, phoneIndex for both players.
+ *    - Rejects merges with 409 Conflict if distinct active UIDs, third-party reservations,
+ *      conflicting canonical phones, or multiple appUsers exist.
+ *    - Never silently steals, overwrites, or reassigns identity reservations.
+ * 2. Staged, Idempotent & Resumable Merge State Machine:
+ *    - Identity transition performed atomically in a Firestore transaction.
+ *    - Progress tracked durably via `mergeJobs/{jobId}`.
+ *    - Migration batches (payments, otherFees, merchOrders, appUsers) run in staged chunks.
+ *    - Loser is NOT marked fully merged until all migration stages verify.
+ *    - Safe recovery: Retrying a failed or interrupted merge resumes from the pending stage.
+ *    - In-progress merges are protected from concurrent merges and account linking.
  */
 
 import { NextResponse } from "next/server.js";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
-import {
-  computeKeeperPatch,
-  normalizeIndianMobile,
-} from "../../../../lib/player-merge.ts";
+import { computeKeeperPatch } from "../../../../lib/player-merge.ts";
 import { parseStrictIndianMobile } from "../../../../lib/account-linking.ts";
 
 function ensureAdminApp() {
@@ -56,10 +49,7 @@ function getDb() {
 
 /**
  * PATCH /api/admin/merge-players
- *
- * Repair previously-merged records:
- * 1. otherFees under the keeper that still reference the loser's playerId.
- * 2. appUsers docs that still reference a merged loser player.
+ * Repair previously-merged records: otherFees, appUsers, uidIndex, phoneIndex.
  */
 export async function PATCH(req: Request) {
   try {
@@ -75,6 +65,8 @@ export async function PATCH(req: Request) {
 
     let totalFeesRepaired = 0;
     let totalUsersRepaired = 0;
+    let totalUidIndexesRepaired = 0;
+    let totalPhoneIndexesRepaired = 0;
 
     for (const loserDoc of mergedSnap.docs) {
       const loserId = loserDoc.id;
@@ -93,10 +85,11 @@ export async function PATCH(req: Request) {
             updatedAt: FieldValue.serverTimestamp(),
           });
           batchCount++;
+          totalFeesRepaired++;
         }
       }
 
-      // Also repair any appUsers still linked to this loser
+      // Repair any appUsers still linked to this loser
       const usersSnap = await db
         .collection("appUsers")
         .where("playerId", "==", loserId)
@@ -122,6 +115,7 @@ export async function PATCH(req: Request) {
           updatedAt: FieldValue.serverTimestamp(),
         });
         batchCount++;
+        totalUidIndexesRepaired++;
       }
 
       // Repair any phoneIndex still linked to this loser
@@ -135,11 +129,11 @@ export async function PATCH(req: Request) {
           updatedAt: FieldValue.serverTimestamp(),
         });
         batchCount++;
+        totalPhoneIndexesRepaired++;
       }
 
       if (batchCount > 0) {
         await batch.commit();
-        totalFeesRepaired += batchCount - (usersSnap.docs.length);
       }
     }
 
@@ -147,6 +141,8 @@ export async function PATCH(req: Request) {
       ok: true,
       feesRepaired: totalFeesRepaired,
       usersRepaired: totalUsersRepaired,
+      uidIndexesRepaired: totalUidIndexesRepaired,
+      phoneIndexesRepaired: totalPhoneIndexesRepaired,
     });
   } catch (err: any) {
     console.error("merge-players repair failed", err);
@@ -182,92 +178,270 @@ export async function POST(req: Request) {
     }
 
     const db = getDb();
+    const jobId = `job_${loserId}_${keeperId}`;
+    const mergeJobRef = db.collection("mergeJobs").doc(jobId);
+
+    // 1. Resolve Complete Identity State for Loser and Keeper (SEC-1D-01)
     const loserRef = db.collection("players").doc(loserId);
     const keeperRef = db.collection("players").doc(keeperId);
-    const [loserSnap, keeperSnap] = await Promise.all([
+
+    const [
+      loserSnap,
+      keeperSnap,
+      appUsersLoserSnap,
+      appUsersKeeperSnap,
+      uidIndexLoserSnap,
+      uidIndexKeeperSnap,
+      phoneIndexLoserSnap,
+      phoneIndexKeeperSnap,
+      mergeJobSnap,
+    ] = await Promise.all([
       loserRef.get(),
       keeperRef.get(),
+      db.collection("appUsers").where("playerId", "==", loserId).get(),
+      db.collection("appUsers").where("playerId", "==", keeperId).get(),
+      db.collection("uidIndex").where("playerId", "==", loserId).get(),
+      db.collection("uidIndex").where("playerId", "==", keeperId).get(),
+      db.collection("phoneIndex").where("playerId", "==", loserId).get(),
+      db.collection("phoneIndex").where("playerId", "==", keeperId).get(),
+      mergeJobRef.get(),
     ]);
+
     if (!loserSnap.exists || !keeperSnap.exists) {
       return NextResponse.json(
         { error: "Loser or keeper player not found." },
         { status: 404 },
       );
     }
+
     const loser = loserSnap.data() || {};
     const keeper = keeperSnap.data() || {};
+    const existingJob = mergeJobSnap.exists ? mergeJobSnap.data() || {} : null;
 
-    // 1. Check match payments to reparent
-    const paySnap = await db
-      .collectionGroup("payments")
-      .where("playerId", "==", loserId)
-      .get();
+    // Check if merge is already completed
+    if (existingJob?.status === "completed" && loser.mergedInto === keeperId && loser.disabled === true) {
+      return NextResponse.json({
+        ok: true,
+        alreadyCompleted: true,
+        jobId,
+        loserId,
+        keeperId,
+        paymentsReparented: existingJob.stats?.paymentsReparented || 0,
+        feesMoved: existingJob.stats?.feesMoved || 0,
+        ordersReparented: existingJob.stats?.ordersReparented || 0,
+        appUsersReparented: existingJob.stats?.appUsersReparented || 0,
+        uidIndexReparented: existingJob.stats?.uidIndexReparented || 0,
+        phoneIndexReparented: existingJob.stats?.phoneIndexReparented || 0,
+      });
+    }
+
+    // Check keeper eligibility: Keeper cannot be already disabled or merged into someone else
+    if (keeper.disabled === true || keeper.mergedInto) {
+      return NextResponse.json(
+        { error: "Keeper player is disabled or already merged into another profile.", code: "KEEPER_INELIGIBLE" },
+        { status: 409 },
+      );
+    }
+
+    // Check if loser is already merged into another keeper
+    if (loser.mergedInto && loser.mergedInto !== keeperId) {
+      return NextResponse.json(
+        { error: `Loser player has already been merged into player ${loser.mergedInto}.`, code: "LOSER_ALREADY_MERGED" },
+        { status: 409 },
+      );
+    }
+
+    // Check in-progress merge collision from a competing job
+    if (loser.mergeStatus === "in_progress" && loser.mergeJobId && loser.mergeJobId !== jobId) {
+      return NextResponse.json(
+        { error: "Loser player is currently involved in another active merge job.", code: "MERGE_IN_PROGRESS" },
+        { status: 409 },
+      );
+    }
+    if (keeper.mergeStatus === "in_progress" && keeper.mergeJobId && keeper.mergeJobId !== jobId) {
+      return NextResponse.json(
+        { error: "Keeper player is currently involved in another active merge job.", code: "MERGE_IN_PROGRESS" },
+        { status: 409 },
+      );
+    }
+
+    // Direct index lookups
+    const loserUid = loser.authUid ? String(loser.authUid).trim() : "";
+    const keeperUid = keeper.authUid ? String(keeper.authUid).trim() : "";
+
+    const [directLoserUidDoc, directKeeperUidDoc] = await Promise.all([
+      loserUid ? db.collection("uidIndex").doc(loserUid).get() : Promise.resolve(null),
+      keeperUid ? db.collection("uidIndex").doc(keeperUid).get() : Promise.resolve(null),
+    ]);
+
+    const loserParsedPhone = loser.mobile ? parseStrictIndianMobile(loser.mobile) : null;
+    const keeperParsedPhone = keeper.mobile ? parseStrictIndianMobile(keeper.mobile) : null;
+    const loserCanonicalPhone = loserParsedPhone?.ok ? loserParsedPhone.canonical : "";
+    const keeperCanonicalPhone = keeperParsedPhone?.ok ? keeperParsedPhone.canonical : "";
+
+    const [directLoserPhoneDoc, directKeeperPhoneDoc] = await Promise.all([
+      loserCanonicalPhone ? db.collection("phoneIndex").doc(loserCanonicalPhone).get() : Promise.resolve(null),
+      keeperCanonicalPhone ? db.collection("phoneIndex").doc(keeperCanonicalPhone).get() : Promise.resolve(null),
+    ]);
+
+    // 2. Identity Invariant Checks (SEC-1D-01)
+
+    // Check 1: Both players have different non-empty authUid values
+    if (loserUid && keeperUid && loserUid !== keeperUid) {
+      return NextResponse.json(
+        {
+          error: "Both player records have active distinct Firebase authentication UIDs. Merging two authenticated accounts requires administrator resolution.",
+          code: "CONFLICTING_AUTH_UIDS",
+        },
+        { status: 409 },
+      );
+    }
+
+    // Check 2: Keeper has an existing identity reservation owned by another player (third party)
+    if (directKeeperUidDoc?.exists && directKeeperUidDoc.data()?.playerId !== keeperId && directKeeperUidDoc.data()?.playerId !== loserId) {
+      return NextResponse.json(
+        {
+          error: "Keeper auth UID reservation belongs to another player profile.",
+          code: "KEEPER_UID_RESERVATION_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+    if (directKeeperPhoneDoc?.exists && directKeeperPhoneDoc.data()?.playerId !== keeperId && directKeeperPhoneDoc.data()?.playerId !== loserId) {
+      return NextResponse.json(
+        {
+          error: "Keeper canonical phone reservation belongs to another player profile.",
+          code: "KEEPER_PHONE_RESERVATION_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+    for (const doc of uidIndexKeeperSnap.docs) {
+      if (keeperUid && doc.id !== keeperUid) {
+        return NextResponse.json(
+          {
+            error: "Keeper player has conflicting UID reservations.",
+            code: "KEEPER_MULTIPLE_UID_RESERVATIONS",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    // Check 3: Loser has an identity reservation owned by a third player
+    if (directLoserUidDoc?.exists) {
+      const loserUidPlayerId = directLoserUidDoc.data()?.playerId;
+      if (loserUidPlayerId !== loserId && loserUidPlayerId !== keeperId) {
+        return NextResponse.json(
+          {
+            error: "Loser auth UID reservation belongs to a third player profile.",
+            code: "LOSER_UID_RESERVATION_THIRD_PARTY",
+          },
+          { status: 409 },
+        );
+      }
+    }
+    if (directLoserPhoneDoc?.exists) {
+      const loserPhonePlayerId = directLoserPhoneDoc.data()?.playerId;
+      if (loserPhonePlayerId !== loserId && loserPhonePlayerId !== keeperId) {
+        return NextResponse.json(
+          {
+            error: "Loser canonical phone reservation belongs to a third player profile.",
+            code: "LOSER_PHONE_RESERVATION_THIRD_PARTY",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    // Check 4: Multiple appUsers or conflicting user accounts
+    const keeperAppUserUids = Array.from(new Set(appUsersKeeperSnap.docs.map((d) => d.id)));
+    if (keeperAppUserUids.length > 1) {
+      return NextResponse.json(
+        {
+          error: "Multiple conflicting user accounts reference the keeper player.",
+          code: "MULTIPLE_KEEPER_APP_USERS",
+        },
+        { status: 409 },
+      );
+    }
+    const loserAppUserUids = Array.from(new Set(appUsersLoserSnap.docs.map((d) => d.id)));
+    if (loserAppUserUids.length > 1) {
+      return NextResponse.json(
+        {
+          error: "Multiple conflicting user accounts reference the loser player.",
+          code: "MULTIPLE_LOSER_APP_USERS",
+        },
+        { status: 409 },
+      );
+    }
+    if (keeperAppUserUids.length === 1 && loserAppUserUids.length === 1 && keeperAppUserUids[0] !== loserAppUserUids[0]) {
+      return NextResponse.json(
+        {
+          error: "Conflicting user accounts reference keeper and loser players.",
+          code: "CONFLICTING_APP_USERS",
+        },
+        { status: 409 },
+      );
+    }
+
+    // Check 5: Canonical phone conflict
+    if (loserCanonicalPhone && keeperCanonicalPhone && loserCanonicalPhone !== keeperCanonicalPhone) {
+      return NextResponse.json(
+        {
+          error: "Conflicting canonical phone numbers detected between keeper and loser. Merging players with distinct phone numbers requires administrator resolution.",
+          code: "CONFLICTING_CANONICAL_PHONES",
+        },
+        { status: 409 },
+      );
+    }
+
+    // 3. Inspect Historical Records to Move
+    const [paySnap, feeSnap, orderSnap] = await Promise.all([
+      db.collectionGroup("payments").where("playerId", "==", loserId).get(),
+      loserRef.collection("otherFees").get(),
+      db.collection("merchOrders").where("playerId", "==", loserId).get(),
+    ]);
+
     const paymentsReparented = paySnap.docs.length;
-
-    // 2. Check otherFees to move
-    const feeSnap = await loserRef.collection("otherFees").get();
     const feesMoved = feeSnap.docs.length;
-
-    // 3. Check merchOrders to reparent
-    const orderSnap = await db
-      .collection("merchOrders")
-      .where("playerId", "==", loserId)
-      .get();
     const ordersReparented = orderSnap.docs.length;
 
-    // 4. Check appUsers to reparent (IDT-001)
-    const userQuerySnap = await db
-      .collection("appUsers")
-      .where("playerId", "==", loserId)
-      .get();
-
-    // Also check direct doc appUsers/{loserId}
+    // Check direct appUsers/{loserId}
     const directUserDoc = await db.collection("appUsers").doc(loserId).get();
-    const directUserNeedsUpdate =
-      directUserDoc.exists && directUserDoc.data()?.playerId !== keeperId;
-
-    let appUsersReparented = userQuerySnap.docs.length;
-    if (directUserNeedsUpdate && !userQuerySnap.docs.some((d: FirebaseFirestore.QueryDocumentSnapshot) => d.id === loserId)) {
+    const directUserNeedsUpdate = directUserDoc.exists && directUserDoc.data()?.playerId !== keeperId;
+    let appUsersReparented = appUsersLoserSnap.docs.length;
+    if (directUserNeedsUpdate && !appUsersLoserSnap.docs.some((d) => d.id === loserId)) {
       appUsersReparented++;
     }
 
-    // 5. Check uidIndex to reparent (SEC-1C-02, Remediation 1D)
-    const uidQuerySnap = await db
-      .collection("uidIndex")
-      .where("playerId", "==", loserId)
-      .get();
-    let uidIndexReparented = uidQuerySnap.docs.length;
+    let uidIndexReparented = uidIndexLoserSnap.docs.length;
     let directUidNeedsUpdate: FirebaseFirestore.DocumentReference | null = null;
-    if (loser.authUid && !uidQuerySnap.docs.some((d: FirebaseFirestore.QueryDocumentSnapshot) => d.id === loser.authUid)) {
-      const directUidDoc = await db.collection("uidIndex").doc(loser.authUid).get();
-      if (directUidDoc.exists && directUidDoc.data()?.playerId !== keeperId) {
-        directUidNeedsUpdate = directUidDoc.ref;
+    if (loserUid && !uidIndexLoserSnap.docs.some((d) => d.id === loserUid)) {
+      if (directLoserUidDoc?.exists && directLoserUidDoc.data()?.playerId !== keeperId) {
+        directUidNeedsUpdate = directLoserUidDoc.ref;
         uidIndexReparented++;
       }
     }
 
-    // 6. Check phoneIndex to reparent (SEC-1C-02, Remediation 1D)
-    const phoneQuerySnap = await db
-      .collection("phoneIndex")
-      .where("playerId", "==", loserId)
-      .get();
-    let phoneIndexReparented = phoneQuerySnap.docs.length;
+    let phoneIndexReparented = phoneIndexLoserSnap.docs.length;
     let directPhoneNeedsUpdate: FirebaseFirestore.DocumentReference | null = null;
-    if (loser.mobile) {
-      const parsedLoserMobile = parseStrictIndianMobile(loser.mobile);
-      if (parsedLoserMobile.ok && !phoneQuerySnap.docs.some((d: FirebaseFirestore.QueryDocumentSnapshot) => d.id === parsedLoserMobile.canonical)) {
-        const directPhoneDoc = await db.collection("phoneIndex").doc(parsedLoserMobile.canonical).get();
-        if (directPhoneDoc.exists && directPhoneDoc.data()?.playerId !== keeperId) {
-          directPhoneNeedsUpdate = directPhoneDoc.ref;
-          phoneIndexReparented++;
-        }
+    if (loserCanonicalPhone && !phoneIndexLoserSnap.docs.some((d) => d.id === loserCanonicalPhone)) {
+      if (directLoserPhoneDoc?.exists && directLoserPhoneDoc.data()?.playerId !== keeperId) {
+        directPhoneNeedsUpdate = directLoserPhoneDoc.ref;
+        phoneIndexReparented++;
       }
     }
 
-    // 7. Fill-in-empties on keeper
+    // Fill-in-empties patch on keeper
     const keeperPatch = computeKeeperPatch(keeper, loser);
-    if (!keeper.authUid && loser.authUid) {
-      keeperPatch.authUid = loser.authUid;
+    const targetUid = keeperUid || loserUid;
+    if (!keeperUid && loserUid) {
+      keeperPatch.authUid = loserUid;
+    }
+    const targetCanonicalPhone = keeperCanonicalPhone || loserCanonicalPhone;
+    if (!keeper.mobile && loser.mobile) {
+      keeperPatch.mobile = loser.mobile;
     }
 
     // Dry Run early exit
@@ -289,131 +463,246 @@ export async function POST(req: Request) {
       });
     }
 
-    // Live Execution with writeBatch batching
-    const BATCH_LIMIT = 400;
-    let batch = db.batch();
-    let opCount = 0;
-    const flush = async () => {
-      if (opCount === 0) return;
-      await batch.commit();
-      batch = db.batch();
-      opCount = 0;
-    };
-    const enqueue = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
-      fn(batch);
-      opCount++;
-      if (opCount >= BATCH_LIMIT) await flush();
-    };
+    // 4. Stage 1: Atomic Identity State Transition (SEC-1D-02)
+    // Run in a transaction to lock identity and update reservations atomically.
+    const currentJobStage = existingJob?.stage || "pending";
+    if (currentJobStage === "pending" || currentJobStage === "validated") {
+      await db.runTransaction(async (transaction) => {
+        const freshLoser = await transaction.get(loserRef);
+        const freshKeeper = await transaction.get(keeperRef);
 
-    // 1. Reparent match payments
-    for (const d of paySnap.docs) {
-      await enqueue((b) =>
-        b.update(d.ref, {
+        if (!freshLoser.exists || !freshKeeper.exists) {
+          throw new Error("Loser or keeper record vanished during merge transaction.");
+        }
+
+        const freshLoserData = freshLoser.data() || {};
+        const freshKeeperData = freshKeeper.data() || {};
+
+        if (freshLoserData.mergeStatus === "in_progress" && freshLoserData.mergeJobId && freshLoserData.mergeJobId !== jobId) {
+          throw new Error("Loser player locked by concurrent merge job.");
+        }
+        if (freshKeeperData.mergeStatus === "in_progress" && freshKeeperData.mergeJobId && freshKeeperData.mergeJobId !== jobId) {
+          throw new Error("Keeper player locked by concurrent merge job.");
+        }
+
+        // Initialize or update merge job document
+        transaction.set(
+          mergeJobRef,
+          {
+            id: jobId,
+            loserId,
+            keeperId,
+            status: "in_progress",
+            stage: "identity_locked",
+            startedAt: existingJob?.startedAt || new Date().toISOString(),
+            updatedAt: FieldValue.serverTimestamp(),
+            stats: {
+              paymentsReparented,
+              feesMoved,
+              ordersReparented,
+              appUsersReparented,
+              uidIndexReparented,
+              phoneIndexReparented,
+            },
+          },
+          { merge: true },
+        );
+
+        // Lock loser
+        transaction.update(loserRef, {
+          mergeStatus: "in_progress",
+          mergedInto: keeperId,
+          mergeJobId: jobId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        // Apply identity patch to keeper and set mergeStatus
+        const keeperTxPatch: Record<string, any> = {
+          mergeStatus: "in_progress",
+          mergeJobId: jobId,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (Object.keys(keeperPatch).length > 0) {
+          Object.assign(keeperTxPatch, keeperPatch);
+        }
+        transaction.update(keeperRef, keeperTxPatch);
+
+        // Reparent target uidIndex reservation
+        if (targetUid) {
+          transaction.set(
+            db.collection("uidIndex").doc(targetUid),
+            {
+              playerId: keeperId,
+              authUid: targetUid,
+              canonicalPhone: targetCanonicalPhone || "",
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+
+        // Reparent target phoneIndex reservation
+        if (targetCanonicalPhone) {
+          transaction.set(
+            db.collection("phoneIndex").doc(targetCanonicalPhone),
+            {
+              playerId: keeperId,
+              authUid: targetUid || "",
+              canonicalPhone: targetCanonicalPhone,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+      });
+    }
+
+    // Helper for batched execution
+    const BATCH_LIMIT = 400;
+
+    // Stage 2: Reparent match payments (Idempotent: queries where playerId == loserId)
+    const freshPaySnap = await db
+      .collectionGroup("payments")
+      .where("playerId", "==", loserId)
+      .get();
+
+    for (let i = 0; i < freshPaySnap.docs.length; i += BATCH_LIMIT) {
+      const chunk = freshPaySnap.docs.slice(i, i + BATCH_LIMIT);
+      const batch = db.batch();
+      for (const d of chunk) {
+        batch.update(d.ref, {
           playerId: keeperId,
           updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+        });
+      }
+      await batch.commit();
     }
+    await mergeJobRef.update({
+      stage: "payments_reparented",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
-    // 2. Move otherFees under keeper
-    for (const feeDoc of feeSnap.docs) {
-      await enqueue((b) =>
-        b.set(
-          keeperRef.collection("otherFees").doc(feeDoc.id),
-          { ...feeDoc.data(), playerId: keeperId, updatedAt: FieldValue.serverTimestamp() },
-        ),
-      );
-      await enqueue((b) =>
-        b.delete(loserRef.collection("otherFees").doc(feeDoc.id)),
-      );
+    // Stage 3: Move otherFees (Idempotent: copies to keeper, deletes from loser)
+    const freshFeeSnap = await loserRef.collection("otherFees").get();
+    // 2 operations per item (set + delete), so batch chunk is 200
+    const FEE_BATCH_LIMIT = 200;
+    for (let i = 0; i < freshFeeSnap.docs.length; i += FEE_BATCH_LIMIT) {
+      const chunk = freshFeeSnap.docs.slice(i, i + FEE_BATCH_LIMIT);
+      const batch = db.batch();
+      for (const feeDoc of chunk) {
+        batch.set(keeperRef.collection("otherFees").doc(feeDoc.id), {
+          ...feeDoc.data(),
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        batch.delete(feeDoc.ref);
+      }
+      await batch.commit();
     }
+    await mergeJobRef.update({
+      stage: "fees_moved",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
-    // 3. Reparent merchOrders
-    for (const d of orderSnap.docs) {
-      await enqueue((b) =>
-        b.update(d.ref, {
+    // Stage 4: Reparent merchOrders
+    const freshOrderSnap = await db
+      .collection("merchOrders")
+      .where("playerId", "==", loserId)
+      .get();
+
+    for (let i = 0; i < freshOrderSnap.docs.length; i += BATCH_LIMIT) {
+      const chunk = freshOrderSnap.docs.slice(i, i + BATCH_LIMIT);
+      const batch = db.batch();
+      for (const d of chunk) {
+        batch.update(d.ref, {
           playerId: keeperId,
           playerName: (keeper as any).name || d.data().playerName || "",
           updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+        });
+      }
+      await batch.commit();
     }
+    await mergeJobRef.update({
+      stage: "orders_reparented",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
-    // 4. Reparent appUsers (IDT-001)
-    for (const u of userQuerySnap.docs) {
-      await enqueue((b) =>
-        b.update(u.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+    // Stage 5: Reparent appUsers, uidIndex, and phoneIndex
+    const freshUserSnap = await db
+      .collection("appUsers")
+      .where("playerId", "==", loserId)
+      .get();
+
+    const userBatch = db.batch();
+    for (const u of freshUserSnap.docs) {
+      userBatch.update(u.ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
     if (directUserNeedsUpdate) {
-      await enqueue((b) =>
-        b.update(directUserDoc.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+      userBatch.update(directUserDoc.ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
-
-    // 5. Reparent uidIndex (SEC-1C-02, Remediation 1D)
-    for (const u of uidQuerySnap.docs) {
-      await enqueue((b) =>
-        b.update(u.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+    // Direct remaining index reparents if any
+    for (const u of uidIndexLoserSnap.docs) {
+      userBatch.update(u.ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
     if (directUidNeedsUpdate) {
-      await enqueue((b) =>
-        b.update(directUidNeedsUpdate!, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+      userBatch.update(directUidNeedsUpdate, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
-
-    // 6. Reparent phoneIndex (SEC-1C-02, Remediation 1D)
-    for (const p of phoneQuerySnap.docs) {
-      await enqueue((b) =>
-        b.update(p.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
+    for (const p of phoneIndexLoserSnap.docs) {
+      userBatch.update(p.ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
     if (directPhoneNeedsUpdate) {
-      await enqueue((b) =>
-        b.update(directPhoneNeedsUpdate!, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        }),
-      );
-    }
-
-    // 7. Update keeper with patched fields
-    if (Object.keys(keeperPatch).length > 0) {
-      keeperPatch.updatedAt = FieldValue.serverTimestamp();
-      await enqueue((b) => b.update(keeperRef, keeperPatch));
-    }
-
-    // 8. Trash the loser (soft delete)
-    await enqueue((b) =>
-      b.update(loserRef, {
-        disabled: true,
-        disabledAt: new Date().toISOString(),
-        mergedInto: keeperId,
+      userBatch.update(directPhoneNeedsUpdate, {
+        playerId: keeperId,
         updatedAt: FieldValue.serverTimestamp(),
-      }),
-    );
+      });
+    }
+    await userBatch.commit();
 
-    await flush();
+    await mergeJobRef.update({
+      stage: "app_users_reparented",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Stage 6: Final Completion & Soft-Delete (All migrations verified)
+    const completionBatch = db.batch();
+    completionBatch.update(loserRef, {
+      disabled: true,
+      disabledAt: new Date().toISOString(),
+      mergedInto: keeperId,
+      mergeStatus: "completed",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    completionBatch.update(keeperRef, {
+      mergeStatus: "completed",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    completionBatch.update(mergeJobRef, {
+      status: "completed",
+      stage: "completed",
+      completedAt: new Date().toISOString(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await completionBatch.commit();
 
     return NextResponse.json({
       ok: true,
       dryRun: false,
+      jobId,
       paymentsReparented,
       feesMoved,
       ordersReparented,

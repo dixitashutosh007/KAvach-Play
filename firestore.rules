@@ -116,17 +116,23 @@ service cloud.firestore {
 
     match /appUsers/{userId} {
       allow read: if isSignedIn();
-      allow create: if isSuperAdmin() || (
-        isSignedIn()
-        && request.auth.uid == userId
-        && (!('role' in incoming()) || incoming().role == 'player')
-        && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
-      );
-      allow update: if isSuperAdmin() || (
-        isSignedIn()
-        && (request.auth.uid == userId || isClubAdmin())
-        && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
-      );
+      allow create: if !incoming().keys().hasAny(['playerId'])
+        && (
+          isSuperAdmin() || (
+            isSignedIn()
+            && request.auth.uid == userId
+            && (!('role' in incoming()) || incoming().role == 'player')
+            && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
+          )
+        );
+      allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['playerId'])
+        && (
+          isSuperAdmin() || (
+            isSignedIn()
+            && (request.auth.uid == userId || isClubAdmin())
+            && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
+          )
+        );
       allow delete: if isSuperAdmin();
     }
 
@@ -487,17 +493,21 @@ service cloud.firestore {
 
     match /players/{playerId} {
       allow read: if isSignedIn();
-      allow create: if isAnyAdmin() || isSelf(playerId);
-      allow update: if isAnyAdmin()
-        || (
-          isSelf(playerId)
-          && incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'email', 'mobile', 'dob', 'locality', 'bloodGroup',
-            'emergencyContact', 'battingStyle', 'bowlingStyle', 'isWicketKeeper',
-            'chestSize', 'waistSize', 'jerseyNumber', 'jerseyName', 'photoURL',
-            'inviteStatus', 'updatedAt'
-          ])
-          && isValidPlayerSelfUpdate(incoming(), existing())
+      allow create: if !incoming().keys().hasAny(['authUid'])
+        && (isAnyAdmin() || isSelf(playerId));
+      allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['authUid'])
+        && (
+          isAnyAdmin()
+          || (
+            isSelf(playerId)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'email', 'mobile', 'dob', 'locality', 'bloodGroup',
+              'emergencyContact', 'battingStyle', 'bowlingStyle', 'isWicketKeeper',
+              'chestSize', 'waistSize', 'jerseyNumber', 'jerseyName', 'photoURL',
+              'inviteStatus', 'updatedAt'
+            ])
+            && isValidPlayerSelfUpdate(incoming(), existing())
+          )
         );
       allow delete: if isAnyAdmin() && isValidId(playerId);
 

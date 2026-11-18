@@ -2,18 +2,20 @@
  * Offline Dry-Run Identity Index Bootstrap & Collision Analysis
  * (scripts/bootstrap-identity-index.ts)
  *
- * Implements SEC-1C-04:
+ * Implements SEC-1C-04 and SEC-1D-04:
  * Inspects the complete identity population:
  * - ALL players (linked & unlinked, active, disabled, merged)
  * - ALL appUsers (orphaned playerId, multiple UIDs per player, missing playerId)
  * - Both `phoneIndex` and `uidIndex` collections (orphans, disagreements, mismatches)
  * - Detects legacy format variations, phone collisions, UID collisions, orphan index entries, and mismatches.
- * - Emits a deterministic report with `safeToBootstrap: boolean`.
+ * - Accurately distinguishes safeToBootstrap, safeToLinkExistingRecords, and requiresManualResolution.
+ * - Verifies keeper relationships for merged records.
+ * - Flags missing index reservations for already-linked players.
  *
  * NOTE: Strictly read-only by default. Zero database modifications performed.
  */
 
-import { parseStrictIndianMobile, isCanonicalIndianMobile } from "../lib/account-linking.ts";
+import { parseStrictIndianMobile } from "../lib/account-linking.ts";
 
 export interface PhoneCollision {
   canonicalPhone: string;
@@ -50,9 +52,20 @@ export interface IndexDisagreement {
   uidIndexPlayerId: string;
 }
 
+export interface MissingIndexReservation {
+  playerId: string;
+  authUid?: string;
+  canonicalPhone?: string;
+  missingUidIndex: boolean;
+  missingPhoneIndex: boolean;
+  reason: string;
+}
+
 export interface CollisionReport {
   timestamp: string;
   safeToBootstrap: boolean;
+  safeToLinkExistingRecords: boolean;
+  requiresManualResolution: boolean;
   blockingIssueCount: number;
   warningCount: number;
   summary: {
@@ -66,6 +79,8 @@ export interface CollisionReport {
       validPhoneCount: number;
       invalidPhoneCount: number;
       missingPhoneCount: number;
+      verifiedMergedCount: number;
+      unverifiedMergedCount: number;
     };
     appUsers: {
       total: number;
@@ -82,6 +97,7 @@ export interface CollisionReport {
   appUserInconsistencies: AppUserInconsistency[];
   orphanIndexes: OrphanIndexEntry[];
   indexDisagreements: IndexDisagreement[];
+  missingIndexReservations: MissingIndexReservation[];
   remediationSuggestions: string[];
 }
 
@@ -100,9 +116,15 @@ export async function generateIdentityCollisionReport(
 
   // Player Maps and Counters
   const playerMap = new Map<string, FirebaseFirestore.DocumentData>();
+  for (const doc of playersSnap.docs) {
+    playerMap.set(doc.id, doc.data() || {});
+  }
+
   let activePlayers = 0;
   let disabledPlayers = 0;
   let mergedPlayers = 0;
+  let verifiedMergedCount = 0;
+  let unverifiedMergedCount = 0;
   let linkedPlayers = 0;
   let unlinkedPlayers = 0;
   let validPhoneCount = 0;
@@ -119,13 +141,15 @@ export async function generateIdentityCollisionReport(
     Array<{ id: string; isActive: boolean }>
   >();
 
-  for (const doc of playersSnap.docs) {
-    const data = doc.data() || {};
-    playerMap.set(doc.id, data);
-
+  for (const [docId, data] of playerMap.entries()) {
     const isActive = data.disabled !== true && !data.mergedInto;
     if (data.mergedInto) {
       mergedPlayers++;
+      if (playerMap.has(data.mergedInto)) {
+        verifiedMergedCount++;
+      } else {
+        unverifiedMergedCount++;
+      }
     } else if (data.disabled === true) {
       disabledPlayers++;
     } else {
@@ -136,7 +160,7 @@ export async function generateIdentityCollisionReport(
       linkedPlayers++;
       const uid = String(data.authUid).trim();
       if (!uidToPlayerEntries.has(uid)) uidToPlayerEntries.set(uid, []);
-      uidToPlayerEntries.get(uid)!.push({ id: doc.id, isActive });
+      uidToPlayerEntries.get(uid)!.push({ id: docId, isActive });
     } else {
       unlinkedPlayers++;
     }
@@ -152,7 +176,7 @@ export async function generateIdentityCollisionReport(
         const canonical = parsed.canonical;
         if (!phoneToPlayerEntries.has(canonical)) phoneToPlayerEntries.set(canonical, []);
         phoneToPlayerEntries.get(canonical)!.push({
-          id: doc.id,
+          id: docId,
           rawMobile: String(data.mobile),
           isActive,
         });
@@ -160,15 +184,24 @@ export async function generateIdentityCollisionReport(
     }
   }
 
-  // 2. Identify Phone Collisions
+  // 2. Identify Phone Collisions (SEC-1D-04)
   const phoneCollisions: PhoneCollision[] = [];
   for (const [canonicalPhone, entries] of phoneToPlayerEntries.entries()) {
     if (entries.length > 1) {
       const playerIds = entries.map((e) => e.id);
       const rawFormats = Array.from(new Set(entries.map((e) => e.rawMobile)));
       const activeCount = entries.filter((e) => e.isActive).length;
-      // Blocking if more than 1 active player shares the number
-      const isBlocking = activeCount > 1;
+
+      // Check if disabled entries are verified as merged into an active player in entries
+      const unverifiedDisabledEntries = entries.filter((e) => {
+        if (e.isActive) return false;
+        const pData = playerMap.get(e.id);
+        const mergedInto = pData?.mergedInto;
+        return !mergedInto || !entries.some((k) => k.id === mergedInto && k.isActive);
+      });
+
+      // Blocking if more than 1 active player OR unverified disabled duplicate exists
+      const isBlocking = activeCount > 1 || unverifiedDisabledEntries.length > 0;
 
       phoneCollisions.push({
         canonicalPhone,
@@ -292,10 +325,12 @@ export async function generateIdentityCollisionReport(
 
   // 6. Inspect uidIndex Collection & Index Disagreements
   const indexDisagreements: IndexDisagreement[] = [];
+  const uidIndexMap = new Map<string, FirebaseFirestore.DocumentData>();
 
   for (const doc of uidIndexSnap.docs) {
     const data = doc.data() || {};
     const uid = doc.id;
+    uidIndexMap.set(uid, data);
     const targetPlayerId = data.playerId ? String(data.playerId).trim() : "";
     const canonicalPhone = data.canonicalPhone ? String(data.canonicalPhone).trim() : "";
 
@@ -332,7 +367,47 @@ export async function generateIdentityCollisionReport(
     }
   }
 
-  // 7. Calculate Severity and safeToBootstrap Status
+  // 7. Detect Missing Index Reservations for Already-Linked Players (SEC-1D-04)
+  const missingIndexReservations: MissingIndexReservation[] = [];
+  for (const [playerId, data] of playerMap.entries()) {
+    const authUid = data.authUid ? String(data.authUid).trim() : undefined;
+    const rawMobile = data.mobile ? String(data.mobile).trim() : undefined;
+    const isActive = data.disabled !== true && !data.mergedInto;
+
+    if (authUid && isActive) {
+      const hasUidIndex = uidIndexMap.has(authUid) && uidIndexMap.get(authUid)?.playerId === playerId;
+      let hasPhoneIndex = false;
+      let canonicalPhone: string | undefined = undefined;
+
+      if (rawMobile) {
+        const parsed = parseStrictIndianMobile(rawMobile);
+        if (parsed.ok) {
+          canonicalPhone = parsed.canonical;
+          hasPhoneIndex = phoneIndexMap.has(canonicalPhone) && phoneIndexMap.get(canonicalPhone)?.playerId === playerId;
+        }
+      }
+
+      if (!hasUidIndex || !hasPhoneIndex) {
+        missingIndexReservations.push({
+          playerId,
+          authUid,
+          canonicalPhone,
+          missingUidIndex: !hasUidIndex,
+          missingPhoneIndex: !hasPhoneIndex,
+          reason: `Linked player is missing authoritative index reservations (${!hasUidIndex ? "uidIndex" : ""}${!hasUidIndex && !hasPhoneIndex ? ", " : ""}${!hasPhoneIndex ? "phoneIndex" : ""}).`,
+        });
+      }
+    }
+  }
+
+  // 8. Detect Malformed Phones on Active or Linked Players (SEC-1D-04)
+  const blockingMalformedPhones = Array.from(playerMap.entries()).filter(([_, data]) => {
+    const isActiveOrLinked = (data.disabled !== true && !data.mergedInto) || Boolean(data.authUid);
+    if (!isActiveOrLinked || !data.mobile) return false;
+    return !parseStrictIndianMobile(data.mobile).ok;
+  }).length;
+
+  // 9. Calculate Severity and safeToBootstrap Status
   const blockingPhoneCollisions = phoneCollisions.filter((c) => c.isBlocking).length;
   const blockingUidCollisions = uidCollisions.filter((c) => c.isBlocking).length;
   const blockingAppUserIssues = appUserInconsistencies.filter((c) => c.isBlocking).length;
@@ -344,15 +419,24 @@ export async function generateIdentityCollisionReport(
     blockingUidCollisions +
     blockingAppUserIssues +
     blockingOrphanIndexes +
-    blockingDisagreements;
+    blockingDisagreements +
+    blockingMalformedPhones +
+    unverifiedMergedCount;
 
   const warningCount =
     phoneCollisions.filter((c) => !c.isBlocking).length +
     uidCollisions.filter((c) => !c.isBlocking).length +
     appUserInconsistencies.filter((c) => !c.isBlocking).length +
-    invalidPhoneCount;
+    missingIndexReservations.length +
+    (invalidPhoneCount - blockingMalformedPhones);
 
   const safeToBootstrap = blockingIssueCount === 0;
+  const safeToLinkExistingRecords =
+    uidCollisions.filter((c) => c.isBlocking).length === 0 &&
+    missingIndexReservations.length === 0 &&
+    appUserInconsistencies.filter((c) => c.isBlocking).length === 0 &&
+    blockingMalformedPhones === 0;
+  const requiresManualResolution = !safeToBootstrap || blockingIssueCount > 0;
 
   const remediationSuggestions: string[] = [];
   if (blockingPhoneCollisions > 0) {
@@ -380,15 +464,27 @@ export async function generateIdentityCollisionReport(
       "Reconcile phoneIndex and uidIndex documents that point to conflicting player identifiers.",
     );
   }
-  if (invalidPhoneCount > 0) {
+  if (blockingMalformedPhones > 0) {
     remediationSuggestions.push(
-      "Correct malformed or non-standard Indian mobile numbers in historical player profiles.",
+      "Correct malformed or non-standard Indian mobile numbers on active and linked player profiles.",
+    );
+  }
+  if (unverifiedMergedCount > 0) {
+    remediationSuggestions.push(
+      "Resolve merged records that reference nonexistent keeper player documents.",
+    );
+  }
+  if (missingIndexReservations.length > 0) {
+    remediationSuggestions.push(
+      "Bootstrap missing phoneIndex or uidIndex reservations for verified linked player records.",
     );
   }
 
   return {
     timestamp,
     safeToBootstrap,
+    safeToLinkExistingRecords,
+    requiresManualResolution,
     blockingIssueCount,
     warningCount,
     summary: {
@@ -402,6 +498,8 @@ export async function generateIdentityCollisionReport(
         validPhoneCount,
         invalidPhoneCount,
         missingPhoneCount,
+        verifiedMergedCount,
+        unverifiedMergedCount,
       },
       appUsers: {
         total: appUsersSnap.docs.length,
@@ -418,6 +516,7 @@ export async function generateIdentityCollisionReport(
     appUserInconsistencies,
     orphanIndexes,
     indexDisagreements,
+    missingIndexReservations,
     remediationSuggestions,
   };
 }

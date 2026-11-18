@@ -383,7 +383,7 @@ describe("Security Remediation 1D: Identity Lifecycle & Population Audit Suite",
     });
     await db.collection("players").doc("p_merge_keeper").set({
       name: "Keeper Player",
-      mobile: "+919876500092",
+      mobile: "+919876500091",
     });
 
     // Associated indexes for loser
