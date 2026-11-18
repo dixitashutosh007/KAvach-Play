@@ -39,6 +39,8 @@ import {
   migrateMerchOrdersStage,
   migrateAppUsersAndIndexesStage,
   executeIndependentFinalVerification,
+  recordMergeJobFailure,
+  type MergeWorkerInfo,
 } from "../../../../lib/player-merge.ts";
 import { parseStrictIndianMobile } from "../../../../lib/account-linking.ts";
 
@@ -116,6 +118,9 @@ export async function PATCH() {
  * and staged resumable merge.
  */
 export async function POST(req: Request) {
+  let activeJobId: string | null = null;
+  let activeWorkerInfo: MergeWorkerInfo | null = null;
+  let currentStage = "initialization";
   try {
     const { requireClubAdmin } = await import("../../../../lib/server-auth.ts");
     const guard = await requireClubAdmin(req);
@@ -141,6 +146,7 @@ export async function POST(req: Request) {
 
     const db = getDb();
     const jobId = `job_${loserId}_${keeperId}`;
+    activeJobId = jobId;
     const loserRef = db.collection("players").doc(loserId);
     const keeperRef = db.collection("players").doc(keeperId);
 
@@ -173,22 +179,22 @@ export async function POST(req: Request) {
       );
     }
 
-    // Inspect historical records to move
+    // Inspect historical record counts in bounded queries (Finding 1F-R R9)
     const [paySnap, feeSnap, orderSnap, appUsersLoserSnap, uidIndexLoserSnap, phoneIndexLoserSnap] = await Promise.all([
-      db.collectionGroup("payments").where("playerId", "==", loserId).get(),
-      loserRef.collection("otherFees").get(),
-      db.collection("merchOrders").where("playerId", "==", loserId).get(),
-      db.collection("appUsers").where("playerId", "==", loserId).get(),
-      db.collection("uidIndex").where("playerId", "==", loserId).get(),
-      db.collection("phoneIndex").where("playerId", "==", loserId).get(),
+      db.collectionGroup("payments").where("playerId", "==", loserId).count().get(),
+      loserRef.collection("otherFees").count().get(),
+      db.collection("merchOrders").where("playerId", "==", loserId).count().get(),
+      db.collection("appUsers").where("playerId", "==", loserId).count().get(),
+      db.collection("uidIndex").where("playerId", "==", loserId).count().get(),
+      db.collection("phoneIndex").where("playerId", "==", loserId).count().get(),
     ]);
 
-    const paymentsReparented = paySnap.docs.length;
-    const feesMoved = feeSnap.docs.length;
-    const ordersReparented = orderSnap.docs.length;
-    const appUsersReparented = appUsersLoserSnap.docs.length;
-    const uidIndexReparented = uidIndexLoserSnap.docs.length;
-    const phoneIndexReparented = phoneIndexLoserSnap.docs.length;
+    const paymentsReparented = paySnap.data().count;
+    const feesMoved = feeSnap.data().count;
+    const ordersReparented = orderSnap.data().count;
+    const appUsersReparented = appUsersLoserSnap.data().count;
+    const uidIndexReparented = uidIndexLoserSnap.data().count;
+    const phoneIndexReparented = phoneIndexLoserSnap.data().count;
 
     const keeperPatch = computeKeeperPatch(keeper, loser);
     const loserUid = loser.authUid ? String(loser.authUid).trim() : "";
@@ -226,6 +232,10 @@ export async function POST(req: Request) {
       });
     }
 
+    // Stage tracking & failure disposition (Finding 1F-R R2/R3)
+    currentStage = "lease_acquisition";
+    let workerInfo: MergeWorkerInfo | null = null;
+
     // 1. Acquire exclusive merge lease atomically (Gate 1F-A)
     const leaseResult = await acquireMergeLease(db, jobId, loserId, keeperId);
     if (!leaseResult.ok) {
@@ -250,20 +260,22 @@ export async function POST(req: Request) {
       });
     }
 
-    const workerInfo = leaseResult.workerInfo!;
+    workerInfo = leaseResult.workerInfo!;
+    activeWorkerInfo = workerInfo;
     const existingJob = leaseResult.existingJob;
     const currentJobStage = existingJob?.stage || "pending";
+    const existingStats = existingJob?.stats || {};
     const stats = {
-      paymentsReparented,
-      feesMoved,
-      ordersReparented,
-      appUsersReparented,
-      uidIndexReparented,
-      phoneIndexReparented,
+      paymentsReparented: Number(existingStats.paymentsReparented || 0),
+      feesMoved: Number(existingStats.feesMoved || 0),
+      ordersReparented: Number(existingStats.ordersReparented || 0),
+      appUsersReparented: Number(existingStats.appUsersReparented || 0),
+      uidIndexReparented: Number(existingStats.uidIndexReparented || 0),
+      phoneIndexReparented: Number(existingStats.phoneIndexReparented || 0),
     };
 
     // 2. Stage 1: Atomic Identity State Transition & 14 Invariant Checks
-    // Always align identity state and reservations on initiation or retry unless already completed
+    currentStage = "stage_1_identity";
     if (currentJobStage !== "completed") {
       await executeMergeIdentityStage(
         db,
@@ -279,33 +291,46 @@ export async function POST(req: Request) {
     }
 
     // Stage 2: Reparent match payments in bounded chunks (Finding 1F-04)
-    await migratePaymentsStage(db, jobId, loserId, keeperId, workerInfo);
+    currentStage = "stage_2_payments";
+    const payResult = await migratePaymentsStage(db, jobId, loserId, keeperId, workerInfo);
 
     // Stage 3: Move otherFees with collision protection (Finding 1F-03)
-    await migrateOtherFeesStage(db, jobId, loserId, keeperId, workerInfo);
+    currentStage = "stage_3_fees";
+    const feeResult = await migrateOtherFeesStage(db, jobId, loserId, keeperId, workerInfo);
 
     // Stage 4: Reparent merchOrders in bounded chunks (Finding 1F-04)
-    await migrateMerchOrdersStage(db, jobId, loserId, keeperId, workerInfo, (keeper as any).name);
+    currentStage = "stage_4_orders";
+    const orderResult = await migrateMerchOrdersStage(db, jobId, loserId, keeperId, workerInfo, (keeper as any).name);
 
     // Stage 5: Reparent appUsers and identity indexes in bounded chunks (Finding 1F-04)
-    await migrateAppUsersAndIndexesStage(db, jobId, loserId, keeperId, workerInfo);
+    currentStage = "stage_5_app_users";
+    const userResult = await migrateAppUsersAndIndexesStage(db, jobId, loserId, keeperId, workerInfo);
 
     // Stage 6: Independent final verification & completion (Finding 1F-05)
+    currentStage = "stage_6_final_verification";
     await executeIndependentFinalVerification(db, jobId, loserId, keeperId, workerInfo);
 
     return NextResponse.json({
       ok: true,
       dryRun: false,
       jobId,
-      paymentsReparented,
-      feesMoved,
-      ordersReparented,
-      appUsersReparented,
+      paymentsReparented: payResult.count,
+      feesMoved: feeResult.count,
+      ordersReparented: orderResult.count,
+      appUsersReparented: userResult.count,
       uidIndexReparented,
       phoneIndexReparented,
     });
   } catch (err: any) {
     console.error("merge-players failed", err);
+    if (activeJobId) {
+      try {
+        const db = getDb();
+        await recordMergeJobFailure(db, activeJobId, activeWorkerInfo, err, currentStage);
+      } catch (recordErr) {
+        console.error("Error recording merge job failure:", recordErr);
+      }
+    }
     return NextResponse.json(
       { error: err?.message || "merge failed", code: err?.code || "INTERNAL_ERROR" },
       { status: err?.status || 500 },

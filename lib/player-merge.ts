@@ -203,13 +203,15 @@ export async function acquireMergeLease(
       };
     }
 
-    // Check player-level locks for BOTH loser and keeper (Finding 1F-R R3)
+    // Check player-level locks for BOTH loser and keeper (Finding 1F-R R3 & Stale Lock Recovery)
+    const now = Date.now();
+
     // 1. Loser lock check
     if (loser.mergeStatus === "in_progress" && loser.mergeJobId && loser.mergeJobId !== jobId) {
       const competingJobSnap = await transaction.get(db.collection("mergeJobs").doc(loser.mergeJobId));
       if (competingJobSnap.exists) {
         const competingJob = competingJobSnap.data() || {};
-        if (competingJob.status === "in_progress" && Date.now() < (competingJob.leaseExpiresAt || 0)) {
+        if (competingJob.status === "in_progress" && now < (competingJob.leaseExpiresAt || 0)) {
           return {
             ok: false,
             status: 409,
@@ -217,13 +219,33 @@ export async function acquireMergeLease(
             code: "MERGE_IN_PROGRESS",
           };
         }
+        if (competingJob.status === "completed" && loser.mergedInto && loser.mergedInto !== keeperId) {
+          return {
+            ok: false,
+            status: 409,
+            error: `Loser player has already been merged into player ${loser.mergedInto}.`,
+            code: "LOSER_ALREADY_MERGED",
+          };
+        }
+        // Competing job exists but is expired or failed: require explicit operator resolution for foreign job
+        return {
+          ok: false,
+          status: 409,
+          error: "Loser player is locked by another merge job.",
+          code: "PLAYER_LOCKED_BY_ANOTHER_JOB",
+        };
+      } else {
+        // Competing job document does NOT exist in mergeJobs (orphaned lock)
+        if (loser.mergeLeaseExpiresAt && now < loser.mergeLeaseExpiresAt) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Loser player is locked by another unexpired merge lease.",
+            code: "PLAYER_LOCKED_BY_ANOTHER_JOB",
+          };
+        }
+        // Expired lock with missing job: can be safely reclaimed by this new job
       }
-      return {
-        ok: false,
-        status: 409,
-        error: "Loser player is locked by another merge job.",
-        code: "PLAYER_LOCKED_BY_ANOTHER_JOB",
-      };
     }
 
     // 2. Keeper lock check
@@ -231,25 +253,35 @@ export async function acquireMergeLease(
       const competingJobSnap = await transaction.get(db.collection("mergeJobs").doc(keeper.mergeJobId));
       if (competingJobSnap.exists) {
         const competingJob = competingJobSnap.data() || {};
-        if (competingJob.status === "in_progress" && Date.now() < (competingJob.leaseExpiresAt || 0)) {
+        if (competingJob.status === "in_progress" && now < (competingJob.leaseExpiresAt || 0)) {
           return {
             ok: false,
             status: 409,
             error: "Keeper player is currently involved in another active merge job.",
-            code: "MERGE_IN_PROGRESS",
+            code: "KEEPER_LOCKED",
           };
         }
+        return {
+          ok: false,
+          status: 409,
+          error: "Keeper player is locked by another merge job.",
+          code: "KEEPER_LOCKED_BY_ANOTHER_JOB",
+        };
+      } else {
+        // Competing job document missing in mergeJobs
+        if (keeper.mergeLeaseExpiresAt && now < keeper.mergeLeaseExpiresAt) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Keeper player is locked by another unexpired merge lease.",
+            code: "KEEPER_LOCKED_BY_ANOTHER_JOB",
+          };
+        }
+        // Expired lock with missing job: can be safely reclaimed by this new job
       }
-      return {
-        ok: false,
-        status: 409,
-        error: "Keeper player is locked by another merge job.",
-        code: "KEEPER_LOCKED_BY_ANOTHER_JOB",
-      };
     }
 
     // Check existing lease on THIS job
-    const now = Date.now();
     const currentLeaseExpiresAt = existingJob?.leaseExpiresAt || 0;
     const hasActiveLease =
       existingJob?.status === "in_progress" &&
@@ -365,6 +397,44 @@ export async function renewMergeLease(
     const loserSnap = job.loserId ? await transaction.get(db.collection("players").doc(job.loserId)) : null;
     const keeperSnap = job.keeperId ? await transaction.get(db.collection("players").doc(job.keeperId)) : null;
 
+    // Strict validation of both player locks (Finding 1F-R R2/R3)
+    if (!loserSnap?.exists || !keeperSnap?.exists) {
+      throw new StaleWorkerError(
+        409,
+        "Cannot renew lease: required player record not found.",
+        "LEASE_RENEWAL_FAILED"
+      );
+    }
+
+    const loser = loserSnap.data() || {};
+    const keeper = keeperSnap.data() || {};
+
+    if (
+      loser.mergeJobId !== jobId ||
+      loser.mergeStatus !== "in_progress" ||
+      loser.mergeFencingToken !== worker.fencingToken ||
+      loser.mergeLeaseOwner !== worker.leaseOwner
+    ) {
+      throw new StaleWorkerError(
+        409,
+        "Cannot renew lease: loser player lock is missing, inconsistent, or superseded.",
+        "LEASE_RENEWAL_FAILED"
+      );
+    }
+
+    if (
+      keeper.mergeJobId !== jobId ||
+      keeper.mergeStatus !== "in_progress" ||
+      keeper.mergeFencingToken !== worker.fencingToken ||
+      keeper.mergeLeaseOwner !== worker.leaseOwner
+    ) {
+      throw new StaleWorkerError(
+        409,
+        "Cannot renew lease: keeper player lock is missing, inconsistent, or superseded.",
+        "LEASE_RENEWAL_FAILED"
+      );
+    }
+
     // ALL WRITES AFTER READS
     const newExpiresAt = now + additionalDurationMs;
     transaction.update(mergeJobRef, {
@@ -373,19 +443,15 @@ export async function renewMergeLease(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Update lease expiration on locked player documents
-    if (loserSnap?.exists && loserSnap.data()?.mergeJobId === jobId && loserSnap.data()?.mergeStatus === "in_progress") {
-      transaction.update(loserSnap.ref, {
-        mergeLeaseExpiresAt: newExpiresAt,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-    if (keeperSnap?.exists && keeperSnap.data()?.mergeJobId === jobId && keeperSnap.data()?.mergeStatus === "in_progress") {
-      transaction.update(keeperSnap.ref, {
-        mergeLeaseExpiresAt: newExpiresAt,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
+    transaction.update(loserSnap.ref, {
+      mergeLeaseExpiresAt: newExpiresAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    transaction.update(keeperSnap.ref, {
+      mergeLeaseExpiresAt: newExpiresAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
     return { ok: true, newExpiresAt };
   });
@@ -812,10 +878,25 @@ export async function executeMergeCompletionStage(
   const keeperRef = db.collection("players").doc(keeperId);
 
   await db.runTransaction(async (transaction) => {
-    const [jobSnap, loserSnap, keeperSnap] = await Promise.all([
+    // 1. Transactional reads of all essential guard records
+    const [
+      jobSnap,
+      loserSnap,
+      keeperSnap,
+      residualFeesSnap,
+      residualUsersSnap,
+      residualUidSnap,
+      residualPhoneSnap,
+      residualOrdersSnap,
+    ] = await Promise.all([
       transaction.get(mergeJobRef),
       transaction.get(loserRef),
       transaction.get(keeperRef),
+      transaction.get(loserRef.collection("otherFees").limit(1)),
+      transaction.get(db.collection("appUsers").where("playerId", "==", loserId).limit(1)),
+      transaction.get(db.collection("uidIndex").where("playerId", "==", loserId).limit(1)),
+      transaction.get(db.collection("phoneIndex").where("playerId", "==", loserId).limit(1)),
+      transaction.get(db.collection("merchOrders").where("playerId", "==", loserId).limit(1)),
     ]);
 
     if (!jobSnap.exists) {
@@ -824,6 +905,7 @@ export async function executeMergeCompletionStage(
     const job = jobSnap.data() || {};
     const now = Date.now();
 
+    // Verify worker fencing and active lease
     if (
       job.leaseOwner !== worker.leaseOwner ||
       job.leaseToken !== worker.leaseToken ||
@@ -835,6 +917,42 @@ export async function executeMergeCompletionStage(
         409,
         "Stale worker detected: lease has expired, been reclaimed, or superseded.",
         "STALE_WORKER_FENCING_ERROR"
+      );
+    }
+
+    // Verify player locks are consistent with this job
+    if (!loserSnap.exists || !keeperSnap.exists) {
+      throw new MergeConflictError(404, "Player records not found during completion.", "PLAYER_NOT_FOUND");
+    }
+    const loser = loserSnap.data() || {};
+    const keeper = keeperSnap.data() || {};
+    if (
+      loser.mergeJobId !== jobId ||
+      loser.mergeStatus !== "in_progress" ||
+      loser.mergeFencingToken !== worker.fencingToken
+    ) {
+      throw new MergeConflictError(409, "Loser player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
+    }
+    if (
+      keeper.mergeJobId !== jobId ||
+      keeper.mergeStatus !== "in_progress" ||
+      keeper.mergeFencingToken !== worker.fencingToken
+    ) {
+      throw new MergeConflictError(409, "Keeper player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
+    }
+
+    // Verify zero residual documents created during verification window (Finding 1F-R R10)
+    if (
+      !residualFeesSnap.empty ||
+      !residualUsersSnap.empty ||
+      !residualUidSnap.empty ||
+      !residualPhoneSnap.empty ||
+      !residualOrdersSnap.empty
+    ) {
+      throw new MergeConflictError(
+        409,
+        "Final verification failed: concurrent records referencing loser were detected during completion window.",
+        "FINAL_VERIFICATION_FAILED"
       );
     }
 
@@ -861,22 +979,127 @@ export async function executeMergeCompletionStage(
   });
 }
 
+/**
+ * Resolves authoritative and legacy financial alias values for a record (Finding 1F-R R4).
+ * Fails closed (returns ok: false, conflictReason: string) if contradictory alias values
+ * are populated on the same document.
+ */
+export function resolveFinancialRecordValues(record: Record<string, any>): {
+  ok: boolean;
+  conflictReason?: string;
+  values?: {
+    amount: number;
+    title: string;
+    status: string;
+    templateId: string;
+    paymentMethod: string;
+    razorpayPaymentId: string;
+    paidAmount: number;
+    receiptId: string;
+    waivedReason: string;
+    refundId: string;
+    refundAmount: number;
+    cancelledBy: string;
+    currency: string;
+  };
+} {
+  // 1. Paid Amount Aliases: paidAmount vs feeCollectedAmount
+  const hasPaidAmount = record.paidAmount !== undefined && record.paidAmount !== null && record.paidAmount !== "";
+  const hasFeeCollected = record.feeCollectedAmount !== undefined && record.feeCollectedAmount !== null && record.feeCollectedAmount !== "";
+  if (hasPaidAmount && hasFeeCollected) {
+    if (Number(record.paidAmount) !== Number(record.feeCollectedAmount)) {
+      return { ok: false, conflictReason: `Contradictory paid amount aliases: paidAmount=${record.paidAmount} vs feeCollectedAmount=${record.feeCollectedAmount}` };
+    }
+  }
+  const paidAmount = hasPaidAmount ? Number(record.paidAmount) : (hasFeeCollected ? Number(record.feeCollectedAmount) : 0);
+
+  // 2. Refund Identifier Aliases: refundId vs refundReference
+  const refId = record.refundId !== undefined && record.refundId !== null ? String(record.refundId).trim() : "";
+  const refRef = record.refundReference !== undefined && record.refundReference !== null ? String(record.refundReference).trim() : "";
+  if (refId && refRef && refId !== refRef) {
+    return { ok: false, conflictReason: `Contradictory refund identifier aliases: refundId=${refId} vs refundReference=${refRef}` };
+  }
+  const refundId = refId || refRef;
+
+  // 3. Refund Amount Aliases: refundAmount vs refundedPaise
+  const hasRefundAmount = record.refundAmount !== undefined && record.refundAmount !== null && record.refundAmount !== "";
+  const hasRefundedPaise = record.refundedPaise !== undefined && record.refundedPaise !== null && record.refundedPaise !== "";
+  if (hasRefundAmount && hasRefundedPaise) {
+    if (Math.round(Number(record.refundAmount) * 100) !== Number(record.refundedPaise)) {
+      return { ok: false, conflictReason: `Contradictory refund amount aliases: refundAmount=${record.refundAmount} vs refundedPaise=${record.refundedPaise}` };
+    }
+  }
+  const refundAmount = hasRefundAmount ? Number(record.refundAmount) : (hasRefundedPaise ? Number(record.refundedPaise) / 100 : 0);
+
+  // 4. Payment Method Aliases: paymentMethod vs paymentMode vs channel
+  const pm = record.paymentMethod !== undefined && record.paymentMethod !== null ? String(record.paymentMethod).trim() : "";
+  const pMode = record.paymentMode !== undefined && record.paymentMode !== null ? String(record.paymentMode).trim() : "";
+  const ch = record.channel !== undefined && record.channel !== null ? String(record.channel).trim() : "";
+  const methods = [pm, pMode, ch].filter(Boolean);
+  if (methods.length > 1) {
+    const first = methods[0].toLowerCase();
+    for (let i = 1; i < methods.length; i++) {
+      if (methods[i].toLowerCase() !== first) {
+        return { ok: false, conflictReason: `Contradictory payment method aliases: ${methods.join(" vs ")}` };
+      }
+    }
+  }
+  const paymentMethod = pm || pMode || ch;
+
+  // 5. Payment Status Aliases: status vs paymentStatus
+  const st = record.status !== undefined && record.status !== null ? String(record.status).trim() : "";
+  const pSt = record.paymentStatus !== undefined && record.paymentStatus !== null ? String(record.paymentStatus).trim() : "";
+  if (st && pSt && st.toLowerCase() !== pSt.toLowerCase()) {
+    return { ok: false, conflictReason: `Contradictory payment status aliases: status=${st} vs paymentStatus=${pSt}` };
+  }
+  const status = st || pSt;
+
+  return {
+    ok: true,
+    values: {
+      amount: Number(record.amount || 0),
+      title: (record.title || "").trim(),
+      status,
+      templateId: (record.templateId || "").trim(),
+      paymentMethod,
+      razorpayPaymentId: (record.razorpayPaymentId || "").trim(),
+      paidAmount,
+      receiptId: (record.receiptId || "").trim(),
+      waivedReason: (record.waivedReason || "").trim(),
+      refundId,
+      refundAmount,
+      cancelledBy: (record.cancelledBy || "").trim(),
+      currency: (record.currency || "INR").trim().toUpperCase(),
+    },
+  };
+}
+
 export function areFeesIdentical(src: Record<string, any>, dest: Record<string, any>): boolean {
-  if (Number(src.amount) !== Number(dest.amount)) return false;
-  if ((src.title || "").trim() !== (dest.title || "").trim()) return false;
-  if ((src.status || "") !== (dest.status || "")) return false;
-  if ((src.templateId || "") !== (dest.templateId || "")) return false;
-  if ((src.paymentMethod || "") !== (dest.paymentMethod || "")) return false;
-  if ((src.razorpayPaymentId || "") !== (dest.razorpayPaymentId || "")) return false;
-  const srcPaid = Number(src.paidAmount || src.feeCollectedAmount || 0);
-  const destPaid = Number(dest.paidAmount || dest.feeCollectedAmount || 0);
-  if (srcPaid !== destPaid) return false;
-  if ((src.receiptId || "") !== (dest.receiptId || "")) return false;
-  if ((src.waivedReason || "") !== (dest.waivedReason || "")) return false;
-  const srcRefund = (src.refundId || src.refundReference || "");
-  const destRefund = (dest.refundId || dest.refundReference || "");
-  if (srcRefund !== destRefund) return false;
-  if ((src.cancelledBy || "") !== (dest.cancelledBy || "")) return false;
+  const srcRes = resolveFinancialRecordValues(src);
+  const destRes = resolveFinancialRecordValues(dest);
+
+  // If either record contains contradictory internal aliases, fail closed (cannot assume identical)
+  if (!srcRes.ok || !destRes.ok || !srcRes.values || !destRes.values) {
+    return false;
+  }
+
+  const s = srcRes.values;
+  const d = destRes.values;
+
+  if (s.amount !== d.amount) return false;
+  if (s.title !== d.title) return false;
+  if (s.status !== d.status) return false;
+  if (s.templateId !== d.templateId) return false;
+  if (s.paymentMethod !== d.paymentMethod) return false;
+  if (s.razorpayPaymentId !== d.razorpayPaymentId) return false;
+  if (s.paidAmount !== d.paidAmount) return false;
+  if (s.receiptId !== d.receiptId) return false;
+  if (s.waivedReason !== d.waivedReason) return false;
+  if (s.refundId !== d.refundId) return false;
+  if (s.refundAmount !== d.refundAmount) return false;
+  if (s.cancelledBy !== d.cancelledBy) return false;
+  if (s.currency !== d.currency) return false;
+
   return true;
 }
 
@@ -900,9 +1123,13 @@ export async function migratePaymentsStage(
   const batchLimit = options?.batchLimit || 100;
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
+  // Authoritative cumulative progress: read prior state from mergeJob (Finding 1F-R R8)
+  const initialJobSnap = await mergeJobRef.get();
+  const initialStats = initialJobSnap.data()?.stats || {};
+  let cumulativeReparented = Number(initialStats.paymentsReparented || 0);
+  let chunkIndex = Number(initialStats.paymentsReparentedChunks || 0);
+
   let hasMore = true;
-  let totalProcessed = 0;
-  let chunkIndex = 0;
 
   while (hasMore) {
     const pageSnap = await db
@@ -938,7 +1165,7 @@ export async function migratePaymentsStage(
         );
       }
 
-      // 2. Process payments in chunk with financial collision protection
+      // 2. Process payments in chunk
       for (const d of pageSnap.docs) {
         transaction.update(d.ref, {
           playerId: keeperId,
@@ -947,13 +1174,18 @@ export async function migratePaymentsStage(
       }
 
       // 3. Atomically update job progress, heartbeat, and extend lease (Finding 1F-R R2, R8)
-      chunkIndex++;
-      totalProcessed += pageSnap.docs.length;
+      const prevReparented = Number(job.stats?.paymentsReparented || 0);
+      const prevChunks = Number(job.stats?.paymentsReparentedChunks || 0);
+      const newTotal = prevReparented + pageSnap.docs.length;
+      const newChunks = prevChunks + 1;
+      cumulativeReparented = newTotal;
+      chunkIndex = newChunks;
+
       const newExpiresAt = now + 60000;
       transaction.update(mergeJobRef, {
-        "stats.paymentsReparented": totalProcessed,
-        "stats.paymentsReparentedChunks": chunkIndex,
-        "stats.lastCommittedChunk": `payments_chunk_${chunkIndex}`,
+        "stats.paymentsReparented": newTotal,
+        "stats.paymentsReparentedChunks": newChunks,
+        "stats.lastCommittedChunk": `payments_chunk_${newChunks}`,
         leaseExpiresAt: newExpiresAt,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -961,7 +1193,7 @@ export async function migratePaymentsStage(
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(chunkIndex - 1, totalProcessed);
+      await options.onAfterChunkCommit(chunkIndex - 1, cumulativeReparented);
     }
 
     if (pageSnap.docs.length < batchLimit) {
@@ -970,9 +1202,10 @@ export async function migratePaymentsStage(
   }
 
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "payments_reparented", {
-    paymentsReparented: totalProcessed,
+    paymentsReparented: cumulativeReparented,
+    paymentsReparentedChunks: chunkIndex,
   });
-  return { count: totalProcessed };
+  return { count: cumulativeReparented };
 }
 
 /**
@@ -992,10 +1225,15 @@ export async function migrateOtherFeesStage(
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
   const batchLimit = options?.batchLimit || 50;
+
+  // Authoritative cumulative progress: read prior state from mergeJob (Finding 1F-R R8)
+  const initialJobSnap = await mergeJobRef.get();
+  const initialStats = initialJobSnap.data()?.stats || {};
+  let cumulativeMoved = Number(initialStats.feesMoved || 0);
+  let cumulativeSkipped = Number(initialStats.feesSkipped || 0);
+  let chunkIndex = Number(initialStats.feesMovedChunks || 0);
+
   let hasMore = true;
-  let totalMoved = 0;
-  let totalSkipped = 0;
-  let chunkIndex = 0;
 
   while (hasMore) {
     const pageSnap = await loserRef.collection("otherFees").limit(batchLimit).get();
@@ -1070,16 +1308,24 @@ export async function migrateOtherFeesStage(
         }
       }
 
-      chunkIndex++;
-      totalMoved += chunkMoved;
-      totalSkipped += chunkSkipped;
+      const prevMoved = Number(job.stats?.feesMoved || 0);
+      const prevSkipped = Number(job.stats?.feesSkipped || 0);
+      const prevChunks = Number(job.stats?.feesMovedChunks || 0);
+
+      const newMoved = prevMoved + chunkMoved;
+      const newSkipped = prevSkipped + chunkSkipped;
+      const newChunks = prevChunks + 1;
+      cumulativeMoved = newMoved;
+      cumulativeSkipped = newSkipped;
+      chunkIndex = newChunks;
+
       const newExpiresAt = now + 60000;
 
       transaction.update(mergeJobRef, {
-        "stats.feesMoved": totalMoved,
-        "stats.feesSkipped": totalSkipped,
-        "stats.feesMovedChunks": chunkIndex,
-        "stats.lastCommittedChunk": `fees_chunk_${chunkIndex}`,
+        "stats.feesMoved": newMoved,
+        "stats.feesSkipped": newSkipped,
+        "stats.feesMovedChunks": newChunks,
+        "stats.lastCommittedChunk": `fees_chunk_${newChunks}`,
         leaseExpiresAt: newExpiresAt,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -1087,7 +1333,7 @@ export async function migrateOtherFeesStage(
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(chunkIndex - 1, totalMoved + totalSkipped);
+      await options.onAfterChunkCommit(chunkIndex - 1, cumulativeMoved + cumulativeSkipped);
     }
 
     if (pageSnap.docs.length < batchLimit) {
@@ -1096,10 +1342,11 @@ export async function migrateOtherFeesStage(
   }
 
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "fees_moved", {
-    feesMoved: totalMoved,
-    feesSkipped: totalSkipped,
+    feesMoved: cumulativeMoved,
+    feesSkipped: cumulativeSkipped,
+    feesMovedChunks: chunkIndex,
   });
-  return { count: totalMoved + totalSkipped };
+  return { count: cumulativeMoved + cumulativeSkipped };
 }
 
 /**
@@ -1118,9 +1365,13 @@ export async function migrateMerchOrdersStage(
   const batchLimit = options?.batchLimit || 100;
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
+  // Authoritative cumulative progress: read prior state from mergeJob (Finding 1F-R R8)
+  const initialJobSnap = await mergeJobRef.get();
+  const initialStats = initialJobSnap.data()?.stats || {};
+  let cumulativeOrders = Number(initialStats.ordersReparented || 0);
+  let chunkIndex = Number(initialStats.ordersReparentedChunks || 0);
+
   let hasMore = true;
-  let totalProcessed = 0;
-  let chunkIndex = 0;
 
   while (hasMore) {
     const pageSnap = await db
@@ -1166,13 +1417,18 @@ export async function migrateMerchOrdersStage(
       }
 
       // 3. Update job progress and renew lease
-      chunkIndex++;
-      totalProcessed += pageSnap.docs.length;
+      const prevOrders = Number(job.stats?.ordersReparented || 0);
+      const prevChunks = Number(job.stats?.ordersReparentedChunks || 0);
+      const newOrders = prevOrders + pageSnap.docs.length;
+      const newChunks = prevChunks + 1;
+      cumulativeOrders = newOrders;
+      chunkIndex = newChunks;
+
       const newExpiresAt = now + 60000;
       transaction.update(mergeJobRef, {
-        "stats.ordersReparented": totalProcessed,
-        "stats.ordersReparentedChunks": chunkIndex,
-        "stats.lastCommittedChunk": `orders_chunk_${chunkIndex}`,
+        "stats.ordersReparented": newOrders,
+        "stats.ordersReparentedChunks": newChunks,
+        "stats.lastCommittedChunk": `orders_chunk_${newChunks}`,
         leaseExpiresAt: newExpiresAt,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -1180,7 +1436,7 @@ export async function migrateMerchOrdersStage(
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(chunkIndex - 1, totalProcessed);
+      await options.onAfterChunkCommit(chunkIndex - 1, cumulativeOrders);
     }
 
     if (pageSnap.docs.length < batchLimit) {
@@ -1189,14 +1445,16 @@ export async function migrateMerchOrdersStage(
   }
 
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "orders_reparented", {
-    ordersReparented: totalProcessed,
+    ordersReparented: cumulativeOrders,
+    ordersReparentedChunks: chunkIndex,
   });
-  return { count: totalProcessed };
+  return { count: cumulativeOrders };
 }
 
 /**
  * Stage 5: Bounded Migration of AppUsers and Identity Indexes (Finding 1F-R R1, R9).
- * Every chunk commit is transactionally guarded by worker fencing and lease validation.
+ * All reads and writes are strictly bounded and paginated. Never loads entire matching
+ * collections into in-memory arrays.
  */
 export async function migrateAppUsersAndIndexesStage(
   db: FirebaseFirestore.Firestore,
@@ -1209,39 +1467,31 @@ export async function migrateAppUsersAndIndexesStage(
   const batchLimit = options?.batchLimit || 100;
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
 
-  const [freshUserSnap, directUserDoc, freshUidSnap, freshPhoneSnap] = await Promise.all([
-    db.collection("appUsers").where("playerId", "==", loserId).get(),
-    db.collection("appUsers").doc(loserId).get(),
-    db.collection("uidIndex").where("playerId", "==", loserId).get(),
-    db.collection("phoneIndex").where("playerId", "==", loserId).get(),
-  ]);
+  // Authoritative cumulative progress: read prior state from mergeJob (Finding 1F-R R8)
+  const initialJobSnap = await mergeJobRef.get();
+  const initialStats = initialJobSnap.data()?.stats || {};
+  let cumulativeUsers = Number(initialStats.appUsersReparented || 0);
+  let cumulativeUid = Number(initialStats.uidIndexReparented || 0);
+  let cumulativePhone = Number(initialStats.phoneIndexReparented || 0);
+  let chunkIndex = Number(initialStats.appUsersReparentedChunks || 0);
 
-  const operations: Array<FirebaseFirestore.DocumentReference> = [];
-  for (const u of freshUserSnap.docs) {
-    operations.push(u.ref);
-  }
-  if (directUserDoc.exists && directUserDoc.data()?.playerId === loserId) {
-    operations.push(directUserDoc.ref);
-  }
-  for (const u of freshUidSnap.docs) {
-    operations.push(u.ref);
-  }
-  for (const p of freshPhoneSnap.docs) {
-    operations.push(p.ref);
-  }
+  // 1. Paginated bounded migration of appUsers matching loserId (Finding 1F-R R9)
+  let hasMoreUsers = true;
+  while (hasMoreUsers) {
+    const pageSnap = await db
+      .collection("appUsers")
+      .where("playerId", "==", loserId)
+      .limit(batchLimit)
+      .get();
 
-  let totalProcessed = 0;
-  let chunkIndex = 0;
-
-  for (let i = 0; i < operations.length; i += batchLimit) {
-    const chunk = operations.slice(i, i + batchLimit);
+    if (pageSnap.empty) {
+      hasMoreUsers = false;
+      break;
+    }
 
     await db.runTransaction(async (transaction) => {
-      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
       const jobSnap = await transaction.get(mergeJobRef);
-      if (!jobSnap.exists) {
-        throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
-      }
+      if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       const job = jobSnap.data() || {};
       const now = Date.now();
       if (
@@ -1251,44 +1501,177 @@ export async function migrateAppUsersAndIndexesStage(
         job.status !== "in_progress" ||
         now >= (job.leaseExpiresAt || 0)
       ) {
-        throw new StaleWorkerError(
-          409,
-          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-          "STALE_WORKER_FENCING_ERROR"
-        );
+        throw new StaleWorkerError(409, "Stale worker detected: lease has expired, been reclaimed, or superseded.", "STALE_WORKER_FENCING_ERROR");
       }
 
-      // 2. Update each doc in chunk
-      for (const ref of chunk) {
-        transaction.update(ref, {
+      for (const d of pageSnap.docs) {
+        transaction.update(d.ref, {
           playerId: keeperId,
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
 
-      // 3. Update job progress and renew lease
-      chunkIndex++;
-      totalProcessed += chunk.length;
-      const newExpiresAt = now + 60000;
+      const prevUsers = Number(job.stats?.appUsersReparented || 0);
+      const prevChunks = Number(job.stats?.appUsersReparentedChunks || 0);
+      const newUsers = prevUsers + pageSnap.docs.length;
+      const newChunks = prevChunks + 1;
+      cumulativeUsers = newUsers;
+      chunkIndex = newChunks;
+
       transaction.update(mergeJobRef, {
-        "stats.appUsersReparented": totalProcessed,
-        "stats.appUsersReparentedChunks": chunkIndex,
-        "stats.lastCommittedChunk": `appusers_chunk_${chunkIndex}`,
-        leaseExpiresAt: newExpiresAt,
+        "stats.appUsersReparented": newUsers,
+        "stats.appUsersReparentedChunks": newChunks,
+        "stats.lastCommittedChunk": `appusers_chunk_${newChunks}`,
+        leaseExpiresAt: now + 60000,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
 
     if (options?.onAfterChunkCommit) {
-      await options.onAfterChunkCommit(chunkIndex - 1, totalProcessed);
+      await options.onAfterChunkCommit(chunkIndex - 1, cumulativeUsers);
+    }
+
+    if (pageSnap.docs.length < batchLimit) {
+      hasMoreUsers = false;
     }
   }
 
+  // 2. Direct appUsers document check if doc ID is loserId
+  const directUserDoc = await db.collection("appUsers").doc(loserId).get();
+  if (directUserDoc.exists && directUserDoc.data()?.playerId === loserId) {
+    await db.runTransaction(async (transaction) => {
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      const job = jobSnap.data() || {};
+      if (job.fencingToken !== worker.fencingToken || job.status !== "in_progress") {
+        throw new StaleWorkerError(409, "Stale worker detected.", "STALE_WORKER_FENCING_ERROR");
+      }
+      transaction.update(directUserDoc.ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      cumulativeUsers++;
+      transaction.update(mergeJobRef, {
+        "stats.appUsersReparented": cumulativeUsers,
+        lastHeartbeatAt: new Date().toISOString(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  // 3. Paginated bounded migration of uidIndex matching loserId (Finding 1F-R R9)
+  let hasMoreUid = true;
+  while (hasMoreUid) {
+    const pageSnap = await db
+      .collection("uidIndex")
+      .where("playerId", "==", loserId)
+      .limit(batchLimit)
+      .get();
+
+    if (pageSnap.empty) {
+      hasMoreUid = false;
+      break;
+    }
+
+    await db.runTransaction(async (transaction) => {
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      const job = jobSnap.data() || {};
+      const now = Date.now();
+      if (
+        job.leaseOwner !== worker.leaseOwner ||
+        job.leaseToken !== worker.leaseToken ||
+        job.fencingToken !== worker.fencingToken ||
+        job.status !== "in_progress" ||
+        now >= (job.leaseExpiresAt || 0)
+      ) {
+        throw new StaleWorkerError(409, "Stale worker detected.", "STALE_WORKER_FENCING_ERROR");
+      }
+
+      for (const d of pageSnap.docs) {
+        transaction.update(d.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      const prevUid = Number(job.stats?.uidIndexReparented || 0);
+      const newUid = prevUid + pageSnap.docs.length;
+      cumulativeUid = newUid;
+
+      transaction.update(mergeJobRef, {
+        "stats.uidIndexReparented": newUid,
+        leaseExpiresAt: now + 60000,
+        lastHeartbeatAt: new Date().toISOString(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    if (pageSnap.docs.length < batchLimit) {
+      hasMoreUid = false;
+    }
+  }
+
+  // 4. Paginated bounded migration of phoneIndex matching loserId (Finding 1F-R R9)
+  let hasMorePhone = true;
+  while (hasMorePhone) {
+    const pageSnap = await db
+      .collection("phoneIndex")
+      .where("playerId", "==", loserId)
+      .limit(batchLimit)
+      .get();
+
+    if (pageSnap.empty) {
+      hasMorePhone = false;
+      break;
+    }
+
+    await db.runTransaction(async (transaction) => {
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
+      const job = jobSnap.data() || {};
+      const now = Date.now();
+      if (
+        job.leaseOwner !== worker.leaseOwner ||
+        job.leaseToken !== worker.leaseToken ||
+        job.fencingToken !== worker.fencingToken ||
+        job.status !== "in_progress" ||
+        now >= (job.leaseExpiresAt || 0)
+      ) {
+        throw new StaleWorkerError(409, "Stale worker detected.", "STALE_WORKER_FENCING_ERROR");
+      }
+
+      for (const d of pageSnap.docs) {
+        transaction.update(d.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      const prevPhone = Number(job.stats?.phoneIndexReparented || 0);
+      const newPhone = prevPhone + pageSnap.docs.length;
+      cumulativePhone = newPhone;
+
+      transaction.update(mergeJobRef, {
+        "stats.phoneIndexReparented": newPhone,
+        leaseExpiresAt: now + 60000,
+        lastHeartbeatAt: new Date().toISOString(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    if (pageSnap.docs.length < batchLimit) {
+      hasMorePhone = false;
+    }
+  }
+
+  const totalProcessed = cumulativeUsers + cumulativeUid + cumulativePhone;
   await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "app_users_reparented", {
-    appUsersReparented: freshUserSnap.docs.length,
-    uidIndexReparented: freshUidSnap.docs.length,
-    phoneIndexReparented: freshPhoneSnap.docs.length,
+    appUsersReparented: cumulativeUsers,
+    uidIndexReparented: cumulativeUid,
+    phoneIndexReparented: cumulativePhone,
+    appUsersReparentedChunks: chunkIndex,
   });
   return { count: totalProcessed };
 }
@@ -1302,13 +1685,19 @@ export async function executeIndependentFinalVerification(
   jobId: string,
   loserId: string,
   keeperId: string,
-  worker: MergeWorkerInfo
+  worker: MergeWorkerInfo,
+  options?: { batchLimit?: number }
 ): Promise<void> {
+  const batchLimit = options?.batchLimit || 50;
   const loserRef = db.collection("players").doc(loserId);
   const keeperRef = db.collection("players").doc(keeperId);
 
-  // 1. Verify no payments still reference loser
-  const paymentsSnap = await db.collectionGroup("payments").where("playerId", "==", loserId).get();
+  // 1. Verify no payments still reference loser (bounded query - Finding 1F-R R9)
+  const paymentsSnap = await db
+    .collectionGroup("payments")
+    .where("playerId", "==", loserId)
+    .limit(batchLimit)
+    .get();
   if (!paymentsSnap.empty) {
     throw new MergeConflictError(
       409,
@@ -1317,8 +1706,12 @@ export async function executeIndependentFinalVerification(
     );
   }
 
-  // 2. Verify no merchOrders still reference loser
-  const ordersSnap = await db.collection("merchOrders").where("playerId", "==", loserId).get();
+  // 2. Verify no merchOrders still reference loser (bounded query - Finding 1F-R R9)
+  const ordersSnap = await db
+    .collection("merchOrders")
+    .where("playerId", "==", loserId)
+    .limit(batchLimit)
+    .get();
   if (!ordersSnap.empty) {
     throw new MergeConflictError(
       409,
@@ -1327,8 +1720,8 @@ export async function executeIndependentFinalVerification(
     );
   }
 
-  // 3. Verify no otherFees remain under loser
-  const feesSnap = await loserRef.collection("otherFees").get();
+  // 3. Verify no otherFees remain under loser (bounded query - Finding 1F-R R9)
+  const feesSnap = await loserRef.collection("otherFees").limit(batchLimit).get();
   if (!feesSnap.empty) {
     throw new MergeConflictError(
       409,
@@ -1337,8 +1730,12 @@ export async function executeIndependentFinalVerification(
     );
   }
 
-  // 4. Verify no appUsers still reference loser
-  const usersSnap = await db.collection("appUsers").where("playerId", "==", loserId).get();
+  // 4. Verify no appUsers still reference loser (bounded query - Finding 1F-R R9)
+  const usersSnap = await db
+    .collection("appUsers")
+    .where("playerId", "==", loserId)
+    .limit(batchLimit)
+    .get();
   if (!usersSnap.empty) {
     throw new MergeConflictError(
       409,
@@ -1347,8 +1744,12 @@ export async function executeIndependentFinalVerification(
     );
   }
 
-  // 5. Verify no uidIndex records still reference loser
-  const uidSnap = await db.collection("uidIndex").where("playerId", "==", loserId).get();
+  // 5. Verify no uidIndex records still reference loser (bounded query - Finding 1F-R R9)
+  const uidSnap = await db
+    .collection("uidIndex")
+    .where("playerId", "==", loserId)
+    .limit(batchLimit)
+    .get();
   if (!uidSnap.empty) {
     throw new MergeConflictError(
       409,
@@ -1357,8 +1758,12 @@ export async function executeIndependentFinalVerification(
     );
   }
 
-  // 6. Verify no phoneIndex records still reference loser
-  const phoneSnap = await db.collection("phoneIndex").where("playerId", "==", loserId).get();
+  // 6. Verify no phoneIndex records still reference loser (bounded query - Finding 1F-R R9)
+  const phoneSnap = await db
+    .collection("phoneIndex")
+    .where("playerId", "==", loserId)
+    .limit(batchLimit)
+    .get();
   if (!phoneSnap.empty) {
     throw new MergeConflictError(
       409,
@@ -1419,4 +1824,42 @@ export async function executeIndependentFinalVerification(
 
   // 10. Execute atomic completion stage with fencing token verification
   await executeMergeCompletionStage(db, jobId, loserId, keeperId, worker);
+}
+
+/**
+ * Persists structured failure state in mergeJobs/{jobId} (Finding 1F-R R2/R3).
+ * Records failed stage, error code, and error message while preserving committed progress.
+ */
+export async function recordMergeJobFailure(
+  db: FirebaseFirestore.Firestore,
+  jobId: string,
+  worker: MergeWorkerInfo | null,
+  error: any,
+  currentStage: string
+): Promise<void> {
+  const mergeJobRef = db.collection("mergeJobs").doc(jobId);
+  try {
+    await db.runTransaction(async (transaction) => {
+      const jobSnap = await transaction.get(mergeJobRef);
+      if (!jobSnap.exists) return;
+      const job = jobSnap.data() || {};
+
+      // If worker info provided, do not overwrite if job has been superseded by a newer fencing token
+      if (worker && typeof job.fencingToken === "number" && job.fencingToken > worker.fencingToken) {
+        return;
+      }
+
+      transaction.update(mergeJobRef, {
+        status: "failed",
+        failedStage: currentStage || job.stage || "unknown",
+        errorCode: error?.code || "INTERNAL_ERROR",
+        errorMessage: error?.message || String(error),
+        failedAt: new Date().toISOString(),
+        lastHeartbeatAt: new Date().toISOString(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (logErr) {
+    console.error("Failed to persist merge job failure state:", logErr);
+  }
 }

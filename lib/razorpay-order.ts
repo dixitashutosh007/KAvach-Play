@@ -1168,6 +1168,10 @@ export async function verifyPlayerOwnership(
     const pDoc = await db.collection("players").doc(targetPlayerId).get();
     if (pDoc.exists) {
       const pData = pDoc.data() || {};
+      // Reject if player is disabled, merged into another profile, or actively merging
+      if (pData.disabled === true || pData.mergedInto || pData.mergeStatus === "in_progress") {
+        return false;
+      }
       if (pData.authUid && pData.authUid === authUid) {
         return true;
       }
@@ -1184,6 +1188,14 @@ export async function verifyPlayerOwnership(
     if (uDoc.exists) {
       const uData = uDoc.data() || {};
       if (uData.playerId && uData.playerId === targetPlayerId) {
+        // Also verify the player document is not disabled/merging
+        const pDoc = await db.collection("players").doc(targetPlayerId).get();
+        if (pDoc.exists) {
+          const pData = pDoc.data() || {};
+          if (pData.disabled === true || pData.mergedInto || pData.mergeStatus === "in_progress") {
+            return false;
+          }
+        }
         return true;
       }
     }

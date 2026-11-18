@@ -40,7 +40,7 @@
  * 29. Concurrent account-link and merge attempts cannot both win conflicting identity ownership.
  */
 
-import { describe, it, before, beforeEach } from "node:test";
+import { describe, it, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -88,6 +88,10 @@ describe("Security Remediation 1F-A: Identity Reservations & Exclusive Merge Lea
     mergeRoute = { ...routeModule, ...playerMergeModule };
     const linkingModule = await import("../lib/account-linking.ts");
     linkPlayerAccount = linkingModule.linkPlayerAccount;
+  });
+
+  after(async () => {
+    if (testEnv) await testEnv.cleanup();
   });
 
   beforeEach(async () => {

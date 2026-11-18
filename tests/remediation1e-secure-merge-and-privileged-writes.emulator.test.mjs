@@ -23,7 +23,7 @@
  * 18. Generic INVALID_ARGUMENT is not misclassified as contention.
  */
 
-import { describe, it, before, beforeEach } from "node:test";
+import { describe, it, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -74,6 +74,10 @@ describe("Security Remediation 1E: Secure Merge, Privileged Writes & Bootstrap S
     generateIdentityCollisionReport = bootstrapModule.generateIdentityCollisionReport;
 
     mergeRoute = await import("../app/api/admin/merge-players/route.ts");
+  });
+
+  after(async () => {
+    if (testEnv) await testEnv.cleanup();
   });
 
   beforeEach(async () => {
@@ -610,6 +614,114 @@ describe("Security Remediation 1E: Secure Merge, Privileged Writes & Bootstrap S
     assert.equal(res.ok, false);
     assert.equal(res.status, 409);
     assert.match(res.error || "", /Concurrent update conflict detected/);
+  });
+
+  it("Test 17b: Genuine Firestore Emulator transaction contention exercises real optimistic retry without mocks", async () => {
+    const docRef = db.collection("players").doc("p_contention_17b");
+    await docRef.set({
+      counter: 0,
+      mobile: "+919876500172",
+      name: "Genuine Contention Player",
+    });
+
+    let t1Attempts = 0;
+    let t2Attempts = 0;
+
+    let t1ReadResolve;
+    const t1ReadPromise = new Promise((r) => {
+      t1ReadResolve = r;
+    });
+
+    let t2ReadResolve;
+    const t2ReadPromise = new Promise((r) => {
+      t2ReadResolve = r;
+    });
+
+    // Tx1: reads initial doc, signals ready, waits for Tx2 to read same snapshot, then writes counter = 10
+    const tx1Promise = db.runTransaction(async (tx) => {
+      t1Attempts++;
+      const snap = await tx.get(docRef);
+      const val = snap.data()?.counter ?? 0;
+      if (t1Attempts === 1) {
+        t1ReadResolve();
+        // Wait for Tx2 to also read the doc before Tx1 commits
+        await t2ReadPromise;
+      }
+      tx.update(docRef, { counter: val + 10 });
+    });
+
+    // Tx2: waits for Tx1 to read, then reads same doc (counter: 0), signals Tx1 to commit,
+    // then attempts to update docRef. Firestore detects conflict because Tx1 updated docRef!
+    const tx2Promise = (async () => {
+      await t1ReadPromise;
+      return db.runTransaction(async (tx) => {
+        t2Attempts++;
+        const snap = await tx.get(docRef);
+        const val = snap.data()?.counter ?? 0;
+        if (t2Attempts === 1) {
+          t2ReadResolve();
+          // Give Tx1 time to commit so this transaction's initial read is superseded
+          await new Promise((r) => setTimeout(r, 80));
+        }
+        tx.update(docRef, { counter: val + 5 });
+      });
+    })();
+
+    await Promise.all([tx1Promise, tx2Promise]);
+
+    // At least one transaction must have detected contention on docRef and retried
+    assert.ok(
+      t1Attempts >= 2 || t2Attempts >= 2,
+      `Expected at least one transaction to retry due to contention, but t1Attempts = ${t1Attempts}, t2Attempts = ${t2Attempts}`
+    );
+    assert.ok(t1Attempts + t2Attempts >= 3, `Expected total attempts >= 3, got ${t1Attempts + t2Attempts}`);
+
+    // Final state must reflect both updates consistently (0 + 10 + 5 = 15)
+    const finalSnap = await docRef.get();
+    assert.equal(finalSnap.data()?.counter, 15);
+  });
+
+  it("Test 17c: Concurrent linkPlayerAccount execution for competing accounts resolves with exactly one winner", async () => {
+    // Setup player
+    await db.collection("players").doc("p_competing_17c").set({
+      name: "Shared Phone Player",
+      mobile: "+919876500173",
+    });
+
+    // Two different users with identical phone try to link simultaneously
+    const linkUserA = linkPlayerAccount(db, {
+      uid: "uid_competitor_a",
+      verifiedPhoneNumber: "+919876500173",
+      requestedPlayerId: "p_competing_17c",
+    });
+
+    const linkUserB = linkPlayerAccount(db, {
+      uid: "uid_competitor_b",
+      verifiedPhoneNumber: "+919876500173",
+      requestedPlayerId: "p_competing_17c",
+    });
+
+    const [resA, resB] = await Promise.all([linkUserA, linkUserB]);
+
+    const results = [resA, resB];
+    const successes = results.filter((r) => r.ok && r.status === 200);
+    const conflicts = results.filter((r) => !r.ok && (r.status === 409 || r.status === 400 || r.status === 403));
+
+    // Exactly one must succeed, and the loser must be rejected without data corruption
+    assert.equal(successes.length, 1);
+    assert.equal(conflicts.length, 1);
+
+    // Verify index and document integrity
+    const pSnap = await db.collection("players").doc("p_competing_17c").get();
+    const winningUid = successes[0] === resA ? "uid_competitor_a" : "uid_competitor_b";
+    assert.equal(pSnap.data().authUid, winningUid);
+
+    const piSnap = await db.collection("phoneIndex").doc("+919876500173").get();
+    assert.equal(piSnap.data().authUid, winningUid);
+    assert.equal(piSnap.data().playerId, "p_competing_17c");
+
+    const uiSnap = await db.collection("uidIndex").doc(winningUid).get();
+    assert.equal(uiSnap.data().playerId, "p_competing_17c");
   });
 
   it("Test 18: Generic INVALID_ARGUMENT is not misclassified as contention", async () => {
