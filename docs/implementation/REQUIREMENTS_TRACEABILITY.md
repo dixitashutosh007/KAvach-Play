@@ -106,3 +106,18 @@ This matrix maps every functional module and sub-capability from the approved Ph
    - **Grounds, Tournaments & Badges:** Integrated into Match Centre and Player Roster hubs.
    - **Accessible Touch Targets:** Enforced `min-h-[44px]` on all mobile interactive controls.
    - **Simulation Clarity:** Explicitly labeled all prototype actions with `[PROTOTYPE SIMULATION]` banners.
+
+---
+
+## 4. Security Remediation 1F-A Requirements Traceability Matrix
+
+| Requirement ID | Source | Requirement | Phase/Workstream | Implementation Evidence | Test Evidence | Status |
+|---|---|---|---|---|---|---|
+| **REQ-1FA-01** | Gate 1F-A | Transactional reservation checks inside Firestore transaction before mutating identity indexes | Security Remediation 1F-A | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`executeMergeIdentityStage`) | `remediation1fa-*.emulator.test.mjs` Tests 1–11 | **Emulator-tested** |
+| **REQ-1FA-02** | Gate 1F-A | Atomic merge lease acquisition and single active worker mutual exclusion | Security Remediation 1F-A | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`acquireMergeLease`) | `remediation1fa-*.emulator.test.mjs` Tests 12–14 | **Emulator-tested** |
+| **REQ-1FA-03** | Gate 1F-A | Worker lease renewal prior to expiry by current leaseOwner | Security Remediation 1F-A | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`renewMergeLease`), [route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/admin/merge-players/route.ts) (`PUT`) | `remediation1fa-*.emulator.test.mjs` Tests 15–17 | **Emulator-tested** |
+| **REQ-1FA-04** | Gate 1F-A | Stale-worker fencing via monotonic fencingToken validation across stage transitions | Security Remediation 1F-A | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`verifyWorkerFencingAndAdvanceStage`) | `remediation1fa-*.emulator.test.mjs` Tests 18–22 | **Emulator-tested** |
+| **REQ-1FA-05** | Gate 1F-A | Fencing token validation on final merge completion | Security Remediation 1F-A | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`executeMergeCompletionStage`) | `remediation1fa-*.emulator.test.mjs` Tests 23–24 | **Emulator-tested** |
+| **REQ-1FA-06** | Gate 1F-A | In-progress merge blocks account linking with 409 Conflict | Security Remediation 1F-A | [lib/account-linking.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/account-linking.ts) (`executeLinkingTransaction`) | `remediation1fa-*.emulator.test.mjs` Tests 25–27 | **Emulator-tested** |
+| **REQ-1FA-07** | Gate 1F-A | Completed merge permits account linking for surviving keeper record | Security Remediation 1F-A | [lib/account-linking.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/account-linking.ts) (`executeLinkingTransaction`) | `remediation1fa-*.emulator.test.mjs` Tests 28–29 | **Emulator-tested** |
+| **REQ-1FA-08** | Gate 1F-A | Firestore rules deny all direct client access to `/mergeJobs/{jobId}` | Security Remediation 1F-A | [firestore.rules](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/firestore.rules#L147-L149) | Emulator suite / Admin SDK execution | **Emulator-tested** |

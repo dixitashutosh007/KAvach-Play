@@ -29,6 +29,18 @@ The table below reflects the active, owner-approved remediation master plan trac
 | **Phase 11** | **Club Operations, Shop, Polling & Hardening** | **PLANNED / NOT STARTED** | Production merchandise order processing, live member polls, and WCAG AA accessibility certification. | Production Phase |
 | **Phase 12** | **Production Verification, Audit & Cutover** | **PLANNED / NOT STARTED** | Final production readiness audit, live staging verification, and controlled owner-approved cutover. | Release Phase |
 
+### 1.1 Identity & Security Remediations Track (Pre-Phase 7 Hardening)
+
+| Remediation | Focus Area | Status | Deliverables & Test Evidence |
+|---|---|---|---|
+| **Security Remediation 1** | Firestore Authorization & Player Protection | **COMPLETE** | Field-level allowlists for player updates, restricted `otherFees` access. |
+| **Security Remediation 1A** | Account Linking Hardening | **COMPLETE** | Replaced substring match with canonical phone lookup, atomic link validation. |
+| **Security Remediation 1B** | Concurrency-Safe Identity Linking | **COMPLETE** | `phoneIndex/{canonicalPhone}` unique reservation inside Firestore transaction. |
+| **Security Remediation 1C** | Bidirectional Identity Uniqueness | **COMPLETE** | Added `uidIndex/{uid}` reservation and strict mobile digit normalization. |
+| **Security Remediation 1D** | Identity Index Lifecycle & Collision Audit | **COMPLETE** | AuthUid detection, full identity scan, contention retry classification. |
+| **Security Remediation 1E** | Secure Identity Merge & Privileged Writes | **COMPLETE** | Atomic merge identity lock, closed client writes on identity fields, bootstrap tool. |
+| **Security Remediation 1F-A** | Transactional Identity Reservations & Merge Lease Fencing | **IMPLEMENTED (Pending Review)** | Transactional reservation checks inside Firestore transactions; distributed atomic worker lease (`leaseOwner`, `leaseToken`, `fencingToken`, `leaseExpiresAt`); stale-worker fencing; account-linking coordination during active merges; `/mergeJobs` rule locking access to Admin SDK; 29/29 adversarial emulator tests passing (`remediation1fa-identity-reservations-and-merge-lease.emulator.test.mjs`). See `SECURITY_REMEDIATION_1F_A_IDENTITY_RESERVATIONS_AND_MERGE_LEASE.md`. Commit `a042ae3`. |
+
 ---
 
 ## 2. Historical Unverified 12-Phase Audit Baseline (Preserved Reference)
