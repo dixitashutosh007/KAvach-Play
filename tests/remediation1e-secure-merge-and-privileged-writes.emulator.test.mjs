@@ -341,6 +341,7 @@ describe("Security Remediation 1E: Secure Merge, Privileged Writes & Bootstrap S
 
     // Simulate an interrupted merge job that halted at stage "payments_reparented"
     const jobId = "job_p_loser_9_p_keeper_9";
+    const expiredTs = Date.now() - 5000;
     await db.collection("mergeJobs").doc(jobId).set({
       id: jobId,
       loserId: "p_loser_9",
@@ -348,12 +349,28 @@ describe("Security Remediation 1E: Secure Merge, Privileged Writes & Bootstrap S
       status: "in_progress",
       stage: "payments_reparented",
       startedAt: new Date().toISOString(),
+      leaseOwner: "worker_old",
+      leaseToken: "lease_old",
+      fencingToken: 1,
+      attemptCount: 1,
+      leaseExpiresAt: expiredTs,
     });
 
     await db.collection("players").doc("p_loser_9").update({
       mergeStatus: "in_progress",
       mergedInto: "p_keeper_9",
       mergeJobId: jobId,
+      mergeLeaseOwner: "worker_old",
+      mergeFencingToken: 1,
+      mergeLeaseExpiresAt: expiredTs,
+    });
+
+    await db.collection("players").doc("p_keeper_9").update({
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "worker_old",
+      mergeFencingToken: 1,
+      mergeLeaseExpiresAt: expiredTs,
     });
 
     // Execute mergeRoute.POST on the in-progress job

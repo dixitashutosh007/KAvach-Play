@@ -550,10 +550,25 @@ describe("Security Remediation 1F-A: Identity Reservations & Exclusive Merge Lea
   });
 
   it("Test 18: Expired lease can be reclaimed safely", async () => {
-    await db.collection("players").doc("p_loser_18").set({ name: "Loser 18" });
-    await db.collection("players").doc("p_keeper_18").set({ name: "Keeper 18" });
-
     const jobId = "job_p_loser_18_p_keeper_18";
+    const expiredTs = Date.now() - 5000;
+    await db.collection("players").doc("p_loser_18").set({
+      name: "Loser 18",
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "worker_old",
+      mergeFencingToken: 1,
+      mergeLeaseExpiresAt: expiredTs,
+    });
+    await db.collection("players").doc("p_keeper_18").set({
+      name: "Keeper 18",
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "worker_old",
+      mergeFencingToken: 1,
+      mergeLeaseExpiresAt: expiredTs,
+    });
+
     // Seed expired lease
     await db.collection("mergeJobs").doc(jobId).set({
       id: jobId,
@@ -565,7 +580,7 @@ describe("Security Remediation 1F-A: Identity Reservations & Exclusive Merge Lea
       leaseToken: "lease_old",
       fencingToken: 1,
       attemptCount: 1,
-      leaseExpiresAt: Date.now() - 5000, // Expired
+      leaseExpiresAt: expiredTs, // Expired
     });
 
     const reclaim = await mergeRoute.acquireMergeLease(db, jobId, "p_loser_18", "p_keeper_18");
@@ -574,18 +589,35 @@ describe("Security Remediation 1F-A: Identity Reservations & Exclusive Merge Lea
   });
 
   it("Test 19: Reclaimed lease receives a higher fencing generation", async () => {
-    await db.collection("players").doc("p_loser_19").set({ name: "Loser 19" });
-    await db.collection("players").doc("p_keeper_19").set({ name: "Keeper 19" });
-
     const jobId = "job_p_loser_19_p_keeper_19";
+    const expiredTs = Date.now() - 1000;
+    await db.collection("players").doc("p_loser_19").set({
+      name: "Loser 19",
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "worker_old",
+      mergeFencingToken: 4,
+      mergeLeaseExpiresAt: expiredTs,
+    });
+    await db.collection("players").doc("p_keeper_19").set({
+      name: "Keeper 19",
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "worker_old",
+      mergeFencingToken: 4,
+      mergeLeaseExpiresAt: expiredTs,
+    });
+
     await db.collection("mergeJobs").doc(jobId).set({
       id: jobId,
       loserId: "p_loser_19",
       keeperId: "p_keeper_19",
       status: "in_progress",
+      leaseOwner: "worker_old",
+      leaseToken: "lease_old",
       fencingToken: 4,
       attemptCount: 4,
-      leaseExpiresAt: Date.now() - 1000,
+      leaseExpiresAt: expiredTs,
     });
 
     const reclaim = await mergeRoute.acquireMergeLease(db, jobId, "p_loser_19", "p_keeper_19");

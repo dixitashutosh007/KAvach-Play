@@ -324,32 +324,158 @@ export async function acquireMergeLease(
     }
 
     // Check existing lease on THIS job
-    const currentLeaseExpiresAt = existingJob?.leaseExpiresAt || 0;
-    const hasActiveLease =
-      existingJob?.status === "in_progress" &&
-      now < currentLeaseExpiresAt;
-
-    if (hasActiveLease) {
-      if (
-        (loser.mergeFencingToken !== undefined && existingJob.fencingToken !== undefined && loser.mergeFencingToken !== existingJob.fencingToken) ||
-        (keeper.mergeFencingToken !== undefined && existingJob.fencingToken !== undefined && keeper.mergeFencingToken !== existingJob.fencingToken) ||
-        (loser.mergeLeaseOwner && existingJob.leaseOwner && loser.mergeLeaseOwner !== existingJob.leaseOwner) ||
-        (keeper.mergeLeaseOwner && existingJob.leaseOwner && keeper.mergeLeaseOwner !== existingJob.leaseOwner) ||
-        (loser.mergeFencingToken !== undefined && keeper.mergeFencingToken !== undefined && loser.mergeFencingToken !== keeper.mergeFencingToken)
-      ) {
+    if (existingJob?.status === "in_progress") {
+      // 1. Validate persisted job lease metadata completeness (Finding 1F-R Section 3)
+      if (!existingJob.leaseOwner || typeof existingJob.leaseOwner !== "string" || !existingJob.leaseOwner.trim()) {
         return {
           ok: false,
           status: 409,
-          error: "Active player lock metadata disagrees with active merge job fencing or lease owner. Requires operator resolution.",
+          error: "Active merge job has missing or invalid leaseOwner. Ambiguous state requires operator resolution.",
+          code: "MALFORMED_JOB_LEASE",
+        };
+      }
+      if (!existingJob.leaseToken || typeof existingJob.leaseToken !== "string" || !existingJob.leaseToken.trim()) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Active merge job has missing or invalid leaseToken. Ambiguous state requires operator resolution.",
+          code: "MALFORMED_JOB_LEASE",
+        };
+      }
+      if (typeof existingJob.fencingToken !== "number" || !Number.isInteger(existingJob.fencingToken) || existingJob.fencingToken <= 0) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Active merge job has missing or invalid fencingToken. Ambiguous state requires operator resolution.",
+          code: "MALFORMED_JOB_LEASE",
+        };
+      }
+      if (typeof existingJob.leaseExpiresAt !== "number" || !Number.isFinite(existingJob.leaseExpiresAt) || existingJob.leaseExpiresAt <= 0) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Active merge job has missing or invalid leaseExpiresAt. Ambiguous state requires operator resolution.",
+          code: "MALFORMED_JOB_LEASE",
+        };
+      }
+
+      // 2. Validate player lock exact agreement with active job
+      // Loser checks
+      if (loser.mergeJobId !== jobId) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Loser player lock jobId disagrees with active merge job.",
           code: "PLAYER_LOCK_MISMATCH",
         };
       }
-      return {
-        ok: false,
-        status: 409,
-        error: "Merge job is currently locked by another worker lease.",
-        code: "ACTIVE_LEASE_EXISTS",
-      };
+      if (loser.mergeStatus !== "in_progress") {
+        return {
+          ok: false,
+          status: 409,
+          error: "Loser player mergeStatus is not in_progress.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (!loser.mergeLeaseOwner || loser.mergeLeaseOwner !== existingJob.leaseOwner) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Loser player leaseOwner is missing or disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (typeof loser.mergeFencingToken !== "number" || loser.mergeFencingToken !== existingJob.fencingToken) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Loser player fencingToken is missing or disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (typeof loser.mergeLeaseExpiresAt !== "number" || loser.mergeLeaseExpiresAt !== existingJob.leaseExpiresAt) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Loser player leaseExpiresAt is missing or disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+
+      // Keeper checks
+      if (keeper.mergeJobId !== jobId) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Keeper player lock jobId disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (keeper.mergeStatus !== "in_progress") {
+        return {
+          ok: false,
+          status: 409,
+          error: "Keeper player mergeStatus is not in_progress.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (!keeper.mergeLeaseOwner || keeper.mergeLeaseOwner !== existingJob.leaseOwner) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Keeper player leaseOwner is missing or disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (typeof keeper.mergeFencingToken !== "number" || keeper.mergeFencingToken !== existingJob.fencingToken) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Keeper player fencingToken is missing or disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+      if (typeof keeper.mergeLeaseExpiresAt !== "number" || keeper.mergeLeaseExpiresAt !== existingJob.leaseExpiresAt) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Keeper player leaseExpiresAt is missing or disagrees with active merge job.",
+          code: "PLAYER_LOCK_MISMATCH",
+        };
+      }
+
+      // Check unexpired vs expired
+      const isJobUnexpired = now < existingJob.leaseExpiresAt;
+      const isLoserUnexpired = now < loser.mergeLeaseExpiresAt;
+      const isKeeperUnexpired = now < keeper.mergeLeaseExpiresAt;
+
+      if (isJobUnexpired) {
+        if (!isLoserUnexpired || !isKeeperUnexpired) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Job lease is unexpired but player lock lease is expired. Ambiguous state requires operator resolution.",
+            code: "PLAYER_LOCK_MISMATCH",
+          };
+        }
+        return {
+          ok: false,
+          status: 409,
+          error: "Merge job is currently locked by another worker lease.",
+          code: "ACTIVE_LEASE_EXISTS",
+        };
+      } else {
+        // Job is expired
+        if (isLoserUnexpired || isKeeperUnexpired) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Job lease is expired but player lock lease is unexpired. Ambiguous state requires operator resolution.",
+            code: "PLAYER_LOCK_MISMATCH",
+          };
+        }
+        // Both job and players are expired with identical matching credentials -> safe to reclaim!
+      }
     }
 
     // Lease is free to acquire
@@ -469,7 +595,8 @@ export async function renewMergeLease(
       loser.mergeJobId !== jobId ||
       loser.mergeStatus !== "in_progress" ||
       loser.mergeFencingToken !== worker.fencingToken ||
-      loser.mergeLeaseOwner !== worker.leaseOwner
+      loser.mergeLeaseOwner !== worker.leaseOwner ||
+      loser.mergeLeaseExpiresAt !== job.leaseExpiresAt
     ) {
       throw new StaleWorkerError(
         409,
@@ -482,7 +609,8 @@ export async function renewMergeLease(
       keeper.mergeJobId !== jobId ||
       keeper.mergeStatus !== "in_progress" ||
       keeper.mergeFencingToken !== worker.fencingToken ||
-      keeper.mergeLeaseOwner !== worker.leaseOwner
+      keeper.mergeLeaseOwner !== worker.leaseOwner ||
+      keeper.mergeLeaseExpiresAt !== job.leaseExpiresAt
     ) {
       throw new StaleWorkerError(
         409,
@@ -988,7 +1116,8 @@ export async function executeMergeCompletionStage(
       loser.mergeJobId !== jobId ||
       loser.mergeStatus !== "in_progress" ||
       loser.mergeFencingToken !== worker.fencingToken ||
-      (loser.mergeLeaseOwner && loser.mergeLeaseOwner !== worker.leaseOwner)
+      (loser.mergeLeaseOwner && loser.mergeLeaseOwner !== worker.leaseOwner) ||
+      (loser.mergeLeaseExpiresAt && loser.mergeLeaseExpiresAt !== job.leaseExpiresAt)
     ) {
       throw new MergeConflictError(409, "Loser player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
     }
@@ -996,7 +1125,8 @@ export async function executeMergeCompletionStage(
       keeper.mergeJobId !== jobId ||
       keeper.mergeStatus !== "in_progress" ||
       keeper.mergeFencingToken !== worker.fencingToken ||
-      (keeper.mergeLeaseOwner && keeper.mergeLeaseOwner !== worker.leaseOwner)
+      (keeper.mergeLeaseOwner && keeper.mergeLeaseOwner !== worker.leaseOwner) ||
+      (keeper.mergeLeaseExpiresAt && keeper.mergeLeaseExpiresAt !== job.leaseExpiresAt)
     ) {
       throw new MergeConflictError(409, "Keeper player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
     }
@@ -1041,54 +1171,128 @@ export async function executeMergeCompletionStage(
 }
 
 /**
+ * Validates a rupee-denominated financial field (Finding 1F-R Section 5).
+ * - Accept finite, non-negative numbers or valid numeric strings.
+ * - Allow no more than two decimal places.
+ * - Reject NaN, Infinity, malformed strings, negative values, and unsafe ranges.
+ * - Does NOT silently round invalid precision into a valid amount.
+ */
+export function validateRupeeAmount(
+  val: any,
+  fieldName = "amount",
+  options?: { required?: boolean; maxAmount?: number }
+): { ok: boolean; value?: number; error?: string } {
+  if (val === undefined || val === null || (typeof val === "string" && val.trim() === "")) {
+    if (options?.required) {
+      return { ok: false, error: `${fieldName} is a required financial amount and cannot be missing or empty.` };
+    }
+    return { ok: true, value: undefined };
+  }
+
+  let num: number;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    // Strict format: non-negative, optional single decimal point, at most 2 decimal places
+    if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+      if (/^\d+\.\d{3,}$/.test(trimmed)) {
+        return { ok: false, error: `${fieldName} has invalid precision: more than 2 decimal places in rupees ('${trimmed}').` };
+      }
+      return { ok: false, error: `${fieldName} contains invalid non-numeric string: '${val}'.` };
+    }
+    num = Number(trimmed);
+  } else if (typeof val === "number") {
+    if (!Number.isFinite(val) || Number.isNaN(val)) {
+      return { ok: false, error: `${fieldName} is NaN or non-finite.` };
+    }
+    if (val < 0) {
+      return { ok: false, error: `${fieldName} cannot be negative: ${val}.` };
+    }
+    // Check precision on numeric value (must not have more than 2 decimal places)
+    const roundedPaise = Math.round(val * 100);
+    if (Math.abs(val * 100 - roundedPaise) > 1e-6) {
+      return { ok: false, error: `${fieldName} has invalid precision: more than 2 decimal places in rupees (${val}).` };
+    }
+    num = val;
+  } else {
+    return { ok: false, error: `${fieldName} has invalid type: ${typeof val}.` };
+  }
+
+  const max = options?.maxAmount ?? 10_000_000;
+  if (num > max) {
+    return { ok: false, error: `${fieldName} exceeds maximum allowable boundary: ${num}.` };
+  }
+
+  return { ok: true, value: Math.round(num * 100) / 100 };
+}
+
+/**
+ * Validates a paise-denominated financial field (Finding 1F-R Section 5).
+ * - Require finite, non-negative integers.
+ * - Reject fractional paise (no decimal point or non-integers).
+ * - Reject malformed strings, negative values, and unsafe ranges.
+ */
+export function validatePaiseAmount(
+  val: any,
+  fieldName = "paise",
+  options?: { required?: boolean; maxPaise?: number }
+): { ok: boolean; value?: number; error?: string } {
+  if (val === undefined || val === null || (typeof val === "string" && val.trim() === "")) {
+    if (options?.required) {
+      return { ok: false, error: `${fieldName} is a required paise amount and cannot be missing or empty.` };
+    }
+    return { ok: true, value: undefined };
+  }
+
+  let num: number;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      if (/^\d+\.\d+$/.test(trimmed)) {
+        return { ok: false, error: `${fieldName} must be an integer paise amount; received fractional paise: '${trimmed}'.` };
+      }
+      return { ok: false, error: `${fieldName} contains invalid non-numeric string: '${val}'.` };
+    }
+    num = Number(trimmed);
+  } else if (typeof val === "number") {
+    if (!Number.isFinite(val) || Number.isNaN(val)) {
+      return { ok: false, error: `${fieldName} is NaN or non-finite.` };
+    }
+    if (val < 0) {
+      return { ok: false, error: `${fieldName} cannot be negative: ${val}.` };
+    }
+    if (!Number.isInteger(val)) {
+      return { ok: false, error: `${fieldName} must be an integer paise amount; received fractional paise: ${val}.` };
+    }
+    num = val;
+  } else {
+    return { ok: false, error: `${fieldName} has invalid type: ${typeof val}.` };
+  }
+
+  const max = options?.maxPaise ?? 1_000_000_000;
+  if (num > max) {
+    return { ok: false, error: `${fieldName} exceeds maximum allowable boundary: ${num}.` };
+  }
+
+  return { ok: true, value: num };
+}
+
+/**
  * Strict numeric parser and validator for financial fields (Finding 1F-R R4).
- * Enforces finite numbers, non-negative bounds, decimal rounding (paise precision),
+ * Enforces finite numbers, non-negative bounds, 2-decimal rupee precision,
  * and rejects NaN, Infinity, non-numeric strings, and out-of-boundary values.
  */
 export function parseAuthoritativeAmount(
   val: any,
-  fieldName: string,
+  fieldName = "amount",
   options?: { allowZero?: boolean; allowNegative?: boolean; maxAmount?: number }
 ): { ok: boolean; value?: number; error?: string } {
-  if (val === undefined || val === null) {
-    return { ok: true, value: undefined };
-  }
-  if (typeof val === "string") {
-    const trimmed = val.trim();
-    if (trimmed === "") {
-      return { ok: true, value: undefined };
-    }
-    // Must be valid numeric representation (digits, optional single decimal point)
-    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
-      return { ok: false, error: `${fieldName} contains invalid non-numeric string: '${val}'.` };
-    }
-    val = Number(trimmed);
-  }
-  if (typeof val !== "number") {
-    return { ok: false, error: `${fieldName} has invalid type: ${typeof val}.` };
-  }
-  if (!Number.isFinite(val) || Number.isNaN(val)) {
-    return { ok: false, error: `${fieldName} is NaN or non-finite.` };
-  }
-  if (!options?.allowNegative && val < 0) {
-    return { ok: false, error: `${fieldName} cannot be negative: ${val}.` };
-  }
-  if (options?.allowZero === false && val === 0) {
-    return { ok: false, error: `${fieldName} cannot be zero.` };
-  }
-  const max = options?.maxAmount ?? Number.MAX_SAFE_INTEGER;
-  if (Math.abs(val) > max) {
-    return { ok: false, error: `${fieldName} exceeds maximum allowable numerical boundary: ${val}.` };
-  }
-  // Decimal precision: round to 2 decimal places (Paise precision in INR)
-  const rounded = Math.round(val * 100) / 100;
-  return { ok: true, value: rounded };
+  return validateRupeeAmount(val, fieldName, { required: false, maxAmount: options?.maxAmount });
 }
 
 /**
  * Resolves authoritative and legacy financial alias values for a record (Finding 1F-R R4).
  * Fails closed (returns ok: false, conflictReason: string) if contradictory alias values
- * are populated on the same document.
+ * are populated on the same document or if required amount is missing.
  */
 export function resolveFinancialRecordValues(record: Record<string, any>): {
   ok: boolean;
@@ -1113,19 +1317,19 @@ export function resolveFinancialRecordValues(record: Record<string, any>): {
     return { ok: false, conflictReason: "Record must be a valid object." };
   }
 
-  // 1. Authoritative base amount
-  const parsedAmt = parseAuthoritativeAmount(record.amount, "amount");
+  // 1. Authoritative base amount (Required: never default missing financial amount to zero per Section 5)
+  const parsedAmt = validateRupeeAmount(record.amount, "amount", { required: true });
   if (!parsedAmt.ok) {
     return { ok: false, conflictReason: parsedAmt.error };
   }
-  const amount = parsedAmt.value ?? 0;
+  const amount = parsedAmt.value!;
 
-  // 2. Paid Amount Aliases: paidAmount vs feeCollectedAmount
-  const parsedPaid = parseAuthoritativeAmount(record.paidAmount, "paidAmount");
+  // 2. Paid Amount Aliases: paidAmount vs feeCollectedAmount (Rupees)
+  const parsedPaid = validateRupeeAmount(record.paidAmount, "paidAmount", { required: false });
   if (!parsedPaid.ok) {
     return { ok: false, conflictReason: parsedPaid.error };
   }
-  const parsedCollected = parseAuthoritativeAmount(record.feeCollectedAmount, "feeCollectedAmount");
+  const parsedCollected = validateRupeeAmount(record.feeCollectedAmount, "feeCollectedAmount", { required: false });
   if (!parsedCollected.ok) {
     return { ok: false, conflictReason: parsedCollected.error };
   }
@@ -1155,11 +1359,11 @@ export function resolveFinancialRecordValues(record: Record<string, any>): {
   const refundId = refId || refRef;
 
   // 4. Refund Amount Aliases: refundAmount (Rupees) vs refundedPaise (Paise)
-  const parsedRefAmt = parseAuthoritativeAmount(record.refundAmount, "refundAmount");
+  const parsedRefAmt = validateRupeeAmount(record.refundAmount, "refundAmount", { required: false });
   if (!parsedRefAmt.ok) {
     return { ok: false, conflictReason: parsedRefAmt.error };
   }
-  const parsedRefPaise = parseAuthoritativeAmount(record.refundedPaise, "refundedPaise");
+  const parsedRefPaise = validatePaiseAmount(record.refundedPaise, "refundedPaise", { required: false });
   if (!parsedRefPaise.ok) {
     return { ok: false, conflictReason: parsedRefPaise.error };
   }
@@ -1169,11 +1373,11 @@ export function resolveFinancialRecordValues(record: Record<string, any>): {
 
   if (hasRefundAmount && hasRefundedPaise) {
     const expectedPaise = Math.round(parsedRefAmt.value! * 100);
-    const actualPaise = Math.round(parsedRefPaise.value!);
+    const actualPaise = parsedRefPaise.value!;
     if (expectedPaise !== actualPaise) {
       return {
         ok: false,
-        conflictReason: `Contradictory refund amount aliases: refundAmount=${parsedRefAmt.value} (${expectedPaise} paise) vs refundedPaise=${parsedRefPaise.value}`,
+        conflictReason: `Contradictory refund aliases: refundAmount=${parsedRefAmt.value} (${expectedPaise} paise) vs refundedPaise=${parsedRefPaise.value} paise`,
       };
     }
   }
@@ -1337,12 +1541,10 @@ export async function migratePaymentsStage(
       cumulativeReparented = newTotal;
       chunkIndex = newChunks;
 
-      const newExpiresAt = now + 60000;
       transaction.update(mergeJobRef, {
         "stats.paymentsReparented": newTotal,
         "stats.paymentsReparentedChunks": newChunks,
         "stats.lastCommittedChunk": `payments_chunk_${newChunks}`,
-        leaseExpiresAt: newExpiresAt,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1489,14 +1691,11 @@ export async function migrateOtherFeesStage(
       cumulativeSkipped = newSkipped;
       chunkIndex = newChunks;
 
-      const newExpiresAt = now + 60000;
-
       transaction.update(mergeJobRef, {
         "stats.feesMoved": newMoved,
         "stats.feesSkipped": newSkipped,
         "stats.feesMovedChunks": newChunks,
         "stats.lastCommittedChunk": `fees_chunk_${newChunks}`,
-        leaseExpiresAt: newExpiresAt,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1594,12 +1793,10 @@ export async function migrateMerchOrdersStage(
       cumulativeOrders = newOrders;
       chunkIndex = newChunks;
 
-      const newExpiresAt = now + 60000;
       transaction.update(mergeJobRef, {
         "stats.ordersReparented": newOrders,
         "stats.ordersReparentedChunks": newChunks,
         "stats.lastCommittedChunk": `orders_chunk_${newChunks}`,
-        leaseExpiresAt: newExpiresAt,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1692,7 +1889,6 @@ export async function migrateAppUsersAndIndexesStage(
         "stats.appUsersReparented": newUsers,
         "stats.appUsersReparentedChunks": newChunks,
         "stats.lastCommittedChunk": `appusers_chunk_${newChunks}`,
-        leaseExpiresAt: now + 60000,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1772,7 +1968,6 @@ export async function migrateAppUsersAndIndexesStage(
 
       transaction.update(mergeJobRef, {
         "stats.uidIndexReparented": newUid,
-        leaseExpiresAt: now + 60000,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1825,7 +2020,6 @@ export async function migrateAppUsersAndIndexesStage(
 
       transaction.update(mergeJobRef, {
         "stats.phoneIndexReparented": newPhone,
-        leaseExpiresAt: now + 60000,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -2009,6 +2203,9 @@ export async function recordMergeJobFailure(
   error: any,
   currentStage: string
 ): Promise<{ recorded: boolean; reason?: string }> {
+  if (!jobId || typeof jobId !== "string" || !jobId.trim()) {
+    return { recorded: false, reason: "INVALID_JOB_ID" };
+  }
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
   try {
     return await db.runTransaction(async (transaction) => {
@@ -2017,26 +2214,55 @@ export async function recordMergeJobFailure(
         return { recorded: false, reason: "JOB_NOT_FOUND" };
       }
       const job = jobSnap.data() || {};
+      const now = Date.now();
 
       // 1. Never overwrite a completed or recovered/failed job
       if (job.status !== "in_progress") {
-        return { recorded: false, reason: `JOB_NOT_IN_PROGRESS_${job.status.toUpperCase()}` };
+        return { recorded: false, reason: `JOB_NOT_IN_PROGRESS_${String(job.status || "UNKNOWN").toUpperCase()}` };
       }
 
-      // 2. Strict worker identity and fencing validation
+      // 2. Strict validation of persisted job lease metadata (Fail closed if missing - Section 4)
+      if (!job.leaseOwner || typeof job.leaseOwner !== "string" || !job.leaseOwner.trim()) {
+        return { recorded: false, reason: "MISSING_JOB_LEASE_OWNER" };
+      }
+      if (!job.leaseToken || typeof job.leaseToken !== "string" || !job.leaseToken.trim()) {
+        return { recorded: false, reason: "MISSING_JOB_LEASE_TOKEN" };
+      }
+      if (typeof job.fencingToken !== "number" || !Number.isInteger(job.fencingToken)) {
+        return { recorded: false, reason: "MISSING_JOB_FENCING_TOKEN" };
+      }
+
+      // 3. Strict worker details validation
       if (!worker) {
         return { recorded: false, reason: "MISSING_WORKER_INFO" };
       }
-
-      if (
-        (job.leaseOwner && job.leaseOwner !== worker.leaseOwner) ||
-        (job.leaseToken && job.leaseToken !== worker.leaseToken) ||
-        (job.fencingToken !== undefined && job.fencingToken !== worker.fencingToken)
-      ) {
-        return { recorded: false, reason: "WORKER_SUPERSEDED_OR_MISMATCH" };
+      if (!worker.leaseOwner || typeof worker.leaseOwner !== "string" || !worker.leaseOwner.trim()) {
+        return { recorded: false, reason: "MISSING_WORKER_LEASE_OWNER" };
+      }
+      if (!worker.leaseToken || typeof worker.leaseToken !== "string" || !worker.leaseToken.trim()) {
+        return { recorded: false, reason: "MISSING_WORKER_LEASE_TOKEN" };
+      }
+      if (typeof worker.fencingToken !== "number" || !Number.isInteger(worker.fencingToken)) {
+        return { recorded: false, reason: "MISSING_WORKER_FENCING_TOKEN" };
       }
 
-      // 3. Atomically persist structured failure state
+      // 4. Exact equality of every lease credential with the worker
+      if (job.leaseOwner !== worker.leaseOwner) {
+        return { recorded: false, reason: "WORKER_LEASE_OWNER_MISMATCH" };
+      }
+      if (job.leaseToken !== worker.leaseToken) {
+        return { recorded: false, reason: "WORKER_LEASE_TOKEN_MISMATCH" };
+      }
+      if (job.fencingToken !== worker.fencingToken) {
+        return { recorded: false, reason: "WORKER_FENCING_TOKEN_MISMATCH" };
+      }
+
+      // 5. Expired lease check (Defined behaviour: fail closed if lease expired before recording failure)
+      if (typeof job.leaseExpiresAt === "number" && now >= job.leaseExpiresAt) {
+        return { recorded: false, reason: "LEASE_EXPIRED" };
+      }
+
+      // 6. Atomically persist structured failure state
       transaction.update(mergeJobRef, {
         status: "failed",
         failedStage: currentStage || job.stage || "unknown",

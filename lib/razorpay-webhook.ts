@@ -216,8 +216,48 @@ export async function processWebhookIntentTransaction(
     let currentExpiry: string | undefined;
     let playerDocRef: any = null;
 
-    // Collect and resolve all player references before writes to safely redirect merged players
-    // and block active merges with retryable abort (Finding 1F-R R10).
+    // Recursive player resolution with cycle detection, keeper existence checks, and active-merge blocking (Finding 1F-R Section 7)
+    const resolvedPlayerMap: Record<string, string> = {};
+    async function resolveActivePlayer(startId: string): Promise<string> {
+      if (!startId || typeof startId !== "string" || !startId.trim()) return startId;
+      const cleanId = startId.trim();
+      if (resolvedPlayerMap[cleanId]) return resolvedPlayerMap[cleanId];
+
+      let currentId = cleanId;
+      const visited = new Set<string>();
+
+      while (currentId) {
+        if (visited.has(currentId)) {
+          throw new Error(`Invalid or cyclic merge chain detected involving player ${currentId}.`);
+        }
+        visited.add(currentId);
+
+        const pSnap = await transaction.get(db.collection("players").doc(currentId));
+        if (!pSnap.exists) {
+          if (visited.size > 1) {
+            throw new Error(`Target keeper player ${currentId} in merge chain does not exist.`);
+          }
+          resolvedPlayerMap[cleanId] = currentId;
+          return currentId;
+        }
+
+        const pData = pSnap.data() || {};
+        if (pData.mergeStatus === "in_progress") {
+          throw new Error(`Player ${currentId} merge is currently in progress; retry requested.`);
+        }
+
+        if (pData.mergedInto && typeof pData.mergedInto === "string" && pData.mergedInto.trim()) {
+          currentId = pData.mergedInto.trim();
+        } else {
+          resolvedPlayerMap[cleanId] = currentId;
+          return currentId;
+        }
+      }
+      resolvedPlayerMap[cleanId] = startId;
+      return startId;
+    }
+
+    // Collect all initial player IDs
     const playerIdsToRead = new Set<string>();
     if (intent.userId) playerIdsToRead.add(String(intent.userId).trim());
     if (intent.playerId) playerIdsToRead.add(String(intent.playerId).trim());
@@ -227,136 +267,179 @@ export async function processWebhookIntentTransaction(
       }
     }
 
-    const resolvedPlayerMap: Record<string, string> = {};
     for (const pid of playerIdsToRead) {
-      if (!pid) continue;
-      const pSnap = await transaction.get(db.collection("players").doc(pid));
-      if (pSnap.exists) {
-        const pData = pSnap.data() || {};
-        if (pData.mergeStatus === "in_progress") {
-          throw new Error(`Player ${pid} merge is currently in progress; retry requested.`);
-        }
-        if (pData.mergedInto && typeof pData.mergedInto === "string" && pData.mergedInto.trim()) {
-          resolvedPlayerMap[pid] = pData.mergedInto.trim();
-        } else {
-          resolvedPlayerMap[pid] = pid;
-        }
+      await resolveActivePlayer(pid);
+    }
 
-        if (type === "subscription" && (pid === intent.userId || resolvedPlayerMap[pid] === intent.userId)) {
-          let subPlayerSnap = pSnap;
-          if (pData.mergedInto) {
-            const keeperSnap = await transaction.get(db.collection("players").doc(pData.mergedInto.trim()));
-            if (keeperSnap.exists) {
-              subPlayerSnap = keeperSnap;
-            }
-          }
-          playerDocRef = subPlayerSnap.ref;
-          const subData = subPlayerSnap.data() || {};
-          currentExpiry = subData.studioExpiryDate || subData.studioEndDate;
-        }
-      } else {
-        resolvedPlayerMap[pid] = pid;
+    // For subscription, read subscription expiry
+    if (type === "subscription" && intent.userId) {
+      const effSubId = resolvedPlayerMap[intent.userId] || intent.userId;
+      const subSnap = await transaction.get(db.collection("players").doc(effSubId));
+      if (subSnap.exists) {
+        playerDocRef = subSnap.ref;
+        const subData = subSnap.data() || {};
+        currentExpiry = subData.studioExpiryDate || subData.studioEndDate;
       }
     }
 
-    // 4. Downstream state transitions within the transaction (FIN-002)
-    if (type === "match") {
-      if (intent.matchId && intent.paymentId) {
-        const paymentRef = db
-          .collection("matches")
-          .doc(intent.matchId)
-          .collection("payments")
-          .doc(intent.paymentId);
+    // For match payments, read paymentRef and resolve player
+    let matchPaymentRef: any = null;
+    let matchPaymentOriginalPlayerId: string | null = null;
+    let matchPaymentEffectivePlayerId: string | null = null;
 
-        transaction.update(paymentRef, {
+    if (type === "match" && intent.matchId && intent.paymentId) {
+      matchPaymentRef = db.collection("matches").doc(intent.matchId).collection("payments").doc(intent.paymentId);
+      const paySnap = await transaction.get(matchPaymentRef);
+      if (paySnap.exists) {
+        matchPaymentOriginalPlayerId = paySnap.data()?.playerId || null;
+        if (matchPaymentOriginalPlayerId) {
+          matchPaymentEffectivePlayerId = await resolveActivePlayer(matchPaymentOriginalPlayerId);
+        }
+      }
+    }
+
+    // For late fees in match intent, check existing fees to ensure idempotency without duplicates
+    const lateFeeSnapMap: Record<string, any> = {};
+    if (type === "match" && Array.isArray(intent.lateFeeItems)) {
+      for (const lf of intent.lateFeeItems) {
+        const targetPid = resolvedPlayerMap[lf.playerId] || lf.playerId;
+        const feeDocId = `lf_${details.intentId}_${lf.templateId || lf.playerId}`;
+        const feeRef = db.collection("players").doc(targetPid).collection("otherFees").doc(feeDocId);
+        const fSnap = await transaction.get(feeRef);
+        lateFeeSnapMap[feeDocId] = { ref: feeRef, exists: fSnap.exists, targetPid };
+      }
+    }
+
+    // For finance_dues, inspect items before writes
+    const duesMatchPaymentSnaps: Array<{ ref: any; effectivePlayerId: string | null; originalPlayerId: string | null }> = [];
+    const duesFeeSnapMap: Record<string, any> = {};
+    const duesLateFeeSnapMap: Record<string, any> = {};
+
+    if (type === "finance_dues") {
+      const items = Array.isArray(intent.items) ? intent.items : [];
+      for (const item of items) {
+        if (item.type === "match" && item.matchId && item.paymentId) {
+          const pRef = db.collection("matches").doc(item.matchId).collection("payments").doc(item.paymentId);
+          const pSnap = await transaction.get(pRef);
+          let origPid = null;
+          let effPid = null;
+          if (pSnap.exists) {
+            origPid = pSnap.data()?.playerId || null;
+            if (origPid) effPid = await resolveActivePlayer(origPid);
+          }
+          duesMatchPaymentSnaps.push({ ref: pRef, effectivePlayerId: effPid, originalPlayerId: origPid });
+        } else if (item.type === "other" && item.feeId && intent.playerId) {
+          const targetPid = resolvedPlayerMap[intent.playerId] || intent.playerId;
+          let feeRef = db.collection("players").doc(targetPid).collection("otherFees").doc(item.feeId);
+          let feeSnap = await transaction.get(feeRef);
+          if (!feeSnap.exists && targetPid !== intent.playerId) {
+            const origFeeRef = db.collection("players").doc(intent.playerId).collection("otherFees").doc(item.feeId);
+            const origFeeSnap = await transaction.get(origFeeRef);
+            if (origFeeSnap.exists) {
+              feeRef = origFeeRef;
+              feeSnap = origFeeSnap;
+            }
+          }
+          duesFeeSnapMap[item.feeId] = { ref: feeRef, exists: feeSnap.exists };
+        } else if (item.isLateFee && intent.playerId) {
+          const targetPid = resolvedPlayerMap[intent.playerId] || intent.playerId;
+          const feeDocId = `lf_${details.intentId}_${item.lateFeeTemplateId || targetPid}`;
+          const feeRef = db.collection("players").doc(targetPid).collection("otherFees").doc(feeDocId);
+          const fSnap = await transaction.get(feeRef);
+          duesLateFeeSnapMap[feeDocId] = { ref: feeRef, exists: fSnap.exists, targetPid };
+        }
+      }
+    }
+
+    // 4. Downstream state transitions within the transaction (FIN-002) - STRICTLY AFTER READS
+    if (type === "match") {
+      if (matchPaymentRef) {
+        const updateData: Record<string, any> = {
           status: "Paid",
           paymentMethod: "razorpay",
           razorpayPaymentId: details.paymentId,
           feeCollectedAmount: intent.amount || 0,
           updatedAt: now,
-        });
+        };
+        if (matchPaymentEffectivePlayerId && matchPaymentOriginalPlayerId && matchPaymentEffectivePlayerId !== matchPaymentOriginalPlayerId) {
+          updateData.playerId = matchPaymentEffectivePlayerId;
+          updateData.migratedFromPlayerId = matchPaymentOriginalPlayerId;
+        }
+        transaction.update(matchPaymentRef, updateData);
       }
 
       if (Array.isArray(intent.lateFeeItems)) {
         for (const lf of intent.lateFeeItems) {
-          const targetPlayerId = resolvedPlayerMap[lf.playerId] || lf.playerId;
-          const feeDocId = crypto.randomUUID();
-          const feeRef = db
-            .collection("players")
-            .doc(targetPlayerId)
-            .collection("otherFees")
-            .doc(feeDocId);
-
-          transaction.set(feeRef, {
-            id: feeDocId,
-            playerId: targetPlayerId,
-            ...(targetPlayerId !== lf.playerId ? { originalPlayerId: lf.playerId } : {}),
-            title: lf.label || "Late Fee",
-            amount: lf.amount || 0,
-            comment: "Auto-levied late fee penalty",
-            templateId: lf.templateId || "",
-            status: "Paid",
-            paymentMethod: "razorpay",
-            razorpayPaymentId: details.paymentId,
-            createdAt: now,
-            updatedAt: now,
-          });
+          const feeDocId = `lf_${details.intentId}_${lf.templateId || lf.playerId}`;
+          const info = lateFeeSnapMap[feeDocId];
+          if (info && !info.exists) {
+            transaction.set(info.ref, {
+              id: feeDocId,
+              playerId: info.targetPid,
+              ...(info.targetPid !== lf.playerId ? { originalPlayerId: lf.playerId } : {}),
+              title: lf.label || "Late Fee",
+              amount: lf.amount || 0,
+              comment: "Auto-levied late fee penalty",
+              templateId: lf.templateId || "",
+              status: "Paid",
+              paymentMethod: "razorpay",
+              razorpayPaymentId: details.paymentId,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
         }
       }
     } else if (type === "finance_dues") {
       const items = Array.isArray(intent.items) ? intent.items : [];
+      let matchIdx = 0;
       for (const item of items) {
         if (item.type === "match" && item.matchId && item.paymentId) {
-          const paymentRef = db
-            .collection("matches")
-            .doc(item.matchId)
-            .collection("payments")
-            .doc(item.paymentId);
-
-          transaction.update(paymentRef, {
-            status: "Paid",
-            paymentMethod: "razorpay",
-            razorpayPaymentId: details.paymentId,
-            feeCollectedAmount: item.amount || 0,
-            updatedAt: now,
-          });
+          const pInfo = duesMatchPaymentSnaps[matchIdx++];
+          if (pInfo?.ref) {
+            const updateData: Record<string, any> = {
+              status: "Paid",
+              paymentMethod: "razorpay",
+              razorpayPaymentId: details.paymentId,
+              feeCollectedAmount: item.amount || 0,
+              updatedAt: now,
+            };
+            if (pInfo.effectivePlayerId && pInfo.originalPlayerId && pInfo.effectivePlayerId !== pInfo.originalPlayerId) {
+              updateData.playerId = pInfo.effectivePlayerId;
+              updateData.migratedFromPlayerId = pInfo.originalPlayerId;
+            }
+            transaction.update(pInfo.ref, updateData);
+          }
         } else if (item.type === "other" && item.feeId && intent.playerId) {
-          const targetPlayerId = resolvedPlayerMap[intent.playerId] || intent.playerId;
-          const feeRef = db
-            .collection("players")
-            .doc(targetPlayerId)
-            .collection("otherFees")
-            .doc(item.feeId);
-
-          transaction.update(feeRef, {
-            status: "Paid",
-            paymentMethod: "razorpay",
-            razorpayPaymentId: details.paymentId,
-            updatedAt: now,
-          });
+          const feeInfo = duesFeeSnapMap[item.feeId];
+          if (feeInfo?.ref && feeInfo.exists) {
+            transaction.update(feeInfo.ref, {
+              status: "Paid",
+              paymentMethod: "razorpay",
+              razorpayPaymentId: details.paymentId,
+              updatedAt: now,
+            });
+          }
         } else if (item.isLateFee && intent.playerId) {
-          const targetPlayerId = resolvedPlayerMap[intent.playerId] || intent.playerId;
-          const feeDocId = crypto.randomUUID();
-          const feeRef = db
-            .collection("players")
-            .doc(targetPlayerId)
-            .collection("otherFees")
-            .doc(feeDocId);
-
-          transaction.set(feeRef, {
-            id: feeDocId,
-            playerId: targetPlayerId,
-            ...(targetPlayerId !== intent.playerId ? { originalPlayerId: intent.playerId } : {}),
-            title: item.lateFeeLabel || "Late Fee",
-            amount: item.lateFeeAmount || 0,
-            comment: "Auto-levied late fee penalty",
-            templateId: item.lateFeeTemplateId || "",
-            status: "Paid",
-            paymentMethod: "razorpay",
-            razorpayPaymentId: details.paymentId,
-            createdAt: now,
-            updatedAt: now,
-          });
+          const targetPid = resolvedPlayerMap[intent.playerId] || intent.playerId;
+          const feeDocId = `lf_${details.intentId}_${item.lateFeeTemplateId || targetPid}`;
+          const feeInfo = duesLateFeeSnapMap[feeDocId];
+          if (feeInfo?.ref && !feeInfo.exists) {
+            transaction.set(feeInfo.ref, {
+              id: feeDocId,
+              playerId: feeInfo.targetPid,
+              ...(feeInfo.targetPid !== intent.playerId ? { originalPlayerId: intent.playerId } : {}),
+              title: item.lateFeeLabel || "Late Fee",
+              amount: item.lateFeeAmount || 0,
+              comment: "Auto-levied late fee penalty",
+              templateId: item.lateFeeTemplateId || "",
+              status: "Paid",
+              paymentMethod: "razorpay",
+              razorpayPaymentId: details.paymentId,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
         } else if (item.type === "merch" && item.merchId) {
           const merchOrderRef = db.collection("merchOrders").doc(item.merchId);
           transaction.update(merchOrderRef, {
