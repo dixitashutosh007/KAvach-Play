@@ -474,8 +474,27 @@ test.describe("Production Route (/) Verification Suite", () => {
             `Hub '${hub.name}' (${hub.tab}) should be authorized but displayed Hub Restricted`,
           ).not.toBeVisible();
 
-          if (hub.tab === "settings") {
+          // Specific positive component / heading assertions per hub
+          if (hub.tab === "home") {
+            await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 5000 });
+          } else if (hub.tab === "matches") {
+            await expect(page.getByRole("heading", { name: "Match Schedule" })).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('button:has-text("Add Match")').first()).toBeVisible();
+          } else if (hub.tab === "club") {
+            await expect(page.locator('[data-testid="club-sub-tabs"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="club-sub-tab-players"]')).toBeVisible();
+          } else if (hub.tab === "finance") {
+            await expect(page.getByRole("heading", { name: "Match Fee Accounting" })).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('button:has-text("Match Fees")').first()).toBeVisible();
+          } else if (hub.tab === "studio") {
+            await expect(page.locator('[data-testid="studio-tabs"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="studio-crm-tab"]')).toBeVisible();
+          } else if (hub.tab === "design") {
+            await expect(page.getByRole("heading", { name: "KAvach Design" })).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('button:has-text("Match / POTM")').first()).toBeVisible();
+          } else if (hub.tab === "settings") {
             await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
+            await expect(page.locator("text=App Configuration").first()).toBeVisible();
           }
         } else {
           // Negative Authorization: Hub Restricted card MUST be visible with exact error message

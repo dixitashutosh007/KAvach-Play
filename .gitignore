@@ -9,6 +9,8 @@ coverage/
 
 # Playwright
 playwright-report/
+playwright-report-dev/
+playwright-report-prod/
 test-results/
 e2e/screenshots/
 

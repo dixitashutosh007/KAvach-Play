@@ -11,7 +11,7 @@
     "test:functional": "node --test tests/*.test.mjs",
     "test:emulator": "node scripts/run-emulator-tests.mjs",
     "test": "npx playwright test",
-    "test:e2e:prod": "npm run build && npx playwright test --config=playwright.prod.config.ts",
+    "test:e2e:prod": "npm run build && node scripts/prepare-standalone.mjs && npx playwright test --config=playwright.prod.config.ts",
     "test:ui": "npx playwright test --ui",
     "test:headed": "npx playwright test --headed",
     "test:report": "npx playwright show-report"

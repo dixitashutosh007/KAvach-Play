@@ -133,7 +133,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-e2e-report
-          path: playwright-report/
+          path: playwright-report-dev/
           retention-days: 7
 
   test-e2e-prod:
@@ -170,6 +170,9 @@ jobs:
       - name: Build Next.js Production Bundle
         run: npm run build
 
+      - name: Prepare Standalone Assets
+        run: node scripts/prepare-standalone.mjs
+
       - name: Run Production Smoke Suite
         run: npx playwright test --config=playwright.prod.config.ts
 
@@ -178,5 +181,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-prod-smoke-report
-          path: playwright-report/
+          path: playwright-report-prod/
           retention-days: 7
