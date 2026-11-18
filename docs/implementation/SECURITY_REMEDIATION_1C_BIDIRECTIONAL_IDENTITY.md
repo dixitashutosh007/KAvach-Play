@@ -210,6 +210,6 @@ To allow administrators to inspect legacy player records before creating index e
 
 ## 9. Commit & Verification Status
 
-- **Implementation Commit SHA:** `pending push`
+- **Implementation Commit SHA:** `3efe0f153cd70ab0596637f07561e645f0965556`
 - **Branch:** `mig-mov`
 - **Reviewer Status:** Developer remediated and emulator-verified (120/120 emulator tests, 253/253 functional tests, 4/4 standalone production smoke tests passing). Ready for independent review and owner acceptance.
