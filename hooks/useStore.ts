@@ -177,6 +177,39 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   }, []);
 
   useEffect(() => {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      typeof window !== "undefined" &&
+      (window as any).__KAVACH_TEST_STORE__
+    ) {
+      const ts = (window as any).__KAVACH_TEST_STORE__;
+      if (ts.grounds) setGrounds(ts.grounds);
+      if (ts.tournaments) setTournaments(ts.tournaments);
+      if (ts.matches) setMatches(ts.matches);
+      if (ts.players) setPlayers(ts.players);
+      if (ts.payments) setPayments(ts.payments);
+      if (ts.playerStats) setPlayerStats(ts.playerStats);
+      if (ts.posts) setPosts(ts.posts);
+      if (ts.appConfig) setAppConfig(ts.appConfig);
+      if (ts.appUsers) setAppUsers(ts.appUsers);
+      if (ts.subscriptionPlans) setSubscriptionPlans(ts.subscriptionPlans);
+      if (ts.subscriptionHistory) setSubscriptionHistory(ts.subscriptionHistory);
+      if (ts.notifications) setNotifications(ts.notifications);
+      if (ts.otherFees) setOtherFees(ts.otherFees);
+      if (ts.feeTemplates) setFeeTemplates(ts.feeTemplates);
+      if (ts.outOfPlays) setOutOfPlays(ts.outOfPlays);
+      if (ts.merchandises) setMerchandises(ts.merchandises);
+      if (ts.merchOrders) setMerchOrders(ts.merchOrders);
+      if (ts.polls) setPolls(ts.polls);
+      if (ts.pollResponses) setPollResponses(ts.pollResponses);
+      if (ts.feePlans) setFeePlans(ts.feePlans);
+      if (ts.badges) setBadges(ts.badges);
+      if (ts.badgeTypeDefs) setBadgeTypeDefs(ts.badgeTypeDefs);
+      if (ts.leads) setLeads(ts.leads);
+      setIsLoaded(true);
+      return;
+    }
+
     if (!user) {
       return;
     }

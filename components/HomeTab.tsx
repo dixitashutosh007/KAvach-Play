@@ -946,7 +946,11 @@ export function HomeTab({
                     {post.createdAt && (
                       <p className="text-[10px] text-text-muted">
                         {format(
-                          new Date(post.createdAt.seconds * 1000),
+                          new Date(
+                            typeof post.createdAt === "object" && "seconds" in post.createdAt
+                              ? (post.createdAt as any).seconds * 1000
+                              : post.createdAt,
+                          ),
                           "MMM d, yyyy • h:mm a",
                         )}
                       </p>

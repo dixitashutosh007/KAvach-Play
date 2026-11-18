@@ -39,6 +39,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hasAdminClaim, setHasAdminClaim] = useState(false);
 
   useEffect(() => {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      typeof window !== "undefined" &&
+      (window as any).__KAVACH_TEST_USER__ !== undefined
+    ) {
+      setUser((window as any).__KAVACH_TEST_USER__);
+      setHasAdminClaim(!!(window as any).__KAVACH_TEST_ADMIN_CLAIM__);
+      setLoading(false);
+      return;
+    }
+
     // Fire-and-forget: don't block rendering on connectivity check
     testConnection();
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
