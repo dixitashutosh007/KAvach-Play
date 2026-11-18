@@ -3,6 +3,8 @@
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
 **Baseline Commit:** `3efe0f153cd70ab0596637f07561e645f0965556` (docs commit: `f74d57f894eaedf7159653c7dd0f6fd100425a3f`)  
+**Implementation Commits:** `aa4b31e` (core remediation) & `b02de8f` (contention resolution & retry hardening)  
+**CI Verification Run:** GitHub Actions Run ID `44255737658` (All 5 jobs passed)  
 **Implementation Agent:** Antigravity (Gemini)  
 **Independent Reviewer:** ChatGPT (read-only review)  
 **Operating Mode:** Read-only test validation and atomic remediation with emulator verification. Zero production writes or live Razorpay charges.
