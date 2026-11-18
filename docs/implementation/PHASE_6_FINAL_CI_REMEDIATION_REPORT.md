@@ -159,7 +159,31 @@ In `playwright.config.ts`, `reporter: process.env.CI ? "github" : "html"` caused
 
 ---
 
-## 4. Modified Files Inventory
+## 4. GitHub Actions CI Pipeline Verification Evidence
+
+**Run URL:** https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44231871895  
+**Triggering Commit:** [`bd48c946f00db1cb91176b6e41b058c422ae4289`](https://github.com/dixitashutosh007/KAvach-Play/commit/bd48c946f00db1cb91176b6e41b058c422ae4289)  
+**Branch:** `mig-mov`  
+**Overall Pipeline Conclusion:** **SUCCESS**
+
+| Job | Duration | Result | Summary / Evidence |
+|---|---|---|---|
+| **Playwright Production Smoke Suite** | 1m 42s | **PASS** | 4/4 passed (8.2s). Executed standalone `node .next/standalone/server.js`. Uploaded `playwright-prod-smoke-report`. Zero standalone warning. |
+| **Playwright E2E Development Suite** | 2m 18s | **PASS** | 30/30 passed (1.4m). Full 7-role x 7-hub matrix + responsive suites. Uploaded `playwright-e2e-report`. |
+| **Firestore Security Rules Emulator Tests** | 57s | **PASS** | 52/52 passed. Concurrency & security rules validated against local emulator. |
+| **Functional Tests** | 32s | **PASS** | 253/253 passed, 0 skipped, 0 failed. |
+| **Lint & Typecheck** | 37s | **PASS** | ESLint: 0 errors; TypeScript `tsc --noEmit`: 0 errors. |
+
+### Uploaded CI Artifacts
+
+| Artifact Name | Size | Retention | Download Command |
+|---|---|---|---|
+| `playwright-e2e-report` | 225,282 bytes | 7 days | `gh run download 44231871895 -n playwright-e2e-report` |
+| `playwright-prod-smoke-report` | 196,993 bytes | 7 days | `gh run download 44231871895 -n playwright-prod-smoke-report` |
+
+---
+
+## 5. Modified Files Inventory
 
 - `scripts/prepare-standalone.mjs` (New script to stage assets for standalone Next.js server)
 - `package.json` (Updated `test:e2e:prod` script to run standalone prep)
