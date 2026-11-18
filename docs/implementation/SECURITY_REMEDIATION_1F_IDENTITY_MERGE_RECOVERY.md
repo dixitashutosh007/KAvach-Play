@@ -125,16 +125,16 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 
 | Test Suite | Command | Total | Passed | Failed | Skipped | Status |
 |---|---|---|---|---|---|---|
-| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 43 | 43 | 0 | 0 | **PASSED** |
+| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 55 | 55 | 0 | 0 | **PASSED** |
 | **Remediation 1F-A Suite** | `npm run test:emulator -- tests/remediation1fa-*.mjs` | 29 | 29 | 0 | 0 | **PASSED** |
-| **Remediation 1E Hardened Suite** | `npm run test:emulator -- tests/remediation1e-*.mjs` | 18 | 18 | 0 | 0 | **PASSED** |
-| **Full Emulator Regression (17 files)** | `npm run test:emulator` | 224 | 224 | 0 | 0 | **PASSED** |
+| **Remediation 1E Hardened Suite** | `npm run test:emulator -- tests/remediation1e-*.mjs` | 20 | 20 | 0 | 0 | **PASSED** |
+| **Full Emulator Regression** | `npm run test:emulator` | 238 | 238 | 0 | 0 | **PASSED** |
 | **Functional Tests Suite** | `npm run test:functional` | 254 | 254 | 0 | 0 | **PASSED** |
 | **TypeScript Typecheck** | `npx tsc --noEmit` | - | 0 errors | 0 | 0 | **PASSED** |
 | **ESLint** | `npm run lint` | - | 0 errors | 0 | 0 | **PASSED** (4 open-read warnings) |
 | **Production Build** | `npm run build` | 19 pages | 19 static/dynamic | 0 | 0 | **PASSED** |
 
-### 4.2 Adversarial Remediation 1F & 1F-R Test Details (43 Scenarios)
+### 4.2 Adversarial Remediation 1F & 1F-R Test Details (55 Scenarios)
 
 1. `Scenario 1`: Reservation changes after pre-flight but before transaction: rejected inside transaction (`LOSER_PHONE_RESERVATION_THIRD_PARTY`).
 2. `Scenario 2`: Keeper and loser have distinct active UIDs: HTTP 409 (`CONFLICTING_AUTH_UIDS`).
@@ -171,7 +171,7 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 33. `Scenario 33`: Missing UID and phone indexes prevent safe linking (`safeToLinkExistingRecords: false`).
 34. `Scenario 34`: Duplicate canonical phone and UID ownership block bootstrap (`duplicatePhones: 1`).
 35. `Scenario 35` (1F-R R1): Worker fencing rejects chunk commits when lease is superseded.
-36. `Scenario 36` (1F-R R3): Keeper already undergoing another merge: rejected with HTTP 409 (`KEEPER_ALREADY_MERGING`).
+36. `Scenario 36` (1F-R R3): Keeper already undergoing another merge: rejected with HTTP 409 (`KEEPER_LOCKED`).
 37. `Scenario 37` (1F-R R3): Cross-role player locks: loser as keeper in another job rejected with HTTP 409 (`PLAYER_ROLE_CONFLICT`).
 38. `Scenario 38` (1F-R R4): Financial collision on payment reference mismatch: halts with HTTP 409 (`FINANCIAL_RECORD_COLLISION`).
 39. `Scenario 39` (1F-R R4): Financial collision on paidAmount / collectedAmount mismatch: halts with HTTP 409 (`FINANCIAL_RECORD_COLLISION`).
@@ -179,6 +179,18 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 41. `Scenario 41` (1F-R R5): Retired legacy PATCH endpoint returns HTTP 405 Method Not Allowed (`METHOD_NOT_ALLOWED`).
 42. `Scenario 42` (1F-R R10): Final verification fails closed if keeper's expected phone reservation is missing (`FINAL_VERIFICATION_FAILED`).
 43. `Scenario 43` (1F-R R10): Final verification fails closed if keeper's expected UID reservation is missing (`FINAL_VERIFICATION_FAILED`).
+44. `Scenario 44` (1F-R R8): Cumulative progress & monotonicity on partial resume: 250 payments resumed after chunk 1 failure without decrementing or resetting counter.
+45. `Scenario 45` (1F-R R8): Cumulative progress for otherFees: preserves both `feesMoved` and `feesSkipped` on resume.
+46. `Scenario 46` (1F-R R9): Bounded pagination across multiple pages: appUsers and indexes migrate in bounded pages (`limit(batchLimit)`) without unbounded memory loading.
+47. `Scenario 47` (1F-R R9): Bounded final verification: fails closed on dataset exceeding batch limit.
+48. `Scenario 48` (1F-R R2/R3): Stale lock recovery with missing job: safely reclaims orphaned player lock.
+49. `Scenario 49` (1F-R R2/R3): Stale lock recovery with failed job: reclaims failed job and increments fencing token.
+50. `Scenario 50` (1F-R R2/R3): One-sided lock inconsistency: safely reconciles when one player is unlocked.
+51. `Scenario 51` (1F-R R2/R3): Strict lease renewal validation: throws `LEASE_RENEWAL_FAILED` on missing or tampered player lock.
+52. `Scenario 52` (1F-R R2/R3): Structured failure persistence: persists `status: "failed"` and `failedStage` via `recordMergeJobFailure`.
+53. `Scenario 53` (1F-R R10): Atomic completion guard: detects concurrent record created in verification window and fails closed.
+54. `Scenario 54` (1F-R R4): Strengthened financial comparator: detects contradictory internal alias pairs across 12 authoritative fields.
+55. `Scenario 55` (1F-R R10): Write paths block merging players: `verifyPlayerOwnership` in `lib/razorpay-order.ts` strictly rejects actively merging players (`mergeStatus: "in_progress"`).
 
 ---
 
