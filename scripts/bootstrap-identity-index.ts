@@ -68,6 +68,12 @@ export interface CollisionReport {
   requiresManualResolution: boolean;
   blockingIssueCount: number;
   warningCount: number;
+  missingPhoneCount: number;
+  missingIndexReservations: MissingIndexReservation[];
+  duplicatePhones: number;
+  duplicateUids: number;
+  orphanedMappings: number;
+  invalidMergeRelationships: number;
   summary: {
     players: {
       total: number;
@@ -97,7 +103,6 @@ export interface CollisionReport {
   appUserInconsistencies: AppUserInconsistency[];
   orphanIndexes: OrphanIndexEntry[];
   indexDisagreements: IndexDisagreement[];
-  missingIndexReservations: MissingIndexReservation[];
   remediationSuggestions: string[];
 }
 
@@ -145,10 +150,14 @@ export async function generateIdentityCollisionReport(
     const isActive = data.disabled !== true && !data.mergedInto;
     if (data.mergedInto) {
       mergedPlayers++;
-      if (playerMap.has(data.mergedInto)) {
-        verifiedMergedCount++;
-      } else {
+      const keeper = playerMap.get(data.mergedInto);
+      if (!keeper) {
         unverifiedMergedCount++;
+      } else if (keeper.disabled === true || keeper.mergedInto) {
+        // Keeper is disabled or itself merged (invalid merge relationship)
+        unverifiedMergedCount++;
+      } else {
+        verifiedMergedCount++;
       }
     } else if (data.disabled === true) {
       disabledPlayers++;
@@ -257,7 +266,7 @@ export async function generateIdentityCollisionReport(
             uid,
             playerId,
             issue: `Referenced player document is ${playerDocData.mergedInto ? "merged" : "disabled"}.`,
-            isBlocking: false,
+            isBlocking: true,
           });
         }
         if (playerDocData.authUid && playerDocData.authUid !== uid) {
@@ -407,44 +416,56 @@ export async function generateIdentityCollisionReport(
     return !parseStrictIndianMobile(data.mobile).ok;
   }).length;
 
-  // 9. Calculate Severity and safeToBootstrap Status
-  const blockingPhoneCollisions = phoneCollisions.filter((c) => c.isBlocking).length;
-  const blockingUidCollisions = uidCollisions.filter((c) => c.isBlocking).length;
+  // 8b. Detect Missing Phones on Active Players (SEC-1F-07)
+  const activeMissingPhones = Array.from(playerMap.entries()).filter(([_, data]) => {
+    const isActive = data.disabled !== true && !data.mergedInto;
+    return isActive && (!data.mobile || String(data.mobile).trim() === "");
+  }).length;
+
+  // 9. Calculate Severity and safeToBootstrap Status (SEC-1F-07)
+  const duplicatePhones = phoneCollisions.filter((c) => c.isBlocking).length;
+  const duplicateUids = uidCollisions.filter((c) => c.isBlocking).length;
   const blockingAppUserIssues = appUserInconsistencies.filter((c) => c.isBlocking).length;
   const blockingOrphanIndexes = orphanIndexes.length;
   const blockingDisagreements = indexDisagreements.length;
+  const blockingMissingIndexCount = missingIndexReservations.length;
+  const invalidMergeRelationships = unverifiedMergedCount;
+  const orphanedMappings =
+    orphanIndexes.length +
+    appUserInconsistencies.filter((i) => i.issue.includes("Orphaned")).length;
 
   const blockingIssueCount =
-    blockingPhoneCollisions +
-    blockingUidCollisions +
+    duplicatePhones +
+    duplicateUids +
     blockingAppUserIssues +
     blockingOrphanIndexes +
     blockingDisagreements +
     blockingMalformedPhones +
-    unverifiedMergedCount;
+    activeMissingPhones +
+    blockingMissingIndexCount +
+    invalidMergeRelationships;
 
   const warningCount =
     phoneCollisions.filter((c) => !c.isBlocking).length +
     uidCollisions.filter((c) => !c.isBlocking).length +
     appUserInconsistencies.filter((c) => !c.isBlocking).length +
-    missingIndexReservations.length +
     (invalidPhoneCount - blockingMalformedPhones);
 
   const safeToBootstrap = blockingIssueCount === 0;
   const safeToLinkExistingRecords =
-    uidCollisions.filter((c) => c.isBlocking).length === 0 &&
-    missingIndexReservations.length === 0 &&
-    appUserInconsistencies.filter((c) => c.isBlocking).length === 0 &&
+    safeToBootstrap &&
+    blockingIssueCount === 0 &&
+    blockingMissingIndexCount === 0 &&
     blockingMalformedPhones === 0;
   const requiresManualResolution = !safeToBootstrap || blockingIssueCount > 0;
 
   const remediationSuggestions: string[] = [];
-  if (blockingPhoneCollisions > 0) {
+  if (duplicatePhones > 0) {
     remediationSuggestions.push(
       "Merge or resolve active duplicate player records sharing identical phone numbers via /api/admin/merge-players.",
     );
   }
-  if (blockingUidCollisions > 0) {
+  if (duplicateUids > 0) {
     remediationSuggestions.push(
       "Investigate and unlink/re-link player profiles that share the same Firebase authUid.",
     );
@@ -487,6 +508,12 @@ export async function generateIdentityCollisionReport(
     requiresManualResolution,
     blockingIssueCount,
     warningCount,
+    missingPhoneCount: activeMissingPhones,
+    missingIndexReservations,
+    duplicatePhones,
+    duplicateUids,
+    orphanedMappings,
+    invalidMergeRelationships,
     summary: {
       players: {
         total: playersSnap.docs.length,
@@ -516,7 +543,6 @@ export async function generateIdentityCollisionReport(
     appUserInconsistencies,
     orphanIndexes,
     indexDisagreements,
-    missingIndexReservations,
     remediationSuggestions,
   };
 }

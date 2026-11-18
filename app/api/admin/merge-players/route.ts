@@ -34,6 +34,11 @@ import {
   verifyWorkerFencingAndAdvanceStage,
   executeMergeIdentityStage,
   executeMergeCompletionStage,
+  migratePaymentsStage,
+  migrateOtherFeesStage,
+  migrateMerchOrdersStage,
+  migrateAppUsersAndIndexesStage,
+  executeIndependentFinalVerification,
 } from "../../../../lib/player-merge.ts";
 import { parseStrictIndianMobile } from "../../../../lib/account-linking.ts";
 
@@ -361,110 +366,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const BATCH_LIMIT = 400;
+    // Stage 2: Reparent match payments in bounded chunks (Finding 1F-04)
+    await migratePaymentsStage(db, jobId, loserId, keeperId, workerInfo);
 
-    // Stage 2: Reparent match payments (Idempotent)
-    const freshPaySnap = await db
-      .collectionGroup("payments")
-      .where("playerId", "==", loserId)
-      .get();
+    // Stage 3: Move otherFees with collision protection (Finding 1F-03)
+    await migrateOtherFeesStage(db, jobId, loserId, keeperId, workerInfo);
 
-    for (let i = 0; i < freshPaySnap.docs.length; i += BATCH_LIMIT) {
-      const chunk = freshPaySnap.docs.slice(i, i + BATCH_LIMIT);
-      const batch = db.batch();
-      for (const d of chunk) {
-        batch.update(d.ref, {
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-      await batch.commit();
-    }
-    await verifyWorkerFencingAndAdvanceStage(db, jobId, workerInfo, "payments_reparented");
+    // Stage 4: Reparent merchOrders in bounded chunks (Finding 1F-04)
+    await migrateMerchOrdersStage(db, jobId, loserId, keeperId, workerInfo, (keeper as any).name);
 
-    // Stage 3: Move otherFees (Idempotent)
-    const freshFeeSnap = await loserRef.collection("otherFees").get();
-    const FEE_BATCH_LIMIT = 200;
-    for (let i = 0; i < freshFeeSnap.docs.length; i += FEE_BATCH_LIMIT) {
-      const chunk = freshFeeSnap.docs.slice(i, i + FEE_BATCH_LIMIT);
-      const batch = db.batch();
-      for (const feeDoc of chunk) {
-        batch.set(keeperRef.collection("otherFees").doc(feeDoc.id), {
-          ...feeDoc.data(),
-          playerId: keeperId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        batch.delete(feeDoc.ref);
-      }
-      await batch.commit();
-    }
-    await verifyWorkerFencingAndAdvanceStage(db, jobId, workerInfo, "fees_moved");
+    // Stage 5: Reparent appUsers and identity indexes in bounded chunks (Finding 1F-04)
+    await migrateAppUsersAndIndexesStage(db, jobId, loserId, keeperId, workerInfo);
 
-    // Stage 4: Reparent merchOrders
-    const freshOrderSnap = await db
-      .collection("merchOrders")
-      .where("playerId", "==", loserId)
-      .get();
-
-    for (let i = 0; i < freshOrderSnap.docs.length; i += BATCH_LIMIT) {
-      const chunk = freshOrderSnap.docs.slice(i, i + BATCH_LIMIT);
-      const batch = db.batch();
-      for (const d of chunk) {
-        batch.update(d.ref, {
-          playerId: keeperId,
-          playerName: (keeper as any).name || d.data().playerName || "",
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-      await batch.commit();
-    }
-    await verifyWorkerFencingAndAdvanceStage(db, jobId, workerInfo, "orders_reparented");
-
-    // Stage 5: Reparent appUsers, uidIndex, and phoneIndex
-    const freshUserSnap = await db
-      .collection("appUsers")
-      .where("playerId", "==", loserId)
-      .get();
-
-    const userBatch = db.batch();
-    for (const u of freshUserSnap.docs) {
-      userBatch.update(u.ref, {
-        playerId: keeperId,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    // Direct user doc if needed
-    const directUserDoc = await db.collection("appUsers").doc(loserId).get();
-    if (directUserDoc.exists && directUserDoc.data()?.playerId !== keeperId) {
-      userBatch.update(directUserDoc.ref, {
-        playerId: keeperId,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    // Index queries reparenting
-    const freshUidSnap = await db.collection("uidIndex").where("playerId", "==", loserId).get();
-    for (const u of freshUidSnap.docs) {
-      userBatch.update(u.ref, {
-        playerId: keeperId,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    const freshPhoneSnap = await db.collection("phoneIndex").where("playerId", "==", loserId).get();
-    for (const p of freshPhoneSnap.docs) {
-      userBatch.update(p.ref, {
-        playerId: keeperId,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    await userBatch.commit();
-    await verifyWorkerFencingAndAdvanceStage(db, jobId, workerInfo, "app_users_reparented");
-
-    // Stage 6: Final Completion & Soft-Delete (Fencing Protected in Transaction)
-    await executeMergeCompletionStage(db, jobId, loserId, keeperId, workerInfo);
+    // Stage 6: Independent final verification & completion (Finding 1F-05)
+    await executeIndependentFinalVerification(db, jobId, loserId, keeperId, workerInfo);
 
     return NextResponse.json({
       ok: true,

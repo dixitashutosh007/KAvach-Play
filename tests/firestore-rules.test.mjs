@@ -78,6 +78,20 @@ describe("Firestore Security Rules — AST Syntax Validation", () => {
     assert.match(rulesContent, /incoming\(\)\.paymentStatus == 'Unpaid'/);
     assert.match(rulesContent, /incoming\(\)\.orderStatus == 'Order Placed'/);
   });
+
+  it("enforces Finding 1F-08: locks merge lifecycle fields in /players/{playerId} rules", () => {
+    assert.match(
+      rulesContent,
+      /!incoming\(\)\.keys\(\)\.hasAny\(\['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'\]\)/
+    );
+    assert.match(
+      rulesContent,
+      /!incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(\['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'\]\)/
+    );
+    assert.match(rulesContent, /match \/phoneIndex\/\{phone\} \{\s+allow read, write: if false;/);
+    assert.match(rulesContent, /match \/uidIndex\/\{uid\} \{\s+allow read, write: if false;/);
+    assert.match(rulesContent, /match \/mergeJobs\/\{jobId\} \{\s+allow read, write: if false;/);
+  });
 });
 
 // ── 2. Live Emulator Tests (Executes when emulator host is reachable) ──────────

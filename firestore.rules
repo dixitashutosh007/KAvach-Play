@@ -497,9 +497,9 @@ service cloud.firestore {
 
     match /players/{playerId} {
       allow read: if isSignedIn();
-      allow create: if !incoming().keys().hasAny(['authUid'])
+      allow create: if !incoming().keys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
         && (isAnyAdmin() || isSelf(playerId));
-      allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['authUid'])
+      allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
         && (
           isAnyAdmin()
           || (

@@ -596,8 +596,9 @@ describe("Security Remediation 1E: Secure Merge, Privileged Writes & Bootstrap S
       requestedPlayerId: "p_contention_17",
     });
 
-    // Pre-transaction check or transaction correctly rejects or fails closed
-    assert.equal(res.ok, true); // Since it was already linked, it resolved
+    // Pre-transaction check or transaction correctly rejects or fails closed (SEC-1F Section 12)
+    assert.equal(res.ok, false);
+    assert.equal(res.status, 409);
   });
 
   it("Test 18: Generic INVALID_ARGUMENT is not misclassified as contention", async () => {

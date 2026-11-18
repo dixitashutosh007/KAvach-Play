@@ -762,3 +762,386 @@ export async function executeMergeCompletionStage(
     });
   });
 }
+
+export function areFeesIdentical(src: Record<string, any>, dest: Record<string, any>): boolean {
+  if (Number(src.amount) !== Number(dest.amount)) return false;
+  if ((src.title || "") !== (dest.title || "")) return false;
+  if ((src.status || "") !== (dest.status || "")) return false;
+  if ((src.templateId || "") !== (dest.templateId || "")) return false;
+  return true;
+}
+
+export interface MigrationStageOptions {
+  batchLimit?: number;
+  onAfterChunkCommit?: (chunkIndex: number, count: number) => Promise<void> | void;
+}
+
+/**
+ * Stage 2: Bounded, Resumable Migration of Match Payments (Finding 1F-04).
+ */
+export async function migratePaymentsStage(
+  db: FirebaseFirestore.Firestore,
+  jobId: string,
+  loserId: string,
+  keeperId: string,
+  worker: MergeWorkerInfo,
+  options?: MigrationStageOptions
+): Promise<{ count: number }> {
+  const batchLimit = options?.batchLimit || 100;
+  const paySnap = await db
+    .collectionGroup("payments")
+    .where("playerId", "==", loserId)
+    .get();
+
+  let count = 0;
+  for (let i = 0; i < paySnap.docs.length; i += batchLimit) {
+    const chunk = paySnap.docs.slice(i, i + batchLimit);
+    const batch = db.batch();
+    for (const d of chunk) {
+      batch.update(d.ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      count++;
+    }
+    await batch.commit();
+
+    // Persist intermediate chunk progress
+    await db.collection("mergeJobs").doc(jobId).update({
+      "stats.paymentsReparentedProgress": count,
+      "stats.paymentsReparentedChunks": Math.floor(i / batchLimit) + 1,
+      lastHeartbeatAt: new Date().toISOString(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (options?.onAfterChunkCommit) {
+      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+    }
+  }
+
+  await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "payments_reparented", {
+    paymentsReparented: count,
+  });
+  return { count };
+}
+
+/**
+ * Stage 3: Collision-Protected, Resumable Migration of OtherFees (Finding 1F-03).
+ */
+export async function migrateOtherFeesStage(
+  db: FirebaseFirestore.Firestore,
+  jobId: string,
+  loserId: string,
+  keeperId: string,
+  worker: MergeWorkerInfo,
+  options?: MigrationStageOptions
+): Promise<{ count: number }> {
+  const loserRef = db.collection("players").doc(loserId);
+  const keeperRef = db.collection("players").doc(keeperId);
+
+  const feeSnap = await loserRef.collection("otherFees").get();
+  const batchLimit = options?.batchLimit || 50;
+  let count = 0;
+
+  for (let i = 0; i < feeSnap.docs.length; i += batchLimit) {
+    const chunk = feeSnap.docs.slice(i, i + batchLimit);
+
+    for (const feeDoc of chunk) {
+      const srcData = feeDoc.data() || {};
+      const destRef = keeperRef.collection("otherFees").doc(feeDoc.id);
+      const destSnap = await destRef.get();
+
+      if (destSnap.exists) {
+        const destData = destSnap.data() || {};
+        if (areFeesIdentical(srcData, destData)) {
+          // Idempotent duplicate: Destination already has identical fee record. Safe to remove source.
+          await feeDoc.ref.delete();
+          count++;
+        } else {
+          // Dest exists with different financial content: Collision!
+          await db.collection("mergeJobs").doc(jobId).update({
+            lastError: `Financial record collision: keeper already has fee ${feeDoc.id} with different content.`,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          throw new MergeConflictError(
+            409,
+            `Financial record collision detected: keeper already has fee ${feeDoc.id} with different content. Manual resolution required.`,
+            "FINANCIAL_RECORD_COLLISION"
+          );
+        }
+      } else {
+        // Destination does not exist: copy source record
+        await destRef.set({
+          ...srcData,
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        // Verify destination has been written with expected data
+        const verifySnap = await destRef.get();
+        if (!verifySnap.exists || Number(verifySnap.data()?.amount) !== Number(srcData.amount)) {
+          throw new Error(`Destination fee verification failed for fee ${feeDoc.id}.`);
+        }
+
+        // Delete source only after successful destination verification
+        await feeDoc.ref.delete();
+        count++;
+      }
+    }
+
+    await db.collection("mergeJobs").doc(jobId).update({
+      "stats.feesMovedProgress": count,
+      "stats.feesMovedChunks": Math.floor(i / batchLimit) + 1,
+      lastHeartbeatAt: new Date().toISOString(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (options?.onAfterChunkCommit) {
+      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+    }
+  }
+
+  await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "fees_moved", {
+    feesMoved: count,
+  });
+  return { count };
+}
+
+/**
+ * Stage 4: Bounded Migration of Merch Orders (Finding 1F-04).
+ */
+export async function migrateMerchOrdersStage(
+  db: FirebaseFirestore.Firestore,
+  jobId: string,
+  loserId: string,
+  keeperId: string,
+  worker: MergeWorkerInfo,
+  keeperName?: string,
+  options?: MigrationStageOptions
+): Promise<{ count: number }> {
+  const batchLimit = options?.batchLimit || 100;
+  const orderSnap = await db
+    .collection("merchOrders")
+    .where("playerId", "==", loserId)
+    .get();
+
+  let count = 0;
+  for (let i = 0; i < orderSnap.docs.length; i += batchLimit) {
+    const chunk = orderSnap.docs.slice(i, i + batchLimit);
+    const batch = db.batch();
+    for (const d of chunk) {
+      batch.update(d.ref, {
+        playerId: keeperId,
+        playerName: keeperName || d.data().playerName || "",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      count++;
+    }
+    await batch.commit();
+
+    await db.collection("mergeJobs").doc(jobId).update({
+      "stats.ordersReparentedProgress": count,
+      "stats.ordersReparentedChunks": Math.floor(i / batchLimit) + 1,
+      lastHeartbeatAt: new Date().toISOString(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (options?.onAfterChunkCommit) {
+      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+    }
+  }
+
+  await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "orders_reparented", {
+    ordersReparented: count,
+  });
+  return { count };
+}
+
+/**
+ * Stage 5: Bounded Migration of AppUsers and Identity Indexes (Finding 1F-04).
+ */
+export async function migrateAppUsersAndIndexesStage(
+  db: FirebaseFirestore.Firestore,
+  jobId: string,
+  loserId: string,
+  keeperId: string,
+  worker: MergeWorkerInfo,
+  options?: MigrationStageOptions
+): Promise<{ count: number }> {
+  const batchLimit = options?.batchLimit || 100;
+
+  const [freshUserSnap, directUserDoc, freshUidSnap, freshPhoneSnap] = await Promise.all([
+    db.collection("appUsers").where("playerId", "==", loserId).get(),
+    db.collection("appUsers").doc(loserId).get(),
+    db.collection("uidIndex").where("playerId", "==", loserId).get(),
+    db.collection("phoneIndex").where("playerId", "==", loserId).get(),
+  ]);
+
+  const operations: Array<FirebaseFirestore.DocumentReference> = [];
+  for (const u of freshUserSnap.docs) {
+    operations.push(u.ref);
+  }
+  if (directUserDoc.exists && directUserDoc.data()?.playerId === loserId) {
+    operations.push(directUserDoc.ref);
+  }
+  for (const u of freshUidSnap.docs) {
+    operations.push(u.ref);
+  }
+  for (const p of freshPhoneSnap.docs) {
+    operations.push(p.ref);
+  }
+
+  let count = 0;
+  for (let i = 0; i < operations.length; i += batchLimit) {
+    const chunk = operations.slice(i, i + batchLimit);
+    const batch = db.batch();
+    for (const ref of chunk) {
+      batch.update(ref, {
+        playerId: keeperId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      count++;
+    }
+    await batch.commit();
+
+    await db.collection("mergeJobs").doc(jobId).update({
+      "stats.appUsersReparentedProgress": count,
+      "stats.appUsersReparentedChunks": Math.floor(i / batchLimit) + 1,
+      lastHeartbeatAt: new Date().toISOString(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (options?.onAfterChunkCommit) {
+      await options.onAfterChunkCommit(Math.floor(i / batchLimit), count);
+    }
+  }
+
+  await verifyWorkerFencingAndAdvanceStage(db, jobId, worker, "app_users_reparented", {
+    appUsersReparented: freshUserSnap.docs.length,
+    uidIndexReparented: freshUidSnap.docs.length,
+    phoneIndexReparented: freshPhoneSnap.docs.length,
+  });
+  return { count };
+}
+
+/**
+ * Stage 6: Independent Final Verification & Completion (Finding 1F-05).
+ */
+export async function executeIndependentFinalVerification(
+  db: FirebaseFirestore.Firestore,
+  jobId: string,
+  loserId: string,
+  keeperId: string,
+  worker: MergeWorkerInfo
+): Promise<void> {
+  const loserRef = db.collection("players").doc(loserId);
+  const keeperRef = db.collection("players").doc(keeperId);
+
+  // 1. Verify no payments still reference loser
+  const paymentsSnap = await db.collectionGroup("payments").where("playerId", "==", loserId).get();
+  if (!paymentsSnap.empty) {
+    throw new MergeConflictError(
+      409,
+      `Final verification failed: ${paymentsSnap.docs.length} payments still reference loser player.`,
+      "FINAL_VERIFICATION_FAILED"
+    );
+  }
+
+  // 2. Verify no merchOrders still reference loser
+  const ordersSnap = await db.collection("merchOrders").where("playerId", "==", loserId).get();
+  if (!ordersSnap.empty) {
+    throw new MergeConflictError(
+      409,
+      `Final verification failed: ${ordersSnap.docs.length} merchandise orders still reference loser player.`,
+      "FINAL_VERIFICATION_FAILED"
+    );
+  }
+
+  // 3. Verify no otherFees remain under loser
+  const feesSnap = await loserRef.collection("otherFees").get();
+  if (!feesSnap.empty) {
+    throw new MergeConflictError(
+      409,
+      `Final verification failed: ${feesSnap.docs.length} otherFees records still exist under loser player.`,
+      "FINAL_VERIFICATION_FAILED"
+    );
+  }
+
+  // 4. Verify no appUsers still reference loser
+  const usersSnap = await db.collection("appUsers").where("playerId", "==", loserId).get();
+  if (!usersSnap.empty) {
+    throw new MergeConflictError(
+      409,
+      `Final verification failed: ${usersSnap.docs.length} appUsers still reference loser player.`,
+      "FINAL_VERIFICATION_FAILED"
+    );
+  }
+
+  // 5. Verify no uidIndex records still reference loser
+  const uidSnap = await db.collection("uidIndex").where("playerId", "==", loserId).get();
+  if (!uidSnap.empty) {
+    throw new MergeConflictError(
+      409,
+      `Final verification failed: ${uidSnap.docs.length} uidIndex records still reference loser player.`,
+      "FINAL_VERIFICATION_FAILED"
+    );
+  }
+
+  // 6. Verify no phoneIndex records still reference loser
+  const phoneSnap = await db.collection("phoneIndex").where("playerId", "==", loserId).get();
+  if (!phoneSnap.empty) {
+    throw new MergeConflictError(
+      409,
+      `Final verification failed: ${phoneSnap.docs.length} phoneIndex records still reference loser player.`,
+      "FINAL_VERIFICATION_FAILED"
+    );
+  }
+
+  // 7. Verify keeper player document state
+  const keeperSnap = await keeperRef.get();
+  if (!keeperSnap.exists) {
+    throw new MergeConflictError(404, "Keeper player document missing during final verification.", "FINAL_VERIFICATION_FAILED");
+  }
+  const keeperData = keeperSnap.data() || {};
+  if (keeperData.disabled === true || (keeperData.mergedInto && keeperData.mergedInto !== keeperId)) {
+    throw new MergeConflictError(409, "Keeper player is disabled or merged into another record.", "FINAL_VERIFICATION_FAILED");
+  }
+
+  // 8. Verify keeper authoritative phone reservation
+  if (keeperData.mobile) {
+    const parsed = parseStrictIndianMobile(keeperData.mobile);
+    if (parsed.ok) {
+      const piSnap = await db.collection("phoneIndex").doc(parsed.canonical).get();
+      if (piSnap.exists && piSnap.data()?.playerId !== keeperId) {
+        throw new MergeConflictError(
+          409,
+          `Final verification failed: keeper phone reservation does not map to keeper playerId.`,
+          "FINAL_VERIFICATION_FAILED"
+        );
+      }
+    }
+  }
+
+  // 9. Verify keeper authoritative UID reservation
+  if (keeperData.authUid) {
+    const uiSnap = await db.collection("uidIndex").doc(keeperData.authUid).get();
+    if (uiSnap.exists && uiSnap.data()?.playerId !== keeperId) {
+      throw new MergeConflictError(
+        409,
+        `Final verification failed: keeper UID reservation does not map to keeper playerId.`,
+        "FINAL_VERIFICATION_FAILED"
+      );
+    }
+    const appUserSnap = await db.collection("appUsers").doc(keeperData.authUid).get();
+    if (appUserSnap.exists && appUserSnap.data()?.playerId !== keeperId) {
+      throw new MergeConflictError(
+        409,
+        `Final verification failed: keeper appUser account does not map to keeper playerId.`,
+        "FINAL_VERIFICATION_FAILED"
+      );
+    }
+  }
+
+  // 10. Execute atomic completion stage with fencing token verification
+  await executeMergeCompletionStage(db, jobId, loserId, keeperId, worker);
+}

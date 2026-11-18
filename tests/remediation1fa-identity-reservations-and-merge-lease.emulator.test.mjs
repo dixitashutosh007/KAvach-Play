@@ -83,9 +83,9 @@ describe("Security Remediation 1F-A: Identity Reservations & Exclusive Merge Lea
       : getApps().find((a) => a.name === "remediation1fa-test");
     db = getFirestore(app);
 
-    mergeRoute = await import("../app/api/admin/merge-players/route.ts");
+    const routeModule = await import("../app/api/admin/merge-players/route.ts");
     const playerMergeModule = await import("../lib/player-merge.ts");
-    Object.assign(mergeRoute, playerMergeModule);
+    mergeRoute = { ...routeModule, ...playerMergeModule };
     const linkingModule = await import("../lib/account-linking.ts");
     linkPlayerAccount = linkingModule.linkPlayerAccount;
   });
