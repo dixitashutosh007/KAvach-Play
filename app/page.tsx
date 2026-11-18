@@ -194,18 +194,10 @@ export default function Home() {
   useEffect(() => {
     if (isAdminUser && !hasInitializedAdminRef.current) {
       hasInitializedAdminRef.current = true;
-      setPersona("admin");
-      if (isSuperAdminUser) {
-        setActiveTab("home");
-      } else if (currentUserObj?.isFinanceAdmin) {
-        setActiveTab("finance");
-      } else if (currentUserObj?.isMatchAdmin) {
-        setActiveTab("matches");
-      } else if (currentUserObj?.isStudioAdmin) {
-        setActiveTab("studio");
-      } else if (currentUserObj?.isClubAdmin) {
-        setActiveTab("club");
-      }
+      // In accordance with Decision D-10:
+      // Standard Player View is the default experience for all club members on login,
+      // including administrators. An authorized entry point into the Admin Console is
+      // provided in the header.
     }
   }, [isAdminUser, currentUserObj, user]);
 
@@ -1140,6 +1132,7 @@ export default function Home() {
                       currentUserId={user.uid}
                       currentUserName={player?.name || "Player"}
                       onNavigateToMatch={(matchId) => setActiveTab("matches", `match_${matchId}`)}
+                      onNavigateToPayments={() => setActiveTab("finance")}
                     />
                   )}
                   {activeTab === "matches" && (

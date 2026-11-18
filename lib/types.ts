@@ -338,6 +338,8 @@ export type MatchPayment = {
     | "Pending"
     | "Confirmed"
     | "Waitlist";
+  tacticalNote?: string;
+  availabilityNote?: string;
   feeOverride?: number;
   planTag?: string;
   sponsoredBy?: string;

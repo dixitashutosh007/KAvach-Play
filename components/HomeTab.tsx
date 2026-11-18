@@ -25,6 +25,11 @@ import {
   X,
   PieChart,
   CheckCircle2,
+  XCircle,
+  AlertCircle,
+  CreditCard,
+  ArrowRight,
+  Trophy,
   Archive,
   Shirt,
   Circle,
@@ -48,12 +53,14 @@ export function HomeTab({
   currentUserId,
   currentUserName,
   onNavigateToMatch,
+  onNavigateToPayments,
 }: {
   store: ReturnType<typeof useStore>;
   isAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
   onNavigateToMatch?: (matchId: string) => void;
+  onNavigateToPayments?: () => void;
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
@@ -288,6 +295,95 @@ export function HomeTab({
   const hasUpcomingBdays = upcomingBirthdays.length > 0;
   const hasBirthdays = hasTodayBdays || hasUpcomingBdays;
 
+  const { totalDue, dueCount } = useMemo(() => {
+    if (myPlayers.length === 0) return { totalDue: 0, dueCount: 0 };
+    const myPayments = store.payments.filter(
+      (p) =>
+        myPlayers.some((mp) => mp.id === p.playerId) &&
+        p.status === "Unpaid",
+    );
+    const otherFees = store.otherFees.filter(
+      (f) =>
+        myPlayers.some((mp) => mp.id === f.playerId) &&
+        f.status === "Unpaid",
+    );
+    const matchDue = myPayments.reduce(
+      (total, p) =>
+        total + (store.matches.find((m) => m.id === p.matchId)?.fee || 0),
+      0,
+    );
+    const otherDue = otherFees.reduce((total, f) => total + (f.amount || 0), 0);
+    return {
+      totalDue: matchDue + otherDue,
+      dueCount: myPayments.length + otherFees.length,
+    };
+  }, [store.payments, store.otherFees, store.matches, myPlayers]);
+
+  const heroMatch = upcomingMatches[0] || null;
+  const otherUpcomingMatches = upcomingMatches.slice(1);
+  const heroGround = heroMatch ? store.grounds.find((g) => g.id === heroMatch.groundId) : null;
+  const heroPayment = heroMatch && mePlayer ? store.payments.find((p) => p.playerId === mePlayer.id && p.matchId === heroMatch.id) : null;
+
+  let heroEffectiveAvailability = heroPayment?.availability;
+  if ((!heroEffectiveAvailability || heroEffectiveAvailability === "Pending") && heroPayment && heroPayment.status !== "Not Playing") {
+    heroEffectiveAvailability = "Confirmed";
+  }
+  const heroIsPlaying = heroEffectiveAvailability === "Confirmed" || heroEffectiveAvailability === "Yes";
+  const heroIsTentative = heroEffectiveAvailability === "Tentative";
+  const heroIsOut = heroEffectiveAvailability === "No";
+
+  const [showRsvpNote, setShowRsvpNote] = useState(false);
+  const [rsvpNote, setRsvpNote] = useState("");
+
+  useEffect(() => {
+    if (heroPayment?.tacticalNote) {
+      setRsvpNote(heroPayment.tacticalNote);
+    }
+  }, [heroPayment?.tacticalNote]);
+
+  const getCountdownString = (matchDateStr: string, matchTimeStr?: string) => {
+    const matchDateObj = new Date(matchDateStr);
+    if (matchTimeStr) {
+      const [hours, minutes] = matchTimeStr.split(":");
+      if (hours && minutes) {
+        matchDateObj.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+      }
+    } else {
+      matchDateObj.setHours(9, 0, 0, 0);
+    }
+    const msDiff = matchDateObj.getTime() - Date.now();
+    if (msDiff < 0) return "Match Day / In Progress";
+    const days = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((msDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    if (days > 0) return `Starts in ${days}d ${hours}h`;
+    const mins = Math.floor((msDiff % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 0) return `Starts in ${hours}h ${mins}m`;
+    return `Starts in ${mins}m`;
+  };
+
+  const heroCountdown = heroMatch ? getCountdownString(heroMatch.date, heroMatch.time) : "";
+
+  const handleRsvp = async (matchId: string, availability: "Confirmed" | "Tentative" | "No", note?: string) => {
+    if (!mePlayer) return;
+    const payment = store.payments.find((p) => p.playerId === mePlayer.id && p.matchId === matchId);
+    try {
+      if (payment) {
+        await store.updateMatchAvailability(payment.id, availability, matchId, note);
+        if (availability === "Confirmed" && payment.status === "Not Playing") {
+          await store.updatePaymentStatus(payment.id, "Unpaid", matchId);
+        } else if ((availability === "No" || availability === "Tentative") && payment.status === "Unpaid") {
+          await store.updatePaymentStatus(payment.id, "Not Playing", matchId);
+        }
+      } else {
+        await store.addPaymentWithAvailability(matchId, mePlayer.id, availability, note);
+      }
+      toast(`Availability updated to ${availability === "Confirmed" ? "Playing" : availability}`, "success");
+    } catch (e) {
+      console.error("Failed to update availability:", e);
+      toast("Failed to update availability", "error");
+    }
+  };
+
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [profileFormData, setProfileFormData] = useState({
     email: "",
@@ -396,167 +492,274 @@ export function HomeTab({
         </div>
       )}
 
-      {/* Upcoming Matches (Player View Only) */}
-      {hasMatches && (
-        <div className="md:col-span-12 lg:col-span-8 bg-surface rounded-2xl border border-border p-4 relative overflow-hidden h-full">
+      {/* Hero Next Match (MOD-02A & MOD-02B) */}
+      {!isAdmin && heroMatch && (
+        <section
+          data-testid={`match-card-${heroMatch.id}`}
+          className="md:col-span-12 bg-surface rounded-2xl border border-border shadow-xs overflow-hidden"
+        >
+          <div className="bg-gradient-to-r from-brand to-accent px-4 py-2.5 text-white flex items-center justify-between text-xs">
+            <span className="font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <Trophy className="w-3.5 h-3.5 text-amber-300" />
+              Next Fixture • {heroMatch.format} {heroMatch.matchType}
+            </span>
+            <span className="bg-white/20 px-2 py-0.5 rounded-full font-semibold text-[10px] tracking-wide">
+              {heroCountdown}
+            </span>
+          </div>
+
+          <div className="p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  {heroMatch.jerseyColor === "Scarlet Red" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[10px] font-bold text-red-500">
+                      <Shirt className="w-3 h-3 fill-red-500" /> Scarlet Jersey • White Ball
+                    </span>
+                  )}
+                  {heroMatch.jerseyColor === "Whites" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-hover border border-border rounded text-[10px] font-bold text-text-primary">
+                      <Shirt className="w-3 h-3 fill-white" /> White Jersey • Red Ball
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight">
+                  vs {heroMatch.opponent}
+                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-text-secondary">
+                  <span className="flex items-center gap-1 font-medium">
+                    <Calendar className="w-3.5 h-3.5 text-accent" />
+                    {format(new Date(heroMatch.date), "EEE, MMM do, yyyy")}
+                  </span>
+                  <span className="flex items-center gap-1 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-accent" />
+                    {heroMatch.time ? format(parseISO(`${heroMatch.date}T${heroMatch.time}`), "h:mm a") : "Time TBD"}
+                  </span>
+                  {heroGround && (
+                    <a
+                      href={heroGround.mapUrl || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[44px] min-w-[44px] inline-flex items-center gap-1 text-accent font-semibold hover:underline px-1"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      {heroGround.name}
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:items-end gap-2">
+                {heroIsPlaying ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold self-start sm:self-auto">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>You are in Playing XI!</span>
+                  </div>
+                ) : heroIsTentative ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold self-start sm:self-auto">
+                    <Clock className="w-4 h-4 text-amber-600" />
+                    <span>RSVP Tentative</span>
+                  </div>
+                ) : heroIsOut ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold self-start sm:self-auto">
+                    <XCircle className="w-4 h-4 text-rose-600" />
+                    <span>Unavailable</span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-hover border border-border text-text-muted text-xs font-bold self-start sm:self-auto">
+                    <AlertCircle className="w-4 h-4 text-accent" />
+                    <span>RSVP Needed</span>
+                  </div>
+                )}
+
+                <button
+                  data-testid="view-details-link"
+                  onClick={() => onNavigateToMatch?.(heroMatch.id)}
+                  className="min-h-[44px] px-2 py-1 text-xs font-bold text-accent hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>View Match Details</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* 1-Tap RSVP (MOD-02B) */}
+            <div className="pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-black uppercase tracking-wider text-text-secondary">
+                  Confirm Your Availability
+                </label>
+                <button
+                  onClick={() => setShowRsvpNote(!showRsvpNote)}
+                  className="min-h-[44px] px-2 py-1 flex items-center text-xs font-semibold text-accent hover:underline cursor-pointer"
+                >
+                  {showRsvpNote ? "Hide Note" : "+ Add Note for Captain"}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => handleRsvp(heroMatch.id, "Confirmed", rsvpNote)}
+                  className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    heroIsPlaying
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                      : "bg-emerald-50/60 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Playing</span>
+                </button>
+
+                <button
+                  onClick={() => handleRsvp(heroMatch.id, "Tentative", rsvpNote)}
+                  className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    heroIsTentative
+                      ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                      : "bg-amber-50/60 text-amber-800 border-amber-200 hover:bg-amber-100"
+                  }`}
+                >
+                  <Clock className="w-4 h-4 shrink-0" />
+                  <span>Tentative</span>
+                </button>
+
+                <button
+                  onClick={() => handleRsvp(heroMatch.id, "No", rsvpNote)}
+                  className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    heroIsOut
+                      ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                      : "bg-rose-50/60 text-rose-800 border-rose-200 hover:bg-rose-100"
+                  }`}
+                >
+                  <XCircle className="w-4 h-4 shrink-0" />
+                  <span>Out</span>
+                </button>
+              </div>
+
+              {showRsvpNote && (
+                <div className="mt-2.5 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={rsvpNote}
+                    onChange={(e) => setRsvpNote(e.target.value)}
+                    placeholder="e.g. Arriving 15m early / bat top order..."
+                    className="flex-1 min-h-[44px] text-xs px-3 py-2 rounded-lg border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                  <button
+                    onClick={() => {
+                      const currentAvail = heroIsPlaying ? "Confirmed" : heroIsTentative ? "Tentative" : heroIsOut ? "No" : "Confirmed";
+                      handleRsvp(heroMatch.id, currentAvail, rsvpNote);
+                    }}
+                    className="min-h-[44px] px-4 py-2 bg-accent text-text-accent text-xs font-bold rounded-lg hover:opacity-90 transition cursor-pointer shrink-0"
+                  >
+                    Save Note
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Dues Summary Alert Card */}
+      {!isAdmin && mePlayer && (
+        <div className="md:col-span-12">
+          {totalDue > 0 ? (
+            <section className="bg-gradient-to-br from-brand-surface to-surface rounded-2xl border border-accent/20 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-accent text-text-accent flex items-center justify-center shrink-0 shadow-sm">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-brand uppercase tracking-wider">
+                      Outstanding Club Dues
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-accent text-text-accent">
+                      Due Now
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-text-primary mt-0.5">
+                    ₹{totalDue.toLocaleString("en-IN")}
+                  </div>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    {dueCount} pending obligation{dueCount !== 1 ? "s" : ""} • Includes match fee & studio dues
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => onNavigateToPayments?.()}
+                className="min-h-[44px] w-full sm:w-auto px-5 py-2.5 bg-accent hover:bg-brand text-text-accent font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Pay Now</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </section>
+          ) : (
+            <section className="bg-emerald-50/60 rounded-2xl border border-emerald-200 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-xs text-emerald-800 font-bold">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>All club dues settled! Good standing for upcoming matches.</span>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* Additional Upcoming Matches (if more than 1 scheduled) */}
+      {!isAdmin && otherUpcomingMatches.length > 0 && (
+        <div className="md:col-span-12 bg-surface rounded-2xl border border-border p-4 relative overflow-hidden">
           <div className="flex justify-between items-center mb-3 px-2">
             <h3 className="text-sm font-bold text-accent uppercase tracking-widest flex items-center gap-2">
-              <Calendar className="w-4 h-4" /> Upcoming Matches
+              <Calendar className="w-4 h-4" /> More Upcoming Fixtures
             </h3>
-            {upcomingMatches.length > 1 && (
-              <motion.div
-                animate={{ x: [0, 5, 0] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                className="text-[10px] uppercase font-bold text-text-muted flex items-center"
-              >
+            {otherUpcomingMatches.length > 1 && (
+              <div className="text-[10px] uppercase font-bold text-text-muted flex items-center">
                 Swipe <ChevronRight className="w-3 h-3 ml-0.5" />
-              </motion.div>
+              </div>
             )}
           </div>
           <div className="relative">
             <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 px-2 no-scrollbar scroll-smooth">
-              {upcomingMatches.map((match) => {
-              const myPayment = store.payments.find(
-                (p) => p.playerId === mePlayer.id && p.matchId === match.id
-              );
-              
-              let effectiveAvailability = myPayment?.availability;
-              if ((!effectiveAvailability || effectiveAvailability === "Pending") && myPayment && myPayment.status !== "Not Playing") {
-                effectiveAvailability = "Confirmed";
-              }
+              {otherUpcomingMatches.map((match) => {
+                const myPayment = store.payments.find(
+                  (p) => p.playerId === mePlayer?.id && p.matchId === match.id
+                );
+                const ground = store.grounds.find((g) => g.id === match.groundId);
 
-              const isConfirmed = effectiveAvailability === "Confirmed" || effectiveAvailability === "Yes";
-              const isNo = effectiveAvailability === "No";
-              const isTentative = effectiveAvailability === "Tentative";
-
-              return (
-                <div
-                  key={match.id}
-                  data-testid={`match-card-${match.id}`}
-                  className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-surface-hover border border-border rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-lg cursor-pointer hover:bg-surface-hover transition"
-                  onClick={() => onNavigateToMatch?.(match.id)}
-                >
-                  <div>
-                    <h4 className="font-bold text-lg text-text-primary mb-1 truncate">
-                      vs {match.opponent}
-                    </h4>
-                    <div className="flex flex-col gap-1.5 mb-2">
-                       <p className="text-xs text-text-secondary">
-                          {format(new Date(match.date), "MMM do, yyyy")} • {match.format}
-                       </p>
-                       <div className="flex items-center gap-2">
-                         {match.jerseyColor === "Scarlet Red" && (
-                            <div className="flex items-center gap-1 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[10px] font-bold text-red-400">
-                               <Shirt className="w-3 h-3 fill-red-500 text-red-500" />
-                               <span>Red</span>
-                               <span className="text-text-primary/20 mx-0.5">•</span>
-                               <Circle className="w-2.5 h-2.5 fill-white text-text-primary" />
-                               <span className="text-text-primary">White</span>
-                            </div>
-                         )}
-                         {match.jerseyColor === "Whites" && (
-                            <div className="flex items-center gap-1 px-2 py-0.5 bg-surface-hover border border-border rounded text-[10px] font-bold text-text-primary">
-                               <Shirt className="w-3 h-3 fill-white text-text-primary" />
-                               <span>White</span>
-                               <span className="text-text-primary/20 mx-0.5">•</span>
-                               <Circle className="w-2.5 h-2.5 fill-red-600 text-red-600" />
-                               <span className="text-red-400">Red</span>
-                            </div>
-                         )}
-                       </div>
-                    </div>
-                    <p className="text-xs font-bold text-accent mb-4">
-                       {match.matchType} • {store.grounds.find((g) => g.id === match.groundId)?.name || 'Unknown Ground'}
-                    </p>
-                  </div>
-
-                  {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <p className="text-[10px] uppercase font-bold text-text-muted tracking-wide text-center">
-                        Availability
-                      </p>
-                      <div className="flex gap-2">
-                        {["Yes", "No", "Tentative"].map((avStat) => {
-                          let isSelected = false;
-                          if (avStat === "Yes") isSelected = isConfirmed;
-                          if (avStat === "No") isSelected = isNo;
-                          if (avStat === "Tentative") isSelected = isTentative;
-
-                          return (
-                            <button
-                              key={avStat}
-                              onClick={async () => {
-                                let finalAvStat = avStat as any;
-                                if (avStat === "Yes") finalAvStat = "Confirmed";
-  
-                                if (myPayment) {
-                                  await store.updateMatchAvailability(
-                                    myPayment.id,
-                                    finalAvStat,
-                                    match.id
-                                  );
-                                  if (
-                                    finalAvStat === "Confirmed" &&
-                                    myPayment.status === "Not Playing"
-                                  ) {
-                                    await store.updatePaymentStatus(
-                                      myPayment.id,
-                                      "Unpaid",
-                                      match.id
-                                    );
-                                  } else if (
-                                    (finalAvStat === "No" ||
-                                      finalAvStat === "Tentative") &&
-                                    myPayment.status === "Unpaid"
-                                  ) {
-                                    await store.updatePaymentStatus(
-                                      myPayment.id,
-                                      "Not Playing",
-                                      match.id
-                                    );
-                                  }
-                                } else {
-                                  await store.addPaymentWithAvailability(
-                                    match.id,
-                                    mePlayer.id,
-                                    finalAvStat
-                                  );
-                                }
-                              }}
-                              className={`flex-[1] py-2 rounded-lg font-bold text-xs border transition ${
-                                isSelected
-                                  ? avStat === "Yes"
-                                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-md"
-                                    : avStat === "No"
-                                    ? "bg-red-500/20 text-red-500 border-red-500/50 shadow-md"
-                                    : "bg-amber-500/20 text-amber-500 border-amber-500/50 shadow-md"
-                                  : "bg-transparent text-text-primary border-border hover:bg-surface-hover"
-                              }`}
-                            >
-                              {avStat}
-                            </button>
-                          );
-                        })}
+                return (
+                  <div
+                    key={match.id}
+                    data-testid={`match-card-${match.id}`}
+                    className="snap-start min-w-[280px] w-[80vw] sm:w-[320px] bg-surface-hover border border-border rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-xs cursor-pointer hover:bg-surface-hover transition"
+                    onClick={() => onNavigateToMatch?.(match.id)}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-surface text-brand">
+                          {match.format}
+                        </span>
+                        <span className="text-xs text-text-secondary font-medium">
+                          {format(new Date(match.date), "MMM do, yyyy")}
+                        </span>
                       </div>
+                      <h4 className="font-bold text-base text-text-primary mb-1 truncate">
+                        vs {match.opponent}
+                      </h4>
+                      <p className="text-xs text-accent font-medium mb-3">
+                        {match.matchType} • {ground?.name || "Ground TBD"}
+                      </p>
                     </div>
-                  )}
-                  {onNavigateToMatch && (
-                    <p data-testid="view-details-link" className="text-[10px] text-accent font-bold uppercase tracking-widest mt-3 text-center flex items-center justify-center gap-1">
-                      View Details <ChevronRight className="w-3 h-3" />
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs font-bold text-accent">
+                      <span>View Details</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Due Payment Card (Only show dues) - Will fill remaining row space */}
-      {!isAdmin && mePlayer && hasDues && (
-        <div className={`md:col-span-6 ${hasMatches ? 'lg:col-span-4' : 'lg:col-span-12'} h-full flex flex-col`}>
-           <PlayerFinanceView store={store} userId={currentUserId} showOnly="dues" />
         </div>
       )}
 

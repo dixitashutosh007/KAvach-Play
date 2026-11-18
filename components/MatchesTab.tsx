@@ -90,6 +90,8 @@ export function MatchesTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [playerFilter, setPlayerFilter] = useState<"all" | "upcoming" | "past" | "abandoned">("all");
+  const [playerSearch, setPlayerSearch] = useState<string>("");
   const [viewMode, setViewMode] = useState<"list" | "calendar" | "sheet">(
     defaultAction === "calendar" ? "calendar" : (persona === "admin" ? "calendar" : "list")
   );
@@ -1388,6 +1390,85 @@ export function MatchesTab({
                    </div>
                  );
               }
+
+              if (!isAdmin) {
+                const displayedMatches = allMatches.filter((m) => {
+                  if (playerFilter === "upcoming" && m.result && m.result !== "Pending") return false;
+                  if (playerFilter === "past" && (!m.result || m.result === "Pending" || m.result === "Abandoned")) return false;
+                  if (playerFilter === "abandoned" && m.result !== "Abandoned") return false;
+
+                  if (playerSearch.trim()) {
+                    const q = playerSearch.toLowerCase().trim();
+                    const groundName = store.grounds.find((g) => g.id === m.groundId)?.name?.toLowerCase() || "";
+                    const opp = (m.opponent || "").toLowerCase();
+                    if (!opp.includes(q) && !groundName.includes(q)) return false;
+                  }
+                  return true;
+                }).sort((a, b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());
+
+                return (
+                  <div className="space-y-4">
+                    {/* Search and Category Filter Bar (MOD-03A) */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-surface p-3.5 rounded-2xl border border-border shadow-xs">
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                        <button
+                          onClick={() => setPlayerFilter("all")}
+                          className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                            playerFilter === "all" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          All Matches ({allMatches.length})
+                        </button>
+                        <button
+                          onClick={() => setPlayerFilter("upcoming")}
+                          className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                            playerFilter === "upcoming" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          Upcoming ({allMatches.filter(m => m.result === "Pending" || !m.result).length})
+                        </button>
+                        <button
+                          onClick={() => setPlayerFilter("past")}
+                          className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                            playerFilter === "past" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          Past Results ({allMatches.filter(m => m.result && m.result !== "Pending" && m.result !== "Abandoned").length})
+                        </button>
+                        <button
+                          onClick={() => setPlayerFilter("abandoned")}
+                          className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                            playerFilter === "abandoned" ? "bg-accent text-text-accent shadow-xs" : "bg-surface-hover text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          Abandoned ({allMatches.filter(m => m.result === "Abandoned").length})
+                        </button>
+                      </div>
+
+                      <div className="relative min-w-[200px]">
+                        <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Search opponent or venue..."
+                          value={playerSearch}
+                          onChange={(e) => setPlayerSearch(e.target.value)}
+                          className="w-full min-h-[44px] text-xs pl-9 pr-3 py-2 bg-surface rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-accent/30"
+                        />
+                      </div>
+                    </div>
+
+                    {displayedMatches.length > 0 ? (
+                      <div className="space-y-4">
+                        {displayedMatches.map(renderMatchCard)}
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center text-sm text-text-muted bg-surface border border-dashed border-border rounded-xl">
+                        No matches match your filter criteria.
+                      </div>
+                    )}
+                  </div>
+                );
+              }
                
               const pastMatches = allMatches.filter(m => getMatchDate(m) < pastCutoff).sort((a,b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());
               const upcomingMatches = allMatches.filter(m => getMatchDate(m) >= pastCutoff).sort((a,b) => getMatchDate(a).getTime() - getMatchDate(b).getTime());
@@ -2050,7 +2131,7 @@ export function MatchPayments({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <button
           onClick={onBack}
-          className="text-[13px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1 hover:text-text-primary transition"
+          className="min-h-[44px] min-w-[44px] text-[13px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1 hover:text-text-primary transition cursor-pointer"
         >
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>

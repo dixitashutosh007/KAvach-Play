@@ -1726,15 +1726,28 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     paymentId: string,
     availability: MatchPayment["availability"],
     matchId: string,
+    tacticalNote?: string,
   ) => {
     setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, availability } : p)),
+      prev.map((p) =>
+        p.id === paymentId
+          ? {
+              ...p,
+              availability,
+              ...(tacticalNote !== undefined ? { tacticalNote } : {}),
+            }
+          : p,
+      ),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
       const p = payments.find((p) => p.id === paymentId);
       const playerObj = players.find((pl) => pl.id === p?.playerId);
-      await updateDoc(docRef, { availability, updatedAt: serverTimestamp() });
+      const updateData: any = { availability, updatedAt: serverTimestamp() };
+      if (tacticalNote !== undefined) {
+        updateData.tacticalNote = tacticalNote;
+      }
+      await updateDoc(docRef, updateData);
       logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerObj?.name || "Player"} availability`, changes: [{ field: "availability", oldValue: p?.availability, newValue: availability }], summary: `${playerObj?.name || "Player"} changed availability to ${availability}` });
       createNotification(
         "admin",
@@ -1755,6 +1768,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     matchId: string,
     playerId: string,
     availability: MatchPayment["availability"],
+    tacticalNote?: string,
   ) => {
     const id = crypto.randomUUID();
     const initialStatus =
@@ -1767,11 +1781,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         playerId,
         status: initialStatus,
         availability,
+        ...(tacticalNote !== undefined ? { tacticalNote } : {}),
       } as MatchPayment,
     ]);
     const docRef = doc(db, "matches", matchId, "payments", id);
     try {
-      await setDoc(docRef, {
+      const createData: any = {
         id,
         matchId,
         playerId,
@@ -1779,7 +1794,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         availability,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (tacticalNote !== undefined) {
+        createData.tacticalNote = tacticalNote;
+      }
+      await setDoc(docRef, createData);
       const pName = players.find(pl => pl.id === playerId)?.name || playerId;
       const mLabel = matches.find(m => m.id === matchId)?.opponent || matchId;
       logAudit({ ...getActor(), action: "created", entity: "payment", entityId: id, entityLabel: `${pName} - ${mLabel}`, changes: [{ field: "availability", newValue: availability }], summary: `${pName} set availability to ${availability} for match vs ${mLabel}` });
