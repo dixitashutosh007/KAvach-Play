@@ -483,13 +483,16 @@ export async function linkPlayerAccount(
 
   // 6. Concurrency-Safe Four-Record Atomic Transaction
   try {
-    const txResult = await db.runTransaction(async (transaction) => {
-      return executeLinkingTransaction(db, transaction, {
-        uid,
-        canonicalAuthPhone,
-        resolvedPlayerId,
-      });
-    });
+    const txResult = await db.runTransaction(
+      async (transaction) => {
+        return executeLinkingTransaction(db, transaction, {
+          uid,
+          canonicalAuthPhone,
+          resolvedPlayerId,
+        });
+      },
+      { maxAttempts: 15 },
+    );
 
     return {
       ok: true,
@@ -510,6 +513,34 @@ export async function linkPlayerAccount(
       err?.message?.includes?.("Transaction is invalid or closed") ||
       err?.message?.includes?.("aborted");
     if (isContention) {
+      // If the transaction aborted due to contention, check if the concurrent request already committed
+      // the complete four-way link for this exact user and player (idempotent concurrency success)
+      try {
+        const [phoneSnap, uidSnap, playerSnap, userSnap] = await Promise.all([
+          db.collection("phoneIndex").doc(canonicalAuthPhone).get(),
+          db.collection("uidIndex").doc(uid).get(),
+          db.collection("players").doc(resolvedPlayerId).get(),
+          db.collection("appUsers").doc(uid).get(),
+        ]);
+        const pData = playerSnap.data() || {};
+        const uData = userSnap.data() || {};
+        const piData = phoneSnap.data() || {};
+        const uiData = uidSnap.data() || {};
+
+        if (
+          piData.authUid === uid &&
+          piData.playerId === resolvedPlayerId &&
+          uiData.authUid === uid &&
+          uiData.playerId === resolvedPlayerId &&
+          pData.authUid === uid &&
+          uData.playerId === resolvedPlayerId
+        ) {
+          return { ok: true, status: 200, playerId: resolvedPlayerId, alreadyLinked: true };
+        }
+      } catch {
+        // Fall through to 409
+      }
+
       return {
         ok: false,
         status: 409,
