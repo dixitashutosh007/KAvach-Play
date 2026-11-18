@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { formatDate, normalizeIndianMobile, computeLateFees } from "@/lib/utils";
+import { resolveMyPlayers } from "@/lib/player-identity";
 import RazorReportView from "./RazorReportView";
 import { CreateFeeAdmin } from "./CreateFeeAdmin";
 import { FeePlansAdmin } from "./FeePlansAdmin";
@@ -69,12 +70,7 @@ export function PlayerFinanceView({
   const { toast } = useToast();
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const appUser = store.appUsers.find((u) => u.id === userId);
-  const myPlayers = store.players.filter(
-    (p) =>
-      p.id === userId ||
-      p.authUid === userId ||
-      (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
-  );
+  const myPlayers = resolveMyPlayers(store.players, userId, appUser);
 
   const mePlayer = myPlayers[0] || null;
 

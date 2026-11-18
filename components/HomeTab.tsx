@@ -10,6 +10,8 @@ import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Post, Player } from "@/lib/types";
 import { normalizeIndianMobile } from "@/lib/utils";
+import { resolveMyPlayers } from "@/lib/player-identity";
+import { calculatePlayerDues } from "@/lib/player-dues";
 import {
   MessageSquare,
   MapPin,
@@ -183,28 +185,19 @@ export function HomeTab({
   };
 
   const appUser = store.appUsers.find((u) => u.id === currentUserId);
-  const myPlayers = useMemo(() => store.players.filter(
-    (p) =>
-      p.id === currentUserId ||
-      p.authUid === currentUserId ||
-      (appUser?.playerId && p.id === appUser.playerId) ||
-      (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
-  ), [store.players, currentUserId, appUser?.mobile, appUser?.playerId]);
+  const myPlayers = useMemo(
+    () => resolveMyPlayers(store.players, currentUserId, appUser),
+    [store.players, currentUserId, appUser],
+  );
   
   const mePlayer = myPlayers[0] || null;
 
-  const hasDues = useMemo(() => {
-    if (myPlayers.length === 0) return false;
-    const myPayments = store.payments.filter(
-      (p) =>
-        myPlayers.some((mp) => mp.id === p.playerId) &&
-        p.status === "Unpaid",
-    );
-    const otherFees = store.otherFees.filter((f) =>
-      myPlayers.some((mp) => mp.id === f.playerId) && f.status === "Unpaid"
-    );
-    return myPayments.length > 0 || otherFees.length > 0;
-  }, [store.payments, store.otherFees, myPlayers]);
+  const duesSummary = useMemo(
+    () => calculatePlayerDues(myPlayers, store.payments, store.matches, store.otherFees),
+    [myPlayers, store.payments, store.matches, store.otherFees],
+  );
+  const hasDues = duesSummary.hasDues;
+  const { totalDue, dueCount } = duesSummary;
   const upcomingMatches = useMemo(() => {
     if (!mePlayer) return [];
     return store.matches
@@ -296,37 +289,6 @@ export function HomeTab({
   const hasTodayBdays = todayBirthdays.length > 0;
   const hasUpcomingBdays = upcomingBirthdays.length > 0;
   const hasBirthdays = hasTodayBdays || hasUpcomingBdays;
-
-  const { totalDue, dueCount } = useMemo(() => {
-    if (myPlayers.length === 0) return { totalDue: 0, dueCount: 0 };
-    const myPayments = store.payments.filter(
-      (p) =>
-        myPlayers.some((mp) => mp.id === p.playerId) &&
-        p.status === "Unpaid",
-    );
-    const billablePayments = myPayments.filter((p) => {
-      const match = store.matches.find((m) => m.id === p.matchId);
-      return match && isMatchBillable(match);
-    });
-    const otherFees = store.otherFees.filter(
-      (f) =>
-        myPlayers.some((mp) => mp.id === f.playerId) &&
-        f.status === "Unpaid",
-    );
-    const matchDue = billablePayments.reduce(
-      (total, p) => {
-        const match = store.matches.find((m) => m.id === p.matchId);
-        const fee = p.feeOverride !== undefined ? p.feeOverride : (match?.fee || 0);
-        return total + fee;
-      },
-      0,
-    );
-    const otherDue = otherFees.reduce((total, f) => total + (f.amount || 0), 0);
-    return {
-      totalDue: matchDue + otherDue,
-      dueCount: billablePayments.length + otherFees.length,
-    };
-  }, [store.payments, store.otherFees, store.matches, myPlayers]);
 
   const heroMatch = upcomingMatches[0] || null;
   const otherUpcomingMatches = upcomingMatches.slice(1);

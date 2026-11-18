@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
+import { resolvePlayerForUser } from "@/lib/player-identity";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -1607,11 +1608,7 @@ export function MatchPayments({
 
   // Link to AppUser
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
-  const mePlayer =
-    store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
-    (appUser?.mobile
-      ? store.players.find((p) => p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile))
-      : null);
+  const mePlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
   const myPayment = mePlayer
     ? matchPayments.find((p) => p.playerId === mePlayer.id)
     : null;

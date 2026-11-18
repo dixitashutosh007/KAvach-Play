@@ -23,6 +23,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { dbToInputDate, normalizeIndianMobile, parseExpiryDate } from "@/lib/utils";
+import { resolvePlayerForUser } from "@/lib/player-identity";
 import { useToast } from "@/components/ui/Toast";
 
 // Make sure to add Razorpay to window type if needed
@@ -41,9 +42,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
 
   // Look up user profiles across both appUser and associated player registry file
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
-  const player =
-    store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
-    store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
+  const player = resolvePlayerForUser(store.players, user?.uid, appUser);
 
   const isStudioUser = appUser?.isStudioMember || player?.isStudioMember;
 

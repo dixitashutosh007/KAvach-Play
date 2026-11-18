@@ -12,6 +12,7 @@ import { useAuth } from "./AuthProvider";
 import { useState } from "react";
 import { Calendar, MapPin, User, Save, CreditCard, Plus, Trash2, Edit2, PieChart, ChevronDown, ChevronRight } from "lucide-react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber, findExistingPlayer } from "@/lib/utils";
+import { resolvePlayerForUser } from "@/lib/player-identity";
 import { createNotification } from "@/lib/notifications";
 import Image from "next/image";
 
@@ -38,10 +39,7 @@ export function ProfileTab({
   const { toast } = useToast();
   const { user, hasAdminClaim, logOut } = useAuth();
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
-  const userPhone = user?.phoneNumber || appUser?.mobile;
-  const linkedPlayer =
-    store.players.find((p) => p.id === user?.uid || p.authUid === user?.uid) ||
-    store.players.find((p) => p.mobile && userPhone && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(userPhone));
+  const linkedPlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
   const isAdmin =
     !!hasAdminClaim ||
     !!appUser?.isClubAdmin ||

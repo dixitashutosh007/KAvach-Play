@@ -52,6 +52,8 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { normalizeIndianMobile } from "@/lib/utils";
+import { resolvePlayerForUser, resolveMyPlayers } from "@/lib/player-identity";
+import { calculatePlayerDues } from "@/lib/player-dues";
 
 import { useTheme } from "@/hooks/useTheme";
 import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
@@ -340,8 +342,10 @@ export default function Home() {
 
 
   const isMobileAuth = !!user?.phoneNumber;
-  const currentPlayerObj = store.players.find(
-    (p) => p.id === user?.uid || p.authUid === user?.uid,
+  const currentPlayerObj = resolvePlayerForUser(
+    store.players,
+    user?.uid,
+    currentUserObj,
   );
   const existingPlayerWithSamePhone =
     isMobileAuth && user?.phoneNumber
@@ -543,9 +547,7 @@ export default function Home() {
   const logoUrl = store.appConfig?.logoUrl;
 
   const appUser = store.appUsers.find((u) => u.id === user.uid);
-  const player =
-    store.players.find((p) => p.id === user.uid || p.authUid === user.uid || (appUser?.playerId && p.id === appUser.playerId)) ||
-    store.players.find((p) => p.mobile && appUser?.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile));
+  const player = resolvePlayerForUser(store.players, user.uid, appUser);
 
   if (player?.disabled || appUser?.status === "Disabled") {
     return (
@@ -804,37 +806,18 @@ export default function Home() {
               {/* Stats overview mini widget inside card */}
               <div className="grid grid-cols-2 gap-2 mt-5 pt-4 border-t border-border text-center">
                 {(() => {
-                  const myPlayers = store.players.filter(
-                    (p) =>
-                      p.id === appUser?.id ||
-                      p.authUid === appUser?.id ||
-                      (appUser?.mobile && p.mobile && normalizeIndianMobile(p.mobile) === normalizeIndianMobile(appUser.mobile)),
+                  const myPlayers = resolveMyPlayers(
+                    store.players,
+                    user?.uid,
+                    appUser,
                   );
-                  let dueValue = 0;
-                  if (myPlayers.length > 0) {
-                    const matchDue = store.payments
-                      .filter(
-                        (p) =>
-                          myPlayers.some((mp) => mp.id === p.playerId) &&
-                          p.status === "Unpaid",
-                      )
-                      .reduce(
-                        (total, p) =>
-                          total +
-                          (store.matches.find((m) => m.id === p.matchId)?.fee ||
-                            0),
-                        0,
-                      );
-                    const otherFeeDue =
-                      store.otherFees
-                        ?.filter(
-                          (f) =>
-                            myPlayers.some((mp) => mp.id === f.playerId) &&
-                            f.status === "Unpaid",
-                        )
-                        .reduce((total, f) => total + (f.amount || 0), 0) || 0;
-                    dueValue = matchDue + otherFeeDue;
-                  }
+                  const duesSummary = calculatePlayerDues(
+                    myPlayers,
+                    store.payments,
+                    store.matches,
+                    store.otherFees,
+                  );
+                  const dueValue = duesSummary.totalDue;
 
                   const myPlayerRaw = myPlayers[0];
 
