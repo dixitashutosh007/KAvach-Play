@@ -1,17 +1,14 @@
 /**
  * Server-Side Account Linking Engine (lib/account-linking.ts)
  *
- * Implements Security Remediation 1B:
- * - Deterministic, concurrency-safe identity reservation via `phoneIndex/{canonicalPhone}`.
- * - Authoritative bidirectional UID <-> Player mapping enforcement.
- * - Strict parsing of stored mobile formats; rejects arbitrary prefixes, excessive digits,
- *   repeated country codes, embedded text, and malformed inputs without silent truncation.
- * - Replaces full collection scans with targeted indexed lookups and transactional point reads.
- * - Comprehensive idempotency verification requiring total consistency across phoneIndex,
- *   players, and appUsers before returning alreadyLinked: true.
- * - Immediate rejection of inconsistent legacy mappings for manual administrator resolution.
- * - Atomically executes all state persistence in a single Firestore transaction with all
- *   reads preceding all writes.
+ * Implements Security Remediation 1C:
+ * - Authoritative bidirectional reservations via `phoneIndex/{canonicalPhone}` AND `uidIndex/{uid}`.
+ * - Enforces strict Indian mobile starting-digit constraint [6-9]\d{9} across all accepted formats.
+ * - Exhaustive duplicate historical phone detection covering all accepted legacy representations
+ *   (e.g., bare 10 digits, formatted with spaces, formatted with hyphens, trunk prefixes).
+ * - Comprehensive four-way idempotency verification (phoneIndex, uidIndex, players, appUsers).
+ * - Fails closed on any inconsistent legacy identity mapping or ambiguous candidate records.
+ * - Real transaction abort test support.
  */
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -20,6 +17,7 @@ export interface LinkAccountParams {
   uid: string;
   verifiedPhoneNumber?: string;
   requestedPlayerId?: string;
+  _simulateAbortBeforeCommit?: boolean;
 }
 
 export interface LinkAccountResult {
@@ -40,11 +38,11 @@ export class LinkingError extends Error {
 }
 
 /**
- * Validates whether a phone number strictly matches canonical Indian E.164 format (+91[6-9]XXXXXXXXX).
+ * Validates whether a phone number strictly matches canonical Indian E.164 format (+91[6-9]\d{9}).
  */
 export function isCanonicalIndianMobile(phone: string): boolean {
   if (typeof phone !== "string") return false;
-  return /^\+91\d{10}$/.test(phone.trim());
+  return /^\+91[6-9]\d{9}$/.test(phone.trim());
 }
 
 /**
@@ -53,15 +51,17 @@ export function isCanonicalIndianMobile(phone: string): boolean {
  * Rules:
  * - Rejects non-string, empty, or whitespace-only inputs.
  * - Rejects any alphabetic or invalid punctuation characters (only spaces, hyphens, and leading '+' permitted).
+ * - Enforces Indian mobile starting digit constraint [6-9] for exactly 10 digits.
  * - Accepts ONLY explicitly documented Indian mobile formats:
- *   1. Canonical E.164: `+91` followed by exactly 10 digits
- *   2. International bare: `91` followed by exactly 10 digits
- *   3. Domestic trunk prefix: `0` followed by exactly 10 digits
- *   4. Bare 10 digits
+ *   1. Canonical E.164: `+91[6-9]\d{9}`
+ *   2. International bare: `91[6-9]\d{9}`
+ *   3. Domestic trunk prefix: `0[6-9]\d{9}`
+ *   4. Bare 10 digits starting with [6-9]: `[6-9]\d{9}`
+ * - Allows standard formatting delimiters (spaces and single hyphens) between prefix/digit groups.
  * - Rejects arbitrary prefixes (e.g., +1, +44, +92).
  * - Rejects excessive digits (e.g., 11+ digits) without silent truncation.
  * - Rejects repeated country codes (e.g., +9191...).
- * - Rejects incomplete numbers (e.g., < 10 digits).
+ * - Rejects invalid first digits (0-5) in the 10-digit mobile number.
  * - Returns { ok: true, canonical, raw10 } or { ok: false, error }.
  */
 export function parseStrictIndianMobile(input: unknown):
@@ -95,22 +95,22 @@ export function parseStrictIndianMobile(input: unknown):
   // Strip standard spacing and hyphen delimiters
   const compact = trimmed.replace(/[\s\-]/g, "");
 
-  // Must match exactly one of the four supported Indian formats with exactly 10 digits
+  // Must match exactly one of the four supported Indian formats with starting digit 6-9
   let raw10: string | null = null;
-  if (/^\+91(\d{10})$/.test(compact)) {
+  if (/^\+91([6-9]\d{9})$/.test(compact)) {
     raw10 = compact.slice(3);
-  } else if (/^91(\d{10})$/.test(compact)) {
+  } else if (/^91([6-9]\d{9})$/.test(compact)) {
     raw10 = compact.slice(2);
-  } else if (/^0(\d{10})$/.test(compact)) {
+  } else if (/^0([6-9]\d{9})$/.test(compact)) {
     raw10 = compact.slice(1);
-  } else if (/^(\d{10})$/.test(compact)) {
+  } else if (/^([6-9]\d{9})$/.test(compact)) {
     raw10 = compact;
   }
 
   if (!raw10) {
     return {
       ok: false,
-      error: "Phone number is not a valid 10-digit Indian mobile number with a supported prefix (+91, 91, 0, or bare).",
+      error: "Phone number is not a valid 10-digit Indian mobile number starting with 6-9 in a supported format (+91, 91, 0, or bare).",
     };
   }
 
@@ -122,13 +122,13 @@ export function parseStrictIndianMobile(input: unknown):
 }
 
 /**
- * Concurrency-safe, transactional player account linking.
+ * Concurrency-safe, transactional player account linking with bidirectional reservations.
  */
 export async function linkPlayerAccount(
   db: FirebaseFirestore.Firestore,
   params: LinkAccountParams,
 ): Promise<LinkAccountResult> {
-  const { uid, verifiedPhoneNumber, requestedPlayerId } = params;
+  const { uid, verifiedPhoneNumber, requestedPlayerId, _simulateAbortBeforeCommit } = params;
 
   // 1. Parameter Validation
   if (!uid || typeof uid !== "string" || !uid.trim()) {
@@ -143,7 +143,7 @@ export async function linkPlayerAccount(
     };
   }
 
-  // Validate verified phone against canonical E.164
+  // Validate verified phone against canonical E.164 with starting digit constraint [6-9]
   const authPhoneParsed = parseStrictIndianMobile(verifiedPhoneNumber);
   if (!authPhoneParsed.ok || !isCanonicalIndianMobile(authPhoneParsed.canonical)) {
     return {
@@ -163,41 +163,61 @@ export async function linkPlayerAccount(
     }
   }
 
-  // 2. Pre-transaction Resolution & Uniqueness Guard
-  // Determine target player. If requestedPlayerId is not provided, or if checking historical duplicates:
-  // Query targeted indexed representations: canonical, raw10, trunk prefix, and bare 91 prefix.
-  const lookupValues = [
-    canonicalAuthPhone,
-    authPhoneParsed.raw10,
-    `0${authPhoneParsed.raw10}`,
-    `91${authPhoneParsed.raw10}`,
-  ];
-
-  const candidateSnap = await db.collection("players").where("mobile", "in", lookupValues).get();
-  const eligibleCandidates: Array<{ id: string; data: FirebaseFirestore.DocumentData }> = [];
-
-  for (const doc of candidateSnap.docs) {
-    const data = doc.data() || {};
-    if (data.disabled === true || data.mergedInto) continue;
-    if (!data.mobile) continue;
-
-    const parsedStored = parseStrictIndianMobile(data.mobile);
-    if (parsedStored.ok && parsedStored.canonical === canonicalAuthPhone) {
-      eligibleCandidates.push({ id: doc.id, data });
-    }
-  }
-
-  // Ambiguous duplicate identity check across historical records
-  if (eligibleCandidates.length > 1) {
-    return {
-      ok: false,
-      status: 409,
-      error: "Multiple player records found with this phone number. Ambiguous identity requires manual administrator resolution.",
-    };
-  }
-
+  // 2. Pre-transaction Candidate Resolution & Exhaustive Duplicate Detection
+  // Check if phoneIndex already exists for canonicalAuthPhone
+  const existingPhoneIndexDoc = await db.collection("phoneIndex").doc(canonicalAuthPhone).get();
   let resolvedPlayerId: string;
-  if (eligibleCandidates.length === 1) {
+
+  if (existingPhoneIndexDoc.exists) {
+    resolvedPlayerId = existingPhoneIndexDoc.data()?.playerId;
+    if (!resolvedPlayerId) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Corrupt phone reservation index detected. Manual administrator resolution required.",
+      };
+    }
+    if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Phone number is already associated with another player profile.",
+      };
+    }
+  } else {
+    // Unindexed phone: exhaustively scan players collection to catch all supported formatted variations
+    // (e.g. "9876500001", "+91 98765-00001", "09876500001", etc.)
+    const allPlayersSnap = await db.collection("players").get();
+    const eligibleCandidates: Array<{ id: string; data: FirebaseFirestore.DocumentData }> = [];
+
+    for (const doc of allPlayersSnap.docs) {
+      const data = doc.data() || {};
+      if (data.disabled === true || data.mergedInto) continue;
+      if (!data.mobile) continue;
+
+      const parsedStored = parseStrictIndianMobile(data.mobile);
+      if (parsedStored.ok && parsedStored.canonical === canonicalAuthPhone) {
+        eligibleCandidates.push({ id: doc.id, data });
+      }
+    }
+
+    // Exhaustive Ambiguous duplicate identity check
+    if (eligibleCandidates.length > 1) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Multiple player records found with this phone number. Ambiguous identity requires manual administrator resolution.",
+      };
+    }
+
+    if (eligibleCandidates.length === 0) {
+      return {
+        ok: false,
+        status: 404,
+        error: "No eligible player record found matching verified phone number.",
+      };
+    }
+
     resolvedPlayerId = eligibleCandidates[0].id;
     if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
       return {
@@ -206,30 +226,20 @@ export async function linkPlayerAccount(
         error: "Requested player does not match authoritatively resolved player identity.",
       };
     }
-  } else {
-    // Zero candidates in the indexed query.
-    // If requestedPlayerId was provided, verify it directly inside transaction (may be formatted differently or non-existent)
-    if (requestedPlayerId) {
-      resolvedPlayerId = requestedPlayerId.trim();
-    } else {
-      return {
-        ok: false,
-        status: 404,
-        error: "No eligible player record found matching verified phone number.",
-      };
-    }
   }
 
-  // 3. Concurrency-Safe Transaction
-  // All reads occur before any writes inside db.runTransaction().
+  // 3. Concurrency-Safe Four-Record Atomic Transaction
+  // In accordance with Firestore rules, all 4 document reads occur before any writes.
   try {
     const txResult = await db.runTransaction(async (transaction) => {
       const phoneIndexRef = db.collection("phoneIndex").doc(canonicalAuthPhone);
+      const uidIndexRef = db.collection("uidIndex").doc(uid);
       const playerRef = db.collection("players").doc(resolvedPlayerId);
       const userRef = db.collection("appUsers").doc(uid);
 
-      // ALL READS FIRST
+      // ALL FOUR READS FIRST
       const phoneIndexSnap = await transaction.get(phoneIndexRef);
+      const uidIndexSnap = await transaction.get(uidIndexRef);
       const playerSnap = await transaction.get(playerRef);
       const userSnap = await transaction.get(userRef);
 
@@ -246,7 +256,7 @@ export async function linkPlayerAccount(
         throw new LinkingError(403, "Player record has been merged into another profile.");
       }
 
-      // Strictly parse stored mobile on the player document
+      // Strictly parse stored mobile on player document
       const storedMobileParsed = parseStrictIndianMobile(playerData.mobile);
       if (!storedMobileParsed.ok || storedMobileParsed.canonical !== canonicalAuthPhone) {
         throw new LinkingError(403, "Player phone number does not match verified token phone number.");
@@ -259,47 +269,66 @@ export async function linkPlayerAccount(
       }
 
       // C. Cross-record ownership and collision validation
-      const indexData = phoneIndexSnap.exists ? phoneIndexSnap.data() || {} : null;
+      const phoneIndexData = phoneIndexSnap.exists ? phoneIndexSnap.data() || {} : null;
+      const uidIndexData = uidIndexSnap.exists ? uidIndexSnap.data() || {} : null;
 
       // Check phone reservation collision
-      if (indexData) {
-        if (indexData.authUid && indexData.authUid !== uid) {
+      if (phoneIndexData) {
+        if (phoneIndexData.authUid && phoneIndexData.authUid !== uid) {
           throw new LinkingError(409, "Phone number is already associated with another user account.");
         }
-        if (indexData.playerId && indexData.playerId !== resolvedPlayerId) {
+        if (phoneIndexData.playerId && phoneIndexData.playerId !== resolvedPlayerId) {
           throw new LinkingError(409, "Phone number is already associated with another player profile.");
         }
       }
 
-      // Check user account collision
+      // Check UID reservation collision
+      if (uidIndexData) {
+        if (uidIndexData.playerId && uidIndexData.playerId !== resolvedPlayerId) {
+          throw new LinkingError(409, "User account is already linked to another player profile.");
+        }
+        if (uidIndexData.canonicalPhone && uidIndexData.canonicalPhone !== canonicalAuthPhone) {
+          throw new LinkingError(409, "User account is already linked to another phone number.");
+        }
+      }
+
+      // Check user account document collision
       if (userData.playerId && userData.playerId !== resolvedPlayerId) {
         throw new LinkingError(409, "User account is already linked to another player profile.");
       }
 
-      // Check player record collision
+      // Check player record document collision
       if (playerData.authUid && playerData.authUid !== uid) {
         throw new LinkingError(409, "Player record is already linked to another user account.");
       }
 
-      // D. Full Idempotency vs Inconsistent State Check (SEC-1A-03, SEC-1A-05)
-      const isIndexConsistent = indexData && indexData.authUid === uid && indexData.playerId === resolvedPlayerId;
-      const isPlayerConsistent = playerData.authUid === uid;
-      const isUserConsistent = userData.playerId === resolvedPlayerId;
+      // D. Full Four-Way Idempotency vs Inconsistent Legacy State Check (SEC-1B-02, SEC-1A-05)
+      const isPhoneIndexLinked = phoneIndexSnap.exists &&
+        phoneIndexData?.authUid === uid &&
+        phoneIndexData?.playerId === resolvedPlayerId;
 
-      if (isIndexConsistent && isPlayerConsistent && isUserConsistent) {
-        // Complete, verified 3-way consistency: idempotent success
+      const isUidIndexLinked = uidIndexSnap.exists &&
+        uidIndexData?.authUid === uid &&
+        uidIndexData?.playerId === resolvedPlayerId;
+
+      const isPlayerLinked = playerData.authUid === uid;
+      const isUserLinked = userData.playerId === resolvedPlayerId;
+
+      if (isPhoneIndexLinked && isUidIndexLinked && isPlayerLinked && isUserLinked) {
+        // Complete, verified 4-way consistency: idempotent success
         return { alreadyLinked: true, playerId: resolvedPlayerId };
       }
 
-      // If any partial or conflicting legacy mapping exists, reject for manual admin resolution
-      if (isPlayerConsistent !== isUserConsistent || (indexData && !isIndexConsistent)) {
+      // If any of the four records has a partial or uncoordinated mapping, fail closed
+      if (isPhoneIndexLinked || isUidIndexLinked || isPlayerLinked || isUserLinked ||
+          phoneIndexSnap.exists || uidIndexSnap.exists || playerData.authUid || userData.playerId) {
         throw new LinkingError(
           409,
           "Inconsistent identity mapping detected. Manual administrator resolution required.",
         );
       }
 
-      // E. ALL WRITES AFTER READS (Atomic Persistence)
+      // E. ALL FOUR WRITES AFTER READS (Atomic Persistence)
       // 1. Maintain phone reservation index
       transaction.set(
         phoneIndexRef,
@@ -308,18 +337,31 @@ export async function linkPlayerAccount(
           authUid: uid,
           phone: canonicalAuthPhone,
           updatedAt: FieldValue.serverTimestamp(),
-          createdAt: phoneIndexSnap.exists ? (indexData?.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
+          createdAt: phoneIndexSnap.exists ? (phoneIndexData?.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
 
-      // 2. Update player record
+      // 2. Maintain UID reservation index
+      transaction.set(
+        uidIndexRef,
+        {
+          playerId: resolvedPlayerId,
+          authUid: uid,
+          canonicalPhone: canonicalAuthPhone,
+          updatedAt: FieldValue.serverTimestamp(),
+          createdAt: uidIndexSnap.exists ? (uidIndexData?.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      // 3. Update player record
       transaction.update(playerRef, {
         authUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // 3. Update or create appUser record
+      // 4. Update or create appUser record
       if (userSnap.exists) {
         transaction.update(userRef, {
           playerId: resolvedPlayerId,
@@ -336,6 +378,11 @@ export async function linkPlayerAccount(
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
+      }
+
+      // Simulated abort hook for testing rollback behavior
+      if (_simulateAbortBeforeCommit) {
+        throw new LinkingError(500, "Simulated intentional abort after staging all transaction writes.");
       }
 
       return { alreadyLinked: false, playerId: resolvedPlayerId };

@@ -279,28 +279,30 @@ describe("Security Remediation 1A: Hardened Player Account Linking Live Suite", 
   });
 
   it("denies suffix-only match", async () => {
+    // Valid Indian mobile (+919007654321) that only contains suffix 7654321 of p_eligible_1
     const res = await linkPlayerAccount(db, {
       uid: "uid_attacker",
-      verifiedPhoneNumber: "+910007654321",
+      verifiedPhoneNumber: "+919007654321",
     });
     assert.equal(res.ok, false);
     assert.equal(res.status, 404);
   });
 
   it("denies malformed stored phone number", async () => {
-    // p_malformed has mobile: "12345"
+    // p_malformed has mobile: "12345", verified phone is valid canonical +919123450000
     const res = await linkPlayerAccount(db, {
       uid: "uid_attacker",
-      verifiedPhoneNumber: "+911234500000",
+      verifiedPhoneNumber: "+919123450000",
     });
     assert.equal(res.ok, false);
     assert.equal(res.status, 404);
   });
 
   it("denies empty stored phone number", async () => {
+    // p_empty_mobile has mobile: "", verified phone is valid canonical +919876599999
     const res = await linkPlayerAccount(db, {
       uid: "uid_attacker",
-      verifiedPhoneNumber: "+910000000000",
+      verifiedPhoneNumber: "+919876599999",
     });
     assert.equal(res.ok, false);
     assert.equal(res.status, 404);

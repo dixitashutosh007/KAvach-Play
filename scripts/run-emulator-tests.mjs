@@ -53,6 +53,8 @@ if (javaDir) {
 }
 
 console.log("[emulator-runner] Starting Firebase Local Firestore Emulator...");
+const testArgs = process.argv.slice(2);
+const target = testArgs.length ? testArgs.join(" ") : "tests/*emulator*.test.mjs tests/firestore-rules.test.mjs";
 const result = spawnSync(
   process.platform === "win32" ? "npx.cmd" : "npx",
   [
@@ -60,7 +62,7 @@ const result = spawnSync(
     "emulators:exec",
     "--only",
     "firestore",
-    "node --test tests/*emulator*.test.mjs tests/firestore-rules.test.mjs",
+    `node --test ${target}`,
   ],
   {
     stdio: "inherit",
