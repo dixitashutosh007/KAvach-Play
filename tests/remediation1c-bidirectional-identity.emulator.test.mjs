@@ -32,6 +32,7 @@ describe("Security Remediation 1C: Bidirectional Identity & Collision Protection
   let testEnv;
   let db;
   let linkPlayerAccount;
+  let executeLinkingTransaction;
   let parseStrictIndianMobile;
   let isCanonicalIndianMobile;
   let setAuthDbForTesting;
@@ -58,6 +59,7 @@ describe("Security Remediation 1C: Bidirectional Identity & Collision Protection
 
     const linkingModule = await import("../lib/account-linking.ts");
     linkPlayerAccount = linkingModule.linkPlayerAccount;
+    executeLinkingTransaction = linkingModule.executeLinkingTransaction;
     parseStrictIndianMobile = linkingModule.parseStrictIndianMobile;
     isCanonicalIndianMobile = linkingModule.isCanonicalIndianMobile;
 
@@ -221,15 +223,17 @@ describe("Security Remediation 1C: Bidirectional Identity & Collision Protection
   // ── 4. SEC-1B-04: Genuine Transaction Abort Test ──────────────────────────
 
   it("SEC-1B-04: real transaction abort rolls back all 4 staged writes completely", async () => {
-    const res = await linkPlayerAccount(db, {
-      uid: "uid_abort_tester",
-      verifiedPhoneNumber: "+919876500001",
-      requestedPlayerId: "p_clean_1",
-      _simulateAbortBeforeCommit: true,
-    });
-
-    assert.equal(res.ok, false);
-    assert.equal(res.status, 500);
+    // Stage all 4 transactional reads and writes, then intentionally throw inside the transaction
+    await assert.rejects(async () => {
+      await db.runTransaction(async (transaction) => {
+        await executeLinkingTransaction(db, transaction, {
+          uid: "uid_abort_tester",
+          canonicalAuthPhone: "+919876500001",
+          resolvedPlayerId: "p_clean_1",
+        });
+        throw new Error("Simulated intentional abort in test harness to trigger Firestore transaction rollback.");
+      });
+    }, /Simulated intentional abort in test harness/);
 
     // Verify ZERO writes occurred in the database across all 4 documents
     const phoneSnap = await db.collection("phoneIndex").doc("+919876500001").get();

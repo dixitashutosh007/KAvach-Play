@@ -28,6 +28,7 @@ import {
   computeKeeperPatch,
   normalizeIndianMobile,
 } from "../../../../lib/player-merge.ts";
+import { parseStrictIndianMobile } from "../../../../lib/account-linking.ts";
 
 function ensureAdminApp() {
   const apps = getApps();
@@ -42,6 +43,9 @@ function ensureAdminApp() {
 
 function getDb() {
   const app = ensureAdminApp();
+  if (process.env.FIRESTORE_EMULATOR_HOST) {
+    return getFirestore(app);
+  }
   const dbId = (firebaseConfig as any).firestoreDatabaseId;
   try {
     return getFirestore(app, dbId);
@@ -59,7 +63,7 @@ function getDb() {
  */
 export async function PATCH(req: Request) {
   try {
-    const { requireClubAdmin } = await import("@/lib/server-auth");
+    const { requireClubAdmin } = await import("../../../../lib/server-auth.ts");
     const guard = await requireClubAdmin(req);
     if (!guard.ok) return guard.response;
 
@@ -107,6 +111,32 @@ export async function PATCH(req: Request) {
         totalUsersRepaired++;
       }
 
+      // Repair any uidIndex still linked to this loser
+      const uidSnap = await db
+        .collection("uidIndex")
+        .where("playerId", "==", loserId)
+        .get();
+      for (const uidDoc of uidSnap.docs) {
+        batch.update(uidDoc.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        batchCount++;
+      }
+
+      // Repair any phoneIndex still linked to this loser
+      const phoneSnap = await db
+        .collection("phoneIndex")
+        .where("playerId", "==", loserId)
+        .get();
+      for (const phoneDoc of phoneSnap.docs) {
+        batch.update(phoneDoc.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        batchCount++;
+      }
+
       if (batchCount > 0) {
         await batch.commit();
         totalFeesRepaired += batchCount - (usersSnap.docs.length);
@@ -129,7 +159,7 @@ export async function PATCH(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { requireClubAdmin } = await import("@/lib/server-auth");
+    const { requireClubAdmin } = await import("../../../../lib/server-auth.ts");
     const guard = await requireClubAdmin(req);
     if (!guard.ok) return guard.response;
 
@@ -197,12 +227,48 @@ export async function POST(req: Request) {
       directUserDoc.exists && directUserDoc.data()?.playerId !== keeperId;
 
     let appUsersReparented = userQuerySnap.docs.length;
-    if (directUserNeedsUpdate && !userQuerySnap.docs.some((d) => d.id === loserId)) {
+    if (directUserNeedsUpdate && !userQuerySnap.docs.some((d: FirebaseFirestore.QueryDocumentSnapshot) => d.id === loserId)) {
       appUsersReparented++;
     }
 
-    // 5. Fill-in-empties on keeper
+    // 5. Check uidIndex to reparent (SEC-1C-02, Remediation 1D)
+    const uidQuerySnap = await db
+      .collection("uidIndex")
+      .where("playerId", "==", loserId)
+      .get();
+    let uidIndexReparented = uidQuerySnap.docs.length;
+    let directUidNeedsUpdate: FirebaseFirestore.DocumentReference | null = null;
+    if (loser.authUid && !uidQuerySnap.docs.some((d: FirebaseFirestore.QueryDocumentSnapshot) => d.id === loser.authUid)) {
+      const directUidDoc = await db.collection("uidIndex").doc(loser.authUid).get();
+      if (directUidDoc.exists && directUidDoc.data()?.playerId !== keeperId) {
+        directUidNeedsUpdate = directUidDoc.ref;
+        uidIndexReparented++;
+      }
+    }
+
+    // 6. Check phoneIndex to reparent (SEC-1C-02, Remediation 1D)
+    const phoneQuerySnap = await db
+      .collection("phoneIndex")
+      .where("playerId", "==", loserId)
+      .get();
+    let phoneIndexReparented = phoneQuerySnap.docs.length;
+    let directPhoneNeedsUpdate: FirebaseFirestore.DocumentReference | null = null;
+    if (loser.mobile) {
+      const parsedLoserMobile = parseStrictIndianMobile(loser.mobile);
+      if (parsedLoserMobile.ok && !phoneQuerySnap.docs.some((d: FirebaseFirestore.QueryDocumentSnapshot) => d.id === parsedLoserMobile.canonical)) {
+        const directPhoneDoc = await db.collection("phoneIndex").doc(parsedLoserMobile.canonical).get();
+        if (directPhoneDoc.exists && directPhoneDoc.data()?.playerId !== keeperId) {
+          directPhoneNeedsUpdate = directPhoneDoc.ref;
+          phoneIndexReparented++;
+        }
+      }
+    }
+
+    // 7. Fill-in-empties on keeper
     const keeperPatch = computeKeeperPatch(keeper, loser);
+    if (!keeper.authUid && loser.authUid) {
+      keeperPatch.authUid = loser.authUid;
+    }
 
     // Dry Run early exit
     if (dryRun) {
@@ -217,6 +283,8 @@ export async function POST(req: Request) {
         feesMoved,
         ordersReparented,
         appUsersReparented,
+        uidIndexReparented,
+        phoneIndexReparented,
         keeperPatch,
       });
     }
@@ -289,13 +357,49 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5. Update keeper with patched fields
+    // 5. Reparent uidIndex (SEC-1C-02, Remediation 1D)
+    for (const u of uidQuerySnap.docs) {
+      await enqueue((b) =>
+        b.update(u.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    if (directUidNeedsUpdate) {
+      await enqueue((b) =>
+        b.update(directUidNeedsUpdate!, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+
+    // 6. Reparent phoneIndex (SEC-1C-02, Remediation 1D)
+    for (const p of phoneQuerySnap.docs) {
+      await enqueue((b) =>
+        b.update(p.ref, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    if (directPhoneNeedsUpdate) {
+      await enqueue((b) =>
+        b.update(directPhoneNeedsUpdate!, {
+          playerId: keeperId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+
+    // 7. Update keeper with patched fields
     if (Object.keys(keeperPatch).length > 0) {
       keeperPatch.updatedAt = FieldValue.serverTimestamp();
       await enqueue((b) => b.update(keeperRef, keeperPatch));
     }
 
-    // 6. Trash the loser (soft delete)
+    // 8. Trash the loser (soft delete)
     await enqueue((b) =>
       b.update(loserRef, {
         disabled: true,
@@ -314,6 +418,8 @@ export async function POST(req: Request) {
       feesMoved,
       ordersReparented,
       appUsersReparented,
+      uidIndexReparented,
+      phoneIndexReparented,
     });
   } catch (err: any) {
     console.error("merge-players failed", err);

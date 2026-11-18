@@ -17,7 +17,12 @@ export interface LinkAccountParams {
   uid: string;
   verifiedPhoneNumber?: string;
   requestedPlayerId?: string;
-  _simulateAbortBeforeCommit?: boolean;
+}
+
+export interface LinkingTxContext {
+  uid: string;
+  canonicalAuthPhone: string;
+  resolvedPlayerId: string;
 }
 
 export interface LinkAccountResult {
@@ -122,13 +127,190 @@ export function parseStrictIndianMobile(input: unknown):
 }
 
 /**
+ * Executes the atomic four-document read-and-write transaction for identity linking.
+ * Exported for internal and test-harness usage (e.g. verified rollback testing) without
+ * exposing test-only flags on the public LinkAccountParams interface.
+ */
+export async function executeLinkingTransaction(
+  db: FirebaseFirestore.Firestore,
+  transaction: FirebaseFirestore.Transaction,
+  ctx: LinkingTxContext,
+): Promise<{ alreadyLinked: boolean; playerId: string }> {
+  const { uid, canonicalAuthPhone, resolvedPlayerId } = ctx;
+
+  const phoneIndexRef = db.collection("phoneIndex").doc(canonicalAuthPhone);
+  const uidIndexRef = db.collection("uidIndex").doc(uid);
+  const playerRef = db.collection("players").doc(resolvedPlayerId);
+  const userRef = db.collection("appUsers").doc(uid);
+
+  // ALL FOUR READS FIRST
+  const phoneIndexSnap = await transaction.get(phoneIndexRef);
+  const uidIndexSnap = await transaction.get(uidIndexRef);
+  const playerSnap = await transaction.get(playerRef);
+  const userSnap = await transaction.get(userRef);
+
+  // A. Verify player document existence & eligibility
+  if (!playerSnap.exists) {
+    throw new LinkingError(404, "Player record not found.");
+  }
+  const playerData = playerSnap.data() || {};
+
+  if (playerData.disabled === true) {
+    throw new LinkingError(403, "Player record is disabled.");
+  }
+  if (playerData.mergedInto) {
+    throw new LinkingError(403, "Player record has been merged into another profile.");
+  }
+
+  // Strictly parse stored mobile on player document
+  const storedMobileParsed = parseStrictIndianMobile(playerData.mobile);
+  if (!storedMobileParsed.ok || storedMobileParsed.canonical !== canonicalAuthPhone) {
+    throw new LinkingError(403, "Player phone number does not match verified token phone number.");
+  }
+
+  // B. Verify user document state
+  const userData = userSnap.exists ? userSnap.data() || {} : {};
+  if (userData.status === "Disabled") {
+    throw new LinkingError(403, "Account is disabled.");
+  }
+
+  // C. Cross-record ownership and collision validation
+  const phoneIndexData = phoneIndexSnap.exists ? phoneIndexSnap.data() || {} : null;
+  const uidIndexData = uidIndexSnap.exists ? uidIndexSnap.data() || {} : null;
+
+  // Check phone reservation collision
+  if (phoneIndexData) {
+    if (phoneIndexData.authUid && phoneIndexData.authUid !== uid) {
+      throw new LinkingError(409, "Phone number is already associated with another user account.");
+    }
+    if (phoneIndexData.playerId && phoneIndexData.playerId !== resolvedPlayerId) {
+      throw new LinkingError(409, "Phone number is already associated with another player profile.");
+    }
+  }
+
+  // Check UID reservation collision
+  if (uidIndexData) {
+    if (uidIndexData.playerId && uidIndexData.playerId !== resolvedPlayerId) {
+      throw new LinkingError(409, "User account is already linked to another player profile.");
+    }
+    if (uidIndexData.canonicalPhone && uidIndexData.canonicalPhone !== canonicalAuthPhone) {
+      throw new LinkingError(409, "User account is already linked to another phone number.");
+    }
+  }
+
+  // Check user account document collision
+  if (userData.playerId && userData.playerId !== resolvedPlayerId) {
+    throw new LinkingError(409, "User account is already linked to another player profile.");
+  }
+
+  // Check player record document collision
+  if (playerData.authUid && playerData.authUid !== uid) {
+    throw new LinkingError(409, "Player record is already linked to another user account.");
+  }
+
+  // D. Full Four-Way Idempotency vs Inconsistent Legacy State Check (SEC-1B-02, SEC-1A-05)
+  const isPhoneIndexLinked =
+    phoneIndexSnap.exists &&
+    phoneIndexData?.authUid === uid &&
+    phoneIndexData?.playerId === resolvedPlayerId;
+
+  const isUidIndexLinked =
+    uidIndexSnap.exists &&
+    uidIndexData?.authUid === uid &&
+    uidIndexData?.playerId === resolvedPlayerId;
+
+  const isPlayerLinked = playerData.authUid === uid;
+  const isUserLinked = userData.playerId === resolvedPlayerId;
+
+  if (isPhoneIndexLinked && isUidIndexLinked && isPlayerLinked && isUserLinked) {
+    // Complete, verified 4-way consistency: idempotent success
+    return { alreadyLinked: true, playerId: resolvedPlayerId };
+  }
+
+  // If any of the four records has a partial or uncoordinated mapping, fail closed
+  if (
+    isPhoneIndexLinked ||
+    isUidIndexLinked ||
+    isPlayerLinked ||
+    isUserLinked ||
+    phoneIndexSnap.exists ||
+    uidIndexSnap.exists ||
+    playerData.authUid ||
+    userData.playerId
+  ) {
+    throw new LinkingError(
+      409,
+      "Inconsistent identity mapping detected. Manual administrator resolution required.",
+    );
+  }
+
+  // E. ALL FOUR WRITES AFTER READS (Atomic Persistence)
+  // 1. Maintain phone reservation index
+  transaction.set(
+    phoneIndexRef,
+    {
+      playerId: resolvedPlayerId,
+      authUid: uid,
+      phone: canonicalAuthPhone,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: phoneIndexSnap.exists
+        ? phoneIndexData?.createdAt || FieldValue.serverTimestamp()
+        : FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  // 2. Maintain UID reservation index
+  transaction.set(
+    uidIndexRef,
+    {
+      playerId: resolvedPlayerId,
+      authUid: uid,
+      canonicalPhone: canonicalAuthPhone,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: uidIndexSnap.exists
+        ? uidIndexData?.createdAt || FieldValue.serverTimestamp()
+        : FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  // 3. Update player record
+  transaction.update(playerRef, {
+    authUid: uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // 4. Update or create appUser record
+  if (userSnap.exists) {
+    transaction.update(userRef, {
+      playerId: resolvedPlayerId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } else {
+    transaction.set(userRef, {
+      name: playerData.name || "Player",
+      role: "player",
+      status: "Active",
+      playerId: resolvedPlayerId,
+      mobile: canonicalAuthPhone,
+      email: playerData.email || "",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  return { alreadyLinked: false, playerId: resolvedPlayerId };
+}
+
+/**
  * Concurrency-safe, transactional player account linking with bidirectional reservations.
  */
 export async function linkPlayerAccount(
   db: FirebaseFirestore.Firestore,
   params: LinkAccountParams,
 ): Promise<LinkAccountResult> {
-  const { uid, verifiedPhoneNumber, requestedPlayerId, _simulateAbortBeforeCommit } = params;
+  const { uid, verifiedPhoneNumber, requestedPlayerId } = params;
 
   // 1. Parameter Validation
   if (!uid || typeof uid !== "string" || !uid.trim()) {
@@ -163,229 +345,150 @@ export async function linkPlayerAccount(
     }
   }
 
-  // 2. Pre-transaction Candidate Resolution & Exhaustive Duplicate Detection
-  // Check if phoneIndex already exists for canonicalAuthPhone
-  const existingPhoneIndexDoc = await db.collection("phoneIndex").doc(canonicalAuthPhone).get();
-  let resolvedPlayerId: string;
+  // 2. Candidate Resolution & Duplicate Phone Detection across ALL players (SEC-1C-02)
+  // Even if a phoneIndex exists, we must inspect the historical players population to guarantee
+  // that no legacy or unindexed duplicates exist that would make resolution ambiguous.
+  const allPlayersSnap = await db.collection("players").get();
+  const eligibleCandidates: Array<{ id: string; data: FirebaseFirestore.DocumentData }> = [];
 
-  if (existingPhoneIndexDoc.exists) {
-    resolvedPlayerId = existingPhoneIndexDoc.data()?.playerId;
-    if (!resolvedPlayerId) {
-      return {
-        ok: false,
-        status: 409,
-        error: "Corrupt phone reservation index detected. Manual administrator resolution required.",
-      };
+  for (const doc of allPlayersSnap.docs) {
+    const data = doc.data() || {};
+    if (data.disabled === true || data.mergedInto) continue;
+    if (!data.mobile) continue;
+
+    const parsedStored = parseStrictIndianMobile(data.mobile);
+    if (parsedStored.ok && parsedStored.canonical === canonicalAuthPhone) {
+      eligibleCandidates.push({ id: doc.id, data });
     }
-    if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
+  }
+
+  // Duplicate / ambiguous check across historical players (Test 4, Test 5, Test 6)
+  if (eligibleCandidates.length > 1) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Multiple player records found with this phone number. Ambiguous identity requires manual administrator resolution.",
+    };
+  }
+
+  if (eligibleCandidates.length === 0) {
+    return {
+      ok: false,
+      status: 404,
+      error: "No eligible player record found matching verified phone number.",
+    };
+  }
+
+  const resolvedPlayerId = eligibleCandidates[0].id;
+  if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Requested player does not match authoritatively resolved player identity.",
+    };
+  }
+
+  // 3. Inspect existing phoneIndex reservation if present (SEC-1C-02)
+  const existingPhoneIndexDoc = await db.collection("phoneIndex").doc(canonicalAuthPhone).get();
+  if (existingPhoneIndexDoc.exists) {
+    const phoneIndexData = existingPhoneIndexDoc.data() || {};
+    if (phoneIndexData.playerId && phoneIndexData.playerId !== resolvedPlayerId) {
       return {
         ok: false,
         status: 409,
         error: "Phone number is already associated with another player profile.",
       };
     }
-  } else {
-    // Unindexed phone: exhaustively scan players collection to catch all supported formatted variations
-    // (e.g. "9876500001", "+91 98765-00001", "09876500001", etc.)
-    const allPlayersSnap = await db.collection("players").get();
-    const eligibleCandidates: Array<{ id: string; data: FirebaseFirestore.DocumentData }> = [];
-
-    for (const doc of allPlayersSnap.docs) {
-      const data = doc.data() || {};
-      if (data.disabled === true || data.mergedInto) continue;
-      if (!data.mobile) continue;
-
-      const parsedStored = parseStrictIndianMobile(data.mobile);
-      if (parsedStored.ok && parsedStored.canonical === canonicalAuthPhone) {
-        eligibleCandidates.push({ id: doc.id, data });
-      }
-    }
-
-    // Exhaustive Ambiguous duplicate identity check
-    if (eligibleCandidates.length > 1) {
+    if (phoneIndexData.authUid && phoneIndexData.authUid !== uid) {
       return {
         ok: false,
         status: 409,
-        error: "Multiple player records found with this phone number. Ambiguous identity requires manual administrator resolution.",
-      };
-    }
-
-    if (eligibleCandidates.length === 0) {
-      return {
-        ok: false,
-        status: 404,
-        error: "No eligible player record found matching verified phone number.",
-      };
-    }
-
-    resolvedPlayerId = eligibleCandidates[0].id;
-    if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
-      return {
-        ok: false,
-        status: 403,
-        error: "Requested player does not match authoritatively resolved player identity.",
+        error: "Phone number is already associated with another user account.",
       };
     }
   }
 
-  // 3. Concurrency-Safe Four-Record Atomic Transaction
-  // In accordance with Firestore rules, all 4 document reads occur before any writes.
+  // 4. Inspect existing uidIndex reservation if present (SEC-1C-02, Test 7, Test 8)
+  const existingUidIndexDoc = await db.collection("uidIndex").doc(uid).get();
+  if (existingUidIndexDoc.exists) {
+    const uidIndexData = existingUidIndexDoc.data() || {};
+    const uidPlayerId = uidIndexData.playerId;
+    if (!uidPlayerId) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Corrupt user reservation index detected. Manual administrator resolution required.",
+      };
+    }
+    // Test 7: Orphaned player reference in uidIndex
+    if (!allPlayersSnap.docs.some((d) => d.id === uidPlayerId)) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Existing user reservation references non-existent player record.",
+      };
+    }
+    // Test 8: phoneIndex and uidIndex disagreement
+    if (existingPhoneIndexDoc.exists) {
+      const phonePlayerId = existingPhoneIndexDoc.data()?.playerId;
+      if (phonePlayerId && phonePlayerId !== uidPlayerId) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Inconsistent identity mapping detected. Manual administrator resolution required.",
+        };
+      }
+    }
+    if (uidPlayerId !== resolvedPlayerId) {
+      return {
+        ok: false,
+        status: 409,
+        error: "User account is already linked to another player profile.",
+      };
+    }
+    if (uidIndexData.canonicalPhone && uidIndexData.canonicalPhone !== canonicalAuthPhone) {
+      return {
+        ok: false,
+        status: 409,
+        error: "User account is already linked to another phone number.",
+      };
+    }
+  }
+
+  // 5. SEC-1C-01: Detect existing player.authUid mappings across ALL players
+  const existingAuthPlayersSnap = await db
+    .collection("players")
+    .where("authUid", "==", uid)
+    .get();
+
+  const activeAuthPlayers = existingAuthPlayersSnap.docs.filter(
+    (d) => !d.data()?.disabled && !d.data()?.mergedInto,
+  );
+
+  if (activeAuthPlayers.length > 1) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Multiple player records found associated with this user account. Manual administrator resolution required.",
+    };
+  }
+
+  if (activeAuthPlayers.length === 1 && activeAuthPlayers[0].id !== resolvedPlayerId) {
+    return {
+      ok: false,
+      status: 409,
+      error: "User account is already linked to another player record.",
+    };
+  }
+
+  // 6. Concurrency-Safe Four-Record Atomic Transaction
   try {
     const txResult = await db.runTransaction(async (transaction) => {
-      const phoneIndexRef = db.collection("phoneIndex").doc(canonicalAuthPhone);
-      const uidIndexRef = db.collection("uidIndex").doc(uid);
-      const playerRef = db.collection("players").doc(resolvedPlayerId);
-      const userRef = db.collection("appUsers").doc(uid);
-
-      // ALL FOUR READS FIRST
-      const phoneIndexSnap = await transaction.get(phoneIndexRef);
-      const uidIndexSnap = await transaction.get(uidIndexRef);
-      const playerSnap = await transaction.get(playerRef);
-      const userSnap = await transaction.get(userRef);
-
-      // A. Verify player document existence & eligibility
-      if (!playerSnap.exists) {
-        throw new LinkingError(404, "Player record not found.");
-      }
-      const playerData = playerSnap.data() || {};
-
-      if (playerData.disabled === true) {
-        throw new LinkingError(403, "Player record is disabled.");
-      }
-      if (playerData.mergedInto) {
-        throw new LinkingError(403, "Player record has been merged into another profile.");
-      }
-
-      // Strictly parse stored mobile on player document
-      const storedMobileParsed = parseStrictIndianMobile(playerData.mobile);
-      if (!storedMobileParsed.ok || storedMobileParsed.canonical !== canonicalAuthPhone) {
-        throw new LinkingError(403, "Player phone number does not match verified token phone number.");
-      }
-
-      // B. Verify user document state
-      const userData = userSnap.exists ? userSnap.data() || {} : {};
-      if (userData.status === "Disabled") {
-        throw new LinkingError(403, "Account is disabled.");
-      }
-
-      // C. Cross-record ownership and collision validation
-      const phoneIndexData = phoneIndexSnap.exists ? phoneIndexSnap.data() || {} : null;
-      const uidIndexData = uidIndexSnap.exists ? uidIndexSnap.data() || {} : null;
-
-      // Check phone reservation collision
-      if (phoneIndexData) {
-        if (phoneIndexData.authUid && phoneIndexData.authUid !== uid) {
-          throw new LinkingError(409, "Phone number is already associated with another user account.");
-        }
-        if (phoneIndexData.playerId && phoneIndexData.playerId !== resolvedPlayerId) {
-          throw new LinkingError(409, "Phone number is already associated with another player profile.");
-        }
-      }
-
-      // Check UID reservation collision
-      if (uidIndexData) {
-        if (uidIndexData.playerId && uidIndexData.playerId !== resolvedPlayerId) {
-          throw new LinkingError(409, "User account is already linked to another player profile.");
-        }
-        if (uidIndexData.canonicalPhone && uidIndexData.canonicalPhone !== canonicalAuthPhone) {
-          throw new LinkingError(409, "User account is already linked to another phone number.");
-        }
-      }
-
-      // Check user account document collision
-      if (userData.playerId && userData.playerId !== resolvedPlayerId) {
-        throw new LinkingError(409, "User account is already linked to another player profile.");
-      }
-
-      // Check player record document collision
-      if (playerData.authUid && playerData.authUid !== uid) {
-        throw new LinkingError(409, "Player record is already linked to another user account.");
-      }
-
-      // D. Full Four-Way Idempotency vs Inconsistent Legacy State Check (SEC-1B-02, SEC-1A-05)
-      const isPhoneIndexLinked = phoneIndexSnap.exists &&
-        phoneIndexData?.authUid === uid &&
-        phoneIndexData?.playerId === resolvedPlayerId;
-
-      const isUidIndexLinked = uidIndexSnap.exists &&
-        uidIndexData?.authUid === uid &&
-        uidIndexData?.playerId === resolvedPlayerId;
-
-      const isPlayerLinked = playerData.authUid === uid;
-      const isUserLinked = userData.playerId === resolvedPlayerId;
-
-      if (isPhoneIndexLinked && isUidIndexLinked && isPlayerLinked && isUserLinked) {
-        // Complete, verified 4-way consistency: idempotent success
-        return { alreadyLinked: true, playerId: resolvedPlayerId };
-      }
-
-      // If any of the four records has a partial or uncoordinated mapping, fail closed
-      if (isPhoneIndexLinked || isUidIndexLinked || isPlayerLinked || isUserLinked ||
-          phoneIndexSnap.exists || uidIndexSnap.exists || playerData.authUid || userData.playerId) {
-        throw new LinkingError(
-          409,
-          "Inconsistent identity mapping detected. Manual administrator resolution required.",
-        );
-      }
-
-      // E. ALL FOUR WRITES AFTER READS (Atomic Persistence)
-      // 1. Maintain phone reservation index
-      transaction.set(
-        phoneIndexRef,
-        {
-          playerId: resolvedPlayerId,
-          authUid: uid,
-          phone: canonicalAuthPhone,
-          updatedAt: FieldValue.serverTimestamp(),
-          createdAt: phoneIndexSnap.exists ? (phoneIndexData?.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      // 2. Maintain UID reservation index
-      transaction.set(
-        uidIndexRef,
-        {
-          playerId: resolvedPlayerId,
-          authUid: uid,
-          canonicalPhone: canonicalAuthPhone,
-          updatedAt: FieldValue.serverTimestamp(),
-          createdAt: uidIndexSnap.exists ? (uidIndexData?.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      // 3. Update player record
-      transaction.update(playerRef, {
-        authUid: uid,
-        updatedAt: FieldValue.serverTimestamp(),
+      return executeLinkingTransaction(db, transaction, {
+        uid,
+        canonicalAuthPhone,
+        resolvedPlayerId,
       });
-
-      // 4. Update or create appUser record
-      if (userSnap.exists) {
-        transaction.update(userRef, {
-          playerId: resolvedPlayerId,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        transaction.set(userRef, {
-          name: playerData.name || "Player",
-          role: "player",
-          status: "Active",
-          playerId: resolvedPlayerId,
-          mobile: canonicalAuthPhone,
-          email: playerData.email || "",
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-
-      // Simulated abort hook for testing rollback behavior
-      if (_simulateAbortBeforeCommit) {
-        throw new LinkingError(500, "Simulated intentional abort after staging all transaction writes.");
-      }
-
-      return { alreadyLinked: false, playerId: resolvedPlayerId };
     });
 
     return {
@@ -399,6 +502,20 @@ export async function linkPlayerAccount(
       return { ok: false, status: err.status, error: err.message };
     }
     console.error(`[linkPlayerAccount] Transaction failed for user ${uid} -> player ${resolvedPlayerId}:`, err);
+    const isContention =
+      err?.code === 10 || // ABORTED
+      err?.code === 3 || // INVALID_ARGUMENT / Transaction is invalid or closed (emulator contention)
+      err?.code === "failed-precondition" ||
+      err?.details?.includes?.("Transaction is invalid or closed") ||
+      err?.message?.includes?.("Transaction is invalid or closed") ||
+      err?.message?.includes?.("aborted");
+    if (isContention) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Concurrent update conflict detected. Please retry.",
+      };
+    }
     return {
       ok: false,
       status: 500,
