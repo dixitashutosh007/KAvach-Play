@@ -1,9 +1,10 @@
-# Security Remediation 1F: Atomic Identity Merge, Verified Recovery, Financial Data Integrity & Four-Way Consistency
+# Security Remediation 1F & 1F-R: Atomic Identity Merge, Verified Recovery, Financial Data Integrity & Four-Way Consistency
 
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `security/remediation-1f-a`  
 **Baseline Commit:** `e1240d0b17a4e992da9061c3284f6b5819780d56`  
-**Implementation Commit SHA:** [`1ebac7f113248733264a05b7bbad305c91cde644`](https://github.com/dixitashutosh007/KAvach-Play/commit/1ebac7f113248733264a05b7bbad305c91cde644)  
+**1F-R Starting Baseline:** `1ebac7f113248733264a05b7bbad305c91cde644`  
+**Implementation Commit SHA:** [`eff042806bbda784ad8a2d16df994fbdbbc8e480`](https://github.com/dixitashutosh007/KAvach-Play/commit/eff042806bbda784ad8a2d16df994fbdbbc8e480)  
 **Implementation Agent:** Antigravity (Gemini)  
 **Independent Reviewer:** ChatGPT (read-only review)  
 **Operating Mode:** Read-only test validation and atomic remediation with emulator verification. Zero production writes, zero live migrations, zero deployment.
@@ -12,18 +13,20 @@
 
 ## 1. Executive Summary & Findings Addressed
 
-Security Remediation 1F resolves all findings (1F-01 through 1F-08) identified during the independent review of Remediation 1E:
+Security Remediation 1F & 1F-R resolves all findings (1F-01 through 1F-08 and 1F-R Workstreams R1 through R10 / F1 through F10) identified during the independent reviews:
 
 | Finding ID | Title | Summary of Implementation & Defense | Evidence / Files |
 |---|---|---|---|
-| **1F-01** | **Move identity reservation validation inside the transaction** | Evaluates all 14 identity conditions and multiplicity checks inside an atomic Firestore transaction reading direct `players`, `uidIndex`, and `phoneIndex` documents before mutating any reservation data. Rejects conflicting UIDs, third-party reservations, multiple appUsers, and malformed phone/UID records with HTTP 409. Never silently overwrites or steals reservations. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`executeMergeIdentityStage`)<br>Tests 1–8 |
-| **1F-02** | **Exclusive merge-job execution via atomic worker lease & fencing** | Enforces mutual exclusion via `acquireMergeLease` on `mergeJobs/{jobId}` (`leaseOwner`, `leaseToken`, `leaseExpiresAt`, `fencingToken`, `attemptCount`). Active leases reject concurrent workers with HTTP 409 (`ACTIVE_LEASE_EXISTS`). Monotonically increasing `fencingToken` verified on every stage transition and completion. Interrupted jobs resume safely from verified stage. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`acquireMergeLease`, `verifyWorkerFencingAndAdvanceStage`)<br>Tests 9, 17 |
-| **1F-03** | **Financial record collision protection** | Before moving `otherFees`, inspects destination `keeperRef.collection("otherFees").doc(feeId)`. If identical, handles duplicate safely. If different, aborts with HTTP 409 `FINANCIAL_RECORD_COLLISION`. Source is deleted only after verifying destination has been successfully written. Preserves original record IDs, amounts, statuses, Razorpay references, timestamps, and audit history. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`migrateOtherFeesStage`, `areFeesIdentical`)<br>Tests 13, 14 |
-| **1F-04** | **Bound every migration stage** | Replaced oversized single-batch mutations with bounded, resumable chunks (batch size 50–100 ops, well below Firestore's 500-write limit) across payments, otherFees, merchOrders, and appUsers/indexes. Persists intermediate chunk progress (`stats.*Chunks`, `stats.*Progress`) to `mergeJobs/{jobId}` after each commit. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`migratePaymentsStage`, `migrateMerchOrdersStage`, `migrateAppUsersAndIndexesStage`)<br>Tests 11, 12, 15, 16 |
-| **1F-05** | **Independent final migration verification gate** | Before marking loser `completed` or `disabled`, independently queries payments, merchOrders, otherFees, appUsers, uidIndex, and phoneIndex to confirm zero residual loser references exist. Independently validates keeper state, authoritative phone reservation, authoritative UID reservation, and four-way consistency. Leaves job incomplete if any check fails. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`executeIndependentFinalVerification`)<br>Test 18 |
-| **1F-06** | **Canonical phone contract and four-way consistency** | Standardized authoritative field contract on `phoneIndex/{canonicalPhone}` (`playerId`, `authUid`, `canonicalPhone`, `createdAt`, `updatedAt`) and `uidIndex/{uid}` (`playerId`, `authUid`, `canonicalPhone`, `createdAt`, `updatedAt`). Enforced 10-point four-way idempotency verification across normal transaction and post-contention fallback in `lib/account-linking.ts`. Generic `INVALID_ARGUMENT` returns 500, not 409. | [lib/account-linking.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/account-linking.ts)<br>Tests 23–29 |
-| **1F-07** | **Bootstrap readiness must fail closed** | Overhauled `scripts/bootstrap-identity-index.ts` so `safeToBootstrap` fails closed (`false`) if any active player has missing or malformed phone, duplicate phone, duplicate UID, missing UID/phone index on linked player, appUsers referencing disabled/merged/missing player, or invalid merge chains. Separately reports `safeToBootstrap`, `safeToLinkExistingRecords`, `requiresManualResolution`, and detailed category counts. | [scripts/bootstrap-identity-index.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/scripts/bootstrap-identity-index.ts)<br>Tests 30–34 |
-| **1F-08** | **Lock merge lifecycle fields in Firestore rules** | Delegated to `firestore-rules-author` subagent. Updated `match /players/{playerId}` create and update rules to forbid client-side mutation of `['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId']` across all roles (including Super Admin and Club Admin). Maintained `/phoneIndex`, `/uidIndex`, and `/mergeJobs` as server-only (`allow read, write: if false;`). | [firestore.rules](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/firestore.rules#L500-L506)<br>Tests 19–22 |
+| **1F-01 / F6** | **Move identity reservation validation inside the transaction** | Evaluates all identity conditions and multiplicity checks inside an atomic Firestore transaction reading fresh `players`, `uidIndex`, and `phoneIndex` documents. Recomputes target UID, canonical phone, and keeper patch from live transaction snapshots. Rejects conflicting UIDs, third-party reservations, multiple appUsers, and malformed phone/UID records with HTTP 409. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`executeMergeIdentityStage`)<br>Scenarios 1–8 |
+| **1F-02 / F1-F3** | **Exclusive merge-job execution, worker fencing & player locks** | Enforces mutual exclusion via `acquireMergeLease` on `mergeJobs/{jobId}` AND locks BOTH `loserRef` and `keeperRef` with `mergeStatus: "in_progress"`, `mergeJobId`, and `mergeFencingToken`. Fencing token is strictly validated on EVERY mutation chunk across all migration stages (`payments`, `otherFees`, `merchOrders`, `appUsers/indexes`). Heartbeat lease renewal is integrated before expiration. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`acquireMergeLease`, `renewMergeLease`, `verifyWorkerFencingAndAdvanceStage`)<br>Scenarios 9, 17, 35–37 |
+| **1F-03 / F4** | **Authoritative financial record collision protection** | Before moving `otherFees`, inspects destination `keeperRef.collection("otherFees").doc(feeId)`. If identical (comparing amount, title, status, templateId, paymentMethod, razorpayPaymentId, paidAmount/feeCollectedAmount, receiptId, waivedReason, refundId, cancelledBy), safely deduplicates. If different, halts immediately with HTTP 409 `FINANCIAL_RECORD_COLLISION`. Source is deleted only after verifying destination has been written. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`migrateOtherFeesStage`, `areFeesIdentical`)<br>Scenarios 13, 14, 38–40 |
+| **1F-04 / F8-F9** | **Bounded, paginated stages with durable cumulative progress** | Replaced oversized single-batch mutations with bounded, resumable chunks (`limit(batchLimit)` with 50–100 ops, well below Firestore's 500-write limit) across payments, otherFees, merchOrders, and appUsers/indexes. Tracks cumulative progress (`stats.*Chunks`, `stats.*Progress`) that never decrements across retries. | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`migratePaymentsStage`, `migrateMerchOrdersStage`, `migrateAppUsersAndIndexesStage`)<br>Scenarios 11, 12, 15, 16 |
+| **1F-05 / F10** | **Fail-closed independent final verification gate** | Before marking loser `completed` or `disabled`, independently queries payments, merchOrders, otherFees, appUsers, uidIndex, and phoneIndex to confirm zero residual loser references exist. Asserts keeper's authoritative phone reservation exists (if mobile present) and UID reservation exists (if authUid present). | [lib/player-merge.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/player-merge.ts) (`executeIndependentFinalVerification`)<br>Scenarios 18, 42, 43 |
+| **1F-06 / F7** | **Canonical phone contract and four-way consistency** | Standardized authoritative field contract on `phoneIndex/{canonicalPhone}` (`playerId`, `authUid`, `canonicalPhone`, `createdAt`, `updatedAt`) and `uidIndex/{uid}` (`playerId`, `authUid`, `canonicalPhone`, `createdAt`, `updatedAt`). Enforces 10-point four-way idempotency verification across normal transaction and post-contention fallback in `lib/account-linking.ts`. Generic `INVALID_ARGUMENT` returns 500, not 409. | [lib/account-linking.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/lib/account-linking.ts)<br>Scenarios 23–29 |
+| **1F-07** | **Bootstrap readiness must fail closed** | Overhauled `scripts/bootstrap-identity-index.ts` so `safeToBootstrap` fails closed (`false`) if any active player has missing or malformed phone, duplicate phone, duplicate UID, missing UID/phone index on linked player, appUsers referencing disabled/merged/missing player, or invalid merge chains. | [scripts/bootstrap-identity-index.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/scripts/bootstrap-identity-index.ts)<br>Scenarios 30–34 |
+| **1F-08** | **Lock merge lifecycle fields in Firestore rules** | Delegated to `firestore-rules-author` subagent. Updated `match /players/{playerId}` create and update rules to forbid client-side mutation of `['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId']` across all roles. Maintained `/phoneIndex`, `/uidIndex`, and `/mergeJobs` as server-only (`allow read, write: if false;`). | [firestore.rules](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/firestore.rules#L500-L506)<br>Scenarios 19–22 |
+| **F5** | **Retire legacy unfenced PATCH endpoint** | Retired legacy unfenced `PATCH /api/admin/merge-players` endpoint (Option A: returns HTTP 405 Method Not Allowed with `{ code: "METHOD_NOT_ALLOWED" }`), requiring all merges to execute via transactional, fenced `POST`. | [app/api/admin/merge-players/route.ts](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/api/admin/merge-players/route.ts) (`PATCH`)<br>Scenario 41 |
+| **1E Reg.** | **Correct Test 17 transaction contention abort** | Rewrote Test 17 in `remediation1e` suite to genuinely trigger Firestore contention abort (`code: 10`) and assert rejection of inconsistent 4-way state by the contention fallback path. | `tests/remediation1e-secure-merge-and-privileged-writes.emulator.test.mjs`<br>Test 17 |
 
 ---
 
@@ -122,15 +125,16 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 
 | Test Suite | Command | Total | Passed | Failed | Skipped | Status |
 |---|---|---|---|---|---|---|
-| **Adversarial Remediation 1F Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 34 | 34 | 0 | 0 | **PASSED** |
+| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 43 | 43 | 0 | 0 | **PASSED** |
 | **Remediation 1F-A Suite** | `npm run test:emulator -- tests/remediation1fa-*.mjs` | 29 | 29 | 0 | 0 | **PASSED** |
-| **Full Emulator Suite (17 files)** | `npm run test:emulator` | 215 | 215 | 0 | 0 | **PASSED** |
+| **Remediation 1E Hardened Suite** | `npm run test:emulator -- tests/remediation1e-*.mjs` | 18 | 18 | 0 | 0 | **PASSED** |
+| **Full Emulator Regression (17 files)** | `npm run test:emulator` | 224 | 224 | 0 | 0 | **PASSED** |
 | **Functional Tests Suite** | `npm run test:functional` | 254 | 254 | 0 | 0 | **PASSED** |
 | **TypeScript Typecheck** | `npx tsc --noEmit` | - | 0 errors | 0 | 0 | **PASSED** |
 | **ESLint** | `npm run lint` | - | 0 errors | 0 | 0 | **PASSED** (4 open-read warnings) |
 | **Production Build** | `npm run build` | 19 pages | 19 static/dynamic | 0 | 0 | **PASSED** |
 
-### 4.2 Adversarial Remediation 1F Test Details (34 Scenarios)
+### 4.2 Adversarial Remediation 1F & 1F-R Test Details (43 Scenarios)
 
 1. `Scenario 1`: Reservation changes after pre-flight but before transaction: rejected inside transaction (`LOSER_PHONE_RESERVATION_THIRD_PARTY`).
 2. `Scenario 2`: Keeper and loser have distinct active UIDs: HTTP 409 (`CONFLICTING_AUTH_UIDS`).
@@ -166,6 +170,15 @@ Exhaustive audit of every write path to protected identity fields in the reposit
 32. `Scenario 32`: appUsers pointing to disabled/merged player is reported as blocking in bootstrap report.
 33. `Scenario 33`: Missing UID and phone indexes prevent safe linking (`safeToLinkExistingRecords: false`).
 34. `Scenario 34`: Duplicate canonical phone and UID ownership block bootstrap (`duplicatePhones: 1`).
+35. `Scenario 35` (1F-R R1): Worker fencing rejects chunk commits when lease is superseded.
+36. `Scenario 36` (1F-R R3): Keeper already undergoing another merge: rejected with HTTP 409 (`KEEPER_ALREADY_MERGING`).
+37. `Scenario 37` (1F-R R3): Cross-role player locks: loser as keeper in another job rejected with HTTP 409 (`PLAYER_ROLE_CONFLICT`).
+38. `Scenario 38` (1F-R R4): Financial collision on payment reference mismatch: halts with HTTP 409 (`FINANCIAL_RECORD_COLLISION`).
+39. `Scenario 39` (1F-R R4): Financial collision on paidAmount / collectedAmount mismatch: halts with HTTP 409 (`FINANCIAL_RECORD_COLLISION`).
+40. `Scenario 40` (1F-R R4): Financial collision on refund / audit reference mismatch: halts with HTTP 409 (`FINANCIAL_RECORD_COLLISION`).
+41. `Scenario 41` (1F-R R5): Retired legacy PATCH endpoint returns HTTP 405 Method Not Allowed (`METHOD_NOT_ALLOWED`).
+42. `Scenario 42` (1F-R R10): Final verification fails closed if keeper's expected phone reservation is missing (`FINAL_VERIFICATION_FAILED`).
+43. `Scenario 43` (1F-R R10): Final verification fails closed if keeper's expected UID reservation is missing (`FINAL_VERIFICATION_FAILED`).
 
 ---
 
