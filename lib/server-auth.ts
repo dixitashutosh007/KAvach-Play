@@ -6,8 +6,12 @@
  * - Granular administrative capabilities (Club Admin, Match Admin, Finance Admin, Studio Admin, Designer)
  *   are verified server-side against custom claims and authoritative `/appUsers/{uid}` documents.
  * - Client-supplied roles and privileged fields in request bodies or client headers are strictly rejected.
- * - Enforces account status verification: accounts with `status: "Disabled"` are rejected immediately.
+ * - Enforces fail-closed account status verification: accounts with `status: "Disabled"` are rejected immediately.
+ * - Enforces fail-closed database lookup: if the authoritative `/appUsers/{uid}` read fails due to a database error,
+ *   privileged access is strictly denied (503 Service Unavailable) rather than silently assuming active status.
  * - All token verification for administrative access enforces `checkRevoked: true` to prevent stale token reuse.
+ * - Test bypass isolation: x-test-* identity headers are strictly locked behind KAVACH_TEST_AUTH_BYPASS="true"
+ *   and NODE_ENV="test", and are permanently disabled in production runtimes.
  */
 import { NextResponse } from "next/server.js";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
@@ -23,6 +27,19 @@ export type AppRole =
   | "studioAdmin"
   | "isDesigner"
   | "player";
+
+/**
+ * Checks whether test authentication bypass is permitted.
+ * Strictly forbidden in production; requires both NODE_ENV === "test"
+ * AND the explicit process.env.KAVACH_TEST_AUTH_BYPASS === "true" flag.
+ */
+export function isTestAuthBypassAllowed(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return (
+    process.env.NODE_ENV === "test" &&
+    process.env.KAVACH_TEST_AUTH_BYPASS === "true"
+  );
+}
 
 function ensureAdminApp() {
   const apps = getApps();
@@ -44,6 +61,25 @@ function getDb(app: any) {
   } catch {
     return getFirestore(app);
   }
+}
+
+let testDbOverride: any = null;
+
+/**
+ * In non-production environments (unit tests), allows injecting a mock database
+ * to test missing user docs, disabled accounts, and database errors deterministically.
+ */
+export function setAuthDbForTesting(db: any) {
+  if (process.env.NODE_ENV !== "production") {
+    testDbOverride = db;
+  }
+}
+
+function getEffectiveDb(app: any) {
+  if (testDbOverride && process.env.NODE_ENV !== "production") {
+    return testDbOverride;
+  }
+  return getDb(app);
 }
 
 export type AuthGuardResult =
@@ -70,48 +106,50 @@ export type RoleGuardResult =
     }
   | { ok: false; response: NextResponse };
 
+export type UserAccountResult =
+  | {
+      ok: true;
+      roles: Set<AppRole>;
+      status: string;
+      playerId?: string;
+      exists: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      isDatabaseError: boolean;
+    };
+
 /**
- * Extracts and queries the authoritative user roles and account status.
+ * Queries the authoritative user roles and account status from Firestore /appUsers/{uid}.
+ * Fail-closed: returns ok: false if database query fails.
  */
 export async function getUserAccount(
   app: any,
   uid: string,
   decodedToken?: any,
-): Promise<{ roles: Set<AppRole>; status: string; playerId?: string }> {
+): Promise<UserAccountResult> {
   const roles = new Set<AppRole>(["player"]);
   let status = "Active";
   let playerId: string | undefined = undefined;
+  let docExists = false;
 
-  // Super Admin custom claim grants all administrative roles (SEC-001)
-  if (decodedToken?.admin === true) {
-    roles.add("superAdmin");
-    roles.add("clubAdmin");
-    roles.add("matchAdmin");
-    roles.add("financeAdmin");
-    roles.add("studioAdmin");
-    roles.add("isDesigner");
-  }
-
-  // Token custom claims role check
-  if (decodedToken?.role && typeof decodedToken.role === "string") {
-    const r = decodedToken.role.trim();
-    if (r === "clubAdmin") roles.add("clubAdmin");
-    if (r === "matchAdmin") roles.add("matchAdmin");
-    if (r === "financeAdmin") roles.add("financeAdmin");
-    if (r === "studioAdmin") roles.add("studioAdmin");
-    if (r === "designer" || r === "isDesigner") roles.add("isDesigner");
-  }
-
+  // 1. Authoritative Firestore lookup on /appUsers/{uid}
   try {
-    const db = getDb(app);
+    const db = getEffectiveDb(app);
     const userDoc = await db.collection("appUsers").doc(uid).get();
     if (userDoc.exists) {
+      docExists = true;
       const data = userDoc.data() || {};
       if (data.status) status = String(data.status);
       if (data.playerId) playerId = String(data.playerId);
 
-      // Granular roles stored authoritatively in appUsers
-      // (Write-protected against non-superadmins in firestore.rules)
+      // If account is disabled, fail immediately: no administrative privileges
+      if (status === "Disabled") {
+        return { ok: true, roles, status: "Disabled", playerId, exists: true };
+      }
+
+      // Granular roles stored authoritatively in appUsers (write-protected by firestore.rules)
       if (data.isClubAdmin === true || data.role === "clubAdmin") roles.add("clubAdmin");
       if (data.isMatchAdmin === true || data.role === "matchAdmin") roles.add("matchAdmin");
       if (data.isFinanceAdmin === true || data.role === "financeAdmin") roles.add("financeAdmin");
@@ -124,20 +162,46 @@ export async function getUserAccount(
         roles.add("isDesigner");
       }
     }
-  } catch (err) {
-    // If database lookup fails, retain claims-derived roles
-    console.warn(`[server-auth] Failed to lookup appUsers doc for ${uid}:`, err);
+  } catch (err: any) {
+    // Fail-closed on database error: do NOT silently continue or retain claims
+    console.error(`[server-auth] Database error looking up /appUsers/${uid}:`, err);
+    return {
+      ok: false,
+      error: "Failed to verify account authorization due to database error.",
+      isDatabaseError: true,
+    };
   }
 
-  return { roles, status, playerId };
+  // 2. Super Admin authority: granted strictly via verified custom claim { admin: true } (SEC-001)
+  // Super Admin inherits all admin roles, BUT disabled status is still strictly enforced.
+  if (decodedToken?.admin === true && status !== "Disabled") {
+    roles.add("superAdmin");
+    roles.add("clubAdmin");
+    roles.add("matchAdmin");
+    roles.add("financeAdmin");
+    roles.add("studioAdmin");
+    roles.add("isDesigner");
+  }
+
+  return { ok: true, roles, status, playerId, exists: docExists };
 }
 
 /**
  * Verify the caller is any authenticated Firebase user with an active account.
+ * Fail-closed: rejects if database error prevents confirming account status.
  */
 export async function requireAuth(req: Request): Promise<AuthGuardResult> {
-  // Test environment bypass for integration tests with live emulator or mocks
-  if (process.env.NODE_ENV === "test" && req.headers.get("x-test-uid")) {
+  // Test environment bypass: isolated strictly behind isTestAuthBypassAllowed()
+  if (isTestAuthBypassAllowed() && req.headers.get("x-test-uid")) {
+    if (req.headers.get("x-test-db-error") === "true") {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Failed to verify account status due to database error." },
+          { status: 503 },
+        ),
+      };
+    }
     const testStatus = req.headers.get("x-test-status") || "Active";
     if (testStatus === "Disabled") {
       return {
@@ -179,27 +243,9 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
   }
 
   const app = ensureAdminApp();
+  let decoded: any;
   try {
-    const decoded = await getAuth(app).verifyIdToken(token);
-
-    // Verify account is not disabled in Firestore
-    try {
-      const db = getDb(app);
-      const userDoc = await db.collection("appUsers").doc(decoded.uid).get();
-      if (userDoc.exists && userDoc.data()?.status === "Disabled") {
-        return {
-          ok: false,
-          response: NextResponse.json(
-            { error: "Account is disabled." },
-            { status: 403 },
-          ),
-        };
-      }
-    } catch {
-      // Continue if Firestore read is unconfigured in test
-    }
-
-    return { ok: true, uid: decoded.uid, email: decoded.email };
+    decoded = await getAuth(app).verifyIdToken(token);
   } catch {
     return {
       ok: false,
@@ -209,13 +255,81 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
       ),
     };
   }
+
+  // Authoritatively confirm account status (fail-closed)
+  const accountResult = await getUserAccount(app, decoded.uid, decoded);
+  if (!accountResult.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Failed to verify account status due to database error." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  if (accountResult.status === "Disabled") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Account is disabled." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    uid: decoded.uid,
+    email: decoded.email,
+    playerId: accountResult.playerId,
+    status: accountResult.status,
+  };
 }
 
 /**
  * Require Super Admin authority.
  * Strictly verifies token custom claim { admin: true } with checkRevoked: true (SEC-001).
+ * Fail-closed: also verifies the account is not disabled in Firestore.
  */
 export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
+  // Test environment bypass: isolated strictly behind isTestAuthBypassAllowed()
+  if (isTestAuthBypassAllowed() && req.headers.get("x-test-uid")) {
+    if (req.headers.get("x-test-db-error") === "true") {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Failed to verify account status due to database error." },
+          { status: 503 },
+        ),
+      };
+    }
+    const testStatus = req.headers.get("x-test-status") || "Active";
+    if (testStatus === "Disabled") {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Account is disabled." },
+          { status: 403 },
+        ),
+      };
+    }
+    if (req.headers.get("x-test-admin") === "true") {
+      return {
+        ok: true,
+        uid: req.headers.get("x-test-uid")!,
+        email: req.headers.get("x-test-email") || "test@kavachcricket.com",
+      };
+    }
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Admin privilege required (verified admin custom claim required)." },
+        { status: 403 },
+      ),
+    };
+  }
+
   const authHeader = req.headers.get("authorization");
   if (!authHeader || (!authHeader.startsWith("Bearer ") && authHeader !== "Bearer")) {
     return {
@@ -238,7 +352,7 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
   }
 
   const app = ensureAdminApp();
-  let decoded;
+  let decoded: any;
   try {
     // SEC-001: checkRevoked = true forces verification against Firebase backend
     // to reject revoked refresh tokens immediately for privileged admin routes.
@@ -254,30 +368,63 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
   }
 
   // Strict: verified admin custom claim is strictly required (SEC-001)
-  if (decoded.admin === true) {
-    return { ok: true, uid: decoded.uid, email: decoded.email };
+  if (decoded.admin !== true) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Admin privilege required (verified admin custom claim required)." },
+        { status: 403 },
+      ),
+    };
   }
 
-  return {
-    ok: false,
-    response: NextResponse.json(
-      { error: "Admin privilege required (verified admin custom claim required)." },
-      { status: 403 },
-    ),
-  };
+  // Confirm account is not disabled in authoritative store (fail-closed)
+  const accountResult = await getUserAccount(app, decoded.uid, decoded);
+  if (!accountResult.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Failed to verify account status due to database error." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  if (accountResult.status === "Disabled") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Account is disabled." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { ok: true, uid: decoded.uid, email: decoded.email };
 }
 
 /**
  * Server-side Granular RBAC Guard (D-08).
  * Checks that the authenticated caller holds at least one of the allowed roles.
- * Super Admin (custom claim { admin: true }) inherits all administrative roles.
+ * Super Admin (custom claim { admin: true }) inherits all administrative roles unless disabled.
+ * Fail-closed: rejects if database error occurs.
  */
 export async function requireRole(
   req: Request,
   allowedRoles: AppRole[],
 ): Promise<RoleGuardResult> {
-  // Test environment bypass
-  if (process.env.NODE_ENV === "test" && req.headers.get("x-test-uid")) {
+  // Test environment bypass: isolated strictly behind isTestAuthBypassAllowed()
+  if (isTestAuthBypassAllowed() && req.headers.get("x-test-uid")) {
+    if (req.headers.get("x-test-db-error") === "true") {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Failed to verify account authorization due to database error." },
+          { status: 503 },
+        ),
+      };
+    }
+
     const testStatus = req.headers.get("x-test-status") || "Active";
     if (testStatus === "Disabled") {
       return {
@@ -365,9 +512,19 @@ export async function requireRole(
     };
   }
 
-  const { roles, status, playerId } = await getUserAccount(app, decoded.uid, decoded);
+  // Authoritatively confirm account status and roles (fail-closed)
+  const accountResult = await getUserAccount(app, decoded.uid, decoded);
+  if (!accountResult.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: accountResult.error },
+        { status: 503 },
+      ),
+    };
+  }
 
-  if (status === "Disabled") {
+  if (accountResult.status === "Disabled") {
     return {
       ok: false,
       response: NextResponse.json(
@@ -377,7 +534,7 @@ export async function requireRole(
     };
   }
 
-  const hasRole = allowedRoles.some((r) => roles.has(r));
+  const hasRole = allowedRoles.some((r) => accountResult.roles.has(r));
   if (!hasRole) {
     return {
       ok: false,
@@ -394,9 +551,9 @@ export async function requireRole(
     ok: true,
     uid: decoded.uid,
     email: decoded.email,
-    roles,
-    status,
-    playerId,
+    roles: accountResult.roles,
+    status: accountResult.status,
+    playerId: accountResult.playerId,
   };
 }
 

@@ -1,6 +1,8 @@
-# KAvach Play — Phase 5 Implementation Report: Product Rationalisation & Navigation Alignment
+# [HISTORICAL LEGACY] KAvach Play — Legacy Phase 5 Implementation Report: Navigation Alignment
 
-**Branch:** `mig-mov`  
+> **HISTORICAL NOTICE (SUPERSEDED):** This document preserves the historical implementation report from the pre-remediation Claude track (where Phase 5 was titled "Navigation Alignment"). In the active authoritative Remediation Master Plan (`AGENTS.md` and `docs/implementation/PHASE-TRACKER.md`), **Phase 5 is formally designated as Core Auth & Server-Side Security**. The navigation alignment documented here was formally superseded by Phase 3 (Product Rationalisation & UX Discovery) and Phase 4 (UX Blueprint & Prototypes).
+
+**Branch:** `mig-mov` (Historical Baseline)  
 **Governing Standard:** `AGENTS.md` (Strict phase-by-phase execution, evidence-backed verification)  
 **Status:** Completed & Ready for Review  
 **Date:** 2026-11-17  

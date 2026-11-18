@@ -19,10 +19,22 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { BaseAuth } from "firebase-admin/auth";
-import { requireAdmin } from "../lib/server-auth.ts";
+import { requireAdmin, setAuthDbForTesting } from "../lib/server-auth.ts";
 
 describe("SEC-001: requireAdmin Production Server Guard (QA-001 Compliant)", () => {
   let lastVerifyArgs = null;
+
+  // Mock Firestore appUsers lookup to avoid unmocked external network/credential lookups
+  setAuthDbForTesting({
+    collection: (col) => ({
+      doc: (uid) => ({
+        get: async () => ({
+          exists: true,
+          data: () => ({ status: "Active" }),
+        }),
+      }),
+    }),
+  });
 
   // Mock BaseAuth.prototype.verifyIdToken to test production requireAdmin logic directly
   mock.method(BaseAuth.prototype, "verifyIdToken", async function (token, checkRevoked) {

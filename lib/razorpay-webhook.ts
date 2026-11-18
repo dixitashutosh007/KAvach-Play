@@ -190,15 +190,23 @@ export async function processWebhookIntentTransaction(
 
     const intent = intentSnap.data() || {};
 
-    // Idempotency check: if already processed, terminate cleanly
-    if (intent.status === "paid") {
-      return { success: true, alreadyProcessed: true };
-    }
-
-    // 2. Validate transaction against intent (FIN-003)
+    // 2. Validate transaction against intent (FIN-003) - MUST validate before idempotency check
     const validation = validateWebhookTransaction(intent, details);
     if (!validation.ok) {
       throw new Error(validation.error);
+    }
+
+    // 3. Idempotency & Replay check: if already processed, enforce identical replay vs conflicting replay
+    if (intent.status === "paid") {
+      if (
+        intent.razorpayPaymentId &&
+        String(intent.razorpayPaymentId).trim() !== String(details.paymentId).trim()
+      ) {
+        throw new Error(
+          `Conflicting payment ID replay: intent was already fulfilled with payment ${intent.razorpayPaymentId}, received ${details.paymentId}`,
+        );
+      }
+      return { success: true, alreadyProcessed: true };
     }
 
     const now = new Date();

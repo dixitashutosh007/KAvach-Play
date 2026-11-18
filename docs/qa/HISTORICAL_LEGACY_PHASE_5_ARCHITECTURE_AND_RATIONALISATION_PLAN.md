@@ -1,6 +1,8 @@
-# KAvach Play — Phase 5 Product Rationalisation & Architecture Audit
+# [HISTORICAL LEGACY] KAvach Play — Legacy Phase 5 Product Rationalisation & Architecture Audit
 
-**Branch:** `mig-mov`  
+> **HISTORICAL NOTICE (SUPERSEDED):** This document preserves the historical audit notes from the pre-remediation Claude track (where Phase 5 was titled "Navigation Rationalisation"). In the active authoritative Remediation Master Plan (`AGENTS.md` and `docs/implementation/PHASE-TRACKER.md`), **Phase 5 is formally designated as Core Auth & Server-Side Security**. The product rationalisation work documented here was formally superseded by Phase 3 (Product Rationalisation & UX Discovery) and Decision `D-09`.
+
+**Branch:** `mig-mov` (Historical Baseline)  
 **Standard:** `AGENTS.md` (Read-only audit, non-destructive architecture review)  
 **Status:** Audit Complete — Awaiting Owner Direction  
 **Date:** 2026-11-17  

@@ -60,8 +60,22 @@
 ### 2.3 Player-User Boundary Hardening (`lib/razorpay-order.ts`)
 - In `verifyPlayerOwnership(db, authUid, targetPlayerId)`:
   - Strict verification of `players/{targetPlayerId}.authUid` and `appUsers/{authUid}.playerId`.
+  - Removed permissive fallback for `targetPlayerId === authUid` (positive match strictly required).
+  - Enforced fail-closed behavior on database errors (returns `false`).
   - Prohibits cross-player fee generation or taking over unverified player records.
   - Rejects disabled caller accounts before creating payment reservations.
+
+### 2.4 Webhook Replay & Transaction Integrity (`lib/razorpay-webhook.ts`)
+- In `processWebhookIntentTransaction(db, details)`:
+  - Validates all incoming transaction details (amount, currency, orderId, paymentId) against stored intent *before* checking idempotency.
+  - Identical replays (`same paymentId` on paid intent) return `{ success: true, alreadyProcessed: true }`.
+  - Conflicting replays (mismatched payment ID, order ID, amount, currency on paid intent) are strictly rejected with validation errors.
+  - Downstream mutations execute atomically inside `db.runTransaction()`.
+
+### 2.5 Test Bypass Isolation (`lib/server-auth.ts`)
+- `x-test-*` bypass is strictly locked behind `isTestAuthBypassAllowed()`.
+- Permanently returns `false` in production runtimes (`NODE_ENV === "production"`).
+- Requires both `NODE_ENV === "test"` and `KAVACH_TEST_AUTH_BYPASS === "true"`.
 
 ---
 
@@ -70,17 +84,18 @@
 | Scenario # | Test Description | Expected Result | Actual Result | Status |
 |---|---|---|---|---|
 | **Scenario 1** | Unauthenticated API access (missing or empty Authorization header) | 401 Unauthorized | 401 Unauthorized (`Missing Authorization header`) | **PASS** |
-| **Scenario 2** | Authenticated player attempting admin operations | 403 Forbidden | 403 Forbidden (`requires one of [superAdmin]`) | **PASS** |
+| **Scenario 2** | Authenticated player attempting admin operations | 403 Forbidden | 403 Forbidden (`requires one of [...]`) | **PASS** |
 | **Scenario 3** | Match Admin attempting Finance Admin operations (`reconcile-abandoned`) | 403 Forbidden | 403 Forbidden (`requires one of [financeAdmin, superAdmin]`) | **PASS** |
 | **Scenario 4** | Finance Admin attempting Super Admin operations | 403 Forbidden | 403 Forbidden (`requires one of [superAdmin]`) | **PASS** |
-| **Scenario 5** | Forged player IDs (cross-player boundary violation) | Ownership rejected | `verifyPlayerOwnership` returns `false` | **PASS** |
+| **Scenario 5** | Strict player ownership (positive match required, no UID===playerId fallback, DB error fail-closed) | Ownership rejected | `verifyPlayerOwnership` returns `false` | **PASS** |
 | **Scenario 6** | Forged roles in payload or headers without cryptographic custom claims | 403 Forbidden | 403 Forbidden | **PASS** |
 | **Scenario 7** | Tampered payment amounts (client amounts ignored) | Server derivation | Server computes 1200; client 10 discarded | **PASS** |
 | **Scenario 8** | Invalid payment signatures on webhook | 401 Invalid signature | Signature mismatch rejected via timing-safe check | **PASS** |
-| **Scenario 9** | Duplicate webhook delivery on already-paid intent | 200 Idempotent | Returns `{ success: true, alreadyProcessed: true }` | **PASS** |
-| **Scenario 10** | Conflicting webhook replay (amount/currency mismatch) | Validation error | Rejects with `Amount mismatch` / `Currency mismatch` | **PASS** |
+| **Scenario 9** | Duplicate webhook delivery on already-paid intent (identical replay) | 200 Idempotent | Returns `{ success: true, alreadyProcessed: true }` | **PASS** |
+| **Scenario 10** | Conflicting webhook replay (conflicting paymentId, amount, or currency) | Validation error | Rejection on paid intent with conflicting details | **PASS** |
 | **Scenario 11** | Expired or revoked authentication tokens | 401 Unauthorized | Rejects with `Invalid or expired token.` | **PASS** |
-| **Scenario 12** | Disabled account status enforcement | 403 Forbidden | 403 Forbidden (`Account is disabled.`) | **PASS** |
+| **Scenario 12** | Account status enforcement & fail-closed DB errors | 403 / 503 | 403 on disabled; 503 on database lookup failure | **PASS** |
+| **Scenario 13** | Test bypass isolation (ignored in production or without bypass flag) | 401 Unauthorized | Bypasses rejected in production runtime | **PASS** |
 
 ---
 
@@ -88,9 +103,9 @@
 
 ### 4.1 Functional & Unit Test Suite (`npm run test:functional`)
 - **Command:** `npm run test:functional`
-- **Results:** **219 / 219 passed** across 53 test suites (0 failed, 0 skipped, duration 754ms)
+- **Results:** **232 / 232 passed** across 53 test suites (0 failed, 0 skipped, duration 1047ms)
 - **Included Suites:**
-  - `tests/server-security-phase5.test.mjs` (21 tests)
+  - `tests/server-security-phase5.test.mjs` (34 tests)
   - `tests/server-auth.test.mjs` (10 tests)
   - `tests/abandoned-match-accounting.test.mjs`
   - `tests/accounting-functional.test.mjs`

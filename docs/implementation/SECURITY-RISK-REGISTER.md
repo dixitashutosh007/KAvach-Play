@@ -265,12 +265,20 @@ If base fee is ₹800 and a guest is charged ₹1,000 via `feeOverride`, `grossV
 
 ## Risk Summary Matrix
 
-| ID | Severity | Area | Fix Complexity | Decision Required? |
-|----|----------|------|---------------|-------------------|
-| CRIT-01 | P0 | Security | Low (15 min) | No |
-| CRIT-04 | P0 | Finance | Low (30 min) | **YES** |
-| CRIT-03 | P1 | Privacy/Cost | Medium (2 hours) | No |
-| FIN-03 | P1 | Payments | Medium (3 hours) | No |
-| CRIT-02 | P2 | Security | Low (10 min) | No |
-| FIN-01 | P2 | Finance | Low (20 min) | No |
-| FIN-02 | P2 | Finance | Low (20 min) | No |
+| ID | Severity | Area | Fix Complexity | Decision Required? | Remediation Status |
+|----|----------|------|---------------|-------------------|--------------------|
+| CRIT-01 | P0 | Security | Low (15 min) | No | **FIXED** (Phase 1 & Phase 5) |
+| CRIT-04 | P0 | Finance | Low (30 min) | **YES** | **FIXED** (Option A, Phase 1 & 5) |
+| CRIT-03 | P1 | Privacy/Cost | Medium (2 hours) | No | **FIXED** (Phase 2) |
+| FIN-03 | P1 | Payments | Medium (3 hours) | No | **FIXED** (Phase 5) |
+| CRIT-02 | P2 | Security | Low (10 min) | No | **FIXED** (Phase 1) |
+| FIN-01 | P2 | Finance | Low (20 min) | No | **FIXED** (Phase 1) |
+| FIN-02 | P2 | Finance | Low (20 min) | No | **FIXED** (Phase 1) |
+| SEC-001 | P0 | Auth/RBAC | High | **D-08** | **FIXED** (Phase 5: Granular Server RBAC + fail-closed store) |
+| SEC-002 | P0 | Payments | High | No | **FIXED** (Phase 5: Server-only 'Paid' status transitions) |
+| SEC-003 | P1 | Financial | High | No | **FIXED** (Phase 5: Authoritative server fee calculations) |
+| FIN-001 | P0 | Orders | High | No | **FIXED** (Phase 5: Server-derived Razorpay amounts & currency) |
+| FIN-002 | P1 | Webhook | High | No | **FIXED** (Phase 5: Atomic Firestore transaction + replay guards) |
+| FIN-003 | P1 | Webhook | Medium | No | **FIXED** (Phase 5: Strict signature, amount, currency & order validation) |
+| IDT-001 | P1 | Identity | High | **D-02** | **FIXED** (Phase 5: Positive link ownership, no UID===playerId fallback) |
+

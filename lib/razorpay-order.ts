@@ -1149,45 +1149,51 @@ export function validateCurrency(currency: string | undefined | null): boolean {
 
 /**
  * Validates that the authenticated user owns or is linked to the target playerId.
- * Enforces strict player-to-user boundary (SEC-001, IDT-001) without blindly assuming authUid === playerId.
+ * Enforces strict player-to-user boundary (SEC-001, IDT-001):
+ * - Must have a positive match via players/{targetPlayerId}.authUid === authUid OR appUsers/{authUid}.playerId === targetPlayerId.
+ * - Never grants ownership merely because targetPlayerId === authUid.
+ * - Never grants ownership after a failed Firestore lookup (fail-closed).
  */
 export async function verifyPlayerOwnership(
   db: any,
   authUid: string,
   targetPlayerId: string,
 ): Promise<boolean> {
-  if (!targetPlayerId || !authUid) return false;
+  if (!targetPlayerId || !authUid || typeof targetPlayerId !== "string" || typeof authUid !== "string") {
+    return false;
+  }
 
   // 1. Check players collection: does the target player document have authUid matching caller?
   try {
     const pDoc = await db.collection("players").doc(targetPlayerId).get();
     if (pDoc.exists) {
       const pData = pDoc.data() || {};
-      if (pData.authUid === authUid) {
-        return true;
-      }
-      // If doc ID equals authUid, verify it is not bound to a different authUid
-      if (targetPlayerId === authUid && (!pData.authUid || pData.authUid === authUid)) {
+      if (pData.authUid && pData.authUid === authUid) {
         return true;
       }
     }
-  } catch {
-    // ignore query failure and continue to appUsers check
+  } catch (err) {
+    // Fail-closed on database read error
+    console.error(`[verifyPlayerOwnership] Database error reading players/${targetPlayerId}:`, err);
+    return false;
   }
 
   // 2. Check appUsers collection: does caller's account record link to targetPlayerId?
   try {
     const uDoc = await db.collection("appUsers").doc(authUid).get();
-    if (uDoc.exists && uDoc.data()?.playerId === targetPlayerId) {
-      return true;
+    if (uDoc.exists) {
+      const uData = uDoc.data() || {};
+      if (uData.playerId && uData.playerId === targetPlayerId) {
+        return true;
+      }
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    // Fail-closed on database read error
+    console.error(`[verifyPlayerOwnership] Database error reading appUsers/${authUid}:`, err);
+    return false;
   }
 
-  // 3. Fallback: if targetPlayerId matches authUid and no opposing relation exists
-  if (targetPlayerId === authUid) return true;
-
+  // Strict: no fallback. Without a confirmed positive link in players or appUsers, reject.
   return false;
 }
 

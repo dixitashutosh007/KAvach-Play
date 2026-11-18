@@ -59,8 +59,8 @@ describe("FIN-001: Player Ownership Verification", () => {
     }),
   };
 
-  it("authorizes when authUid directly matches targetPlayerId", async () => {
-    assert.equal(await verifyPlayerOwnership(mockDb, "user_123", "user_123"), true);
+  it("rejects when targetPlayerId === authUid but neither document has a positive link (no fallback)", async () => {
+    assert.equal(await verifyPlayerOwnership(mockDb, "user_123", "user_123"), false);
   });
 
   it("authorizes when players doc authUid links to caller", async () => {
