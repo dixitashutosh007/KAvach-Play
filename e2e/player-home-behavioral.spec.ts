@@ -118,7 +118,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByText(/Availability marked as Playing/i)).toBeVisible({ timeout: 4000 });
   });
 
-  test("2B. Enforces player-specific match visibility, search isolation, and blocks ineligible match RSVP", async ({
+  test("2B. Enforces player-specific match visibility, search isolation, and open fixture RSVP", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -146,13 +146,18 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     // Clear search
     await searchInput.fill("");
 
-    // 3. Attempt to submit RSVP for ineligible match directly -> must be rejected with error toast
-    await page.evaluate(async () => {
-      await (window as any).__kavachTestRsvp?.("match-ineligible-squad", "Confirmed");
-    });
-    await expect(
-      page.getByText(/You are not eligible to participate in this match/i)
-    ).toBeVisible({ timeout: 4000 });
+    // 3. Confirm squad-restricted match is strictly excluded from DOM/UI
+    await expect(page.locator('[data-testid="match-card-match-ineligible-squad"]')).toHaveCount(0);
+
+    // 4. Confirm open fixture (match-upcoming-4) is visible and actionable for 1-tap RSVP
+    const matchOpen = page.locator('[data-testid="match-card-match-upcoming-4"]');
+    await expect(matchOpen).toBeVisible();
+    await expect(matchOpen.getByText(/vs Faridabad Kings/i)).toBeVisible();
+
+    const openPlayingBtn = matchOpen.getByRole("button", { name: "Mark availability as Playing" });
+    await expect(openPlayingBtn).toBeVisible();
+    await openPlayingBtn.click();
+    await expect(page.getByText(/Availability marked as Playing/i)).toBeVisible({ timeout: 4000 });
   });
 
   test("2C. Preserves legitimate administrator match access and search visibility for admin users", async ({

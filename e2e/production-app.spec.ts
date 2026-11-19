@@ -76,7 +76,6 @@ function createSyntheticStore(roleConfig: {
       result: "Pending",
       fee: 650,
       reportingTime: "07:00",
-      squadPlayerIds: [playerId, "player-teammate"],
       notes: "Pitch report: Dry surface, bat first.",
     },
     {
@@ -91,7 +90,6 @@ function createSyntheticStore(roleConfig: {
       opponentScore: "195/9 (30 ov)",
       result: "Won",
       fee: 600,
-      squadPlayerIds: [playerId],
     },
     {
       id: "match-abandoned-1",
@@ -105,7 +103,6 @@ function createSyntheticStore(roleConfig: {
       opponentScore: "",
       result: "Abandoned", // Option A policy: Zero match-fee obligation
       fee: 550,
-      squadPlayerIds: [playerId],
     },
   ];
 

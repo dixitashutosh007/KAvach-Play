@@ -2,91 +2,104 @@ import { format } from "date-fns";
 import type { Player } from "./types";
 
 export interface ParsedDob {
-  year?: number;
+  year: number;
   month: number; // 1-12
   day: number; // 1-31
 }
 
 /**
- * Deterministically parses a player's date of birth string.
- * Supports:
- * - ISO / DB format: YYYY-MM-DD (e.g. "1995-04-12")
- * - Formatted / UI format: DD/MM/YYYY (e.g. "12/04/1995")
+ * Checks if a given year is a leap year in the Gregorian calendar.
+ */
+export function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
+ * Returns the exact number of days in a given month of a given year,
+ * correctly handling leap years for February.
+ */
+export function getDaysInMonth(year: number, month: number): number {
+  if (month < 1 || month > 12) return 0;
+  const daysPerMonth = [
+    31,
+    isLeapYear(year) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return daysPerMonth[month - 1];
+}
+
+/**
+ * Strict Date of Birth Parser.
  *
- * Rejects invalid dates (e.g. Feb 31st, month 13), ambiguous non-standard formats,
- * null/undefined, and garbage strings safely without throwing.
+ * Requirements:
+ * - Requires exact full formats:
+ *   1. "DD/MM/YYYY" (e.g. "12/04/1995")
+ *   2. "YYYY-MM-DD" (e.g. "1995-04-12")
+ * - Strictly rejects trailing characters (e.g. "1995-04-12junk"), partial tokens,
+ *   invalid separators, and unpadded numeric fields (e.g. "1/4/1995", "1995-4-12").
+ * - Strictly validates calendar dates against leap years (e.g. "29/02/2000" is valid,
+ *   "29/02/2001" is invalid).
+ * - Safely returns null for missing, undefined, empty, or malformed strings.
  */
 export function parsePlayerDob(dob: string | undefined | null): ParsedDob | null {
   if (!dob || typeof dob !== "string") return null;
   const trimmed = dob.trim();
   if (!trimmed) return null;
 
-  // 1. Try DD/MM/YYYY
-  if (trimmed.includes("/")) {
+  // 1. Exact DD/MM/YYYY match (two digits day, slash, two digits month, slash, four digits year)
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
     const parts = trimmed.split("/");
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10);
-      const year = parseInt(parts[2], 10);
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
 
-      if (
-        !isNaN(day) &&
-        !isNaN(month) &&
-        !isNaN(year) &&
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <= 31 &&
-        year >= 1900 &&
-        year <= 2100
-      ) {
-        // Validate calendar days for the specific month/year
-        const testDate = new Date(year, month - 1, day);
-        if (
-          testDate.getFullYear() === year &&
-          testDate.getMonth() === month - 1 &&
-          testDate.getDate() === day
-        ) {
-          return { day, month, year };
-        }
-      }
-    }
-    return null;
+    if (year < 1900 || year > 2100) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > getDaysInMonth(year, month)) return null;
+
+    return { day, month, year };
   }
 
-  // 2. Try YYYY-MM-DD
-  if (trimmed.includes("-")) {
+  // 2. Exact YYYY-MM-DD match (four digits year, dash, two digits month, dash, two digits day)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     const parts = trimmed.split("-");
-    if (parts.length === 3) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10);
-      const day = parseInt(parts[2], 10);
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
 
-      if (
-        !isNaN(year) &&
-        !isNaN(month) &&
-        !isNaN(day) &&
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <= 31 &&
-        year >= 1900 &&
-        year <= 2100
-      ) {
-        const testDate = new Date(year, month - 1, day);
-        if (
-          testDate.getFullYear() === year &&
-          testDate.getMonth() === month - 1 &&
-          testDate.getDate() === day
-        ) {
-          return { day, month, year };
-        }
-      }
-    }
-    return null;
+    if (year < 1900 || year > 2100) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > getDaysInMonth(year, month)) return null;
+
+    return { day, month, year };
   }
 
   return null;
+}
+
+/**
+ * Resolves recurring celebration day for a given birth month and day in a target year.
+ * Policy: In non-leap years, February 29 birthdays recur and are celebrated on
+ * February 28 (the final calendar day of February, preserving the birth month).
+ */
+export function getCelebrationDate(
+  month: number,
+  day: number,
+  targetYear: number
+): { month: number; day: number } {
+  if (month === 2 && day === 29 && !isLeapYear(targetYear)) {
+    return { month: 2, day: 28 };
+  }
+  return { month, day };
 }
 
 export interface BirthdayStatus {
@@ -99,7 +112,8 @@ export interface BirthdayStatus {
 
 /**
  * Evaluates whether a player's birthday is today or within the next 14 days
- * relative to referenceDate, correctly handling year-boundary transitions (e.g. Dec to Jan).
+ * relative to referenceDate, correctly handling year-boundary transitions (e.g. Dec to Jan)
+ * and February 29 leap-day recurrence in non-leap years.
  */
 export function getPlayerBirthdayStatus(
   dob: string | undefined | null,
@@ -125,20 +139,31 @@ export function getPlayerBirthdayStatus(
     referenceDate.getDate()
   );
 
-  // Check if birthday is today
-  if (month === ref.getMonth() + 1 && day === ref.getDate()) {
-    const todayDate = new Date(ref.getFullYear(), month - 1, day);
+  const refYear = ref.getFullYear();
+
+  // 1. Check celebration date in reference year (handling Feb 29 in non-leap years)
+  const celebrationThisYear = getCelebrationDate(month, day, refYear);
+  const bdayThisYear = new Date(
+    refYear,
+    celebrationThisYear.month - 1,
+    celebrationThisYear.day
+  );
+
+  // Check if birthday is TODAY
+  if (
+    celebrationThisYear.month === ref.getMonth() + 1 &&
+    celebrationThisYear.day === ref.getDate()
+  ) {
     return {
       isToday: true,
       isUpcoming: false,
       daysUntil: 0,
-      formattedDate: format(todayDate, "MMM do"),
+      formattedDate: format(bdayThisYear, "MMM do"),
       parsedDob: parsed,
     };
   }
 
-  // 1. Check birthday in reference year
-  const bdayThisYear = new Date(ref.getFullYear(), month - 1, day);
+  // Check difference in calendar days for this year
   const diffDaysThisYear = Math.round(
     (bdayThisYear.getTime() - ref.getTime()) / (1000 * 60 * 60 * 24)
   );
@@ -154,7 +179,14 @@ export function getPlayerBirthdayStatus(
   }
 
   // 2. Check year-boundary rollover (e.g. today is Dec 28, birthday is Jan 3 of next year)
-  const bdayNextYear = new Date(ref.getFullYear() + 1, month - 1, day);
+  const nextYear = refYear + 1;
+  const celebrationNextYear = getCelebrationDate(month, day, nextYear);
+  const bdayNextYear = new Date(
+    nextYear,
+    celebrationNextYear.month - 1,
+    celebrationNextYear.day
+  );
+
   const diffDaysNextYear = Math.round(
     (bdayNextYear.getTime() - ref.getTime()) / (1000 * 60 * 60 * 24)
   );
@@ -169,8 +201,13 @@ export function getPlayerBirthdayStatus(
     };
   }
 
-  const displayYear = diffDaysThisYear >= 0 ? ref.getFullYear() : ref.getFullYear() + 1;
-  const displayDate = new Date(displayYear, month - 1, day);
+  const displayYear = diffDaysThisYear >= 0 ? refYear : nextYear;
+  const celebrationDisplay = getCelebrationDate(month, day, displayYear);
+  const displayDate = new Date(
+    displayYear,
+    celebrationDisplay.month - 1,
+    celebrationDisplay.day
+  );
 
   return {
     isToday: false,

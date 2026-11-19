@@ -4,12 +4,18 @@ import {
   parsePlayerDob,
   getPlayerBirthdayStatus,
   partitionBirthdays,
+  isLeapYear,
+  getDaysInMonth,
 } from "../lib/birthday-utils.ts";
-import { isPlayerEligibleForMatch } from "../lib/match-eligibility.ts";
+import {
+  isPlayerEligibleForMatch,
+  isSquadAssignedToMatch,
+  isPlayerInAssignedSquad,
+} from "../lib/match-eligibility.ts";
 
-describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Match Eligibility", () => {
-  // ── 1. Birthday Parsing & Year-Boundary Tests ──────────────────────────────
-  describe("1. Deterministic Birthday Parsing (lib/birthday-utils.ts)", () => {
+describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Real-Model Match Eligibility", () => {
+  // ── 1. Birthday Parsing, Leap Year & Recurring Policy Tests ─────────────────
+  describe("1. Strict Birthday Parsing & Leap-Day Policy (lib/birthday-utils.ts)", () => {
     it("parses valid YYYY-MM-DD format accurately", () => {
       const res = parsePlayerDob("1995-04-12");
       assert.deepEqual(res, { day: 12, month: 4, year: 1995 });
@@ -20,26 +26,98 @@ describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Match Eligibil
       assert.deepEqual(res, { day: 12, month: 4, year: 1995 });
     });
 
-    it("rejects invalid calendar dates safely (e.g. Feb 31st)", () => {
+    it("strictly rejects malformed inputs with embedded letters, trailing junk, or invalid separators", () => {
+      assert.equal(parsePlayerDob("12abc/04/1995"), null);
+      assert.equal(parsePlayerDob("1995-04-12junk"), null);
+      assert.equal(parsePlayerDob("12-04-1995"), null);
+      assert.equal(parsePlayerDob("1995/04/12"), null);
+      assert.equal(parsePlayerDob("not-a-date"), null);
+      assert.equal(parsePlayerDob("99/99/9999"), null);
+    });
+
+    it("strictly rejects unpadded numeric date inputs", () => {
+      assert.equal(parsePlayerDob("1/4/1995"), null);
+      assert.equal(parsePlayerDob("1995-4-12"), null);
+      assert.equal(parsePlayerDob("1995-04-1"), null);
+      assert.equal(parsePlayerDob("1/04/1995"), null);
+    });
+
+    it("validates leap years accurately (e.g. 29/02/2000 vs 29/02/2001)", () => {
+      // 2000 is a leap year (divisible by 400)
+      assert.deepEqual(parsePlayerDob("29/02/2000"), { day: 29, month: 2, year: 2000 });
+      assert.deepEqual(parsePlayerDob("2000-02-29"), { day: 29, month: 2, year: 2000 });
+
+      // 2004 is a leap year (divisible by 4)
+      assert.deepEqual(parsePlayerDob("29/02/2004"), { day: 29, month: 2, year: 2004 });
+
+      // 2001 is NOT a leap year
+      assert.equal(parsePlayerDob("29/02/2001"), null);
+      assert.equal(parsePlayerDob("2001-02-29"), null);
+
+      // 1900 is NOT a leap year (century not divisible by 400)
+      assert.equal(parsePlayerDob("29/02/1900"), null);
+    });
+
+    it("rejects invalid calendar dates safely (e.g. Feb 31st or Apr 31st)", () => {
       assert.equal(parsePlayerDob("1995-02-31"), null);
       assert.equal(parsePlayerDob("31/02/1995"), null);
+      assert.equal(parsePlayerDob("1995-04-31"), null);
+      assert.equal(parsePlayerDob("31/04/1995"), null);
     });
 
     it("rejects invalid month numbers (> 12 or < 1)", () => {
       assert.equal(parsePlayerDob("1995-13-10"), null);
       assert.equal(parsePlayerDob("10/13/1995"), null);
+      assert.equal(parsePlayerDob("1995-00-10"), null);
+      assert.equal(parsePlayerDob("00/10/1995"), null);
     });
 
-    it("handles missing, null, undefined, empty, and garbage strings safely", () => {
+    it("handles missing, null, undefined, and empty strings safely", () => {
       assert.equal(parsePlayerDob(null), null);
       assert.equal(parsePlayerDob(undefined), null);
       assert.equal(parsePlayerDob(""), null);
       assert.equal(parsePlayerDob("   "), null);
-      assert.equal(parsePlayerDob("not-a-date"), null);
-      assert.equal(parsePlayerDob("99/99/9999"), null);
     });
 
-    it("correctly identifies birthday TODAY", () => {
+    it("correctly handles recurring Feb 29 leap-day birthdays in non-leap years (celebrated Feb 28)", () => {
+      // Reference date: 28 Feb 2026 (non-leap year)
+      const refFeb28 = new Date(2026, 1, 28);
+      const statusFeb28 = getPlayerBirthdayStatus("2000-02-29", refFeb28);
+      assert.equal(statusFeb28.isToday, true);
+      assert.equal(statusFeb28.isUpcoming, false);
+      assert.equal(statusFeb28.daysUntil, 0);
+
+      // Reference date: 20 Feb 2026 (8 days before Feb 28)
+      const refFeb20 = new Date(2026, 1, 20);
+      const statusFeb20 = getPlayerBirthdayStatus("2000-02-29", refFeb20);
+      assert.equal(statusFeb20.isToday, false);
+      assert.equal(statusFeb20.isUpcoming, true);
+      assert.equal(statusFeb20.daysUntil, 8);
+
+      // Reference date: 1 Mar 2026 (birthday already passed on Feb 28)
+      const refMar1 = new Date(2026, 2, 1);
+      const statusMar1 = getPlayerBirthdayStatus("2000-02-29", refMar1);
+      assert.equal(statusMar1.isToday, false);
+      assert.equal(statusMar1.isUpcoming, false);
+    });
+
+    it("correctly handles recurring Feb 29 leap-day birthdays in leap years (celebrated Feb 29)", () => {
+      // Reference date: 29 Feb 2028 (leap year)
+      const refFeb29 = new Date(2028, 1, 29);
+      const statusFeb29 = getPlayerBirthdayStatus("2000-02-29", refFeb29);
+      assert.equal(statusFeb29.isToday, true);
+      assert.equal(statusFeb29.isUpcoming, false);
+      assert.equal(statusFeb29.daysUntil, 0);
+
+      // Reference date: 28 Feb 2028 (1 day before Feb 29 in leap year)
+      const refFeb28 = new Date(2028, 1, 28);
+      const statusFeb28 = getPlayerBirthdayStatus("2000-02-29", refFeb28);
+      assert.equal(statusFeb28.isToday, false);
+      assert.equal(statusFeb28.isUpcoming, true);
+      assert.equal(statusFeb28.daysUntil, 1);
+    });
+
+    it("correctly identifies birthday TODAY for regular dates", () => {
       const refDate = new Date(2026, 10, 19); // 19 Nov 2026
       const status1 = getPlayerBirthdayStatus("1990-11-19", refDate);
       assert.equal(status1.isToday, true);
@@ -112,11 +190,18 @@ describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Match Eligibil
     });
   });
 
-  // ── 2. Player-Match Eligibility & Visibility Tests ─────────────────────────
-  describe("2. Player-Match Eligibility & Visibility (lib/match-eligibility.ts)", () => {
+  // ── 2. Real Persisted Data Model Match Eligibility Tests (10 Scenarios) ─────
+  describe("2. Real-Model Match Eligibility (lib/match-eligibility.ts)", () => {
     const activePlayer = {
       id: "player-alpha",
       name: "Alpha Player",
+      disabled: false,
+      inviteStatus: "Accepted",
+    };
+
+    const teammatePlayer = {
+      id: "player-beta",
+      name: "Beta Teammate",
       disabled: false,
       inviteStatus: "Accepted",
     };
@@ -135,103 +220,169 @@ describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Match Eligibil
       inviteStatus: "Pending",
     };
 
+    const rejectedPlayer = {
+      id: "player-rejected",
+      name: "Rejected Player",
+      disabled: false,
+      inviteStatus: "Rejected",
+    };
+
+    const mergedPlayer = {
+      id: "player-merged",
+      name: "Merged Player",
+      disabled: false,
+      inviteStatus: "Accepted",
+      mergedInto: "player-alpha",
+    };
+
     const standardMatch = {
-      id: "match-open-1",
+      id: "match-fixture-1",
       opponent: "Delhi Warriors",
       date: "2026-11-25",
       isArchived: false,
       isTentative: false,
     };
 
-    it("grants eligibility for active player on open fixture without squad restrictions", () => {
-      const eligible = isPlayerEligibleForMatch(activePlayer, standardMatch, [], false);
-      assert.equal(eligible, true);
+    // Scenario 1: Open fixture with NO squad assigned (payments empty)
+    it("Scenario 1: grants eligibility for active verified player on open fixture with no squad assigned", () => {
+      const payments = [];
+      assert.equal(isSquadAssignedToMatch(standardMatch.id, payments), false);
+      assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), true);
     });
 
-    it("grants eligibility when player is in squadPlayerIds list", () => {
-      const squadMatch = {
-        ...standardMatch,
-        id: "match-squad-1",
-        squadPlayerIds: ["player-alpha", "player-beta"],
-      };
-      const eligible = isPlayerEligibleForMatch(activePlayer, squadMatch, [], false);
-      assert.equal(eligible, true);
-    });
-
-    it("DENIES eligibility when player is excluded from squadPlayerIds list", () => {
-      const squadMatch = {
-        ...standardMatch,
-        id: "match-squad-exclusive",
-        squadPlayerIds: ["player-other-1", "player-other-2"],
-      };
-      const eligible = isPlayerEligibleForMatch(activePlayer, squadMatch, [], false);
-      assert.equal(eligible, false);
-    });
-
-    it("grants eligibility if player has an existing payment record even if not in squadPlayerIds", () => {
-      const squadMatch = {
-        ...standardMatch,
-        id: "match-squad-custom",
-        squadPlayerIds: ["player-other-1"],
-      };
+    // Scenario 2: Active player included in an assigned squad via MatchPayment
+    it("Scenario 2: grants eligibility when player is included in assigned squad via MatchPayment record", () => {
       const payments = [
         {
           id: "pay-1",
-          matchId: "match-squad-custom",
-          playerId: "player-alpha",
+          matchId: standardMatch.id,
+          playerId: activePlayer.id,
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+        {
+          id: "pay-2",
+          matchId: standardMatch.id,
+          playerId: teammatePlayer.id,
           status: "Unpaid",
           availability: "Confirmed",
         },
       ];
-      const eligible = isPlayerEligibleForMatch(activePlayer, squadMatch, payments, false);
-      assert.equal(eligible, true);
+      assert.equal(isSquadAssignedToMatch(standardMatch.id, payments), true);
+      assert.equal(isPlayerInAssignedSquad(activePlayer.id, standardMatch.id, payments), true);
+      assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), true);
     });
 
-    it("DENIES eligibility for tentative matches for regular players", () => {
+    // Scenario 3: Active player on waitlist via MatchPayment
+    it("Scenario 3: grants eligibility when player is on assigned squad waitlist via MatchPayment", () => {
+      const payments = [
+        {
+          id: "pay-1",
+          matchId: standardMatch.id,
+          playerId: activePlayer.id,
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+        {
+          id: "pay-2",
+          matchId: standardMatch.id,
+          playerId: teammatePlayer.id,
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+      ];
+      assert.equal(isSquadAssignedToMatch(standardMatch.id, payments), true);
+      assert.equal(isPlayerInAssignedSquad(activePlayer.id, standardMatch.id, payments), true);
+      assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), true);
+    });
+
+    // Scenario 4: Active player excluded from assigned squad (no MatchPayment record)
+    it("Scenario 4: DENIES eligibility when squad is assigned to other players and player has NO payment doc", () => {
+      const payments = [
+        {
+          id: "pay-2",
+          matchId: standardMatch.id,
+          playerId: teammatePlayer.id,
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+      ];
+      assert.equal(isSquadAssignedToMatch(standardMatch.id, payments), true);
+      assert.equal(isPlayerInAssignedSquad(activePlayer.id, standardMatch.id, payments), false);
+      assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), false);
+    });
+
+    // Scenario 5: Player has an existing payment record (e.g. Paid) even alongside other squad records
+    it("Scenario 5: grants eligibility if player has an existing payment record (Paid/Unpaid/Waived)", () => {
+      const payments = [
+        {
+          id: "pay-1",
+          matchId: standardMatch.id,
+          playerId: activePlayer.id,
+          status: "Paid",
+          availability: "Confirmed",
+        },
+        {
+          id: "pay-2",
+          matchId: standardMatch.id,
+          playerId: teammatePlayer.id,
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+      ];
+      assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), true);
+    });
+
+    // Scenario 6: Player self-RSVP on open fixture does NOT lock fixture for other active players
+    it("Scenario 6: self-RSVPs on open fixture do NOT lock fixture as assigned squad for other players", () => {
+      const payments = [
+        {
+          id: "pay-rsvp-teammate",
+          matchId: standardMatch.id,
+          playerId: teammatePlayer.id,
+          status: "Not Playing",
+          availability: "Yes",
+        },
+      ];
+      // Self-RSVP (status "Not Playing", availability "Yes") does NOT constitute an assigned squad
+      assert.equal(isSquadAssignedToMatch(standardMatch.id, payments), false);
+      // activePlayer has no record yet, but can still view and RSVP because it is an open fixture
+      assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), true);
+    });
+
+    // Scenario 7: Inactive / disabled player
+    it("Scenario 7: DENIES eligibility for inactive/disabled players even on open fixtures", () => {
+      assert.equal(isPlayerEligibleForMatch(disabledPlayer, standardMatch, [], false), false);
+    });
+
+    // Scenario 8: Pending, rejected, or merged player
+    it("Scenario 8: DENIES eligibility for pending, rejected, or merged players", () => {
+      assert.equal(isPlayerEligibleForMatch(pendingPlayer, standardMatch, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(rejectedPlayer, standardMatch, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(mergedPlayer, standardMatch, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(null, standardMatch, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(undefined, standardMatch, [], false), false);
+    });
+
+    // Scenario 9: Tentative match
+    it("Scenario 9: DENIES eligibility for tentative matches for regular players, grants for admin", () => {
       const tentativeMatch = {
         ...standardMatch,
         id: "match-tentative-1",
         isTentative: true,
       };
-      const eligible = isPlayerEligibleForMatch(activePlayer, tentativeMatch, [], false);
-      assert.equal(eligible, false);
+      assert.equal(isPlayerEligibleForMatch(activePlayer, tentativeMatch, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(null, tentativeMatch, [], true), true);
     });
 
-    it("DENIES eligibility for archived matches for regular players", () => {
+    // Scenario 10: Archived match
+    it("Scenario 10: DENIES eligibility for archived matches for both regular players and admin", () => {
       const archivedMatch = {
         ...standardMatch,
         id: "match-archived-1",
         isArchived: true,
       };
-      const eligible = isPlayerEligibleForMatch(activePlayer, archivedMatch, [], false);
-      assert.equal(eligible, false);
-    });
-
-    it("DENIES eligibility for disabled or pending/rejected players", () => {
-      assert.equal(isPlayerEligibleForMatch(disabledPlayer, standardMatch, [], false), false);
-      assert.equal(isPlayerEligibleForMatch(pendingPlayer, standardMatch, [], false), false);
-      assert.equal(isPlayerEligibleForMatch(null, standardMatch, [], false), false);
-    });
-
-    it("grants admin legitimate access to view active and tentative matches", () => {
-      const tentativeMatch = {
-        ...standardMatch,
-        id: "match-tentative-admin",
-        isTentative: true,
-      };
-      const squadMatch = {
-        ...standardMatch,
-        id: "match-squad-exclusive",
-        squadPlayerIds: ["player-other-1"],
-      };
-
-      // Admin can see standard, squad-exclusive, and tentative matches
-      assert.equal(isPlayerEligibleForMatch(null, standardMatch, [], true), true);
-      assert.equal(isPlayerEligibleForMatch(null, tentativeMatch, [], true), true);
-      assert.equal(isPlayerEligibleForMatch(null, squadMatch, [], true), true);
-
-      // Admin does not see archived matches
-      const archivedMatch = { ...standardMatch, isArchived: true };
+      assert.equal(isPlayerEligibleForMatch(activePlayer, archivedMatch, [], false), false);
       assert.equal(isPlayerEligibleForMatch(null, archivedMatch, [], true), false);
     });
   });

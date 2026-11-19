@@ -115,7 +115,6 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 650,
       reportingTime: "07:00",
-      squadPlayerIds: [playerId, "player-teammate-1"],
       notes: "Pitch report: Dry surface, bat first.",
     },
     {
@@ -131,7 +130,6 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 600,
       reportingTime: "07:30",
-      squadPlayerIds: [playerId],
     },
     {
       id: "match-upcoming-3",
@@ -146,9 +144,9 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 650,
       reportingTime: "06:30",
-      squadPlayerIds: [playerId],
     },
     {
+      // OPEN FIXTURE: No confirmed squad assignment yet; all active players can view & RSVP
       id: "match-upcoming-4",
       groundId: "ground-2",
       format: "T30",
@@ -161,10 +159,9 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 600,
       reportingTime: "08:00",
-      squadPlayerIds: [playerId],
     },
     {
-      // INELIGIBLE FIXTURE: Squad restricted to other teammates; excludes current player
+      // INELIGIBLE FIXTURE: Squad restricted to other teammates via MatchPayment records; excludes current player
       id: "match-ineligible-squad",
       groundId: "ground-1",
       format: "T20",
@@ -177,7 +174,6 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 650,
       reportingTime: "08:30",
-      squadPlayerIds: ["player-teammate-1", "player-teammate-2"],
     },
     {
       // INELIGIBLE FIXTURE: Tentatively blocked slot (only visible to admin)
@@ -195,7 +191,6 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       reportingTime: "07:00",
       isTentative: true,
       tentativelyBlockedBy: "Admin",
-      squadPlayerIds: [playerId],
     },
     {
       id: "match-completed-1",
@@ -209,7 +204,6 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       opponentScore: "195/9 (30 ov)",
       result: "Won",
       fee: 600,
-      squadPlayerIds: [playerId],
     },
     {
       id: "match-abandoned-1",
@@ -223,7 +217,6 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       opponentScore: "",
       result: "Abandoned",
       fee: 550,
-      squadPlayerIds: [playerId],
     },
   ];
 
@@ -236,6 +229,13 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       availability: "Confirmed",
     },
     {
+      id: `pay-upcoming-teammate-1`,
+      playerId: "player-teammate-1",
+      matchId: "match-upcoming-1",
+      status: "Unpaid",
+      availability: "Confirmed",
+    },
+    {
       id: `pay-upcoming-2-${playerId}`,
       playerId: playerId,
       matchId: "match-upcoming-2",
@@ -243,11 +243,40 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       availability: "Tentative",
     },
     {
+      id: `pay-upcoming-2-teammate-1`,
+      playerId: "player-teammate-1",
+      matchId: "match-upcoming-2",
+      status: "Unpaid",
+      availability: "Confirmed",
+    },
+    {
       id: `pay-upcoming-3-${playerId}`,
       playerId: playerId,
       matchId: "match-upcoming-3",
       status: "Unpaid",
       availability: "No",
+    },
+    {
+      id: `pay-upcoming-3-teammate-1`,
+      playerId: "player-teammate-1",
+      matchId: "match-upcoming-3",
+      status: "Unpaid",
+      availability: "Confirmed",
+    },
+    // Realistic assigned squad for match-ineligible-squad: assigned to teammates, NO record for playerId
+    {
+      id: `pay-ineligible-teammate-1`,
+      playerId: "player-teammate-1",
+      matchId: "match-ineligible-squad",
+      status: "Unpaid",
+      availability: "Confirmed",
+    },
+    {
+      id: `pay-ineligible-teammate-2`,
+      playerId: "player-teammate-2",
+      matchId: "match-ineligible-squad",
+      status: "Unpaid",
+      availability: "Confirmed",
     },
     {
       id: `pay-abandoned-${playerId}`,

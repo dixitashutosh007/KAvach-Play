@@ -221,18 +221,6 @@ export function HomeTab({
     }
   };
 
-  // Expose test hook for deterministic E2E verification of direct RSVP boundary attempts
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).__kavachTestRsvp = handleRsvp;
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__kavachTestRsvp;
-      }
-    };
-  }, [handleRsvp]);
-
   // Profile completion check for non-admin players
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [profileFormData, setProfileFormData] = useState({

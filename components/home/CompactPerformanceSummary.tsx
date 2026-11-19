@@ -29,15 +29,20 @@ export function CompactPerformanceSummary({
       };
     }
 
-    // 1. Matches played: count matches where player was in squad or paid
+    // 1. Matches played: count matches where player participated (confirmed squad or paid payment record)
     const playedMatches = matches.filter(
       (m) =>
         m.result &&
         m.result !== "Pending" &&
-        ((m as any).squadPlayerIds?.includes(player.id) ||
-          payments.some(
-            (p) => p.playerId === player.id && p.matchId === m.id && p.status === "Paid"
-          ))
+        m.result !== "Abandoned" &&
+        payments.some(
+          (p) =>
+            p.playerId === player.id &&
+            p.matchId === m.id &&
+            (p.status === "Paid" ||
+              p.availability === "Confirmed" ||
+              (p.status !== "Not Playing" && p.status !== "Waived"))
+        )
     );
     const matchesPlayed = playedMatches.length;
 
