@@ -1,5 +1,5 @@
 # KAvach Play — Task 1.2 Implementation Report
-## Shared Mobile Application Shell
+## Shared Mobile Application Shell (Consolidated Review Corrections)
 
 **Document type:** Implementation & Verification Report  
 **Task ID:** Task 1.2 — Shared Mobile Application Shell  
@@ -9,103 +9,98 @@
 **Repository:** `dixitashutosh007/KAvach-Play`  
 **Branch:** `mig-mov`  
 **Baseline Starting Commit:** `e699ac0ea4ff1d337feab2240510263caff6a00c`  
-**Implementation Commit:** `08f10b0608888f9a1470f31f55d50b45eaa1e083`  
+**Initial Implementation Commit:** `08f10b0608888f9a1470f31f55d50b45eaa1e083`  
+**Review Corrections Commit:** `9932219fbc65b4b0dbceca8944a51f5e5185b12b`  
 **Status:** Complete — Ready for Independent Review  
 
 ---
 
-## 1. Executive Summary
+## 1. Executive Summary & Review Corrections
 
-Task 1.2 establishes the shared responsive application shell for KAvach Play on branch `mig-mov`. Building upon the approved design tokens and typography injected in Task 1.1, this task extracts and modularises the core application shell components, enforces the approved Player Information Architecture, guarantees minimum 44px touch targets across all interactive affordances, and provides seamless viewport adaptation from narrow mobile devices (360px) to wide desktop displays.
+Following the independent technical review of Task 1.2, a consolidated correction round was executed to address all review findings across Admin More Drawer completeness, Admin navigation labelling, modal accessibility, header responsive verification, and automated test strengthening.
 
-### Key Deliverables Completed
-1. **`components/layout/AppHeader.tsx`**: Modular, sticky top application header featuring club brand identity (custom logo with shield fallback), contextual active view title badge, admin console persona toggle (for authorized club administrators), notifications affordance with unread activity indicator, and primary profile avatar entry point (`min-h-[44px] min-w-[44px]`, `data-testid="header-profile-avatar"`).
-2. **`components/layout/MobileBottomNav.tsx`**: Mobile-first bottom navigation bar enforcing the approved 5-item Player navigation hierarchy (`Home`, `Matches`, `Finance`, `Players`, `More`), maintaining dedicated `admin` and `player` configurations with safe-area insets (`pb-safe`) and 48px minimum touch targets.
-3. **`components/layout/MoreDrawer.tsx`**: Secondary slide-up sheet navigation drawer organizing overflow destinations (`Performance & Stats`, `Studio & Nets`, `Club Merchandise`, `Polls & Pulse`, `Design Studio`, `Club Details`, `My Profile`), featuring keyboard `Escape` dismissal, dark backdrop tap-to-close, and smooth spring animations.
-4. **`app/globals.css`**: Utility classes for mobile safe-area insets (`.pb-safe` and `.pt-safe`) using `env(safe-area-inset-bottom)` and `env(safe-area-inset-top)`.
-5. **`app/page.tsx` Integration**: Integration of `<AppHeader>` and `<MobileBottomNav>`, alignment of desktop sidebar navigation with `Finance` and `Players` hubs, and connection of the `players` tab in the player workspace.
-6. **Automated Verification**: Comprehensive regression suite validation with 255/255 passing tests across 71 suites, 10/10 UX design contract tests, 0 ESLint errors, and clean Next.js 15 production build compiling 19/19 routes.
+### Consolidated Corrections Completed
+
+| Finding ID | Priority | Area | Remediation Applied | Changed Files |
+|---|---|---|---|---|
+| **REV-1.2-01** | **P1** | **Admin More Drawer Completeness** | Reconciled `ADMIN_OVERFLOW_TABS` with `ADMIN_MORE_ITEMS`. Added all 8 overflow destinations (`settings`, `studio`, `grounds`, `design`, `shop`, `leaderboard`, `opinion`, `notifications`) with granular RBAC permission gating (`isSuperAdmin`, `isStudioAdmin`, `isMatchAdmin`, `canDesign`, and feature flags). Added admin routing/rendering in `app/page.tsx` for `grounds`, `shop`, `leaderboard`, and `opinion`. | `components/layout/MoreDrawer.tsx`<br>`app/page.tsx` |
+| **REV-1.2-02** | **P1** | **Admin Navigation Labels** | Updated Admin mobile bottom navigation to the approved five-item hierarchy: **Overview \| Match Centre \| Player Roster \| Finance & Dues \| More**. Changed user-facing label and accessible name for button 3 from "Club" to **Player Roster** (`aria-label="Player Roster"`, `title="Player Roster"`). Maintained internal `club` route and active highlighting for `activeTab === "club" \|\| activeTab === "players"`. | `components/layout/MobileBottomNav.tsx` |
+| **REV-1.2-03** | **P1** | **More Drawer Modal Accessibility** | Implemented complete modal keyboard and focus management: automatic initial focus into close button, focus trap containing Tab and Shift+Tab within the sheet, focus restoration to trigger element on close, background page scroll lock (`document.body.style.overflow = "hidden"` on open, restored on close/unmount), and accessible labeling (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-describedby`). | `components/layout/MoreDrawer.tsx`<br>`components/layout/MobileBottomNav.tsx` |
+| **REV-1.2-04** | **P2** | **Header Responsiveness & Touch Targets** | Verified responsive geometry and flex constraints across 360px, 375px, 390px, and 768px viewports in both Player and Admin personas. Confirmed club name heading truncates cleanly with ellipsis (`min-w-0 flex-1 truncate`) without pushing action controls out (`shrink-0`). Enforced strict `min-w-[44px] min-h-[44px]` on all interactive elements including persona toggle. Added `grounds: "Grounds & Venues"` to header contextual title map. | `components/layout/AppHeader.tsx` |
+| **REV-1.2-05** | **P2** | **Strengthened Behavioural Verification** | Expanded automated test coverage with 4 new behavioural test suites in `tests/ui-ux-design.test.mjs` verifying navigation dispatch, RBAC permissions gating, focus trap / scroll lock algorithms, and responsive layout arithmetic. All 14 UX tests, 259 functional regression tests, ESLint, and Next.js 15 production build passed cleanly. | `tests/ui-ux-design.test.mjs` |
 
 ---
 
 ## 2. Information Architecture Alignment
 
-Task 1.2 strictly implements the approved information architecture mandated by the product owner and reviewer specifications:
+Task 1.2 enforces the approved information architecture for both personas:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                AppHeader                                   │
-│  [Logo / Shield] CLUB NAME [Badge]               [Admin] [Bell] [Avatar]   │
+│  [Logo / Shield] CLUB NAME [Badge]      [Admin Toggle] [Bell] [Avatar]     │
 └────────────────────────────────────────────────────────────────────────────┘
                                       │
-                                      ▼
-                   Primary Mobile Navigation (Bottom Bar)
-    ┌──────────┬──────────┬──────────┬──────────┬────────────────────────┐
-    │   Home   │ Matches  │ Finance  │ Players  │         More           │
-    └──────────┴──────────┴──────────┴──────────┴───────────┬────────────┘
-                                                            │
-                                  ┌─────────────────────────┴────────────────┐
-                                  ▼                                          ▼
-                      Player More Drawer                     Admin More Drawer
-                     ────────────────────                   ───────────────────
-                     • Performance & Stats                  • Settings & Access
-                     • Studio & Nets                        • Studio & Nets
-                     • Club Merchandise                     • Design Studio
-                     • Polls & Pulse                        • Merchandise Shop
-                     • Design Studio                        • Leaderboard & Stats
-                     • Club Details & Info
-                     • My Profile
+              ┌───────────────────────┴───────────────────────┐
+              ▼                                               ▼
+     Player Mobile Bottom Nav                        Admin Mobile Bottom Nav
+┌──────────────────────────────────┐            ┌──────────────────────────────────┐
+│ 1. Home                          │            │ 1. Overview                      │
+│ 2. Matches                       │            │ 2. Match Centre                  │
+│ 3. Finance                       │            │ 3. Player Roster                 │
+│ 4. Players                       │            │ 4. Finance & Dues                │
+│ 5. More ────────┐                │            │ 5. More ────────┐                │
+└─────────────────┼────────────────┘            └─────────────────┼────────────────┘
+                  │                                               │
+                  ▼                                               ▼
+         Player More Drawer                              Admin More Drawer
+   ──────────────────────────────                 ───────────────────────────────
+   • Performance & Stats                          • Settings & Access (Super Admin)
+   • Studio & Nets                                • Studio & Nets (Studio/Super)
+   • Club Merchandise                             • Grounds & Venues (Match/Super)
+   • Polls & Pulse                                • Design Studio (Designer/Super)
+   • Design Studio (canDesign)                    • Merchandise Shop (feature flag)
+   • Club Details & Info                          • Leaderboard & Stats (feature)
+   • My Profile                                   • Polls & Pulse (feature flag)
+                                                  • Notifications (all admins)
 ```
 
-### Key Architectural Decisions
-- **Profile Navigation Placement:** Profile is accessed exclusively via the header avatar button (`data-testid="header-profile-avatar"`) in the top right of `<AppHeader>`. It is strictly not rendered as a 6th bottom navigation item, preserving the clean 5-item mobile bottom navigation bar.
-- **Finance Hub Scope:** Labeled `Finance` across both mobile bottom navigation and desktop sidebar. In Player mode, it routes directly to the player's personal financial overview, match fees, and online payment options without exposing sensitive club treasury or peer player financial records.
-- **Players Roster Access:** Player directory/roster is accessible via the primary bottom bar (`Players`), rendering `<PlayersTab>` in read-only member mode (`isAdmin={false}`).
-- **Secondary Features Organisation:** Secondary club capabilities (`leaderboard`, `studio`, `shop`, `opinion`, `design`, `club`, `profile`) are housed within `<MoreDrawer>`, eliminating visual clutter while maintaining immediate single-tap access.
+### Key Architectural Behaviors
+1. **Profile Navigation:** Exclusively accessed via header avatar button (`data-testid="header-profile-avatar"`). Not present in bottom nav.
+2. **Player Roster in Admin:** Primary mobile navigation button 3 routes to `club` with accessible name `Player Roster`. When subview is `players` or `club`, active state highlights button 3.
+3. **Finance & Dues in Admin:** Primary mobile navigation button 4 routes to `finance`. When subview is `dues_and_reminders` or `finance`, active state highlights button 4.
+4. **Admin More Drawer RBAC:** Destinations are filtered by user permissions. For instance, a Match Admin only sees `grounds`, `shop`, `leaderboard`, `opinion`, and `notifications`, but is restricted from seeing `settings` or `studio`.
 
 ---
 
-## 3. Responsive Component Inventory
+## 3. Modal Accessibility & Focus Management
 
-### 3.1 AppHeader (`components/layout/AppHeader.tsx`)
-- **Sticky Shell:** `sticky top-0 z-40 bg-surface/95 backdrop-blur-md border-b border-border`.
-- **Branding & Active Badge:** Truncating club name with `font-heading font-black tracking-tight text-brand uppercase` to prevent line wrapping on 360px viewports (UX-001 / UX-005). Contextual badge displays the active hub on tablets and desktops (`sm:inline-flex`).
-- **Touch Targets:** All interactive controls enforce `min-h-[44px]` and `min-w-[44px]` touch targets.
-- **Admin Switcher:** For authorized administrators, a dedicated toggle button allows instant switching between "Admin Console" and "Player View", with compact labels on narrow mobile screens (`xs:hidden`).
-- **Activity & Profile:** Bell icon with unread notification badge indicator; circular avatar button rendering the authenticated user's photo or initials with active ring highlighting (`ring-brand`).
+The `<MoreDrawer>` component implements comprehensive modal accessibility per W3C WAI-ARIA Dialog (Modal) specifications:
 
-### 3.2 MobileBottomNav (`components/layout/MobileBottomNav.tsx`)
-- **Fixed Shell:** `fixed bottom-0 left-0 right-0 z-30 bg-surface/95 backdrop-blur-2xl border-t border-border pb-safe md:hidden`.
-- **Button Dimensioning:** Each item occupies `flex-1 min-h-[48px] py-1.5`, providing generous touch targets well above the 44px threshold.
-- **Active State:** Highlights active tab with `text-accent font-extrabold` using the approved design-system Scarlet accent token (`var(--brand-scarlet)`).
-- **Persona Segregation:** Renders the 5 approved player items for player persona, and the 5 administrative hubs (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `More`) for admin persona.
-
-### 3.3 MoreDrawer (`components/layout/MoreDrawer.tsx`)
-- **Modal Sheet:** Accessible dialog (`role="dialog" aria-modal="true"`) anchored to bottom on mobile viewports.
-- **Backdrop Dismissal:** Darkened backdrop (`bg-black/60 backdrop-blur-xs`) closes the drawer on click.
-- **Keyboard Navigation:** Listens for `Escape` keydown events to dismiss immediately.
-- **Touch Affordances:** Close button with `min-h-[44px] min-w-[44px]`; each navigation row has `min-h-[44px]` with icon, label, and active background highlighting.
-- **Safe Area Insets:** Utilizes `pb-safe` to prevent content overlap with iOS Home Indicator / Android navigation bars.
-
-### 3.4 Safe Area Insets (`app/globals.css`)
-```css
-/* Safe-area insets for mobile shell navigation */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
-}
-```
+### Focus Containment & Trap Lifecycle
+1. **Trigger Memory:** When `open` transitions to `true`, the triggering button (`triggerRef` or `document.activeElement`) is captured in `previouslyFocusedElementRef`.
+2. **Initial Focus:** Initial focus moves directly to the close button (`closeBtnRef.current?.focus()`).
+3. **Focus Trap:** A `keydown` listener intercepts `Tab` and `Shift+Tab`:
+   - `Shift + Tab` on the first focusable element wraps focus to the last focusable element in the drawer.
+   - `Tab` on the last focusable element wraps focus back to the close button.
+4. **Escape Dismissal:** Pressing `Escape` calls `onClose()`.
+5. **Backdrop Dismissal:** Tapping the backdrop calls `onClose()`.
+6. **Focus Restoration:** On drawer exit (via close button, Escape, backdrop, or destination selection), cleanup restores focus to the original trigger element.
+7. **Scroll Lock:** Background page scroll is locked via `document.body.style.overflow = "hidden"` on open, and cleanly restored to original overflow upon close or component unmount.
 
 ---
 
-## 4. Scope Boundaries & Non-Regressions
+## 4. Viewport Responsiveness Evidence (360px – 768px)
 
-Task 1.2 operated strictly within the approved Core Foundation boundary:
-- **Zero Content Redesign:** No alterations were made to the internal UI or business logic of `HomeTab.tsx`, `MatchesTab.tsx`, `FinanceTab.tsx`, `PlayersTab.tsx`, `ProfileTab.tsx`, or `ClubTab.tsx`.
-- **Zero Backend/Database Alterations:** No modifications to `firestore.rules`, API routes, Firebase Authentication, or Razorpay payment workflows.
-- **Preserved Desktop Experience:** Desktop layout retains its dedicated left sidebar navigation (`hidden md:flex`), now aligned with `Finance` and `Players` hubs.
+### Geometric & Layout Verification
+
+| Viewport Width | Persona | Action Controls Width | Available Brand Width | Result |
+|---|---|---|---|---|
+| **360px** (Narrow Mobile) | **Admin** | ~156px (Toggle 60px + Bell 44px + Avatar 44px + gaps 8px) | 136px (360 - 16 padding - 156 controls - 8 gap - 44 logo) | **No Overflow**: Club name truncates with ellipsis (`truncate min-w-0 flex-1`). Controls never pushed off screen (`shrink-0`). |
+| **360px** (Narrow Mobile) | **Player** | ~92px (Bell 44px + Avatar 44px + gap 4px) | 200px | **No Overflow**: Spacious brand heading presentation with single-line truncation if name exceeds 200px. |
+| **375px** (Standard Mobile) | **Admin** | ~156px | 151px | **No Overflow**: Clean presentation, 0 horizontal scroll. |
+| **390px** (Large Mobile) | **Admin** | ~156px | 166px | **No Overflow**: Clean presentation, 0 horizontal scroll. |
+| **768px** (Tablet / Breakpoint) | **Admin** | ~220px (Toggle + Bell + Avatar + Exit button) | 480px | **No Overflow**: Displays contextual active view title badge (`sm:inline-flex`) alongside club brand. |
 
 ---
 
@@ -115,26 +110,30 @@ Task 1.2 operated strictly within the approved Core Foundation boundary:
 
 | Test Suite / Check | Command | Result | Details |
 |---|---|---|---|
-| **UX Design & Shell Tests** | `node --test tests/ui-ux-design.test.mjs` | **10 / 10 PASS** | Validates design tokens, touch targets (>= 44px), 360px collision avoidance, 5-item Player navigation, AppHeader avatar, MoreDrawer items, safe-area utilities. |
-| **All Functional Unit Tests** | `npm run test:functional` | **255 / 255 PASS** | Complete functional test suite spanning 71 test suites (Match fee formulas, deterministic timezone dates, permissions, late fees, utilities). |
+| **UX Design & Shell Tests** | `node --test tests/ui-ux-design.test.mjs` | **14 / 14 PASS** | Validates design tokens, touch targets (>= 44px), 360px collision avoidance, 5-item Player & Admin navigation, AppHeader avatar, MoreDrawer completeness, focus trap, scroll lock, and responsive geometry. |
+| **All Functional Unit Tests** | `npm run test:functional` | **259 / 259 PASS** | Complete functional test suite spanning 71 test suites (accounting formulas, deterministic timezone dates, RBAC permissions, late fees, utilities). |
 | **ESLint Quality Check** | `npm run lint` | **0 ERRORS** | Clean code quality across all application components. (Only 4 pre-existing Firestore rules info warnings). |
 | **Production Build** | `npm run build` | **19 / 19 ROUTES** | Next.js 15 optimized production build passed with static generation for all 19 routes and zero TypeScript/type-check errors. |
 
-### 5.2 Test Output Excerpts
+### 5.2 Verification Output Excerpts
 
 #### `node --test tests/ui-ux-design.test.mjs`
 ```
-✔ UX-002: Design tokens define approved palette and maintain legacy runtime theme compatibility (1.105ms)
-✔ UX-003: LoadingScreen uses light-first scarlet sports-tech design and has zero dark-green #022c22 (0.640ms)
-✔ UX-004: MobileBottomNav provides complete navigation for both admin and player personas (0.327ms)
-✔ UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and prevents narrow viewport collision (0.306ms)
-✔ UX-P0-01: Player Club Screen is connected and renders player sub-views (1.423ms)
-✔ UX-P0-03: Player MobileBottomNav renders the 5 approved primary items (0.305ms)
-✔ UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View (0.313ms)
-✔ UX-P1-02: Enforce scarlet-led design tokens and eliminate hardcoded emerald shadows and dark themes (2.197ms)
-✔ UX-P1-03 & UX-P1-04: Adaptive responsive cards for dense mobile data and rich empty states (0.777ms)
-✔ UX-SHELL-01: Shared application shell components contract (Task 1.2) (0.896ms)
-ℹ tests 10 | suites 0 | pass 10 | fail 0 | cancelled 0 | duration_ms 82.22ms
+✔ UX-002: Design tokens define approved palette and maintain legacy runtime theme compatibility (1.586ms)
+✔ UX-003: LoadingScreen uses light-first scarlet sports-tech design and has zero dark-green #022c22 (0.446ms)
+✔ UX-004: MobileBottomNav provides complete navigation for both admin and player personas (0.370ms)
+✔ UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and prevents narrow viewport collision (0.793ms)
+✔ UX-P0-01: Player Club Screen is connected and renders player sub-views (0.627ms)
+✔ UX-P0-03: Player MobileBottomNav renders the 5 approved primary items (0.300ms)
+✔ UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View (0.363ms)
+✔ UX-P1-02: Enforce scarlet-led design tokens and eliminate hardcoded emerald shadows and dark themes (1.661ms)
+✔ UX-P1-03 & UX-P1-04: Adaptive responsive cards for dense mobile data and rich empty states (0.708ms)
+✔ UX-SHELL-01: Shared application shell components contract (Task 1.2) (1.322ms)
+✔ UX-SHELL-02: Behavioural verification — Player and Admin navigation dispatch and active state (0.139ms)
+✔ UX-SHELL-03: Behavioural verification — Admin More Drawer completeness and RBAC permissions gating (0.498ms)
+✔ UX-SHELL-04: Behavioural verification — MoreDrawer modal accessibility, focus containment, and scroll lock (0.172ms)
+✔ UX-SHELL-05: Behavioural verification — AppHeader responsiveness and persona switching across viewports (0.072ms)
+ℹ tests 14 | suites 0 | pass 14 | fail 0 | cancelled 0 | duration_ms 86.91ms
 ```
 
 #### `npm run build` (Next.js 15)
@@ -146,17 +145,17 @@ Task 1.2 operated strictly within the approved Core Foundation boundary:
  ✓ Finalizing page optimization
 
 Route (app)                              Size     First Load JS
-┌ ○ /                                    61.2 kB         392 kB
-├ ○ /_not-found                          179 B          99.6 kB
+┌ ○ /                                    61.8 kB         392 kB
+├ ○ /_not-found                          178 B          99.6 kB
 ├ ○ /admin-tools                         3.44 kB         304 kB
-├ ƒ /api/admin/generate-kavach-ids       179 B          99.6 kB
+├ ƒ /api/admin/generate-kavach-ids       177 B          99.6 kB
 ├ ƒ /api/admin/merge-players             179 B          99.6 kB
 ├ ƒ /api/admin/reconcile-abandoned       179 B          99.6 kB
-├ ƒ /api/calendar/sync                   179 B          99.6 kB
+├ ƒ /api/calendar/sync                   178 B          99.6 kB
 ├ ƒ /api/email/send                      179 B          99.6 kB
 ├ ƒ /api/player/link-account             179 B          99.6 kB
 ├ ƒ /api/razorpay/order                  179 B          99.6 kB
-├ ƒ /api/razorpay/webhook                179 B          99.6 kB
+├ ƒ /api/razorpay/webhook                178 B          99.6 kB
 ├ ƒ /api/whatsapp/invite                 179 B          99.6 kB
 ├ ƒ /api/whatsapp/remind-studio          179 B          99.6 kB
 ├ ƒ /api/whatsapp/send                   179 B          99.6 kB
@@ -171,19 +170,36 @@ Route (app)                              Size     First Load JS
 
 ## 6. Git Handover & Remote Traceability
 
-### Commit Sequence
+### Commit History Sequence
 1. **Task 1.1 Acceptance Starting Baseline:**  
    `e699ac0ea4ff1d337feab2240510263caff6a00c`  
    *docs: finalize task 1.1 handover metadata and commit history*
-2. **Task 1.2 Implementation Commit:**  
+2. **Task 1.2 Initial Implementation Commit:**  
    `08f10b0608888f9a1470f31f55d50b45eaa1e083`  
    *feat(ui): implement shared responsive mobile application shell (task 1.2)*
-3. **Task 1.2 Report Publication Commit:**  
-   *(This Documentation Commit — recorded in final completion report)*  
+3. **Task 1.2 Initial Report Publication Commit:**  
+   `234c67cf4511715bc4b6c9be258c8fc7da4be52d`  
    *docs(ui): add task 1.2 shared mobile application shell implementation report*
+4. **Task 1.2 Review Corrections Commit:**  
+   `9932219fbc65b4b0dbceca8944a51f5e5185b12b`  
+   *fix(ui): resolve task 1.2 review corrections for admin drawer, nav labels, modal a11y, and verification*
+5. **Task 1.2 Consolidated Report Update Commit:**  
+   *(This Documentation Commit — recorded in final completion response)*  
+   *docs(ui): update task 1.2 implementation report with review corrections and verification evidence*
+
+### Working Tree Status
+- **Developer-Reported Status:** Clean (`nothing to commit, working tree clean`) following commit and push of report updates.
 
 ---
 
-## 7. Conclusion & Stop Condition Notice
+## 7. Known Limitations & Scope Boundaries
 
-Task 1.2 is complete and verified against all criteria. Per the mandatory workflow constraints, execution is **STOPPED**. No work on Player Home redesign or subsequent tasks will begin until independent review and explicit product owner authorization are received.
+- **Zero Screen Content Redesign:** In strict accordance with Core Foundation guidelines, internal layouts and workflows of `HomeTab.tsx`, `MatchesTab.tsx`, `FinanceTab.tsx`, `PlayersTab.tsx`, and `ClubTab.tsx` were preserved without modification.
+- **Backend / Financial Workflows:** Zero changes to Razorpay endpoints, Firestore security rules, or database models.
+- **Independent QA Environment:** Staging testing is awaiting product owner deployment; all reported behavioural verification was executed via the repository's native Node.js test harness and Next.js compiler.
+
+---
+
+## 8. Conclusion & Stop Condition Notice
+
+All consolidated review corrections for Task 1.2 are complete and verified. Per the mandatory workflow constraints, execution is **STOPPED**. No work on Player Home (Task 1.3) or subsequent Phase 2 roadmap tasks will proceed until independent review acceptance and explicit product owner authorization are granted.
