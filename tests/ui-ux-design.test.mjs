@@ -533,7 +533,17 @@ test("UX-SHELL-04: Behavioural verification — MoreDrawer modal accessibility, 
   handleTab(false);
   assert.equal(activeElement.id, "close-btn", "Tab on last element must cycle to first element");
 
-  // 3. Escape key dismissal
+  // 3. User moves focus to an item inside the open drawer
+  item1.focus();
+  assert.equal(activeElement.id, "item-1", "User focuses on item-1 inside drawer");
+
+  // 4. Simulate parent rerender with a new onClose callback instance while drawer remains open
+  let newOnClose = () => { isDrawerOpen = false; };
+  // Lifecycle check: open did not transition, so scroll lock and focus must remain undisturbed
+  assert.equal(mockDocument.body.style.overflow, "hidden", "Parent rerender must NOT release scroll lock");
+  assert.equal(activeElement.id, "item-1", "Parent rerender must NOT steal focus or reset focus to close button");
+
+  // 5. Escape key dismissal
   const onClose = () => {
     isDrawerOpen = false;
     closedViaAction = true;

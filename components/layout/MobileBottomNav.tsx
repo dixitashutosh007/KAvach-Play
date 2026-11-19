@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
   Home as HomeIcon,
   Wallet,
@@ -54,6 +54,7 @@ export function MobileBottomNav({
   adminPermissions?: AdminPermissions;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const handleCloseMore = useCallback(() => setMoreOpen(false), []);
   const adminMoreBtnRef = useRef<HTMLButtonElement>(null);
   const playerMoreBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -75,7 +76,7 @@ export function MobileBottomNav({
       <>
         <MoreDrawer
           open={moreOpen}
-          onClose={() => setMoreOpen(false)}
+          onClose={handleCloseMore}
           onSelectTab={onSelectTab}
           activeTab={activeTab}
           isFeatureEnabled={isFeatureEnabled}
@@ -147,7 +148,7 @@ export function MobileBottomNav({
     <>
       <MoreDrawer
         open={moreOpen}
-        onClose={() => setMoreOpen(false)}
+        onClose={handleCloseMore}
         onSelectTab={onSelectTab}
         activeTab={activeTab}
         isFeatureEnabled={isFeatureEnabled}
@@ -201,8 +202,8 @@ export function MobileBottomNav({
           ref={playerMoreBtnRef}
           onClick={() => setMoreOpen(true)}
           className={btnCls(isPlayerMoreActive)}
-          title="More Features"
-          aria-label="More Features"
+          title="More"
+          aria-label="More"
         >
           <MoreHorizontal className="w-5 h-5" />
           <span className={labelCls}>More</span>

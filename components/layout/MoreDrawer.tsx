@@ -100,28 +100,68 @@ export function MoreDrawer({
   const sheetRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
+  const originalOverflowRef = useRef<string>("");
+  const onCloseRef = useRef(onClose);
 
+  // Keep onCloseRef current across renders without re-triggering lifecycle effects
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Modal open/close transition & scroll/focus lifecycle
+  useEffect(() => {
+    if (open) {
+      if (!wasOpenRef.current) {
+        wasOpenRef.current = true;
+        previouslyFocusedElementRef.current =
+          triggerRef?.current || (document.activeElement as HTMLElement | null);
+
+        originalOverflowRef.current = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        const focusTimer = setTimeout(() => {
+          closeBtnRef.current?.focus();
+        }, 30);
+
+        return () => {
+          clearTimeout(focusTimer);
+        };
+      }
+    } else {
+      if (wasOpenRef.current) {
+        wasOpenRef.current = false;
+        document.body.style.overflow = originalOverflowRef.current;
+        const targetToRestore = previouslyFocusedElementRef.current;
+        if (targetToRestore && typeof targetToRestore.focus === "function") {
+          targetToRestore.focus();
+        }
+      }
+    }
+  }, [open, triggerRef]);
+
+  // Ensure scroll lock restoration on unmount if unmounted while still open
+  useEffect(() => {
+    return () => {
+      if (wasOpenRef.current) {
+        document.body.style.overflow = originalOverflowRef.current;
+        const targetToRestore = previouslyFocusedElementRef.current;
+        if (targetToRestore && typeof targetToRestore.focus === "function") {
+          targetToRestore.focus();
+        }
+      }
+    };
+  }, []);
+
+  // Keyboard events (Escape & Tab focus trap)
   useEffect(() => {
     if (!open) return;
-
-    // Capture the trigger or currently focused element to restore focus when closing
-    previouslyFocusedElementRef.current =
-      triggerRef?.current || (document.activeElement as HTMLElement | null);
-
-    // Lock background page scroll while drawer is open
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    // Move initial focus into the drawer (close button)
-    const focusTimer = setTimeout(() => {
-      closeBtnRef.current?.focus();
-    }, 30);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape key dismissal
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -160,19 +200,10 @@ export function MoreDrawer({
     };
 
     document.addEventListener("keydown", handleKeyDown);
-
     return () => {
-      clearTimeout(focusTimer);
       document.removeEventListener("keydown", handleKeyDown);
-      // Restore background page scroll
-      document.body.style.overflow = originalOverflow;
-      // Restore focus to trigger element
-      const targetToRestore = previouslyFocusedElementRef.current;
-      if (targetToRestore && typeof targetToRestore.focus === "function") {
-        targetToRestore.focus();
-      }
     };
-  }, [open, onClose, triggerRef]);
+  }, [open]);
 
   if (!open) return null;
 
