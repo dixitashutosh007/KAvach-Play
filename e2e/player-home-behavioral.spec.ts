@@ -289,7 +289,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByText(/Winter Super Cup 2026/i)).toBeVisible();
   });
 
-  test("4C. Match Day Alert: eligible player opens match, ineligible player blocked, admin retains access", async ({
+  test("4C. Match Day Alert: eligible player opens match, squad-ineligible player alert suppressed, admin retains access", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -316,20 +316,26 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByRole("button", { name: /Back/i })).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole("heading", { name: /vs Mumbai Masters/i })).toBeVisible();
 
-    // 2. Ineligible Player: Blocked from alert match navigation
+    // 2. Active Verified Player Excluded from Squad: Alert is authoritatively suppressed
+    // - Player is active and verified (not disabled, merged, pending, or rejected)
+    // - Match has confirmed squad assignments for other players (teammate-1, teammate-2)
+    // - The current player has no assignment for that match
+    // - The match is within the Match Day Alert time window
+    // - Verify the Match Day Alert is not rendered for this player
     await injectSyntheticSession(page, {
-      uid: "player-ineligible-demo",
+      uid: "player-beta",
       role: "player",
-      playerDisabled: true, // Disables profile -> ineligible
+      status: "Active",
       withAlertMatch: true,
+      alertSquadAssignedToOthersOnly: true,
     });
 
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // Disabled player has no access; alert is not rendered for inactive profile
-    const disabledAlert = page.locator('[data-testid="match-day-alert-match-alert-today"]');
-    await expect(disabledAlert).toHaveCount(0);
+    // Match Day Alert is authoritatively not rendered for squad-excluded player
+    const excludedAlert = page.locator('[data-testid="match-day-alert-match-alert-today"]');
+    await expect(excludedAlert).toHaveCount(0);
 
     // 3. Administrator: Retains legitimate access to fixtures from alert
     await injectSyntheticSession(page, {

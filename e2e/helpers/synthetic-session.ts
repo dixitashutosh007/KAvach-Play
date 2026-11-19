@@ -27,6 +27,7 @@ export interface RoleConfig {
   payments?: any[];
   posts?: any[];
   withAlertMatch?: boolean;
+  alertSquadAssignedToOthersOnly?: boolean;
 }
 
 export function createSyntheticStore(roleConfig: RoleConfig) {
@@ -342,22 +343,42 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
 
   if (roleConfig.withAlertMatch) {
     matches.unshift(alertMatch);
-    payments.unshift(
-      {
-        id: `pay-alert-${playerId}`,
-        playerId: playerId,
-        matchId: "match-alert-today",
-        status: "Unpaid",
-        availability: "Confirmed",
-      },
-      {
-        id: "pay-alert-teammate-1",
-        playerId: "player-teammate-1",
-        matchId: "match-alert-today",
-        status: "Unpaid",
-        availability: "Confirmed",
-      }
-    );
+    if (roleConfig.alertSquadAssignedToOthersOnly) {
+      // Confirmed squad for other teammates, but current player has no assignment
+      payments.unshift(
+        {
+          id: "pay-alert-teammate-1",
+          playerId: "player-teammate-1",
+          matchId: "match-alert-today",
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+        {
+          id: "pay-alert-teammate-2",
+          playerId: "player-teammate-2",
+          matchId: "match-alert-today",
+          status: "Unpaid",
+          availability: "Confirmed",
+        }
+      );
+    } else {
+      payments.unshift(
+        {
+          id: `pay-alert-${playerId}`,
+          playerId: playerId,
+          matchId: "match-alert-today",
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+        {
+          id: "pay-alert-teammate-1",
+          playerId: "player-teammate-1",
+          matchId: "match-alert-today",
+          status: "Unpaid",
+          availability: "Confirmed",
+        }
+      );
+    }
   }
 
   if (
@@ -466,8 +487,8 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     },
     appUsers: [appUser],
     players: [player, teammate1, teammate2],
-    matches: matches,
-    payments: payments,
+    matches: roleConfig.matches || matches,
+    payments: roleConfig.payments || payments,
     grounds: grounds,
     otherFees: otherFees,
     posts: roleConfig.posts || posts,
