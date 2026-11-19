@@ -62,6 +62,8 @@ const result = spawnSync(
     "emulators:exec",
     "--only",
     "firestore",
+    "--project",
+    "demo-kavach-play",
     `node --test ${target}`,
   ],
   {

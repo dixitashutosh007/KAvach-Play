@@ -1297,10 +1297,10 @@ export default function Home() {
                     )}
                     {activeTab === "profile" && <ProfileTab store={store} />}
                     {activeTab === "finance" && (
-                      isFinanceAdmin || isSuperAdmin ? (
+                      !effectiveIsAdminMode || isFinanceAdmin || isSuperAdmin ? (
                         <FinanceTab
                           store={store}
-                          persona={persona}
+                          persona={effectiveIsAdminMode ? "admin" : "player"}
                           isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                           isSuperAdmin={isSuperAdmin}
                           defaultAction={tabAction}

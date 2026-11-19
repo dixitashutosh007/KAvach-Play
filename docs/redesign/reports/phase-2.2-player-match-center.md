@@ -168,15 +168,15 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
 Command: `npm run test:functional`
 - **Result:** 363 tests passed across 85 suites, 0 failures.
 
-### 3. Phase 2.2 Playwright Behavioral Suite
-Command: `npx playwright test e2e/player-match-center-behavioral.spec.ts`
-- **Result:** 28 passed across Mobile Chrome and Desktop Chrome (48.8s).
+### 3. Playwright E2E Development Suite (All 4 Suites Combined)
+Command: `npx playwright test e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`
+- **Result:** 108 passed across Mobile Chrome and Desktop Chrome (3.0m).
+  - `e2e/production-app.spec.ts`: 30 passed
+  - `e2e/player-match-center-behavioral.spec.ts`: 28 passed
+  - `e2e/player-home-behavioral.spec.ts`: 36 passed
+  - `e2e/shared-shell-behavioral.spec.ts`: 14 passed
 
-### 4. Cross-Suite Playwright Behavioral Suites
-- `npx playwright test e2e/player-home-behavioral.spec.ts`: 36 passed across Mobile and Desktop Chrome (1.1m).
-- `npx playwright test e2e/shared-shell-behavioral.spec.ts`: 14 passed across Mobile and Desktop Chrome (20.8s).
-
-### 5. Production Next.js Build & Lint
+### 4. Production Next.js Build & Lint
 - `npm run lint`: 0 errors (4 warnings on firestore.rules open reads).
 - `npx tsc --noEmit`: 0 errors.
 - `npm run build`: Compiled successfully; 19 static pages generated; 0 errors.
@@ -209,11 +209,20 @@ All screenshots are stored under `docs/qa/screenshots/player-matches/` using rep
    - Corrected sponsored payment accounting so `club_sponsored` Paid records contribute to `totalOffset` and 0 to `totalCollected`.
 3. `components/matches/PlayerMatchCenter.tsx`:
    - Refactored `handleRsvp` to update availability without modifying payment status.
-4. `.github/workflows/ci.yml`:
+   - Added `aria-label="Search matches by opponent or venue"` to search input for accessible selector discovery.
+4. `app/page.tsx`:
+   - Corrected `FinanceTab` rendering guard so players in player persona (`!effectiveIsAdminMode`) can view their personal dues and payments while restricting the Admin Console Finance & Dues hub to `isFinanceAdmin || isSuperAdmin`.
+5. `e2e/production-app.spec.ts`:
+   - Updated `getNavigationTab` to recognize both "Payments" and "Finance" tab labels.
+   - Made tactical notes toggle test compatible with modern Phase 2.1 1-tap RSVP controls.
+   - Aligned search input selector with match center search input accessibility attributes.
+6. `scripts/run-emulator-tests.mjs`:
+   - Added `--project demo-kavach-play` flag to `firebase emulators:exec` for non-interactive execution in CI.
+7. `.github/workflows/ci.yml`:
    - Updated `test-e2e-dev` job to run `e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`.
-5. `tests/phase2.2-player-match-center.test.mjs`:
+8. `tests/phase2.2-player-match-center.test.mjs`:
    - Added 31 new regression tests across Sections 6, 7, 8, 9 (total suite expanded to 72 tests).
-6. `docs/redesign/reports/phase-2.2-player-match-center.md`:
+9. `docs/redesign/reports/phase-2.2-player-match-center.md`:
    - Complete updated report with design tokens, correction passes, test evidence, and file inventory.
 
 ---

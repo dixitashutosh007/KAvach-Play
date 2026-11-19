@@ -486,6 +486,7 @@ export function PlayerMatchCenter({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search opponent, ground, tournament..."
+            aria-label="Search matches by opponent or venue"
             className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface border border-border text-xs sm:text-sm placeholder:text-text-muted focus:outline-hidden focus:ring-1 focus:ring-scarlet min-h-[44px]"
           />
           {searchQuery && (
