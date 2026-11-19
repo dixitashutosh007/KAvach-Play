@@ -9,9 +9,8 @@
 **Initial Correction Commit:** `eaf01db82e707e7c8ef12ae62f556d3c3df5ff9f`  
 **Real Persisted Model Correction Commit:** `a2b998818f994f83b1a8d0554162e245cb75c7ea`  
 **Guarded Navigation Correction Commit:** `2d2436c1789134b22b0c9b0d425ab8bc7c3943c4`  
-**Prior Documentation Submission:** `ee66bc6ee003a28c3578cd7be0e745e6f265fafd`  
-**Tournament Navigation & Regression Test Commit:** `1922ff84204b0287bd499ec8c3d7fdf74b6b4e2a`  
-**Match Day Alert Test Correction Commit:** `e00c671bfef57c70910a187a539ee55658a56f8f`  
+**Prior Documentation Submission:** `ff97e20226020fd49c667f05672e598fb908ff59`  
+**Latest Implementation Commit:** `e00c671bfef57c70910a187a539ee55658a56f8f`  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Product & Technical Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -141,14 +140,14 @@ All match-detail navigation triggers across Player Home are routed through a sin
 | **4. Compact Performance** | Displays matches, runs, wickets, catches without misleading zeros; links to pass | PASS | `CompactPerformanceSummary.tsx`, tested in Playwright test 1 |
 | **5. Personal Dues Card** | Authoritative dues summary via `calculatePlayerDues`, itemised breakdown, Pay Now CTA | PASS | `PersonalPaymentCard.tsx`, tested in Playwright test 1 & 4A |
 | **6. Upcoming Matches** | Shows next 4 matches with date, venue, directions link, format, jersey, 1-tap RSVP | PASS | `UpcomingMatchesSection.tsx`, tested in Playwright test 2 |
-| **7. Match Eligibility** | Player sees only eligible matches; ineligible squad & tentative matches are hidden | PASS | `lib/match-eligibility.ts`, tested in Playwright test 2, 3 & unit tests |
-| **8. Ineligible RSVP Blocking** | Direct RSVP attempts for ineligible matches are rejected with authoritative error toast | PASS | `HomeTab.tsx`, tested in Playwright test 3 & unit tests |
+| **7. Match Eligibility** | Player sees only eligible matches; ineligible squad & tentative matches are hidden | PASS | `lib/match-eligibility.ts`, tested in Playwright tests 2, 2B & unit tests |
+| **8. Ineligible RSVP Blocking** | Direct RSVP attempts for ineligible matches are rejected with authoritative error toast | PASS | `HomeTab.tsx`, tested in Playwright test 2B & unit tests |
 | **9. Guarded Match Navigation** | All match navigation entry points validate eligibility before navigating; blocks ineligible access | PASS | `HomeTab.tsx`, `validateMatchNavigation`, tested in Playwright tests 4B–4H & unit tests |
-| **10. Admin Access Preservation** | Admins retain full visibility and navigation into all active, restricted squad, and tentative fixtures | PASS | `app/page.tsx`, `lib/match-eligibility.ts`, tested in Playwright tests 4C, 4H |
-| **11. Announcements Modal** | Lists notices with pinned status; opens accessible dialog with close button | PASS | `ClubAnnouncementsSection.tsx`, tested in Playwright test 5 |
-| **12. Team Birthdays** | Horizontal carousel with deterministic parsing (`YYYY-MM-DD`, `DD/MM/YYYY`) & 14-day window | PASS | `BirthdaysCarousel.tsx`, `lib/birthday-utils.ts`, Playwright test 5 & unit tests |
-| **13. Feed Preview** | Displays recent club activity with author, timestamp, media, comment count | PASS | `ClubFeedPreview.tsx`, tested in Playwright test 5 |
-| **14. Responsive Viewports** | Validated across 360×800, 375×812, 390×844, 768×1024, 1280×800 with 0 horizontal overflow | PASS | Playwright tests 6–10, 16–20 |
+| **10. Admin Access Preservation** | Admins retain full visibility and navigation into all active, restricted squad, and tentative fixtures | PASS | `app/page.tsx`, `lib/match-eligibility.ts`, tested in Playwright tests 2C, 4C, 4H |
+| **11. Announcements Modal** | Lists notices with pinned status; opens accessible dialog with close button | PASS | `ClubAnnouncementsSection.tsx`, tested in Playwright test 3 |
+| **12. Team Birthdays** | Horizontal carousel with deterministic parsing (`YYYY-MM-DD`, `DD/MM/YYYY`) & 14-day window | PASS | `BirthdaysCarousel.tsx`, `lib/birthday-utils.ts`, Playwright test 3 & unit tests |
+| **13. Feed Preview** | Displays recent club activity with author, timestamp, media, comment count | PASS | `ClubFeedPreview.tsx`, tested in Playwright test 3 |
+| **14. Responsive Viewports** | Validated across 360×800, 375×812, 390×844, 768×1024, 1280×800 with 0 horizontal overflow | PASS | Playwright tests 14–18, 32–36 |
 
 ---
 
@@ -161,41 +160,49 @@ Running 36 tests using 1 worker
 
   ✓ 1. Player Home loads greeting, identity, search, hero carousel, performance, and dues (Mobile Chrome)
   ✓ 2. Displays next 4 upcoming matches with accurate availability and enables 1-tap RSVP updates (Mobile Chrome)
-  ✓ 3. Enforces player-specific match visibility, search isolation, and blocks ineligible match RSVP (Mobile Chrome)
+  ✓ 2B. Enforces player-specific match visibility, search isolation, and open fixture RSVP (Mobile Chrome)
+  ✓ 2C. Preserves legitimate administrator match access and search visibility for admin users (Mobile Chrome)
+  ✓ 3. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity (Mobile Chrome)
   ✓ 4A. Pay Now navigates to Finance tab (Mobile Chrome)
   ✓ 4B. Tournament campaign navigation opens tournament fixtures without missing-match rejection (Mobile Chrome)
   ✓ 4C. Match Day Alert: eligible player opens match, squad-ineligible player alert suppressed, admin retains access (Mobile Chrome)
-  ✓ 4D. Guarded match navigation: eligibility revoked after rendering blocks navigation and shows error toast (Mobile Chrome)
-  ✓ 4E. Guarded match navigation: missing match blocks navigation and shows authoritative error toast (Mobile Chrome)
-  ✓ 4F. Guarded match navigation: eligible player navigates from search results to Match Details view (Mobile Chrome)
-  ✓ 4G. Guarded match navigation: eligible player navigates from Upcoming Matches card to Match Details view (Mobile Chrome)
-  ✓ 4H. Guarded match navigation: admin navigates to restricted and tentative matches from search (Mobile Chrome)
-  ✓ 5. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity (Mobile Chrome)
-  ✓ 6. Responsive visual validation at 360x800 with zero horizontal overflow (Mobile Chrome)
-  ✓ 7. Responsive visual validation at 375x812 with zero horizontal overflow (Mobile Chrome)
-  ✓ 8. Responsive visual validation at 390x844 with zero horizontal overflow (Mobile Chrome)
-  ✓ 9. Responsive visual validation at 768x1024 with zero horizontal overflow (Mobile Chrome)
-  ✓ 10. Responsive visual validation at 1280x800 with zero horizontal overflow (Mobile Chrome)
-  ✓ 11. Player Home loads greeting, identity, search, hero carousel, performance, and dues (Desktop Chrome)
-  ✓ 12. Displays next 4 upcoming matches with accurate availability and enables 1-tap RSVP updates (Desktop Chrome)
-  ✓ 13. Enforces player-specific match visibility, search isolation, and blocks ineligible match RSVP (Desktop Chrome)
-  ✓ 14A. Pay Now navigates to Finance tab (Desktop Chrome)
-  ✓ 14B. Tournament campaign navigation opens tournament fixtures without missing-match rejection (Desktop Chrome)
-  ✓ 14C. Match Day Alert: eligible player opens match, squad-ineligible player alert suppressed, admin retains access (Desktop Chrome)
-  ✓ 14D. Guarded match navigation: eligibility revoked after rendering blocks navigation and shows error toast (Desktop Chrome)
-  ✓ 14E. Guarded match navigation: missing match blocks navigation and shows authoritative error toast (Desktop Chrome)
-  ✓ 14F. Guarded match navigation: eligible player navigates from search results to Match Details view (Desktop Chrome)
-  ✓ 14G. Guarded match navigation: eligible player navigates from Upcoming Matches card to Match Details view (Desktop Chrome)
-  ✓ 14H. Guarded match navigation: admin navigates to restricted and tentative matches from search (Desktop Chrome)
-  ✓ 15. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity (Desktop Chrome)
-  ✓ 16. Responsive visual validation at 360x800 with zero horizontal overflow (Desktop Chrome)
-  ✓ 17. Responsive visual validation at 375x812 with zero horizontal overflow (Desktop Chrome)
-  ✓ 18. Responsive visual validation at 390x844 with zero horizontal overflow (Desktop Chrome)
-  ✓ 19. Responsive visual validation at 768x1024 with zero horizontal overflow (Desktop Chrome)
-  ✓ 20. Responsive visual validation at 1280x800 with zero horizontal overflow (Desktop Chrome)
+  ✓ 4D. Guarded match navigation: eligibility revoked after rendering blocks navigation (Mobile Chrome)
+  ✓ 4E. Guarded match navigation: missing match blocks navigation with authoritative error (Mobile Chrome)
+  ✓ 4F. Guarded match navigation: eligible player navigates from search results (Mobile Chrome)
+  ✓ 4G. Guarded match navigation: eligible player navigates from upcoming matches (Mobile Chrome)
+  ✓ 4H. Guarded match navigation: administrator navigates to restricted and tentative matches (Mobile Chrome)
+  ✓ Responsive visual validation at 360x800 with zero horizontal overflow (Mobile Chrome)
+  ✓ Responsive visual validation at 375x812 with zero horizontal overflow (Mobile Chrome)
+  ✓ Responsive visual validation at 390x844 with zero horizontal overflow (Mobile Chrome)
+  ✓ Responsive visual validation at 768x1024 with zero horizontal overflow (Mobile Chrome)
+  ✓ Responsive visual validation at 1280x800 with zero horizontal overflow (Mobile Chrome)
+  ✓ 1. Player Home loads greeting, identity, search, hero carousel, performance, and dues (Desktop Chrome)
+  ✓ 2. Displays next 4 upcoming matches with accurate availability and enables 1-tap RSVP updates (Desktop Chrome)
+  ✓ 2B. Enforces player-specific match visibility, search isolation, and open fixture RSVP (Desktop Chrome)
+  ✓ 2C. Preserves legitimate administrator match access and search visibility for admin users (Desktop Chrome)
+  ✓ 3. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity (Desktop Chrome)
+  ✓ 4A. Pay Now navigates to Finance tab (Desktop Chrome)
+  ✓ 4B. Tournament campaign navigation opens tournament fixtures without missing-match rejection (Desktop Chrome)
+  ✓ 4C. Match Day Alert: eligible player opens match, squad-ineligible player alert suppressed, admin retains access (Desktop Chrome)
+  ✓ 4D. Guarded match navigation: eligibility revoked after rendering blocks navigation (Desktop Chrome)
+  ✓ 4E. Guarded match navigation: missing match blocks navigation with authoritative error (Desktop Chrome)
+  ✓ 4F. Guarded match navigation: eligible player navigates from search results (Desktop Chrome)
+  ✓ 4G. Guarded match navigation: eligible player navigates from upcoming matches (Desktop Chrome)
+  ✓ 4H. Guarded match navigation: administrator navigates to restricted and tentative matches (Desktop Chrome)
+  ✓ Responsive visual validation at 360x800 with zero horizontal overflow (Desktop Chrome)
+  ✓ Responsive visual validation at 375x812 with zero horizontal overflow (Desktop Chrome)
+  ✓ Responsive visual validation at 390x844 with zero horizontal overflow (Desktop Chrome)
+  ✓ Responsive visual validation at 768x1024 with zero horizontal overflow (Desktop Chrome)
+  ✓ Responsive visual validation at 1280x800 with zero horizontal overflow (Desktop Chrome)
 
-36 passed (1.1m)
+36 passed (1.2m)
 ```
+
+### Detailed Verification of Scenario 4C (Match Day Alert)
+Test `4C` verifies three distinct participation states under real browser execution:
+1. **Eligible Player Navigation:** When the player is an active club member confirmed in the match squad, the Match Day Alert banner renders prominently with countdown context. Clicking the "View Match" CTA invokes guarded navigation, successfully routing the browser to the Match Details view (`vs Mumbai Masters`).
+2. **Squad-Ineligible Player Alert Suppression:** For an active, verified player (`player-beta`, status: "Active", inviteStatus: "Accepted") where the fixture has confirmed squad assignments for teammates but the player has no assignment, the Match Day Alert is authoritatively suppressed and not rendered in the DOM (`expect(excludedAlert).toHaveCount(0)`). The test asserts absence of the alert element; no attempt is made to click a non-existent CTA.
+3. **Administrator Access:** Club/Match administrators retain legitimate supervisory access to active fixtures within the alert window. The alert renders and clicking "View Match" routes to Match Details.
 
 ---
 
@@ -227,7 +234,7 @@ All regression test suites across the application passed cleanly with zero regre
 | ESLint Rules Validation | `npm run lint` | — | 0 errors | 0 | 4 warnings (existing firestore.rules open reads) | PASS |
 | Next.js Static Production Build | `npm run build` | 19 routes | 19 | 0 | 0 | PASS |
 
-> **Note on Verification:** The above results reflect developer-executed verification runs. In accordance with AGENTS.md Section 2, all deliverables are submitted to ChatGPT (Independent Product & Technical Reviewer) and the Product Owner for independent review and formal acceptance.
+> **Note on Verification & CI Evidence:** The above results reflect developer-executed verification runs in the local workspace environment. In accordance with AGENTS.md Section 2, all deliverables are submitted to ChatGPT (Independent Product & Technical Reviewer) and the Product Owner for independent review and formal acceptance. No external CI or GitHub Actions workflow run evidence has been returned or claimed for this submission; all verification is developer-reported and ready for independent reproduction.
 
 ---
 
@@ -247,6 +254,7 @@ All regression test suites across the application passed cleanly with zero regre
 | `1922ff84204b0287bd499ec8c3d7fdf74b6b4e2a` | Fix | `fix(ui): resolve tournament navigation and add genuine guarded navigation tests` |
 | `f0e0ee4441d2ee791ea3a5cd43c9047e2f53551b` | Docs | `docs(ui): update phase 2.1 report with tournament campaign and genuine navigation evidence` |
 | `e00c671bfef57c70910a187a539ee55658a56f8f` | Fix | `fix(ui): improve Match Day Alert squad ineligibility test coverage` (Implementation Commit) |
+| `ff97e20226020fd49c667f05672e598fb908ff59` | Docs | `docs(ui): refine report with MATCH_NOT_FOUND contract and squad-ineligible alert suppression evidence` |
 
 ---
 
