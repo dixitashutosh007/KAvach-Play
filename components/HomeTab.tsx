@@ -14,12 +14,15 @@
  */
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Post, Player, Match, Ground } from "@/lib/types";
 import { resolveMyPlayers } from "@/lib/player-identity";
 import { calculatePlayerDues } from "@/lib/player-dues";
-import { isPlayerEligibleForMatch } from "@/lib/match-eligibility";
+import {
+  isPlayerEligibleForMatch,
+  validateMatchNavigation,
+} from "@/lib/match-eligibility";
 import {
   MapPin,
   Clock,
@@ -161,17 +164,33 @@ export function HomeTab({
       });
   }, [matches, payments, mePlayer, isAdmin, appConfig]);
 
+  // Centralised Guarded Match Navigation (Authoritative Pre-flight Eligibility Check)
+  const handleGuardedNavigateToMatch = useCallback(
+    (matchId: string) => {
+      const validation = validateMatchNavigation(
+        matchId,
+        matches,
+        mePlayer,
+        payments,
+        isAdmin
+      );
+      if (!validation.allowed) {
+        if (validation.message) {
+          toast(validation.message, "error");
+        }
+        return;
+      }
+      onNavigateToMatch?.(matchId);
+    },
+    [matches, mePlayer, payments, isAdmin, onNavigateToMatch]
+  );
+
   // Generic navigation dispatcher
   const handleNavigate = (tab: string, targetId?: string) => {
     if (tab === "finance") {
       onNavigateToPayments?.();
     } else if (tab === "matches" && targetId) {
-      const targetMatch = matches.find((m) => m.id === targetId);
-      if (targetMatch && !isPlayerEligibleForMatch(mePlayer, targetMatch, payments, isAdmin)) {
-        toast("You are not eligible to access this match.", "error");
-        return;
-      }
-      onNavigateToMatch?.(targetId);
+      handleGuardedNavigateToMatch(targetId);
     } else if (onNavigateToTab) {
       onNavigateToTab(tab, targetId);
     } else if (tab === "matches") {
@@ -320,9 +339,10 @@ export function HomeTab({
                 {filteredResults.matches.map((m) => (
                   <div
                     key={m.id}
+                    data-testid={`search-result-match-${m.id}`}
                     onClick={() => {
                       setSearchQuery("");
-                      onNavigateToMatch?.(m.id);
+                      handleGuardedNavigateToMatch(m.id);
                     }}
                     className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between cursor-pointer transition"
                   >
@@ -429,7 +449,9 @@ export function HomeTab({
                 return (
                   <div
                     key={match.id}
-                    className="w-full bg-gradient-to-br from-emerald-950 via-emerald-900 to-[#063828] text-white p-5 rounded-2xl border border-emerald-500/30 shadow-sm relative overflow-hidden"
+                    data-testid={`match-day-alert-${match.id}`}
+                    onClick={() => handleGuardedNavigateToMatch(match.id)}
+                    className="w-full bg-gradient-to-br from-emerald-950 via-emerald-900 to-[#063828] text-white p-5 rounded-2xl border border-emerald-500/30 shadow-sm relative overflow-hidden cursor-pointer"
                   >
                     <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
@@ -456,17 +478,31 @@ export function HomeTab({
                         </p>
                       </div>
 
-                      {mapUrl && mapUrl !== "#" && (
-                        <a
-                          href={mapUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-h-[44px] px-4 py-2 rounded-xl bg-white text-emerald-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-50 transition shadow-xs self-start sm:self-auto"
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleGuardedNavigateToMatch(match.id);
+                          }}
+                          className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
                         >
-                          <MapPin className="w-4 h-4 text-emerald-700" />
-                          <span>Directions</span>
-                        </a>
-                      )}
+                          <span>View Match</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        {mapUrl && mapUrl !== "#" && (
+                          <a
+                            href={mapUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="min-h-[44px] px-4 py-2 rounded-xl bg-white text-emerald-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-50 transition shadow-xs"
+                          >
+                            <MapPin className="w-4 h-4 text-emerald-700" />
+                            <span>Directions</span>
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -505,7 +541,7 @@ export function HomeTab({
             payments={payments}
             player={mePlayer}
             onRsvp={handleRsvp}
-            onNavigateToMatch={(matchId) => onNavigateToMatch?.(matchId)}
+            onNavigateToMatch={handleGuardedNavigateToMatch}
             onNavigateToAllMatches={() => handleNavigate("matches")}
           />
 

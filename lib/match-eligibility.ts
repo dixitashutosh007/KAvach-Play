@@ -118,3 +118,45 @@ export function isPlayerEligibleForMatch(
   // Active, verified club players are eligible to view and submit RSVPs
   return true;
 }
+
+export interface MatchNavigationResult {
+  allowed: boolean;
+  error?: "MATCH_NOT_FOUND" | "INELIGIBLE";
+  message?: string;
+}
+
+/**
+ * Authoritative Pre-flight Match Navigation Guard.
+ *
+ * Validates that:
+ * 1. The target match exists in the current matches collection.
+ * 2. The player is authoritatively eligible to view/access the target match.
+ * 3. Admins retain legitimate administrative access to view all active fixtures.
+ */
+export function validateMatchNavigation(
+  matchId: string,
+  matches: Match[] = [],
+  player: Player | null | undefined,
+  payments: MatchPayment[] = [],
+  isAdmin: boolean = false
+): MatchNavigationResult {
+  if (!matchId) {
+    return { allowed: true };
+  }
+  const targetMatch = matches.find((m) => m.id === matchId);
+  if (!targetMatch) {
+    return {
+      allowed: false,
+      error: "MATCH_NOT_FOUND",
+      message: "Match not found or no longer available.",
+    };
+  }
+  if (!isPlayerEligibleForMatch(player, targetMatch, payments, isAdmin)) {
+    return {
+      allowed: false,
+      error: "INELIGIBLE",
+      message: "You are not eligible to access this match.",
+    };
+  }
+  return { allowed: true };
+}

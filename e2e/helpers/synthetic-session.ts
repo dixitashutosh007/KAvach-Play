@@ -22,6 +22,7 @@ export interface RoleConfig {
     shop?: boolean;
     opinion?: boolean;
   };
+  tournaments?: any[];
 }
 
 export function createSyntheticStore(roleConfig: RoleConfig) {
@@ -384,7 +385,7 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     grounds: grounds,
     otherFees: otherFees,
     posts: posts,
-    tournaments: tournaments,
+    tournaments: roleConfig.tournaments || tournaments,
     playerStats: [],
     subscriptionPlans: [],
     subscriptionHistory: [],

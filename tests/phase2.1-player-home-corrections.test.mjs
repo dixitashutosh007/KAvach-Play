@@ -11,6 +11,7 @@ import {
   isPlayerEligibleForMatch,
   isSquadAssignedToMatch,
   isPlayerInAssignedSquad,
+  validateMatchNavigation,
 } from "../lib/match-eligibility.ts";
 
 describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Real-Model Match Eligibility", () => {
@@ -384,6 +385,192 @@ describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Real-Model Mat
       };
       assert.equal(isPlayerEligibleForMatch(activePlayer, archivedMatch, [], false), false);
       assert.equal(isPlayerEligibleForMatch(null, archivedMatch, [], true), false);
+    });
+  });
+
+  // ── 3. Centralised Guarded Match Navigation Tests ─────────────────────────
+  describe("3. Centralised Guarded Match Navigation (validateMatchNavigation)", () => {
+    const activePlayer = {
+      id: "player-alpha",
+      name: "Alpha Player",
+      disabled: false,
+      inviteStatus: "Accepted",
+    };
+
+    const teammatePlayer = {
+      id: "player-beta",
+      name: "Beta Teammate",
+      disabled: false,
+      inviteStatus: "Accepted",
+    };
+
+    const openMatch = {
+      id: "match-open-1",
+      opponent: "Delhi Warriors",
+      date: "2026-11-25",
+      isArchived: false,
+      isTentative: false,
+    };
+
+    const squadMatch = {
+      id: "match-squad-restricted",
+      opponent: "Jaipur Strikers",
+      date: "2026-12-08",
+      isArchived: false,
+      isTentative: false,
+    };
+
+    const tentativeMatch = {
+      id: "match-tentative-slot",
+      opponent: "Tentative Challengers",
+      date: "2026-12-10",
+      isArchived: false,
+      isTentative: true,
+    };
+
+    const matchesList = [openMatch, squadMatch, tentativeMatch];
+
+    // Payments assigning squadMatch strictly to teammatePlayer (excludes activePlayer)
+    const squadPayments = [
+      {
+        id: "pay-teammate",
+        matchId: squadMatch.id,
+        playerId: teammatePlayer.id,
+        status: "Unpaid",
+        availability: "Confirmed",
+      },
+    ];
+
+    it("grants navigation for eligible player on open fixture", () => {
+      const result = validateMatchNavigation(
+        openMatch.id,
+        matchesList,
+        activePlayer,
+        squadPayments,
+        false
+      );
+      assert.deepEqual(result, { allowed: true });
+    });
+
+    it("grants navigation for eligible player included in assigned squad", () => {
+      const playerSquadPayments = [
+        ...squadPayments,
+        {
+          id: "pay-alpha",
+          matchId: squadMatch.id,
+          playerId: activePlayer.id,
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+      ];
+      const result = validateMatchNavigation(
+        squadMatch.id,
+        matchesList,
+        activePlayer,
+        playerSquadPayments,
+        false
+      );
+      assert.deepEqual(result, { allowed: true });
+    });
+
+    it("blocks navigation when player is excluded from assigned squad", () => {
+      const result = validateMatchNavigation(
+        squadMatch.id,
+        matchesList,
+        activePlayer,
+        squadPayments,
+        false
+      );
+      assert.deepEqual(result, {
+        allowed: false,
+        error: "INELIGIBLE",
+        message: "You are not eligible to access this match.",
+      });
+    });
+
+    it("blocks navigation when player eligibility is revoked (e.g. player disabled or merged)", () => {
+      const disabledPlayer = { ...activePlayer, disabled: true };
+      const resultDisabled = validateMatchNavigation(
+        openMatch.id,
+        matchesList,
+        disabledPlayer,
+        [],
+        false
+      );
+      assert.deepEqual(resultDisabled, {
+        allowed: false,
+        error: "INELIGIBLE",
+        message: "You are not eligible to access this match.",
+      });
+
+      const mergedPlayer = { ...activePlayer, mergedInto: "player-other" };
+      const resultMerged = validateMatchNavigation(
+        openMatch.id,
+        matchesList,
+        mergedPlayer,
+        [],
+        false
+      );
+      assert.deepEqual(resultMerged, {
+        allowed: false,
+        error: "INELIGIBLE",
+        message: "You are not eligible to access this match.",
+      });
+    });
+
+    it("blocks navigation when target match does not exist in matches collection (missing match)", () => {
+      const resultMissing = validateMatchNavigation(
+        "non-existent-match-999",
+        matchesList,
+        activePlayer,
+        squadPayments,
+        false
+      );
+      assert.deepEqual(resultMissing, {
+        allowed: false,
+        error: "MATCH_NOT_FOUND",
+        message: "Match not found or no longer available.",
+      });
+    });
+
+    it("blocks navigation for regular player on tentative match", () => {
+      const result = validateMatchNavigation(
+        tentativeMatch.id,
+        matchesList,
+        activePlayer,
+        [],
+        false
+      );
+      assert.deepEqual(result, {
+        allowed: false,
+        error: "INELIGIBLE",
+        message: "You are not eligible to access this match.",
+      });
+    });
+
+    it("grants navigation for administrator to restricted squad and tentative matches", () => {
+      const resRestricted = validateMatchNavigation(
+        squadMatch.id,
+        matchesList,
+        null,
+        squadPayments,
+        true
+      );
+      assert.deepEqual(resRestricted, { allowed: true });
+
+      const resTentative = validateMatchNavigation(
+        tentativeMatch.id,
+        matchesList,
+        null,
+        [],
+        true
+      );
+      assert.deepEqual(resTentative, { allowed: true });
+    });
+
+    it("allows generic matches tab navigation when matchId is empty string", () => {
+      const result = validateMatchNavigation("", matchesList, activePlayer, [], false);
+      assert.deepEqual(result, { allowed: true });
     });
   });
 });
