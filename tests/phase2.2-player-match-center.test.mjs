@@ -15,6 +15,7 @@ import {
   parseMatchDateTime,
   getPersonalMatchPaymentStatus,
   aggregatePlayerMatchPayment,
+  resolvePlayerFeeOverride,
   derivePlayerAvailability,
   groupPlayerMatches,
 } from "../lib/personal-match-payment.ts";
@@ -793,6 +794,660 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       const res = validateMatchNavigation("match-archived", [archivedMatch], dummyPlayer, [], true);
       assert.equal(res.allowed, false);
       assert.equal(res.error, "INELIGIBLE");
+    });
+  });
+
+  describe("6. Assigned-Squad Eligibility Bypass Regression Tests", () => {
+    const openFixture = {
+      id: "reg-match-open",
+      opponent: "Open Tigers",
+      date: "2026-11-28",
+      time: "08:00",
+      fee: 600,
+    };
+
+    const squadAssignedMatch = {
+      id: "reg-match-squad",
+      opponent: "Elite Warriors",
+      date: "2026-11-29",
+      time: "09:00",
+      fee: 700,
+    };
+
+    // Squad is assigned to teammatePlayer (player-beta)
+    const confirmedSquadPayments = [
+      {
+        id: "squad-doc-beta",
+        matchId: "reg-match-squad",
+        playerId: "player-beta",
+        status: "Unpaid",
+        availability: "Confirmed",
+      },
+    ];
+
+    it("1. Open fixture with no assigned squad: active verified player is eligible", () => {
+      assert.equal(isSquadAssignedToMatch("reg-match-open", []), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, openFixture, [], false), true);
+    });
+
+    it("2. Open fixture: player can submit RSVP", () => {
+      // In an open fixture, active player can view fixture and submit RSVP
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, openFixture, [], false), true);
+      const navRes = validateMatchNavigation("reg-match-open", [openFixture], dummyPlayer, [], false);
+      assert.equal(navRes.allowed, true);
+    });
+
+    it("3. Player responds Yes before squad assignment, then is excluded: denied", () => {
+      // dummyPlayer responded 'Yes' initially (status: 'Not Playing' until assigned)
+      const historicalRsvpPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "rsvp-alpha",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Yes",
+        },
+      ];
+      assert.equal(isSquadAssignedToMatch("reg-match-squad", historicalRsvpPayments), true);
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", historicalRsvpPayments), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, historicalRsvpPayments, false), false);
+    });
+
+    it("4. Player responds No before squad assignment, then is excluded: denied", () => {
+      const historicalRsvpPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "rsvp-alpha-no",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "No",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", historicalRsvpPayments), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, historicalRsvpPayments, false), false);
+    });
+
+    it("5. Player responds Tentative before squad assignment, then is excluded: denied", () => {
+      const historicalRsvpPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "rsvp-alpha-tentative",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Tentative",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", historicalRsvpPayments), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, historicalRsvpPayments, false), false);
+    });
+
+    it("6. Player is explicitly assigned to squad: allowed", () => {
+      const assignedPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "squad-alpha",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          availability: "Confirmed",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", assignedPayments), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, assignedPayments, false), true);
+    });
+
+    it("7. Player is removed from squad (status: 'Not Playing'): denied", () => {
+      const removedPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "squad-alpha-removed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", removedPayments), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, removedPayments, false), false);
+    });
+
+    it("8. Admin retains access to assigned fixtures", () => {
+      // Even when not in the assigned squad, admin retains access
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, confirmedSquadPayments, true), true);
+    });
+
+    it("9. Disabled, rejected, pending, merged players remain ineligible", () => {
+      const disabledPlayer = { ...dummyPlayer, disabled: true };
+      const pendingPlayer = { ...dummyPlayer, inviteStatus: "Pending" };
+      const rejectedPlayer = { ...dummyPlayer, inviteStatus: "Rejected" };
+      const mergedPlayer = { ...dummyPlayer, mergedInto: "player-master" };
+
+      assert.equal(isPlayerEligibleForMatch(disabledPlayer, openFixture, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(pendingPlayer, openFixture, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(rejectedPlayer, openFixture, [], false), false);
+      assert.equal(isPlayerEligibleForMatch(mergedPlayer, openFixture, [], false), false);
+    });
+
+    it("10. Deep link and direct match selection use corrected validator", () => {
+      const excludedRsvpPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "rsvp-alpha-excluded",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Yes",
+        },
+      ];
+      const navRes = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, excludedRsvpPayments, false);
+      assert.equal(navRes.allowed, false);
+      assert.equal(navRes.error, "INELIGIBLE");
+    });
+  });
+
+  describe("7. Payment Transaction Deduplication Tests", () => {
+    const match600 = {
+      id: "match-dedup",
+      opponent: "Deduplication XI",
+      date: "2026-11-26",
+      fee: 600,
+    };
+
+    it("1. Two docs with same Razorpay payment ID count once", () => {
+      const payments = [
+        {
+          id: "doc-rzp-1",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          paymentMethod: "razorpay",
+          razorpayPaymentId: "pay_dup_001",
+          feeCollectedAmount: 600,
+        },
+        {
+          id: "doc-rzp-2",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          paymentMethod: "razorpay",
+          razorpayPaymentId: "pay_dup_001",
+          feeCollectedAmount: 600,
+        },
+      ];
+      const result = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(result.totalCollected, 600);
+      assert.equal(result.totalOffset, 0);
+      assert.equal(result.totalRecognized, 600);
+      assert.equal(result.netPayable, 0);
+      assert.equal(result.status, "PAID");
+    });
+
+    it("2. Two different Razorpay payment IDs count independently", () => {
+      const payments = [
+        {
+          id: "doc-rzp-a",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          paymentMethod: "razorpay",
+          razorpayPaymentId: "pay_diff_1",
+          feeCollectedAmount: 300,
+        },
+        {
+          id: "doc-rzp-b",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          paymentMethod: "razorpay",
+          razorpayPaymentId: "pay_diff_2",
+          feeCollectedAmount: 300,
+        },
+      ];
+      const result = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(result.totalCollected, 600);
+      assert.equal(result.totalOffset, 0);
+      assert.equal(result.totalRecognized, 600);
+      assert.equal(result.netPayable, 0);
+      assert.equal(result.status, "PAID");
+    });
+
+    it("3. Duplicate doc ID counts once", () => {
+      const payments = [
+        {
+          id: "doc-single-id",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 400,
+        },
+        {
+          id: "doc-single-id",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 400,
+        },
+      ];
+      const result = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(result.totalCollected, 400);
+      assert.equal(result.totalOffset, 0);
+      assert.equal(result.totalRecognized, 400);
+      assert.equal(result.netPayable, 200);
+      assert.equal(result.status, "PARTIALLY PAID");
+    });
+
+    it("4. Two legitimate manual collections count independently", () => {
+      const payments = [
+        {
+          id: "doc-man-1",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "cash",
+          feeCollectedAmount: 250,
+        },
+        {
+          id: "doc-man-2",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "upi",
+          feeCollectedAmount: 250,
+        },
+      ];
+      const result = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(result.totalCollected, 500);
+      assert.equal(result.totalOffset, 0);
+      assert.equal(result.totalRecognized, 500);
+      assert.equal(result.netPayable, 100);
+      assert.equal(result.status, "PARTIALLY PAID");
+    });
+
+    it("5. Same transaction through legacy and current fields is not counted twice", () => {
+      const payments = [
+        {
+          id: "doc-camel",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          razorpayPaymentId: "pay_shared_legacy_1",
+          feeCollectedAmount: 600,
+        },
+        {
+          id: "doc-snake",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          razorpay_payment_id: "pay_shared_legacy_1",
+          feeCollectedAmount: 600,
+        },
+      ];
+      const result = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(result.totalCollected, 600);
+      assert.equal(result.totalOffset, 0);
+      assert.equal(result.totalRecognized, 600);
+      assert.equal(result.netPayable, 0);
+      assert.equal(result.status, "PAID");
+    });
+
+    it("6. Records for another player or match are excluded", () => {
+      const payments = [
+        {
+          id: "doc-me",
+          matchId: "match-dedup",
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 300,
+        },
+        {
+          id: "doc-other-player",
+          matchId: "match-dedup",
+          playerId: "player-beta",
+          status: "Paid",
+          feeCollectedAmount: 300,
+        },
+        {
+          id: "doc-other-match",
+          matchId: "match-other-xyz",
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 300,
+        },
+      ];
+      const result = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(result.totalCollected, 300);
+      assert.equal(result.totalOffset, 0);
+      assert.equal(result.totalRecognized, 300);
+      assert.equal(result.netPayable, 300);
+      assert.equal(result.status, "PARTIALLY PAID");
+    });
+  });
+
+  describe("8. Sponsored-Payment Accounting Tests", () => {
+    const match600 = {
+      id: "match-sponsor-act",
+      opponent: "Sponsorship XI",
+      date: "2026-11-27",
+      fee: 600,
+    };
+
+    it("1. Legacy Paid manual payment without explicit amount", () => {
+      const payments = [
+        {
+          id: "doc-leg-cash",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "cash",
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 600);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("2. Legacy club-sponsored Paid record without explicit amount", () => {
+      const payments = [
+        {
+          id: "doc-leg-spons",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 0, "No cash collected from player");
+      assert.equal(res.totalOffset, 600, "Offset equals effectiveFee");
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("3. Club-sponsored record with explicit offset", () => {
+      const payments = [
+        {
+          id: "doc-spons-offset",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+          feeOffsetAmount: 600,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 600);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("4. Club-sponsored record with explicit collection amount", () => {
+      const payments = [
+        {
+          id: "doc-spons-both",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+          feeCollectedAmount: 200,
+          feeOffsetAmount: 400,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 200);
+      assert.equal(res.totalOffset, 400);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("5. Cash collection plus sponsorship offset", () => {
+      const payments = [
+        {
+          id: "doc-cash-300",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "cash",
+          feeCollectedAmount: 300,
+        },
+        {
+          id: "doc-spons-300",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+          feeOffsetAmount: 300,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 300);
+      assert.equal(res.totalOffset, 300);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("6. Partial cash collection plus offset", () => {
+      const payments = [
+        {
+          id: "doc-cash-200",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "cash",
+          feeCollectedAmount: 200,
+        },
+        {
+          id: "doc-spons-150",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+          feeOffsetAmount: 150,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 200);
+      assert.equal(res.totalOffset, 150);
+      assert.equal(res.totalRecognized, 350);
+      assert.equal(res.netPayable, 250);
+      assert.equal(res.status, "PARTIALLY PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("7. Full settlement through sponsorship", () => {
+      const payments = [
+        {
+          id: "doc-full-spons",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 600);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("8. Non-sponsored manual payment", () => {
+      const payments = [
+        {
+          id: "doc-upi-full",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "upi",
+          feeCollectedAmount: 600,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 600);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("9. Razorpay collection", () => {
+      const payments = [
+        {
+          id: "doc-rzp-full",
+          matchId: "match-sponsor-act",
+          playerId: "player-alpha",
+          status: "Paid",
+          paymentMethod: "razorpay",
+          razorpayPaymentId: "pay_rzp_999",
+          feeCollectedAmount: 600,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, match600, payments);
+      assert.equal(res.totalCollected, 600);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+      assert.equal(res.isWaived, false);
+    });
+
+    it("10. Abandoned match with historical sponsored or cash transactions", () => {
+      const abandonedMatch = {
+        ...match600,
+        id: "match-abn-hist",
+        result: "Abandoned",
+      };
+      const payments = [
+        {
+          id: "doc-cash-abn",
+          matchId: "match-abn-hist",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "cash",
+          feeCollectedAmount: 200,
+        },
+        {
+          id: "doc-spons-abn",
+          matchId: "match-abn-hist",
+          playerId: "player-alpha",
+          status: "Paid",
+          manualMethod: "club_sponsored",
+          feeOffsetAmount: 400,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, abandonedMatch, payments);
+      assert.equal(res.totalCollected, 200, "Historical cash is preserved");
+      assert.equal(res.totalOffset, 400, "Historical offset is preserved");
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0, "No outstanding obligation on abandoned match");
+      assert.equal(res.status, "WAIVED");
+      assert.equal(res.isWaived, true);
+    });
+  });
+
+  describe("9. Deterministic Fee Override Precedence Tests", () => {
+    it("1. Single valid override", () => {
+      const payments = [
+        {
+          id: "doc-ov-1",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          feeOverride: 450,
+          updatedAt: 1000,
+        },
+      ];
+      assert.equal(resolvePlayerFeeOverride(payments), 450);
+    });
+
+    it("2. Multiple records with same override", () => {
+      const payments = [
+        {
+          id: "doc-ov-a",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          feeOverride: 500,
+          updatedAt: 1000,
+        },
+        {
+          id: "doc-ov-b",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          feeOverride: 500,
+          updatedAt: 2000,
+        },
+      ];
+      assert.equal(resolvePlayerFeeOverride(payments), 500);
+    });
+
+    it("3. Conflicting overrides in different input orders resolve to the same value", () => {
+      const docRecent = {
+        id: "doc-recent",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 350,
+        updatedAt: 2000,
+      };
+      const docOlder = {
+        id: "doc-older",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 550,
+        updatedAt: 1000,
+      };
+
+      // Regardless of array order [recent, older] vs [older, recent], latest timestamp (2000) wins
+      const order1 = [docRecent, docOlder];
+      const order2 = [docOlder, docRecent];
+
+      assert.equal(resolvePlayerFeeOverride(order1), 350);
+      assert.equal(resolvePlayerFeeOverride(order2), 350);
+
+      // If timestamps are identical, doc ID descending tie-breaker ensures determinism
+      const docTieZ = { id: "doc-z", matchId: "match-1", playerId: "player-alpha", feeOverride: 300, updatedAt: 5000 };
+      const docTieA = { id: "doc-a", matchId: "match-1", playerId: "player-alpha", feeOverride: 400, updatedAt: 5000 };
+
+      assert.equal(resolvePlayerFeeOverride([docTieZ, docTieA]), 300);
+      assert.equal(resolvePlayerFeeOverride([docTieA, docTieZ]), 300);
+    });
+
+    it("4. Invalid, negative, null, malformed overrides ignored", () => {
+      const payments = [
+        { id: "inv-1", matchId: "match-1", playerId: "player-alpha", feeOverride: -100 },
+        { id: "inv-2", matchId: "match-1", playerId: "player-alpha", feeOverride: NaN },
+        { id: "inv-3", matchId: "match-1", playerId: "player-alpha", feeOverride: null },
+        { id: "inv-4", matchId: "match-1", playerId: "player-alpha", feeOverride: "500" },
+        { id: "valid-1", matchId: "match-1", playerId: "player-alpha", feeOverride: 400, updatedAt: 100 },
+      ];
+      assert.equal(resolvePlayerFeeOverride(payments), 400);
+    });
+
+    it("5. No override: uses match fee", () => {
+      const payments = [
+        { id: "no-ov", matchId: "match-1", playerId: "player-alpha", status: "Unpaid" },
+      ];
+      assert.equal(resolvePlayerFeeOverride(payments), undefined);
+
+      const standardMatch = { id: "match-1", fee: 650 };
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.feeOverride, undefined);
     });
   });
 });

@@ -24,35 +24,37 @@ export function isSquadAssignedToMatch(
       (p.availability === "Confirmed" ||
         p.availability === "Waitlist" ||
         (p.status !== "Not Playing" &&
-          p.availability !== "Yes" &&
-          p.availability !== "Tentative" &&
-          p.availability !== "No"))
+          (p.status === "Unpaid" || p.status === "Paid" || p.status === "Waived")))
   );
 }
 
 /**
- * Checks whether a specific player is a confirmed or assigned member of a match squad
- * based on their MatchPayment record.
+ * Checks whether a specific player is an authoritative assigned member of a match squad
+ * based on their real persisted MatchPayment records in Firestore.
+ *
+ * Requirements:
+ * - A player is considered part of the assigned squad ONLY if they have an authoritative
+ *   squad assignment: availability === "Confirmed" | "Waitlist" OR an active match
+ *   playing/fee obligation (status !== "Not Playing", such as "Unpaid", "Paid", "Waived").
+ * - Historical player RSVPs ("Yes", "Tentative", "No", "Pending") submitted on an open fixture
+ *   with status === "Not Playing" do NOT establish squad membership once a squad has been assigned.
  */
 export function isPlayerInAssignedSquad(
   playerId: string,
   matchId: string,
   payments: MatchPayment[] = []
 ): boolean {
-  const payment = payments.find(
-    (p) => p.matchId === matchId && p.playerId === playerId
-  );
-  if (!payment) return false;
-
-  return (
-    payment.availability === "Confirmed" ||
-    payment.availability === "Waitlist" ||
-    payment.availability === "Tentative" ||
-    payment.availability === "Yes" ||
-    payment.availability === "No" ||
-    payment.status === "Paid" ||
-    payment.status === "Unpaid" ||
-    payment.status === "Waived"
+  return payments.some(
+    (p) =>
+      p.matchId === matchId &&
+      p.playerId === playerId &&
+      !p.guestName &&
+      (p.availability === "Confirmed" ||
+        p.availability === "Waitlist" ||
+        (p.status !== "Not Playing" &&
+          (p.status === "Paid" ||
+            p.status === "Unpaid" ||
+            p.status === "Waived")))
   );
 }
 
@@ -68,8 +70,9 @@ export function isPlayerInAssignedSquad(
  * 4. Archived matches (isArchived) and Tentatively blocked fixtures (isTentative) are
  *    strictly ineligible for regular player display and RSVP.
  * 5. If a squad has been assigned to the match:
- *    - Only confirmed/assigned squad members (isPlayerInAssignedSquad) are eligible.
- *    - Players outside the assigned squad are strictly ineligible and excluded.
+ *    - Only players with authoritative squad assignment (isPlayerInAssignedSquad) are eligible.
+ *    - Players excluded from the assigned squad are strictly denied, even if they previously
+ *      submitted an RSVP (Yes, No, Tentative) while the fixture was open.
  * 6. If no squad has been assigned yet (genuinely open upcoming club fixture):
  *    - All active, verified club players are eligible to view the fixture and submit RSVPs.
  */
@@ -105,20 +108,16 @@ export function isPlayerEligibleForMatch(
     return false;
   }
 
-  // 5. Existing legitimate participation / squad record grants immediate eligibility
-  if (isPlayerInAssignedSquad(player.id, match.id, payments)) {
-    return true;
-  }
-
-  // 6. Check if the match has an officially assigned squad
+  // 5. Check if the match has an officially assigned squad
   const hasSquad = isSquadAssignedToMatch(match.id, payments);
   if (hasSquad) {
-    // A squad has been assigned, but this player is not in it -> Denied
-    return false;
+    // If a squad has been assigned, player MUST be an authoritative member of the assigned squad.
+    // Historical RSVPs (e.g. "Yes", "No", "Tentative") with status "Not Playing" do NOT grant access.
+    return isPlayerInAssignedSquad(player.id, match.id, payments);
   }
 
-  // 7. Genuinely open fixture with no assigned squad:
-  // Active, verified club players are eligible to view and submit RSVPs
+  // 6. Genuinely open fixture with no assigned squad:
+  // Active, verified club players are eligible to view the fixture and submit RSVPs
   return true;
 }
 

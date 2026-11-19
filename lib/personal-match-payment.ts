@@ -61,6 +61,92 @@ export interface AggregatedPaymentResult {
 }
 
 /**
+ * Helper to parse various timestamp representations (Firestore Timestamp, Date, ISO string, epoch) into epoch ms.
+ */
+function parseTimestampMillis(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === "number") {
+    return ts < 1e11 ? ts * 1000 : ts;
+  }
+  if (ts instanceof Date) {
+    return ts.getTime();
+  }
+  if (typeof ts.toMillis === "function") {
+    return ts.toMillis();
+  }
+  if (typeof ts.toDate === "function") {
+    return ts.toDate().getTime();
+  }
+  if (typeof ts.seconds === "number") {
+    return ts.seconds * 1000 + (ts.nanoseconds ? Math.floor(ts.nanoseconds / 1e6) : 0);
+  }
+  if (typeof ts === "string") {
+    const parsed = Date.parse(ts);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * Deterministic Fee Override Resolution Engine.
+ *
+ * Sorts valid non-negative numeric fee overrides descending by authoritative update timestamp
+ * (`updatedAt`, fallback `createdAt`), with document ID descending as a deterministic tie-breaker
+ * independent of input array order. Logs an observable warning on conflicting overrides.
+ */
+export function resolvePlayerFeeOverride(
+  playerPayments: MatchPayment[]
+): number | undefined {
+  if (!Array.isArray(playerPayments) || playerPayments.length === 0) {
+    return undefined;
+  }
+
+  const withOverride = playerPayments.filter(
+    (p) =>
+      p &&
+      typeof p.feeOverride === "number" &&
+      !isNaN(p.feeOverride) &&
+      p.feeOverride >= 0
+  );
+
+  if (withOverride.length === 0) {
+    return undefined;
+  }
+
+  // Detect and log conflicting overrides
+  const distinctValues = Array.from(
+    new Set(withOverride.map((p) => p.feeOverride as number))
+  );
+  if (distinctValues.length > 1) {
+    console.warn(
+      `[payment-aggregation] Conflicting fee overrides detected for player match payments: ${JSON.stringify(
+        distinctValues
+      )}. Resolving deterministically by latest timestamp and document ID.`
+    );
+  }
+
+  // Sort descending by timestamp (updatedAt, fallback createdAt), tie-breaker doc ID descending
+  const sorted = [...withOverride].sort((a, b) => {
+    const timeA = Math.max(
+      parseTimestampMillis(a.updatedAt),
+      parseTimestampMillis((a as any).createdAt)
+    );
+    const timeB = Math.max(
+      parseTimestampMillis(b.updatedAt),
+      parseTimestampMillis((b as any).createdAt)
+    );
+    if (timeA !== timeB) {
+      return timeB - timeA;
+    }
+    const idA = String(a.id || "");
+    const idB = String(b.id || "");
+    return idB.localeCompare(idA);
+  });
+
+  return sorted[0].feeOverride;
+}
+
+/**
  * Authoritative Payment Aggregation Engine.
  *
  * Scopes records to the authenticated player's own match obligation,
@@ -93,14 +179,8 @@ export function aggregatePlayerMatchPayment(
     (p) => p && p.playerId === player.id && p.matchId === match.id && !p.guestName
   );
 
-  // 2. Resolve effective fee (feeOverride vs match.fee)
-  let feeOverride: number | undefined = undefined;
-  for (const p of playerPayments) {
-    if (typeof p.feeOverride === "number" && !isNaN(p.feeOverride) && p.feeOverride >= 0) {
-      feeOverride = p.feeOverride;
-      break;
-    }
-  }
+  // 2. Resolve effective fee deterministically (feeOverride vs match.fee)
+  const feeOverride = resolvePlayerFeeOverride(playerPayments);
 
   const baseFee =
     typeof match.fee === "number" && !isNaN(match.fee) && match.fee >= 0
@@ -124,18 +204,22 @@ export function aggregatePlayerMatchPayment(
     if (p.status === "Failed") continue;
 
     // Deduplication check by document ID
-    if (p.id) {
-      if (seenDocIds.has(p.id)) continue;
-      seenDocIds.add(p.id);
+    const docId = p.id ? String(p.id).trim() : "";
+    if (docId) {
+      if (seenDocIds.has(docId)) continue;
+      seenDocIds.add(docId);
     }
 
-    // Deduplication check by Razorpay Payment ID
-    if (p.razorpayPaymentId) {
-      if (seenRazorpayIds.has(p.razorpayPaymentId)) continue;
-      seenRazorpayIds.add(p.razorpayPaymentId);
+    // Deduplication check by Razorpay Payment ID (support both camelCase and snake_case)
+    const rzpId = (p.razorpayPaymentId || (p as any).razorpay_payment_id || "").trim();
+    if (rzpId) {
+      if (seenRazorpayIds.has(rzpId)) continue;
+      seenRazorpayIds.add(rzpId);
     }
 
     contributing.push(p);
+
+    const isClubSponsored = p.manualMethod === "club_sponsored";
 
     // Calculate collection for this record
     let collectedFromThisDoc = 0;
@@ -145,8 +229,8 @@ export function aggregatePlayerMatchPayment(
       p.feeCollectedAmount > 0
     ) {
       collectedFromThisDoc = p.feeCollectedAmount;
-    } else if (p.status === "Paid") {
-      // Legacy Paid record without explicit feeCollectedAmount
+    } else if (p.status === "Paid" && !isClubSponsored) {
+      // Legacy Paid non-sponsored record without explicit feeCollectedAmount
       const offsetOnDoc =
         typeof p.feeOffsetAmount === "number" &&
         !isNaN(p.feeOffsetAmount) &&
@@ -159,15 +243,19 @@ export function aggregatePlayerMatchPayment(
     totalCollected += collectedFromThisDoc;
 
     // Calculate offset for this record
+    let offsetFromThisDoc = 0;
     if (
       typeof p.feeOffsetAmount === "number" &&
       !isNaN(p.feeOffsetAmount) &&
       p.feeOffsetAmount > 0
     ) {
-      totalOffset += p.feeOffsetAmount;
-    } else if (p.manualMethod === "club_sponsored" && p.status === "Paid") {
-      totalOffset += effectiveFee;
+      offsetFromThisDoc = p.feeOffsetAmount;
+    } else if (isClubSponsored && p.status === "Paid") {
+      // Legacy Paid club-sponsored record without explicit feeOffsetAmount
+      offsetFromThisDoc = effectiveFee;
     }
+
+    totalOffset += offsetFromThisDoc;
   }
 
   // Cap offset to effectiveFee

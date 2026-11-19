@@ -304,11 +304,6 @@ export function PlayerMatchCenter({
     try {
       if (existingPayment) {
         await store.updateMatchAvailability(existingPayment.id, availability, matchId);
-        if (availability === "Confirmed" && existingPayment.status === "Not Playing") {
-          await store.updatePaymentStatus(existingPayment.id, "Unpaid", matchId);
-        } else if (availability === "No" && existingPayment.status === "Unpaid") {
-          await store.updatePaymentStatus(existingPayment.id, "Not Playing", matchId);
-        }
       } else {
         await store.addPaymentWithAvailability(matchId, mePlayer.id, availability);
       }
