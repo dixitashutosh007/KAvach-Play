@@ -63,36 +63,87 @@ export interface AggregatedPaymentResult {
 /**
  * Helper to parse various timestamp representations (Firestore Timestamp, Date, ISO string, epoch) into epoch ms.
  */
-function parseTimestampMillis(ts: any): number {
-  if (!ts) return 0;
-  if (typeof ts === "number") {
-    return ts < 1e11 ? ts * 1000 : ts;
+/**
+ * Strictly parses and validates a monetary amount.
+ * Rejects non-finite numbers (Infinity, -Infinity, NaN), negative numbers,
+ * string values, null, undefined, and non-numeric objects.
+ * Returns the finite non-negative number, or null if invalid.
+ */
+export function parseMonetaryAmount(val: unknown): number | null {
+  if (typeof val === "number") {
+    return Number.isFinite(val) && val >= 0 ? val : null;
   }
-  if (ts instanceof Date) {
-    return ts.getTime();
-  }
-  if (typeof ts.toMillis === "function") {
-    return ts.toMillis();
-  }
-  if (typeof ts.toDate === "function") {
-    return ts.toDate().getTime();
-  }
-  if (typeof ts.seconds === "number") {
-    return ts.seconds * 1000 + (ts.nanoseconds ? Math.floor(ts.nanoseconds / 1e6) : 0);
-  }
-  if (typeof ts === "string") {
-    const parsed = Date.parse(ts);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
+  return null;
 }
 
 /**
- * Deterministic Fee Override Resolution Engine.
+ * Validates whether a value is a finite, non-negative monetary number.
+ */
+export function isValidMonetaryAmount(val: unknown): val is number {
+  return parseMonetaryAmount(val) !== null;
+}
+
+/**
+ * Safely parses an authoritative timestamp to epoch milliseconds.
+ * Returns null if the timestamp is missing, invalid, non-finite, or non-positive.
+ */
+function parseSingleTimestamp(ts: any): number | null {
+  if (!ts) return null;
+  if (typeof ts === "number") {
+    return Number.isFinite(ts) && ts > 0 ? (ts < 1e11 ? ts * 1000 : ts) : null;
+  }
+  if (ts instanceof Date) {
+    const t = ts.getTime();
+    return Number.isFinite(t) && t > 0 ? t : null;
+  }
+  if (typeof ts.toMillis === "function") {
+    try {
+      const m = ts.toMillis();
+      return Number.isFinite(m) && m > 0 ? m : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof ts.toDate === "function") {
+    try {
+      const t = ts.toDate()?.getTime();
+      return Number.isFinite(t) && t > 0 ? t : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof ts.seconds === "number" && Number.isFinite(ts.seconds)) {
+    const ms = ts.seconds * 1000 + (ts.nanoseconds ? Math.floor(ts.nanoseconds / 1e6) : 0);
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  }
+  if (typeof ts === "string") {
+    const parsed = Date.parse(ts);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * Resolves authoritative timestamp for a payment document (updatedAt, fallback createdAt).
+ */
+export function parseAuthoritativeTimestamp(updatedAt: any, createdAt: any): number | null {
+  const updatedMs = parseSingleTimestamp(updatedAt);
+  if (updatedMs !== null) return updatedMs;
+  return parseSingleTimestamp(createdAt);
+}
+
+/**
+ * Authoritative Fee Override Resolution Engine.
  *
- * Sorts valid non-negative numeric fee overrides descending by authoritative update timestamp
- * (`updatedAt`, fallback `createdAt`), with document ID descending as a deterministic tie-breaker
- * independent of input array order. Logs an observable warning on conflicting overrides.
+ * Requirements & Precedence:
+ * 1. Filter records for valid, finite, non-negative feeOverride values (rejecting Infinity, -Infinity, NaN, negative, malformed strings).
+ * 2. If multiple records share the same override value, return that override.
+ * 3. If conflicting overrides exist:
+ *    - Determine authoritative precedence based on latest valid update timestamp (updatedAt, fallback createdAt).
+ *    - If one candidate has a strictly higher valid timestamp than the others, that candidate represents the latest administrative decision.
+ *    - If conflicting records have no authoritative timestamp precedence (e.g. identical timestamps or invalid/missing timestamps),
+ *      handle the conflict safely and make it observable: log an observable warning and safely return undefined to fall back to the standard base match fee.
+ * 4. Sorting is deterministic and completely independent of input array order.
  */
 export function resolvePlayerFeeOverride(
   playerPayments: MatchPayment[]
@@ -101,49 +152,63 @@ export function resolvePlayerFeeOverride(
     return undefined;
   }
 
-  const withOverride = playerPayments.filter(
-    (p) =>
-      p &&
-      typeof p.feeOverride === "number" &&
-      !isNaN(p.feeOverride) &&
-      p.feeOverride >= 0
-  );
+  const validRecords: Array<{ doc: MatchPayment; override: number; timestamp: number | null }> = [];
 
-  if (withOverride.length === 0) {
+  for (const p of playerPayments) {
+    if (!p) continue;
+    const parsedOverride = parseMonetaryAmount(p.feeOverride);
+    if (parsedOverride !== null) {
+      const ts = parseAuthoritativeTimestamp(p.updatedAt, (p as any).createdAt);
+      validRecords.push({ doc: p, override: parsedOverride, timestamp: ts });
+    }
+  }
+
+  if (validRecords.length === 0) {
     return undefined;
   }
 
-  // Detect and log conflicting overrides
-  const distinctValues = Array.from(
-    new Set(withOverride.map((p) => p.feeOverride as number))
-  );
-  if (distinctValues.length > 1) {
-    console.warn(
-      `[payment-aggregation] Conflicting fee overrides detected for player match payments: ${JSON.stringify(
-        distinctValues
-      )}. Resolving deterministically by latest timestamp and document ID.`
-    );
+  const distinctOverrides = Array.from(new Set(validRecords.map((r) => r.override)));
+  if (distinctOverrides.length === 1) {
+    return distinctOverrides[0];
   }
 
-  // Sort descending by timestamp (updatedAt, fallback createdAt), tie-breaker doc ID descending
-  const sorted = [...withOverride].sort((a, b) => {
-    const timeA = Math.max(
-      parseTimestampMillis(a.updatedAt),
-      parseTimestampMillis((a as any).createdAt)
-    );
-    const timeB = Math.max(
-      parseTimestampMillis(b.updatedAt),
-      parseTimestampMillis((b as any).createdAt)
-    );
+  // Sort candidates deterministically:
+  // - Valid timestamp > null timestamp
+  // - Latest timestamp descending
+  // - Document ID descending as tie-breaker for deterministic evaluation
+  const sorted = [...validRecords].sort((a, b) => {
+    const timeA = a.timestamp ?? -1;
+    const timeB = b.timestamp ?? -1;
     if (timeA !== timeB) {
       return timeB - timeA;
     }
-    const idA = String(a.id || "");
-    const idB = String(b.id || "");
+    const idA = String(a.doc.id || "");
+    const idB = String(b.doc.id || "");
     return idB.localeCompare(idA);
   });
 
-  return sorted[0].feeOverride;
+  const top = sorted[0];
+  const second = sorted[1];
+
+  // If top candidate has a strictly newer valid timestamp than second candidate,
+  // it represents the latest authoritative administrative decision:
+  if (top.timestamp !== null && (second.timestamp === null || top.timestamp > second.timestamp)) {
+    console.warn(
+      `[fee-override] Conflicting fee overrides detected: ${JSON.stringify(
+        distinctOverrides
+      )}. Authoritative precedence established by latest timestamp: ₹${top.override}.`
+    );
+    return top.override;
+  }
+
+  // If conflicting records have no authoritative timestamp precedence (e.g. identical timestamps or both invalid),
+  // handle the conflict safely and make it observable:
+  console.warn(
+    `[fee-override] Conflicting fee overrides detected with no authoritative timestamp precedence: ${JSON.stringify(
+      distinctOverrides
+    )}. Falling back safely to standard match fee.`
+  );
+  return undefined;
 }
 
 /**
@@ -181,11 +246,7 @@ export function aggregatePlayerMatchPayment(
 
   // 2. Resolve effective fee deterministically (feeOverride vs match.fee)
   const feeOverride = resolvePlayerFeeOverride(playerPayments);
-
-  const baseFee =
-    typeof match.fee === "number" && !isNaN(match.fee) && match.fee >= 0
-      ? match.fee
-      : 0;
+  const baseFee = parseMonetaryAmount(match.fee) ?? 0;
   const effectiveFee = feeOverride !== undefined ? feeOverride : baseFee;
 
   // 3. Option A Abandoned match policy
@@ -223,33 +284,22 @@ export function aggregatePlayerMatchPayment(
 
     // Calculate collection for this record
     let collectedFromThisDoc = 0;
-    if (
-      typeof p.feeCollectedAmount === "number" &&
-      !isNaN(p.feeCollectedAmount) &&
-      p.feeCollectedAmount > 0
-    ) {
-      collectedFromThisDoc = p.feeCollectedAmount;
+    const parsedCollected = parseMonetaryAmount(p.feeCollectedAmount);
+    if (parsedCollected !== null && parsedCollected > 0) {
+      collectedFromThisDoc = parsedCollected;
     } else if (p.status === "Paid" && !isClubSponsored) {
       // Legacy Paid non-sponsored record without explicit feeCollectedAmount
-      const offsetOnDoc =
-        typeof p.feeOffsetAmount === "number" &&
-        !isNaN(p.feeOffsetAmount) &&
-        p.feeOffsetAmount > 0
-          ? p.feeOffsetAmount
-          : 0;
-      collectedFromThisDoc = Math.max(0, effectiveFee - offsetOnDoc);
+      const parsedOffsetOnDoc = parseMonetaryAmount(p.feeOffsetAmount) ?? 0;
+      collectedFromThisDoc = Math.max(0, effectiveFee - parsedOffsetOnDoc);
     }
 
     totalCollected += collectedFromThisDoc;
 
     // Calculate offset for this record
     let offsetFromThisDoc = 0;
-    if (
-      typeof p.feeOffsetAmount === "number" &&
-      !isNaN(p.feeOffsetAmount) &&
-      p.feeOffsetAmount > 0
-    ) {
-      offsetFromThisDoc = p.feeOffsetAmount;
+    const parsedOffset = parseMonetaryAmount(p.feeOffsetAmount);
+    if (parsedOffset !== null && parsedOffset > 0) {
+      offsetFromThisDoc = parsedOffset;
     } else if (isClubSponsored && p.status === "Paid") {
       // Legacy Paid club-sponsored record without explicit feeOffsetAmount
       offsetFromThisDoc = effectiveFee;
@@ -258,8 +308,10 @@ export function aggregatePlayerMatchPayment(
     totalOffset += offsetFromThisDoc;
   }
 
-  // Cap offset to effectiveFee
-  totalOffset = Math.min(effectiveFee, Math.max(0, totalOffset));
+  // Cap offset to effectiveFee and validate finite amounts
+  totalCollected = Number.isFinite(totalCollected) && totalCollected >= 0 ? totalCollected : 0;
+  totalOffset = Number.isFinite(totalOffset) && totalOffset >= 0 ? totalOffset : 0;
+  totalOffset = Math.min(effectiveFee, totalOffset);
 
   // If match is abandoned or obligation is explicitly waived:
   if (isAbandoned || hasWaivedDoc) {

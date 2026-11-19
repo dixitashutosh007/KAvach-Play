@@ -108,7 +108,10 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
   };
 
   const alertDate = new Date(Date.now() + 3 * 3600000);
-  const alertDateStr = alertDate.toISOString().split("T")[0];
+  const alertYear = alertDate.getFullYear();
+  const alertMonth = String(alertDate.getMonth() + 1).padStart(2, "0");
+  const alertDay = String(alertDate.getDate()).padStart(2, "0");
+  const alertDateStr = `${alertYear}-${alertMonth}-${alertDay}`;
   const alertHours = String(alertDate.getHours()).padStart(2, "0");
   const alertMins = String(alertDate.getMinutes()).padStart(2, "0");
 

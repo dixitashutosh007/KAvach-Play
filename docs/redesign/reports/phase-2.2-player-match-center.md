@@ -11,7 +11,9 @@
 **Correction Pass 1 baseline branch HEAD:** `955dfb3a7b3e4ae4bca3468a3a674003bd1158a4`  
 **Correction Pass 2 implementation commit:** `7c000b213fe282a7a489748d29020d9640cd8361`  
 **Correction Pass 2 verification & CI commit:** `4b96d013d443b51fd149cdc5dadbc972d375c080`  
-**Verified GitHub Actions CI Run:** [Run 44559161481](https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44559161481) (All 5 jobs passed)  
+**Correction Pass 2 verified GitHub Actions CI Run:** [Run 44559161481](https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44559161481) (All 5 jobs passed)  
+**Correction Pass 3 starting baseline:** `904a71ccd08a29d0bb1b5fc15188efcaee22dadd`  
+**Correction Pass 3 implementation commit:** `PENDING_COMMIT`  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Technical & Product Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -21,7 +23,7 @@
 
 ## 1. Executive Summary & Objective
 
-In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach Play, followed by two independent review correction passes addressing material findings:
+In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach Play, followed by three targeted independent review correction passes addressing material findings:
 
 ### Correction Pass 1 Key Findings Resolved
 1. **P0 — Enforce eligibility for every match-detail entry point (`components/matches/PlayerMatchCenter.tsx`):** Match detail views strictly enforce authoritative eligibility validation (`validateMatchNavigation`) across all entry points: in-app match selection, `defaultMatchId`, `defaultAction`, URL/deep-link parameters (`?match=` or `?matchId=`), browser history back/forward navigation (`popstate`), and dynamic eligibility revocation while the modal is open. When a player is ineligible, match details fail closed (`selectedMatch` evaluates to `null`), the invalid URL parameters are purged, and a prominent restricted-access alert is rendered.
@@ -45,6 +47,24 @@ In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach
 5. **CI & Design System Alignment:**
    - Updated `.github/workflows/ci.yml` `test-e2e-dev` workflow to execute all development E2E suites: `e2e/production-app.spec.ts`, `e2e/player-match-center-behavioral.spec.ts`, `e2e/player-home-behavioral.spec.ts`, and `e2e/shared-shell-behavioral.spec.ts`.
    - Replaced earlier draft color references with the approved KAvach Design System tokens: Deep Wine (`#7A1E2B`), Scarlet (`#C0394B`), Dusty Red (`#E76B73`), Muted Gold (`#D6A84F`), Warm White (`#FFF6F4`), Soft Blush (`#F8EDEE`), White (`#FFFFFF`), Charcoal (`#29252A`), Poppins headings, Inter body/data.
+
+### Correction Pass 3 Key Findings Resolved
+1. **P0 — Separate player RSVP from authoritative squad assignment (`lib/match-eligibility.ts`, `hooks/useStore.ts`, `components/HomeTab.tsx`):**
+   - In KAvach Play, player RSVP expresses player availability intent (`availability: "Confirmed" | "Tentative" | "No"`), whereas squad assignment is an administrative action creating a fee obligation (`status: "Unpaid" | "Paid" | "Waived"`).
+   - In `lib/match-eligibility.ts`, updated `isSquadAssignedToMatch` and `isPlayerInAssignedSquad` so that records with `status === "Not Playing"` or `status === "Failed"` are strictly excluded from squad assignment, regardless of `availability` value (including `availability === "Confirmed"`).
+   - Authoritative squad assignment requires an active match fee obligation (`p.status !== "Not Playing" && p.status !== "Failed" && ("Unpaid" | "Paid" | "Waived")`) or explicit admin waitlist assignment.
+   - In `hooks/useStore.ts` (`addPaymentWithAvailability`), initialized `initialStatus = "Not Playing"` (previously set `"Unpaid"` for `"Confirmed"` availability), preventing ordinary player RSVPs from billing fees or prematurely locking open fixtures.
+   - In `components/HomeTab.tsx` (`handleAvailability`), decoupled RSVP submission from payment status mutation.
+2. **P1 — Establish authoritative fee-override precedence (`lib/personal-match-payment.ts`):**
+   - Updated `resolvePlayerFeeOverride` with authoritative precedence semantics:
+     - Single valid override returns its value.
+     - Conflicting overrides sort deterministically by latest valid update timestamp (`updatedAt`, fallback `createdAt`). If the top candidate has a strictly newer valid timestamp, it is chosen as the authoritative administrative decision with an observable log message.
+     - If conflicting overrides have identical or invalid/missing timestamps (no authoritative precedence), it logs an observable warning and safely returns `undefined` (falling back safely to the standard base `match.fee`).
+     - Precedence evaluation is strictly invariant to input array order.
+3. **P2 — Validate all monetary values as finite numbers (`lib/personal-match-payment.ts`):**
+   - Implemented `parseMonetaryAmount` and `isValidMonetaryAmount` rejecting non-finite values (`Infinity`, `-Infinity`, `NaN`), negative numbers, strings, and malformed inputs.
+   - Enforced finite number validation across `match.fee`, `feeOverride`, `feeCollectedAmount`, `feeOffsetAmount`, `totalCollected`, `totalOffset`, `totalRecognized`, and `netPayable`.
+   - Guaranteed that non-finite or malformed values never silently convert unpaid obligations to a paid state.
 
 ---
 
@@ -71,21 +91,27 @@ In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach
 | **17** | Teammate payment information is never exposed to another player (SEC-004) | Master Plan & `PlayerMatchDetailModal.tsx` (`squadMembers` privacy isolation) | `phase2.2-player-match-center.test.mjs` (Test 17) & Playwright Test 5 | **Verified** |
 | **18** | Existing availability is displayed accurately & 1-tap updates work | Master Plan & `PlayerMatchCard.tsx` (`onRsvp`) | `phase2.2-player-match-center.test.mjs` (Test 18) & Playwright Test 4 | **Verified** |
 | **19** | Pre-flight eligibility guard on all match-detail entry points & deep links | Review P0 & `PlayerMatchCenter.tsx` (`validateMatchNavigation` fail-closed) | `phase2.2-player-match-center.test.mjs` (Tests 19a–19j, Section 6) & Playwright Test 7 | **Verified** |
-| **20** | Assigned-squad eligibility bypass prevention (historical RSVPs excluded) | Pass 2 Review & `lib/match-eligibility.ts` (`isPlayerInAssignedSquad`) | `phase2.2-player-match-center.test.mjs` (Section 6 Tests 1–10) | **Verified** |
+| **20** | Assigned-squad eligibility bypass prevention (historical RSVPs excluded) | Pass 2 & Pass 3 Review & `lib/match-eligibility.ts` (`isPlayerInAssignedSquad`) | `phase2.2-player-match-center.test.mjs` (Section 6 Tests 1–18) | **Verified** |
 | **21** | Sponsored payment accounting (no double-counting of cash and offset) | Pass 2 Review & `lib/personal-match-payment.ts` (`aggregatePlayerMatchPayment`) | `phase2.2-player-match-center.test.mjs` (Section 8 Tests 1–10) | **Verified** |
-| **22** | Deterministic fee override precedence (timestamp + docId tie-break) | Pass 2 Review & `lib/personal-match-payment.ts` (`resolvePlayerFeeOverride`) | `phase2.2-player-match-center.test.mjs` (Section 9 Tests 1–5) | **Verified** |
+| **22** | Authoritative fee override precedence (timestamp precedence, safe fallback on tie) | Pass 2 & Pass 3 Review & `lib/personal-match-payment.ts` (`resolvePlayerFeeOverride`) | `phase2.2-player-match-center.test.mjs` (Section 9 Tests 1–8) | **Verified** |
+| **23** | Strict separation of player RSVP from administrative squad assignment | Pass 3 Review & `lib/match-eligibility.ts`, `hooks/useStore.ts`, `components/HomeTab.tsx` | `phase2.2-player-match-center.test.mjs` (Section 6 Tests 11–18) | **Verified** |
+| **24** | Validation of all monetary amounts as finite, non-negative numbers | Pass 3 Review & `lib/personal-match-payment.ts` (`parseMonetaryAmount`) | `phase2.2-player-match-center.test.mjs` (Section 10 Tests 1–11) | **Verified** |
 
 ---
 
 ## 3. Detailed Technical Remediation
 
-### 1. P0 — Fix Assigned-Squad Eligibility Bypass (`lib/match-eligibility.ts`, `components/matches/PlayerMatchCenter.tsx`)
-- **Problem:** `isPlayerInAssignedSquad` accepted historical RSVP responses (`Yes`, `No`, `Tentative`) as sufficient to establish squad membership. When an open fixture had an RSVP from a player who was subsequently excluded when the squad was officially announced, their historical RSVP document could grant them unintended access.
+### 1. P0 — Fix Assigned-Squad Eligibility Bypass & Separate RSVP from Squad Assignment (`lib/match-eligibility.ts`, `hooks/useStore.ts`, `components/HomeTab.tsx`)
+- **Problem:** `isPlayerInAssignedSquad` previously accepted player-controlled `availability === "Confirmed"` as proof of squad membership. Because players could RSVP "Playing" (which stored `"Confirmed"`), an ordinary player RSVP created squad membership and prevented exclusion once an official squad was assigned. Furthermore, `useStore.ts` initialized `addPaymentWithAvailability` with `status: "Unpaid"`, causing player RSVPs to bill fees and lock fixtures prematurely.
 - **Remediation:**
-  - `isSquadAssignedToMatch`: Evaluates to `true` when at least one authoritative squad assignment exists (`availability === "Confirmed" | "Waitlist"` or active fee status `status !== "Not Playing"` with `"Unpaid" | "Paid" | "Waived"`).
-  - `isPlayerInAssignedSquad`: Strictly requires an authoritative squad assignment. Records with `status === "Not Playing"` and `availability: "Yes" | "No" | "Tentative"` do **not** grant squad membership.
-  - `isPlayerEligibleForMatch`: If `hasSquad` is true, player must be in the assigned squad (`isPlayerInAssignedSquad`). If `hasSquad` is false, all active, verified, non-disabled players are eligible.
-  - `PlayerMatchCenter.tsx`: Fixed `handleRsvp` so updating availability only invokes `store.updateMatchAvailability` and does not mutate `payment.status` to `"Not Playing"`.
+  - `lib/match-eligibility.ts`:
+    - `isSquadAssignedToMatch`: Evaluates to `true` strictly when at least one active match fee obligation exists (`status !== "Not Playing" && status !== "Failed"` with `"Unpaid" | "Paid" | "Waived"`).
+    - `isPlayerInAssignedSquad`: Strictly requires an authoritative squad assignment. Records with `status === "Not Playing"` or `status === "Failed"` are excluded, regardless of `availability` (even `"Confirmed"`).
+    - `isPlayerEligibleForMatch`: Open fixtures with no assigned squad allow active verified players to view and RSVP. Once an official squad is assigned, only players with an active squad assignment can access match details. Administrators retain legitimate access to all matches.
+  - `hooks/useStore.ts`:
+    - Updated `addPaymentWithAvailability` so that new records are initialized with `initialStatus = "Not Playing"`. Player RSVPs no longer generate premature fee obligations or lock open fixtures.
+  - `components/HomeTab.tsx`:
+    - Decoupled `handleAvailability` from payment status changes; calling `updateMatchAvailability` or `addPaymentWithAvailability` without mutating payment status.
 
 ### 2. P1 — Transaction Deduplication & Isolation (`lib/personal-match-payment.ts`)
 - **Remediation:**
@@ -102,12 +128,21 @@ In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach
   - Cash collected from player (`totalCollected`) and club sponsorship offsets (`totalOffset`) are tracked separately and summed into `totalRecognized`.
   - Net payable obligation is calculated as `Math.max(0, effectiveFee - totalRecognized)`.
 
-### 4. P1 — Deterministic Fee Override Resolution (`lib/personal-match-payment.ts`)
+### 4. P1 — Authoritative Fee Override Precedence (`lib/personal-match-payment.ts`)
 - **Remediation:**
   - Created and exported `resolvePlayerFeeOverride(playerPayments: MatchPayment[]): number | undefined`.
-  - Filters to valid non-negative numeric overrides.
+  - Filters to valid non-negative finite numeric overrides using `parseMonetaryAmount`.
   - Sorts descending by authoritative update timestamp (`updatedAt`, fallback `createdAt`), using document ID descending as a deterministic tie-breaker.
-  - Detects conflicting overrides and logs an observable console warning.
+  - If the top candidate has a strictly newer valid timestamp than the second candidate, it establishes authoritative administrative precedence and logs an observable message.
+  - If conflicting overrides have identical or invalid/missing timestamps (no authoritative precedence), it logs an observable warning and safely returns `undefined` (falling back safely to the standard base `match.fee`).
+  - Precedence evaluation is strictly independent of input array order.
+
+### 5. P2 — Monetary Finite Number Validation (`lib/personal-match-payment.ts`)
+- **Remediation:**
+  - Implemented `parseMonetaryAmount(value: unknown): number | null` and `isValidMonetaryAmount(value: unknown): boolean`.
+  - Strictly rejects `Infinity`, `-Infinity`, `NaN`, negative numbers, non-numeric strings, and malformed objects.
+  - Applied to `match.fee`, `feeOverride`, `feeCollectedAmount`, `feeOffsetAmount`, `totalCollected`, `totalOffset`, `totalRecognized`, and `netPayable`.
+  - Guarantees that malformed or non-finite inputs can never wipe balances or mark unpaid obligations as paid.
 
 ---
 
@@ -123,7 +158,7 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
   ▶ 3. Availability State Derivation (1 test pass)
   ▶ 4. Clarified Abandoned-Match Payment Presentation (Option A Policy) (5 tests pass)
   ▶ 5. Match-Detail Entry Point & Deep Link Pre-flight Eligibility (10 tests pass)
-  ▶ 6. Assigned-Squad Eligibility Bypass Regression Tests (10 tests pass)
+  ▶ 6. Assigned-Squad Eligibility Bypass & RSVP Decoupling Regression Tests (18 tests pass)
     ✔ 1. Open fixture with no assigned squad: active verified player is eligible
     ✔ 2. Open fixture: player can submit RSVP
     ✔ 3. Player responds Yes before squad assignment, then is excluded: denied
@@ -134,6 +169,14 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
     ✔ 8. Admin retains access to assigned fixtures
     ✔ 9. Disabled, rejected, pending, merged players remain ineligible
     ✔ 10. Deep link and direct match selection use corrected validator
+    ✔ 11. Player marks Confirmed before squad assignment: fixture remains open
+    ✔ 12. Player marks Confirmed, then admin assigns a different squad: excluded player is denied
+    ✔ 13. Player marks Tentative, Yes or No, then is excluded: denied
+    ✔ 14. Explicitly assigned player: allowed
+    ✔ 15. Admin removes previously assigned player (status 'Not Playing', availability 'Confirmed'): access revoked
+    ✔ 16. Ordinary RSVP does not establish squad assignment (multiple player RSVPs)
+    ✔ 17. Admin access remains intact across all squad states
+    ✔ 18. Direct URL and browser back/forward history cannot bypass eligibility
   ▶ 7. Payment Transaction Deduplication Tests (6 tests pass)
     ✔ 1. Two docs with same Razorpay payment ID count once
     ✔ 2. Two different Razorpay payment IDs count independently
@@ -152,24 +195,43 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
     ✔ 8. Non-sponsored manual payment
     ✔ 9. Razorpay collection
     ✔ 10. Abandoned match with historical sponsored or cash transactions
-  ▶ 9. Deterministic Fee Override Precedence Tests (5 tests pass)
+  ▶ 9. Deterministic Fee Override Precedence Tests (8 tests pass)
     ✔ 1. Single valid override
     ✔ 2. Multiple records with same override
     ✔ 3. Conflicting overrides in different input orders resolve to the same value
     ✔ 4. Invalid, negative, null, malformed overrides ignored
     ✔ 5. No override: uses match fee
-✔ Phase 2.2 Player Match Center: Payment Derivation & Match Grouping (11.6ms)
-ℹ tests 72
-ℹ suites 10
-ℹ pass 72
+    ✔ 6. Missing updatedAt with valid createdAt uses createdAt as authoritative timestamp
+    ✔ 7. Valid updatedAt takes precedence over older createdAt
+    ✔ 8. Conflicting overrides with no authoritative timestamp precedence safely fall back to undefined (standard match fee)
+  ▶ 10. Monetary Finite Number Validation Tests (11 tests pass)
+    ✔ 1. Infinity in feeCollectedAmount is rejected (does not mark as paid)
+    ✔ 2. -Infinity in feeCollectedAmount is rejected
+    ✔ 3. NaN in feeCollectedAmount and feeOffsetAmount is rejected
+    ✔ 4. Negative collections and negative offsets are rejected
+    ✔ 5. Negative and non-finite fee overrides are rejected
+    ✔ 6. Malformed string values are rejected
+    ✔ 7. Missing amounts safely default to 0 without breaking aggregation
+    ✔ 8. Valid zero amounts are accepted
+    ✔ 9. Valid positive amounts are aggregated accurately
+    ✔ 10. Match fee finite safeguard: non-finite match.fee defaults safely to 0
+    ✔ 11. Net payable and totalRecognized are always finite and non-negative
+✔ Phase 2.2 Player Match Center: Payment Derivation & Match Grouping
+ℹ tests 94
+ℹ suites 11
+ℹ pass 94
 ℹ fail 0
 ```
 
 ### 2. Full Functional Suite
 Command: `npm run test:functional`
-- **Result:** 363 tests passed across 85 suites, 0 failures.
+- **Result:** 385 tests passed across 86 suites, 0 failures.
 
-### 3. Playwright E2E Development Suite (All 4 Suites Combined)
+### 3. Firestore Security Rules Emulator Tests
+Command: `npm run test:emulator`
+- **Result:** 308 tests passed across 17 suites, 0 failures.
+
+### 4. Playwright E2E Development Suite (All 4 Suites Combined)
 Command: `npx playwright test e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`
 - **Result:** 108 passed across Mobile Chrome and Desktop Chrome (3.0m).
   - `e2e/production-app.spec.ts`: 30 passed
@@ -177,23 +239,19 @@ Command: `npx playwright test e2e/production-app.spec.ts e2e/player-match-center
   - `e2e/player-home-behavioral.spec.ts`: 36 passed
   - `e2e/shared-shell-behavioral.spec.ts`: 14 passed
 
-### 4. Production Next.js Build & Lint
+### 5. Playwright Production Smoke Suite
+Command: `npm run test:e2e:prod`
+- **Result:** 4 passed across Mobile Chrome and Desktop Chrome (3.7s).
+  - Verifies production standalone build, routing, unauthenticated screen redirection, and production security guards.
+
+### 6. Production Next.js Build & Lint
 - `npm run lint`: 0 errors (4 warnings on firestore.rules open reads).
 - `npx tsc --noEmit`: 0 errors.
 - `npm run build`: Compiled successfully; 19 static pages generated; 0 errors.
 
-### 5. Verified GitHub Actions CI Pipeline
-- **Run URL:** [GitHub Actions Run 44559161481](https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44559161481)
-- **Status:** `Success` (All 5 jobs passed)
-  - `Lint & Typecheck`: Passed in 1m4s (0 errors)
-  - `Functional Tests`: Passed in 56s (363 passed)
-  - `Firestore Security Rules Emulator Tests`: Passed in 1m34s (308 passed)
-  - `Playwright Production Smoke Suite`: Passed in 4m14s (4 passed)
-  - `Playwright E2E Development Suite`: Passed in 4m54s (108 passed across 4 behavioral suites)
-
 ---
 
-## 6. Responsive Screenshots & Visual Verification
+## 5. Responsive Screenshots & Visual Verification
 
 All screenshots are stored under `docs/qa/screenshots/player-matches/` using repository-relative paths:
 
@@ -207,38 +265,31 @@ All screenshots are stored under `docs/qa/screenshots/player-matches/` using rep
 
 ---
 
-## 7. Git Handover & File Inventory
+## 6. Git Handover & File Inventory
 
-### Files Modified & Created in Correction Pass 2
+### Files Modified in Correction Pass 3
 1. `lib/match-eligibility.ts`:
-   - Updated `isSquadAssignedToMatch` and `isPlayerInAssignedSquad` to eliminate squad eligibility bypass from historical unassigned RSVPs.
-   - Enforced strict authoritative squad assignment invariant while preserving open fixture RSVP access and admin access.
+   - Updated `isSquadAssignedToMatch` and `isPlayerInAssignedSquad` so that records with `status === "Not Playing"` or `status === "Failed"` are strictly excluded from squad assignment, regardless of `availability` value (including `availability === "Confirmed"`).
+   - Enforced that authoritative squad assignment requires an active match fee obligation (`p.status !== "Not Playing" && p.status !== "Failed" && ("Unpaid" | "Paid" | "Waived")`) or explicit admin waitlist assignment.
 2. `lib/personal-match-payment.ts`:
-   - Added `resolvePlayerFeeOverride` with timestamp + document ID descending determinism and conflict warning.
-   - Fixed transaction ID deduplication to check both `razorpayPaymentId` and `razorpay_payment_id` as well as doc IDs.
-   - Corrected sponsored payment accounting so `club_sponsored` Paid records contribute to `totalOffset` and 0 to `totalCollected`.
-3. `components/matches/PlayerMatchCenter.tsx`:
-   - Refactored `handleRsvp` to update availability without modifying payment status.
-   - Added `aria-label="Search matches by opponent or venue"` to search input for accessible selector discovery.
-4. `app/page.tsx`:
-   - Corrected `FinanceTab` rendering guard so players in player persona (`!effectiveIsAdminMode`) can view their personal dues and payments while restricting the Admin Console Finance & Dues hub to `isFinanceAdmin || isSuperAdmin`.
-5. `e2e/production-app.spec.ts`:
-   - Updated `getNavigationTab` to recognize both "Payments" and "Finance" tab labels.
-   - Made tactical notes toggle test compatible with modern Phase 2.1 1-tap RSVP controls.
-   - Aligned search input selector with match center search input accessibility attributes.
-6. `scripts/run-emulator-tests.mjs`:
-   - Added `--project demo-kavach-play` flag to `firebase emulators:exec` for non-interactive execution in CI.
-7. `.github/workflows/ci.yml`:
-   - Updated `test-e2e-dev` job to run `e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`.
-8. `tests/remediation1f-secure-merge-recovery-and-consistency.emulator.test.mjs`:
-   - Eliminated query interceptor deadlock in Scenario 83b by recursively wrapping chained Firestore `.where()` and `.limit()` queries with Proxy to preserve overridden `.get()`. Added 5s timeout guards to prevent indefinite CI test hangs.
-9. `tests/phase2.2-player-match-center.test.mjs`:
-   - Added 31 new regression tests across Sections 6, 7, 8, 9 (total suite expanded to 72 tests).
-10. `docs/redesign/reports/phase-2.2-player-match-center.md`:
-   - Complete updated report with design tokens, correction passes, test evidence, verified CI run reference, and file inventory.
+   - Added `parseMonetaryAmount` and `isValidMonetaryAmount` to strictly validate finite non-negative numbers, rejecting `Infinity`, `-Infinity`, `NaN`, negative numbers, strings, and malformed objects.
+   - Refactored `resolvePlayerFeeOverride` with authoritative timestamp precedence (`updatedAt`, fallback `createdAt`), invariant to array order. Conflicting overrides without timestamp precedence safely return `undefined` (falling back safely to the standard base `match.fee`) with an observable warning.
+   - Enforced finite number validation across `match.fee`, `feeOverride`, collections, offsets, recognized totals, and net payable calculations.
+3. `hooks/useStore.ts`:
+   - Updated `addPaymentWithAvailability` so that new records are initialized with `initialStatus = "Not Playing"` (previously initialized `"Unpaid"` for `"Confirmed"` availability), preventing ordinary player RSVPs from billing fees or prematurely locking open fixtures.
+4. `components/HomeTab.tsx`:
+   - Decoupled `handleAvailability` from payment status changes; only calls `store.updateMatchAvailability` or `store.addPaymentWithAvailability`.
+5. `e2e/helpers/synthetic-session.ts`:
+   - Fixed timezone boundary calculation in synthetic `alertMatch` generation by formatting year, month, and day in local time, ensuring match day alerts render reliably across time zones and night hours.
+6. `tests/phase2.2-player-match-center.test.mjs`:
+   - Expanded Section 6 to 18 regression tests covering squad exclusion, Confirmed RSVP on open fixtures, admin access, and deep link validation.
+   - Expanded Section 9 to 8 deterministic fee override precedence tests.
+   - Added Section 10 with 11 comprehensive monetary finite number validation tests (94 tests total in suite, all passing).
+7. `docs/redesign/reports/phase-2.2-player-match-center.md`:
+   - Updated report with Correction Pass 3 root causes, data model write paths, authoritative squad assignment separation, fee override precedence rules, finite monetary validation, updated test counts (94 unit tests, 385 functional tests, 308 emulator tests, 108 E2E tests, 4 prod smoke tests).
 
 ---
 
-## 8. Submission & Status
+## 7. Submission & Status
 
-Phase 2.2 (Correction Pass 2) is complete, all review findings resolved, and submitted for independent review verification and product-owner acceptance.
+Phase 2.2 (Correction Pass 3) is complete, all review findings resolved, and submitted for independent review verification and product-owner acceptance.

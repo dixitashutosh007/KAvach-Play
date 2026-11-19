@@ -238,11 +238,6 @@ export function HomeTab({
     try {
       if (payment) {
         await store.updateMatchAvailability(payment.id, availability, matchId);
-        if (availability === "Confirmed" && payment.status === "Not Playing") {
-          await store.updatePaymentStatus(payment.id, "Unpaid", matchId);
-        } else if ((availability === "No" || availability === "Tentative") && payment.status === "Unpaid") {
-          await store.updatePaymentStatus(payment.id, "Not Playing", matchId);
-        }
       } else {
         await store.addPaymentWithAvailability(matchId, mePlayer.id, availability);
       }

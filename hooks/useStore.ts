@@ -1844,8 +1844,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
 
     const id = crypto.randomUUID();
-    const initialStatus =
-      availability === "Confirmed" ? "Unpaid" : "Not Playing";
+    const initialStatus = "Not Playing";
     setPayments((prev) => [
       ...prev,
       {

@@ -945,6 +945,137 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(navRes.allowed, false);
       assert.equal(navRes.error, "INELIGIBLE");
     });
+
+    it("11. Player marks Confirmed before squad assignment: fixture remains open", () => {
+      // Player marks "Confirmed" (availability: "Confirmed", status: "Not Playing" before assignment)
+      const rsvpConfirmedPayment = [
+        {
+          id: "rsvp-alpha-confirmed",
+          matchId: "reg-match-open",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Confirmed",
+        },
+      ];
+      // Ordinary RSVP does not establish squad assignment
+      assert.equal(isSquadAssignedToMatch("reg-match-open", rsvpConfirmedPayment), false);
+      // Fixture remains open for other active players (e.g. teammatePlayer)
+      assert.equal(isPlayerEligibleForMatch(teammatePlayer, openFixture, rsvpConfirmedPayment, false), true);
+      // And player-alpha can also view the open fixture
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, openFixture, rsvpConfirmedPayment, false), true);
+    });
+
+    it("12. Player marks Confirmed, then admin assigns a different squad: excluded player is denied", () => {
+      const squadWithBetaOnly = [
+        ...confirmedSquadPayments, // player-beta assigned (status: "Unpaid")
+        {
+          id: "rsvp-alpha-confirmed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Confirmed",
+        },
+      ];
+      assert.equal(isSquadAssignedToMatch("reg-match-squad", squadWithBetaOnly), true);
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", squadWithBetaOnly), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, squadWithBetaOnly, false), false);
+      // Assigned player-beta is allowed
+      assert.equal(isPlayerInAssignedSquad("player-beta", "reg-match-squad", squadWithBetaOnly), true);
+      assert.equal(isPlayerEligibleForMatch(teammatePlayer, squadAssignedMatch, squadWithBetaOnly, false), true);
+    });
+
+    it("13. Player marks Tentative, Yes or No, then is excluded: denied", () => {
+      for (const av of ["Tentative", "Yes", "No"]) {
+        const payments = [
+          ...confirmedSquadPayments,
+          {
+            id: `rsvp-alpha-${av}`,
+            matchId: "reg-match-squad",
+            playerId: "player-alpha",
+            status: "Not Playing",
+            availability: av,
+          },
+        ];
+        assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", payments), false);
+        assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, payments, false), false);
+      }
+    });
+
+    it("14. Explicitly assigned player: allowed", () => {
+      const assignedUnpaid = [
+        ...confirmedSquadPayments,
+        { id: "squad-alpha-unpaid", matchId: "reg-match-squad", playerId: "player-alpha", status: "Unpaid" },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", assignedUnpaid), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, assignedUnpaid, false), true);
+
+      const assignedPaid = [
+        ...confirmedSquadPayments,
+        { id: "squad-alpha-paid", matchId: "reg-match-squad", playerId: "player-alpha", status: "Paid" },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", assignedPaid), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, assignedPaid, false), true);
+
+      const assignedWaived = [
+        ...confirmedSquadPayments,
+        { id: "squad-alpha-waived", matchId: "reg-match-squad", playerId: "player-alpha", status: "Waived" },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", assignedWaived), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, assignedWaived, false), true);
+    });
+
+    it("15. Admin removes previously assigned player (status 'Not Playing', availability 'Confirmed'): access revoked", () => {
+      const removedPlayerPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "squad-alpha-removed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Confirmed", // availability remains Confirmed from prior RSVP/assignment
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", removedPlayerPayments), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, removedPlayerPayments, false), false);
+    });
+
+    it("16. Ordinary RSVP does not establish squad assignment (multiple player RSVPs)", () => {
+      const multipleRsvpPayments = [
+        { id: "rsvp-1", matchId: "reg-match-open", playerId: "player-alpha", status: "Not Playing", availability: "Confirmed" },
+        { id: "rsvp-2", matchId: "reg-match-open", playerId: "player-beta", status: "Not Playing", availability: "Tentative" },
+        { id: "rsvp-3", matchId: "reg-match-open", playerId: "player-gamma", status: "Not Playing", availability: "No" },
+      ];
+      assert.equal(isSquadAssignedToMatch("reg-match-open", multipleRsvpPayments), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, openFixture, multipleRsvpPayments, false), true);
+      assert.equal(isPlayerEligibleForMatch(teammatePlayer, openFixture, multipleRsvpPayments, false), true);
+    });
+
+    it("17. Admin access remains intact across all squad states", () => {
+      const excludedPayments = [
+        ...confirmedSquadPayments,
+        { id: "p-ex", matchId: "reg-match-squad", playerId: "player-alpha", status: "Not Playing" },
+      ];
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, excludedPayments, true), true);
+      assert.equal(isPlayerEligibleForMatch(null, squadAssignedMatch, excludedPayments, true), true);
+      const navAdmin = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, excludedPayments, true);
+      assert.equal(navAdmin.allowed, true);
+    });
+
+    it("18. Direct URL and browser back/forward history cannot bypass eligibility", () => {
+      const excludedPayments = [
+        ...confirmedSquadPayments,
+        { id: "p-ex", matchId: "reg-match-squad", playerId: "player-alpha", status: "Not Playing", availability: "Confirmed" },
+      ];
+      // Deep link / direct navigation
+      const navDirect = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, excludedPayments, false);
+      assert.equal(navDirect.allowed, false);
+      assert.equal(navDirect.error, "INELIGIBLE");
+
+      // Non-existent match ID in URL
+      const navNotFound = validateMatchNavigation("match-unknown-999", [squadAssignedMatch], dummyPlayer, excludedPayments, false);
+      assert.equal(navNotFound.allowed, false);
+      assert.equal(navNotFound.error, "MATCH_NOT_FOUND");
+    });
   });
 
   describe("7. Payment Transaction Deduplication Tests", () => {
@@ -1419,12 +1550,12 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(resolvePlayerFeeOverride(order1), 350);
       assert.equal(resolvePlayerFeeOverride(order2), 350);
 
-      // If timestamps are identical, doc ID descending tie-breaker ensures determinism
+      // If conflicting overrides have no authoritative timestamp precedence, they produce a safe observable outcome (undefined)
       const docTieZ = { id: "doc-z", matchId: "match-1", playerId: "player-alpha", feeOverride: 300, updatedAt: 5000 };
       const docTieA = { id: "doc-a", matchId: "match-1", playerId: "player-alpha", feeOverride: 400, updatedAt: 5000 };
 
-      assert.equal(resolvePlayerFeeOverride([docTieZ, docTieA]), 300);
-      assert.equal(resolvePlayerFeeOverride([docTieA, docTieZ]), 300);
+      assert.equal(resolvePlayerFeeOverride([docTieZ, docTieA]), undefined);
+      assert.equal(resolvePlayerFeeOverride([docTieA, docTieZ]), undefined);
     });
 
     it("4. Invalid, negative, null, malformed overrides ignored", () => {
@@ -1448,6 +1579,288 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
       assert.equal(res.effectiveFee, 650);
       assert.equal(res.feeOverride, undefined);
+    });
+
+    it("6. Missing updatedAt with valid createdAt uses createdAt as authoritative timestamp", () => {
+      const docOlderCreated = {
+        id: "doc-older-created",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 600,
+        createdAt: 1000,
+      };
+      const docNewerCreated = {
+        id: "doc-newer-created",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 450,
+        createdAt: 3000,
+      };
+      assert.equal(resolvePlayerFeeOverride([docOlderCreated, docNewerCreated]), 450);
+      assert.equal(resolvePlayerFeeOverride([docNewerCreated, docOlderCreated]), 450);
+    });
+
+    it("7. Valid updatedAt takes precedence over older createdAt", () => {
+      const docCreatedOnly = {
+        id: "doc-created",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 550,
+        createdAt: 2000,
+      };
+      const docUpdatedLater = {
+        id: "doc-updated",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 350,
+        updatedAt: 4000,
+      };
+      assert.equal(resolvePlayerFeeOverride([docCreatedOnly, docUpdatedLater]), 350);
+      assert.equal(resolvePlayerFeeOverride([docUpdatedLater, docCreatedOnly]), 350);
+    });
+
+    it("8. Invalid timestamps handled safely", () => {
+      const docInvalidTs1 = {
+        id: "doc-inv-ts-1",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 500,
+        updatedAt: "invalid_date_string",
+      };
+      const docInvalidTs2 = {
+        id: "doc-inv-ts-2",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 400,
+        updatedAt: null,
+      };
+      // Conflicting overrides with invalid timestamps have no authoritative precedence -> returns undefined safely
+      assert.equal(resolvePlayerFeeOverride([docInvalidTs1, docInvalidTs2]), undefined);
+
+      // But if one has a valid timestamp and the other is invalid, the authoritatively timestamped one wins
+      const docValidTs = {
+        id: "doc-valid-ts",
+        matchId: "match-1",
+        playerId: "player-alpha",
+        feeOverride: 420,
+        updatedAt: 1000,
+      };
+      assert.equal(resolvePlayerFeeOverride([docInvalidTs1, docValidTs]), 420);
+    });
+  });
+
+  describe("10. Monetary Finite Number Validation Tests", () => {
+    const standardMatch = {
+      id: "match-monetary",
+      opponent: "Monetary Titans",
+      date: "2026-11-30",
+      fee: 600,
+    };
+
+    it("1. Infinity in feeCollectedAmount is rejected (does not mark as paid)", () => {
+      const payments = [
+        {
+          id: "doc-inf-collected",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: Infinity,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 0, "Infinity feeCollectedAmount rejected");
+      assert.equal(res.netPayable, 600, "Net payable remains full fee");
+      assert.equal(res.status, "UNPAID");
+    });
+
+    it("2. -Infinity in feeCollectedAmount is rejected", () => {
+      const payments = [
+        {
+          id: "doc-neg-inf-collected",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: -Infinity,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.netPayable, 600);
+      assert.equal(res.status, "UNPAID");
+    });
+
+    it("3. NaN in feeCollectedAmount and feeOffsetAmount is rejected", () => {
+      const payments = [
+        {
+          id: "doc-nan",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: NaN,
+          feeOffsetAmount: NaN,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 600);
+      assert.equal(res.status, "UNPAID");
+    });
+
+    it("4. Negative collections and negative offsets are rejected", () => {
+      const payments = [
+        {
+          id: "doc-neg",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: -300,
+          feeOffsetAmount: -150,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 600);
+    });
+
+    it("5. Negative and non-finite fee overrides are rejected", () => {
+      const payments = [
+        {
+          id: "doc-neg-override",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          feeOverride: -200,
+        },
+        {
+          id: "doc-inf-override",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          feeOverride: Infinity,
+        },
+      ];
+      assert.equal(resolvePlayerFeeOverride(payments), undefined);
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 600, "Falls back to base match fee");
+    });
+
+    it("6. Malformed string values are rejected", () => {
+      const payments = [
+        {
+          id: "doc-malformed",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: "invalid_amount",
+          feeOffsetAmount: "another_invalid",
+          feeOverride: "override_text",
+        },
+      ];
+      assert.equal(resolvePlayerFeeOverride(payments), undefined);
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.effectiveFee, 600);
+      assert.equal(res.netPayable, 600);
+      assert.equal(res.status, "UNPAID");
+    });
+
+    it("7. Missing amounts safely default to 0 without breaking aggregation", () => {
+      const payments = [
+        {
+          id: "doc-missing",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Unpaid",
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.totalRecognized, 0);
+      assert.equal(res.netPayable, 600);
+      assert.equal(res.status, "UNPAID");
+    });
+
+    it("8. Valid zero amounts are accepted", () => {
+      const zeroFeeMatch = {
+        id: "match-zero",
+        opponent: "Practice Game",
+        date: "2026-12-01",
+        fee: 0,
+      };
+      const payments = [
+        {
+          id: "doc-zero",
+          matchId: zeroFeeMatch.id,
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 0,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, zeroFeeMatch, payments);
+      assert.equal(res.effectiveFee, 0);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+    });
+
+    it("9. Valid positive amounts are aggregated accurately", () => {
+      const payments = [
+        {
+          id: "doc-pos-1",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 250,
+          feeOffsetAmount: 100,
+        },
+        {
+          id: "doc-pos-2",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 250,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 500);
+      assert.equal(res.totalOffset, 100);
+      assert.equal(res.totalRecognized, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+    });
+
+    it("10. Match fee finite safeguard: non-finite match.fee defaults safely to 0", () => {
+      const infMatch = { id: "match-inf", fee: Infinity };
+      const nanMatch = { id: "match-nan", fee: NaN };
+      const negMatch = { id: "match-neg", fee: -500 };
+
+      const resInf = aggregatePlayerMatchPayment(dummyPlayer, infMatch, []);
+      const resNan = aggregatePlayerMatchPayment(dummyPlayer, nanMatch, []);
+      const resNeg = aggregatePlayerMatchPayment(dummyPlayer, negMatch, []);
+
+      assert.equal(resInf.effectiveFee, 0);
+      assert.equal(resNan.effectiveFee, 0);
+      assert.equal(resNeg.effectiveFee, 0);
+    });
+
+    it("11. Net payable and totalRecognized are always finite and non-negative", () => {
+      const payments = [
+        {
+          id: "doc-overpay",
+          matchId: standardMatch.id,
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 1000, // exceeds 600 fee
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.totalCollected, 1000);
+      assert.equal(res.netPayable, 0, "netPayable cannot be negative");
+      assert.equal(Number.isFinite(res.netPayable), true);
+      assert.equal(Number.isFinite(res.totalRecognized), true);
+      assert.equal(Number.isFinite(res.effectiveFee), true);
     });
   });
 });

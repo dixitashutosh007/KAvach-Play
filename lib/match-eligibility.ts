@@ -6,12 +6,11 @@ import type { Match, MatchPayment, Player } from "./types";
  *
  * In KAvach Play:
  * - When an admin assigns players to a match squad (via MatchesTab or AssignFeesAdmin),
- *   those players are assigned status !== "Not Playing" (e.g. "Unpaid", "Paid", "Waived")
- *   and/or availability === "Confirmed" / "Waitlist".
- * - Open fixtures before squad assignment either have no payment docs, or have
- *   unassigned active player docs initialized with status === "Not Playing" and
- *   availability === "Pending" (or player availability RSVPs "Yes"/"Tentative"/"No"
- *   with status === "Not Playing").
+ *   those players are assigned an active match fee obligation: status !== "Not Playing"
+ *   (e.g. "Unpaid", "Paid", "Waived").
+ * - Player-controlled availability RSVPs ("Confirmed", "Tentative", "Yes", "No", "Pending")
+ *   with status === "Not Playing" represent player availability responses, NOT admin squad assignments.
+ * - An ordinary player RSVP (even if marked "Confirmed") does NOT establish a squad assignment.
  */
 export function isSquadAssignedToMatch(
   matchId: string,
@@ -21,10 +20,9 @@ export function isSquadAssignedToMatch(
     (p) =>
       p.matchId === matchId &&
       !p.guestName &&
-      (p.availability === "Confirmed" ||
-        p.availability === "Waitlist" ||
-        (p.status !== "Not Playing" &&
-          (p.status === "Unpaid" || p.status === "Paid" || p.status === "Waived")))
+      p.status !== "Not Playing" &&
+      p.status !== "Failed" &&
+      (p.status === "Unpaid" || p.status === "Paid" || p.status === "Waived")
   );
 }
 
@@ -34,10 +32,13 @@ export function isSquadAssignedToMatch(
  *
  * Requirements:
  * - A player is considered part of the assigned squad ONLY if they have an authoritative
- *   squad assignment: availability === "Confirmed" | "Waitlist" OR an active match
- *   playing/fee obligation (status !== "Not Playing", such as "Unpaid", "Paid", "Waived").
- * - Historical player RSVPs ("Yes", "Tentative", "No", "Pending") submitted on an open fixture
- *   with status === "Not Playing" do NOT establish squad membership once a squad has been assigned.
+ *   admin squad assignment: an active match fee obligation (status !== "Not Playing",
+ *   specifically "Paid" | "Unpaid" | "Waived") OR an explicit admin waitlist assignment
+ *   (availability === "Waitlist" where a squad is officially assigned to the match).
+ * - Player-controlled availability RSVPs ("Confirmed", "Playing", "Tentative", "Yes", "No", "Out")
+ *   with status === "Not Playing" strictly do NOT establish squad membership.
+ * - If an admin removes a player from the squad (setting status === "Not Playing"),
+ *   their squad membership is revoked immediately, even if availability was previously "Confirmed".
  */
 export function isPlayerInAssignedSquad(
   playerId: string,
@@ -49,12 +50,10 @@ export function isPlayerInAssignedSquad(
       p.matchId === matchId &&
       p.playerId === playerId &&
       !p.guestName &&
-      (p.availability === "Confirmed" ||
-        p.availability === "Waitlist" ||
-        (p.status !== "Not Playing" &&
-          (p.status === "Paid" ||
-            p.status === "Unpaid" ||
-            p.status === "Waived")))
+      ((p.status !== "Not Playing" &&
+        p.status !== "Failed" &&
+        (p.status === "Paid" || p.status === "Unpaid" || p.status === "Waived")) ||
+        (p.availability === "Waitlist" && isSquadAssignedToMatch(matchId, payments)))
   );
 }
 
