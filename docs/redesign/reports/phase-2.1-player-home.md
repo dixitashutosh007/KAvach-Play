@@ -9,8 +9,9 @@
 **Initial Correction Commit:** `eaf01db82e707e7c8ef12ae62f556d3c3df5ff9f`  
 **Real Persisted Model Correction Commit:** `a2b998818f994f83b1a8d0554162e245cb75c7ea`  
 **Guarded Navigation Correction Commit:** `2d2436c1789134b22b0c9b0d425ab8bc7c3943c4`  
-**Prior Documentation Submission:** `ff97e20226020fd49c667f05672e598fb908ff59`  
 **Latest Implementation Commit:** `e00c671bfef57c70910a187a539ee55658a56f8f`  
+**Previous Report Synchronization Commit:** `ff97e20226020fd49c667f05672e598fb908ff59`  
+**Latest Verified Branch HEAD at Review:** `f868bdad1d4471ecffa84c78a50710619c159c57` (verified snapshot at review)  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Product & Technical Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -240,6 +241,12 @@ All regression test suites across the application passed cleanly with zero regre
 
 ## 8. Git Handover & Commit History
 
+### Commit Verification & Handover Markers
+- **Latest Implementation Commit:** `e00c671bfef57c70910a187a539ee55658a56f8f` (`fix(ui): improve Match Day Alert squad ineligibility test coverage`)
+- **Previous Report Synchronization Commit:** `ff97e20226020fd49c667f05672e598fb908ff59` (`docs(ui): refine report with MATCH_NOT_FOUND contract and squad-ineligible alert suppression evidence`)
+- **Latest Verified Report Synchronization / Branch HEAD at Review:** `f868bdad1d4471ecffa84c78a50710619c159c57` (`docs(ui): synchronize report with exact Playwright test log and complete Git handover`)
+  > *Note on Branch HEAD:* `f868bdad1d4471ecffa84c78a50710619c159c57` represents the verified snapshot of the remote `origin/mig-mov` HEAD at the time of review. This subsequent documentation-only commit advances the branch tip beyond this SHA.
+
 | Commit SHA | Type | Description |
 |---|---|---|
 | `d1f27cc0daf45071bbfb196823e3e311f36885b8` | Baseline | Starting remote HEAD on branch `mig-mov` |
@@ -253,8 +260,9 @@ All regression test suites across the application passed cleanly with zero regre
 | `ee66bc6ee003a28c3578cd7be0e745e6f265fafd` | Docs | `docs(ui): update phase 2.1 report with guarded navigation verification` (Prior documentation submission) |
 | `1922ff84204b0287bd499ec8c3d7fdf74b6b4e2a` | Fix | `fix(ui): resolve tournament navigation and add genuine guarded navigation tests` |
 | `f0e0ee4441d2ee791ea3a5cd43c9047e2f53551b` | Docs | `docs(ui): update phase 2.1 report with tournament campaign and genuine navigation evidence` |
-| `e00c671bfef57c70910a187a539ee55658a56f8f` | Fix | `fix(ui): improve Match Day Alert squad ineligibility test coverage` (Implementation Commit) |
-| `ff97e20226020fd49c667f05672e598fb908ff59` | Docs | `docs(ui): refine report with MATCH_NOT_FOUND contract and squad-ineligible alert suppression evidence` |
+| `e00c671bfef57c70910a187a539ee55658a56f8f` | Fix | `fix(ui): improve Match Day Alert squad ineligibility test coverage` (Latest Implementation Commit) |
+| `ff97e20226020fd49c667f05672e598fb908ff59` | Docs | `docs(ui): refine report with MATCH_NOT_FOUND contract and squad-ineligible alert suppression evidence` (Previous Report Synchronization Commit) |
+| `f868bdad1d4471ecffa84c78a50710619c159c57` | Docs | `docs(ui): synchronize report with exact Playwright test log and complete Git handover` (Verified Branch HEAD Snapshot at Review) |
 
 ---
 
