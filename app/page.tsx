@@ -1079,6 +1079,7 @@ export default function Home() {
                       currentUserName={player?.name || "Player"}
                       onNavigateToMatch={(matchId) => setActiveTab("matches", `match_${matchId}`)}
                       onNavigateToPayments={() => setActiveTab("finance")}
+                      onNavigateToTab={setActiveTab}
                     />
                   )}
                   {activeTab === "matches" && (

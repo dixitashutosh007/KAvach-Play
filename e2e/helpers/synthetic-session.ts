@@ -60,6 +60,7 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     disabled: !!roleConfig.playerDisabled,
     inviteStatus: "Accepted",
     dob: "1995-04-12",
+    kavachId: "KAV-018",
     locality: "South Delhi",
     bloodGroup: "O+",
     emergencyContact: "+919876543211",
@@ -67,6 +68,34 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     bowlingStyle: "Right-arm medium",
     chestSize: "40",
     jerseyNumber: "18",
+    totalRuns: 420,
+    totalWickets: 14,
+    stunningCatches: 5,
+  };
+
+  const todayDate = new Date();
+  const todayMMDD = `${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
+  const upcomingDate = new Date(Date.now() + 4 * 86400000);
+  const upcomingMMDD = `${String(upcomingDate.getMonth() + 1).padStart(2, "0")}-${String(upcomingDate.getDate()).padStart(2, "0")}`;
+
+  const teammate1 = {
+    id: "player-teammate-1",
+    name: "Rohit Sharma",
+    mobile: "+919811100001",
+    dob: `1990-${todayMMDD}`,
+    kavachId: "KAV-045",
+    disabled: false,
+    inviteStatus: "Accepted",
+  };
+
+  const teammate2 = {
+    id: "player-teammate-2",
+    name: "Virat Kohli",
+    mobile: "+919811100002",
+    dob: `1988-${upcomingMMDD}`,
+    kavachId: "KAV-018A",
+    disabled: false,
+    inviteStatus: "Accepted",
   };
 
   const matches = [
@@ -83,8 +112,53 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 650,
       reportingTime: "07:00",
-      squadPlayerIds: [playerId, "player-teammate"],
+      squadPlayerIds: [playerId, "player-teammate-1"],
       notes: "Pitch report: Dry surface, bat first.",
+    },
+    {
+      id: "match-upcoming-2",
+      groundId: "ground-2",
+      format: "T30",
+      jerseyColor: "Whites",
+      date: "2026-11-28",
+      time: "08:00",
+      opponent: "Noida Strikers",
+      ourScore: "",
+      opponentScore: "",
+      result: "Pending",
+      fee: 600,
+      reportingTime: "07:30",
+      squadPlayerIds: [playerId],
+    },
+    {
+      id: "match-upcoming-3",
+      groundId: "ground-1",
+      format: "T20",
+      jerseyColor: "Scarlet Red",
+      date: "2026-12-02",
+      time: "07:00",
+      opponent: "Gurgaon Royals",
+      ourScore: "",
+      opponentScore: "",
+      result: "Pending",
+      fee: 650,
+      reportingTime: "06:30",
+      squadPlayerIds: [playerId],
+    },
+    {
+      id: "match-upcoming-4",
+      groundId: "ground-2",
+      format: "T30",
+      jerseyColor: "Whites",
+      date: "2026-12-06",
+      time: "08:30",
+      opponent: "Faridabad Kings",
+      ourScore: "",
+      opponentScore: "",
+      result: "Pending",
+      fee: 600,
+      reportingTime: "08:00",
+      squadPlayerIds: [playerId],
     },
     {
       id: "match-completed-1",
@@ -123,6 +197,20 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       matchId: "match-upcoming-1",
       status: "Unpaid",
       availability: "Confirmed",
+    },
+    {
+      id: `pay-upcoming-2-${playerId}`,
+      playerId: playerId,
+      matchId: "match-upcoming-2",
+      status: "Unpaid",
+      availability: "Tentative",
+    },
+    {
+      id: `pay-upcoming-3-${playerId}`,
+      playerId: playerId,
+      matchId: "match-upcoming-3",
+      status: "Unpaid",
+      availability: "No",
     },
     {
       id: `pay-abandoned-${playerId}`,
@@ -171,6 +259,17 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
 
   const posts = [
     {
+      id: "post-announcement-1",
+      authorId: "admin-system",
+      authorName: "Coach Sharma",
+      title: "Annual Club Championship & Selection Trials",
+      text: "Selections for the winter championship league will take place this Saturday 7 AM at KAvach Sports Arena. Please ensure availability is marked.",
+      createdAt: { seconds: FIXED_TEST_TIMESTAMP },
+      comments: [],
+      isPinned: true,
+      isAnnouncement: true,
+    },
+    {
       id: "post-1",
       authorId: uid,
       authorName: `Player ${uid}`,
@@ -178,6 +277,23 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       text: "Nets session scheduled for Saturday 6 AM at KAvach Studio.",
       createdAt: { seconds: FIXED_TEST_TIMESTAMP },
       comments: [],
+    },
+  ];
+
+  const tournaments = [
+    {
+      id: "tournament-kpl",
+      name: "KAvach Premier League 2026",
+      groundId: "ground-1",
+      organiserName: "Coach Sharma",
+      organiserPhone: "+919811122233",
+      gpayNumber: "9811122233",
+      jerseyColor: "Scarlet Red" as const,
+      format: "T20" as const,
+      amountPerMatch: 7200,
+      perPlayerFee: 650,
+      status: "Ongoing" as const,
+      notes: "Premier club championship with live scorecards and MVP leaderboard.",
     },
   ];
 
@@ -196,13 +312,13 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       },
     },
     appUsers: [appUser],
-    players: [player],
+    players: [player, teammate1, teammate2],
     matches: matches,
     payments: payments,
     grounds: grounds,
     otherFees: otherFees,
     posts: posts,
-    tournaments: [],
+    tournaments: tournaments,
     playerStats: [],
     subscriptionPlans: [],
     subscriptionHistory: [],
