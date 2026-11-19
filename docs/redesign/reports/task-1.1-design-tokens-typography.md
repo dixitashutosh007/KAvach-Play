@@ -36,6 +36,7 @@
 | **Correction 2: Test Contract** | `acdaa74476722cef42f33a409ee8857bb746a2c3` | `test(ui): update UX-002 test contract for approved palette and runtime theme compatibility` |
 | **Correction 2: Report** | `9fcdbaed0af490412e55ed432619970b7cf79fb9` | `docs(ui): finalize task 1.1 verification report with tailwind and runtime theme proof` |
 | **Handover Metadata Correction** | `a910878f5d4df098d4fa702d2e1e5a5fccd503c8` | `docs(ui): complete task 1.1 handover metadata and relative link normalization` |
+| **Report Accuracy Correction** | `fff00dc5ad0979372e9ec786b861a2bbf760bd22` | `docs(ui): finalize task 1.1 report accuracy and git handover` |
 
 ---
 
@@ -157,13 +158,14 @@ We confirm with zero exceptions:
 
 ### 10. Final Git Handover Record
 
-- **Starting Remote Baseline HEAD:** `9fcdbaed0af490412e55ed432619970b7cf79fb9`
-- **Prior Report Publication Commit SHA:** `9fcdbaed0af490412e55ed432619970b7cf79fb9`
-- **Handover Metadata Correction Commit SHA:** `a910878f5d4df098d4fa702d2e1e5a5fccd503c8`
+- **Baseline Starting HEAD:** `9fcdbaed0af490412e55ed432619970b7cf79fb9`
+- **Preceding Handover Commits:**
+  - `a910878f5d4df098d4fa702d2e1e5a5fccd503c8` (`docs(ui): complete task 1.1 handover metadata and link normalization`)
+  - `fff00dc5ad0979372e9ec786b861a2bbf760bd22` (`docs(ui): finalize task 1.1 report accuracy and git handover`)
 - **Target Branch:** `mig-mov`
 - **Remote Repository:** `https://github.com/dixitashutosh007/KAvach-Play`
 - **Direct GitHub Report Link:**  
   [https://github.com/dixitashutosh007/KAvach-Play/blob/mig-mov/docs/redesign/reports/task-1.1-design-tokens-typography.md](https://github.com/dixitashutosh007/KAvach-Play/blob/mig-mov/docs/redesign/reports/task-1.1-design-tokens-typography.md)
-- **Local Worktree Status:** Clean (`nothing to commit, working tree clean`) verified before and after commit and push.
+- **Local Worktree Status:** Clean (`nothing to commit, working tree clean`), developer-reported across all tracked repository files before and after push.
 - **Application Code & Test Invariance:** Zero lines of application code, component code, styling, or test files were touched in this documentation handover assignment.
 - **Mandatory Stop Condition:** **I have STOPPED.** No further tasks (Task 1.2, header refactoring, or Player Home) will begin until explicit product-owner and reviewer approval.
