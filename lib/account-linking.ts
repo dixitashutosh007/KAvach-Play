@@ -161,8 +161,29 @@ export async function executeLinkingTransaction(
   if (playerData.mergedInto) {
     throw new LinkingError(403, "Player record has been merged into another profile.");
   }
-  if (playerData.mergeStatus === "in_progress") {
-    throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+  // Active merge coordination & stale worker protection (SEC-1F-A)
+  if (playerData.mergeStatus === "in_progress" || playerData.mergeJobId) {
+    if (playerData.mergeJobId) {
+      const jobSnap = await transaction.get(db.collection("mergeJobs").doc(playerData.mergeJobId));
+      if (jobSnap.exists) {
+        const jobData = jobSnap.data() || {};
+        if (jobData.status === "in_progress") {
+          if (Date.now() < (jobData.leaseExpiresAt || 0)) {
+            throw new LinkingError(409, "Player record is currently undergoing an active administrative merge.");
+          } else {
+            // Lease is expired, but merge was not completed: partial / stale worker state
+            throw new LinkingError(409, "Player record is locked by an interrupted or expired merge job.");
+          }
+        }
+        if (jobData.status !== "completed") {
+          throw new LinkingError(409, "Player record is in an incomplete or unfinalized merge state.");
+        }
+      } else {
+        throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+      }
+    } else {
+      throw new LinkingError(409, "Player record is currently undergoing an administrative merge. Please retry later.");
+    }
   }
 
   // Strictly parse stored mobile on player document
@@ -189,6 +210,9 @@ export async function executeLinkingTransaction(
     if (phoneIndexData.playerId && phoneIndexData.playerId !== resolvedPlayerId) {
       throw new LinkingError(409, "Phone number is already associated with another player profile.");
     }
+    if (phoneIndexData.canonicalPhone && phoneIndexData.canonicalPhone !== canonicalAuthPhone) {
+      throw new LinkingError(409, "Phone reservation canonical phone does not match requested phone.");
+    }
   }
 
   // Check UID reservation collision
@@ -198,6 +222,9 @@ export async function executeLinkingTransaction(
     }
     if (uidIndexData.canonicalPhone && uidIndexData.canonicalPhone !== canonicalAuthPhone) {
       throw new LinkingError(409, "User account is already linked to another phone number.");
+    }
+    if (uidIndexData.authUid && uidIndexData.authUid !== uid) {
+      throw new LinkingError(409, "UID reservation does not match requested user account.");
     }
   }
 
@@ -211,19 +238,28 @@ export async function executeLinkingTransaction(
     throw new LinkingError(409, "Player record is already linked to another user account.");
   }
 
-  // D. Full Four-Way Idempotency vs Inconsistent Legacy State Check (SEC-1B-02, SEC-1A-05)
+  // D. Full Four-Way Idempotency vs Inconsistent Legacy State Check (SEC-1B-02, SEC-1A-05, SEC-1F-06)
   const isPhoneIndexLinked =
     phoneIndexSnap.exists &&
     phoneIndexData?.authUid === uid &&
-    phoneIndexData?.playerId === resolvedPlayerId;
+    phoneIndexData?.playerId === resolvedPlayerId &&
+    (phoneIndexData?.canonicalPhone === canonicalAuthPhone ||
+      (!phoneIndexData?.canonicalPhone && phoneIndexData?.phone === canonicalAuthPhone));
 
   const isUidIndexLinked =
     uidIndexSnap.exists &&
     uidIndexData?.authUid === uid &&
-    uidIndexData?.playerId === resolvedPlayerId;
+    uidIndexData?.playerId === resolvedPlayerId &&
+    uidIndexData?.canonicalPhone === canonicalAuthPhone;
 
-  const isPlayerLinked = playerData.authUid === uid;
-  const isUserLinked = userData.playerId === resolvedPlayerId;
+  const isPlayerLinked =
+    playerData.authUid === uid &&
+    !playerData.disabled &&
+    !playerData.mergedInto;
+
+  const isUserLinked =
+    userData.playerId === resolvedPlayerId &&
+    userData.status !== "Disabled";
 
   if (isPhoneIndexLinked && isUidIndexLinked && isPlayerLinked && isUserLinked) {
     // Complete, verified 4-way consistency: idempotent success
@@ -248,12 +284,13 @@ export async function executeLinkingTransaction(
   }
 
   // E. ALL FOUR WRITES AFTER READS (Atomic Persistence)
-  // 1. Maintain phone reservation index
+  // 1. Maintain phone reservation index (SEC-1F-06: canonicalPhone authoritative field)
   transaction.set(
     phoneIndexRef,
     {
       playerId: resolvedPlayerId,
       authUid: uid,
+      canonicalPhone: canonicalAuthPhone,
       phone: canonicalAuthPhone,
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: phoneIndexSnap.exists
@@ -384,13 +421,6 @@ export async function linkPlayerAccount(
   }
 
   const resolvedCandidate = eligibleCandidates[0];
-  if (resolvedCandidate.data?.mergeStatus === "in_progress") {
-    return {
-      ok: false,
-      status: 409,
-      error: "Player record is currently undergoing an administrative merge. Please retry later.",
-    };
-  }
   const resolvedPlayerId = resolvedCandidate.id;
   if (requestedPlayerId && requestedPlayerId.trim() !== resolvedPlayerId) {
     return {
@@ -549,16 +579,27 @@ export async function linkPlayerAccount(
           const piData = phoneSnap.data() || {};
           const uiData = uidSnap.data() || {};
 
-          if (
+          const isPiValid =
             piData.authUid === uid &&
             piData.playerId === resolvedPlayerId &&
-            piData.canonicalPhone === canonicalAuthPhone &&
+            (piData.canonicalPhone === canonicalAuthPhone ||
+              (!piData.canonicalPhone && piData.phone === canonicalAuthPhone));
+
+          const isUiValid =
             uiData.authUid === uid &&
             uiData.playerId === resolvedPlayerId &&
-            uiData.canonicalPhone === canonicalAuthPhone &&
+            uiData.canonicalPhone === canonicalAuthPhone;
+
+          const isPlayerValid =
             pData.authUid === uid &&
-            uData.playerId === resolvedPlayerId
-          ) {
+            !pData.disabled &&
+            !pData.mergedInto;
+
+          const isUserValid =
+            uData.playerId === resolvedPlayerId &&
+            uData.status !== "Disabled";
+
+          if (isPiValid && isUiValid && isPlayerValid && isUserValid) {
             return { ok: true, status: 200, playerId: resolvedPlayerId, alreadyLinked: true };
           } else {
             console.warn(

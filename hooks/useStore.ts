@@ -1346,6 +1346,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       const chargeablePlayers = players.filter(
         (p) =>
           !p.disabled &&
+          !p.mergedInto &&
+          p.mergeStatus !== "in_progress" &&
           p.inviteStatus !== "Rejected" &&
           p.inviteStatus !== "Pending",
       );
@@ -1803,6 +1805,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     availability: MatchPayment["availability"],
     tacticalNote?: string,
   ) => {
+    const targetPlayer = players.find((p) => p.id === playerId);
+    if (targetPlayer?.disabled || targetPlayer?.mergedInto || targetPlayer?.mergeStatus === "in_progress") {
+      throw new Error(`Cannot create payment record for inactive or merging player: ${playerId}`);
+    }
+
     const id = crypto.randomUUID();
     const initialStatus =
       availability === "Confirmed" ? "Unpaid" : "Not Playing";

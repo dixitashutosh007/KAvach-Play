@@ -219,6 +219,11 @@ export type Player = {
   disabled?: boolean;
   disabledAt?: string;
   mergedInto?: string;
+  mergeStatus?: "in_progress" | "completed" | "failed" | string;
+  mergeJobId?: string;
+  mergeLeaseOwner?: string;
+  mergeFencingToken?: number;
+  mergeLeaseExpiresAt?: number;
   inviteStatus:
     | "Unverified"
     | "Verified"

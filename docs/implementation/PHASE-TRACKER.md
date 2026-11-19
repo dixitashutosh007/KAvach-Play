@@ -29,6 +29,18 @@ The table below reflects the active, owner-approved remediation master plan trac
 | **Phase 11** | **Club Operations, Shop, Polling & Hardening** | **PLANNED / NOT STARTED** | Production merchandise order processing, live member polls, and WCAG AA accessibility certification. | Production Phase |
 | **Phase 12** | **Production Verification, Audit & Cutover** | **PLANNED / NOT STARTED** | Final production readiness audit, live staging verification, and controlled owner-approved cutover. | Release Phase |
 
+### 1.1 Identity & Security Remediations Track (Pre-Phase 7 Hardening)
+
+| Remediation | Focus Area | Status | Deliverables & Test Evidence |
+|---|---|---|---|
+| **Security Remediation 1** | Firestore Authorization & Player Protection | **COMPLETE** | Field-level allowlists for player updates, restricted `otherFees` access. |
+| **Security Remediation 1A** | Account Linking Hardening | **COMPLETE** | Replaced substring match with canonical phone lookup, atomic link validation. |
+| **Security Remediation 1B** | Concurrency-Safe Identity Linking | **COMPLETE** | `phoneIndex/{canonicalPhone}` unique reservation inside Firestore transaction. |
+| **Security Remediation 1C** | Bidirectional Identity Uniqueness | **COMPLETE** | Added `uidIndex/{uid}` reservation and strict mobile digit normalization. |
+| **Security Remediation 1D** | Identity Index Lifecycle & Collision Audit | **COMPLETE** | AuthUid detection, full identity scan, contention retry classification. |
+| **Security Remediation 1E** | Secure Identity Merge & Privileged Writes | **COMPLETE** | Atomic merge identity lock, closed client writes on identity fields, bootstrap tool. |
+| **Security Remediation 1F & 1F-R** | Atomic Identity Merge, Recovery, Financial Integrity, Concurrency & Fencing Hardening | **IMPLEMENTED (Pending Independent Review)** | Transactional reservation checks inside Firestore transactions; exclusive merge worker lease & stale worker fencing on EVERY mutation chunk; player-level locking on BOTH loser and keeper; authoritative financial collision protection (amount, title, status, templateId, paymentMethod, razorpayPaymentId, paidAmount, receiptId, waivedReason, refundId, cancelledBy) with contradictory alias detection and strict numerical parsing; bounded resumable migration stages and bounded final verification; independent fail-closed final verification gate; atomic completion guard against residual records in verification window (including collection-group payments); blocking of write paths for merging players; strict 10-field player lock invariant validation on completion; safe stale lock recovery; atomic failure lifecycle with lease expiry validation; genuine emulator contention tests with deterministic barrier synchronization; webhook transactional redirection for merged players; retired legacy PATCH endpoint (405); 114/114 adversarial emulator tests passing (`remediation1f-secure-merge-recovery-and-consistency.emulator.test.mjs`), 29/29 1F-A tests passing, 20/20 1E tests passing, 254 functional tests passing, clean build. See `SECURITY_REMEDIATION_1F_IDENTITY_MERGE_RECOVERY.md`. Implementation Commit `5b504c6`. |
+
 ---
 
 ## 2. Historical Unverified 12-Phase Audit Baseline (Preserved Reference)
