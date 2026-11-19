@@ -6,22 +6,46 @@ import path from "node:path";
 // Direct production code imports (QA-001)
 import { THEME_PRESETS, resolveTheme } from "../lib/theme.ts";
 
-test("UX-002: Design tokens define primary brand #A30F2D and primary action #D51F43", () => {
+test("UX-002: Design tokens define approved palette and maintain legacy runtime theme compatibility", () => {
+  // 1. Legacy runtime theme contract (preserves resolveTheme expectations)
   const defaultTheme = resolveTheme("kavach", null);
   assert.equal(defaultTheme.id, "kavach");
   assert.equal(defaultTheme.mode, "light");
-  assert.equal(defaultTheme.brand, "#A30F2D", "Primary brand must be #A30F2D");
-  assert.equal(defaultTheme.accent, "#D51F43", "Primary action must be #D51F43");
-  assert.equal(defaultTheme.brandSurface, "#FCE8ED", "Brand surface must be #FCE8ED");
+  assert.equal(defaultTheme.brand, "#A30F2D", "Primary brand in legacy preset must be #A30F2D");
+  assert.equal(defaultTheme.accent, "#D51F43", "Primary action in legacy preset must be #D51F43");
+  assert.equal(defaultTheme.brandSurface, "#FCE8ED", "Brand surface in legacy preset must be #FCE8ED");
   assert.equal(defaultTheme.bg, "#F6F7F9", "Background must be #F6F7F9");
   assert.equal(defaultTheme.textPrimary, "#171C26", "Main text must be #171C26");
   assert.equal(defaultTheme.textSecondary, "#667085", "Secondary text must be #667085");
 
-  // Verify globals.css contains matching CSS custom properties
+  // Verify globals.css retains backward-compatible legacy theme properties
   const css = fs.readFileSync(path.resolve("app/globals.css"), "utf-8");
   assert.match(css, /--color-brand:\s*var\(--theme-brand,\s*#A30F2D\);/);
-  assert.match(css, /--color-accent:\s*var\(--theme-accent,\s*#D51F43\);/);
   assert.match(css, /--color-brand-surface:\s*var\(--theme-brand-surface,\s*#FCE8ED\);/);
+  assert.match(css, /--color-text-primary:\s*var\(--theme-text-primary,\s*#171C26\);/);
+
+  // 2. New design-system contract (approved palette & canonical source of truth)
+  // Canonical :root tokens
+  assert.match(css, /--brand-wine:\s*#7A1E2B;/);
+  assert.match(css, /--brand-scarlet:\s*#C0394B;/);
+  assert.match(css, /--brand-dusty:\s*#E76B73;/);
+  assert.match(css, /--brand-gold:\s*#D6A84F;/);
+  assert.match(css, /--canvas-warm:\s*#FFF6F4;/);
+  assert.match(css, /--surface-blush:\s*#F8EDEE;/);
+  assert.match(css, /--surface-card:\s*#FFFFFF;/);
+  assert.match(css, /--text-charcoal:\s*#29252A;/);
+
+  // Semantic --color-accent resolves consistently to Scarlet (#C0394B via var(--brand-scarlet))
+  assert.match(css, /--color-accent:\s*var\(--brand-scarlet\);/);
+
+  // Tailwind theme mappings reference canonical tokens
+  assert.match(css, /--color-deep-wine:\s*var\(--brand-wine\);/);
+  assert.match(css, /--color-scarlet:\s*var\(--brand-scarlet\);/);
+  assert.match(css, /--color-dusty-red:\s*var\(--brand-dusty\);/);
+  assert.match(css, /--color-muted-gold:\s*var\(--brand-gold\);/);
+  assert.match(css, /--color-warm-white:\s*var\(--canvas-warm\);/);
+  assert.match(css, /--color-soft-blush:\s*var\(--surface-blush\);/);
+  assert.match(css, /--color-charcoal:\s*var\(--text-charcoal\);/);
 });
 
 test("UX-003: LoadingScreen uses light-first scarlet sports-tech design and has zero dark-green #022c22", () => {
