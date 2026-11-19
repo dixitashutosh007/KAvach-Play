@@ -277,8 +277,35 @@ export async function acquireMergeLease(
           code: "PLAYER_LOCKED_BY_ANOTHER_JOB",
         };
       } else {
-        // Competing job document does NOT exist in mergeJobs (orphaned lock)
-        if (loser.mergeLeaseExpiresAt && now < loser.mergeLeaseExpiresAt) {
+        // Competing job document does NOT exist in mergeJobs (orphaned foreign lock)
+        // Missing, null, or malformed lock metadata must NEVER count as proof of expiry (fail closed with 409 MALFORMED_PLAYER_LOCK)
+        if (!loser.mergeLeaseOwner || typeof loser.mergeLeaseOwner !== "string" || !loser.mergeLeaseOwner.trim()) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Loser player is locked by an orphaned merge job but has missing or invalid mergeLeaseOwner. Ambiguous lock requires operator resolution.",
+            code: "MALFORMED_PLAYER_LOCK",
+          };
+        }
+        if (typeof loser.mergeFencingToken !== "number" || !Number.isInteger(loser.mergeFencingToken) || loser.mergeFencingToken <= 0) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Loser player is locked by an orphaned merge job but has missing or invalid mergeFencingToken. Ambiguous lock requires operator resolution.",
+            code: "MALFORMED_PLAYER_LOCK",
+          };
+        }
+        if (typeof loser.mergeLeaseExpiresAt !== "number" || !Number.isFinite(loser.mergeLeaseExpiresAt) || loser.mergeLeaseExpiresAt <= 0) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Loser player is locked by an orphaned merge job but has missing or invalid mergeLeaseExpiresAt. Ambiguous lock requires operator resolution.",
+            code: "MALFORMED_PLAYER_LOCK",
+          };
+        }
+
+        // Reclaim only when expiry is explicitly a finite number in the past (now >= mergeLeaseExpiresAt)
+        if (now < loser.mergeLeaseExpiresAt) {
           return {
             ok: false,
             status: 409,
@@ -286,7 +313,7 @@ export async function acquireMergeLease(
             code: "PLAYER_LOCKED_BY_ANOTHER_JOB",
           };
         }
-        // Expired lock with missing job: can be safely reclaimed by this new job
+        // Expired lock with missing job AND complete, consistent lock metadata: can be safely reclaimed by this new job
       }
     }
 
@@ -310,8 +337,35 @@ export async function acquireMergeLease(
           code: "KEEPER_LOCKED_BY_ANOTHER_JOB",
         };
       } else {
-        // Competing job document missing in mergeJobs
-        if (keeper.mergeLeaseExpiresAt && now < keeper.mergeLeaseExpiresAt) {
+        // Competing job document missing in mergeJobs (orphaned foreign lock)
+        // Missing, null, or malformed lock metadata must NEVER count as proof of expiry (fail closed with 409 MALFORMED_PLAYER_LOCK)
+        if (!keeper.mergeLeaseOwner || typeof keeper.mergeLeaseOwner !== "string" || !keeper.mergeLeaseOwner.trim()) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Keeper player is locked by an orphaned merge job but has missing or invalid mergeLeaseOwner. Ambiguous lock requires operator resolution.",
+            code: "MALFORMED_PLAYER_LOCK",
+          };
+        }
+        if (typeof keeper.mergeFencingToken !== "number" || !Number.isInteger(keeper.mergeFencingToken) || keeper.mergeFencingToken <= 0) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Keeper player is locked by an orphaned merge job but has missing or invalid mergeFencingToken. Ambiguous lock requires operator resolution.",
+            code: "MALFORMED_PLAYER_LOCK",
+          };
+        }
+        if (typeof keeper.mergeLeaseExpiresAt !== "number" || !Number.isFinite(keeper.mergeLeaseExpiresAt) || keeper.mergeLeaseExpiresAt <= 0) {
+          return {
+            ok: false,
+            status: 409,
+            error: "Keeper player is locked by an orphaned merge job but has missing or invalid mergeLeaseExpiresAt. Ambiguous lock requires operator resolution.",
+            code: "MALFORMED_PLAYER_LOCK",
+          };
+        }
+
+        // Reclaim only when expiry is explicitly a finite number in the past (now >= mergeLeaseExpiresAt)
+        if (now < keeper.mergeLeaseExpiresAt) {
           return {
             ok: false,
             status: 409,
@@ -319,7 +373,7 @@ export async function acquireMergeLease(
             code: "KEEPER_LOCKED_BY_ANOTHER_JOB",
           };
         }
-        // Expired lock with missing job: can be safely reclaimed by this new job
+        // Expired lock with missing job AND complete, consistent lock metadata: can be safely reclaimed by this new job
       }
     }
 
@@ -1091,13 +1145,20 @@ export async function executeMergeCompletionStage(
     const job = jobSnap.data() || {};
     const now = Date.now();
 
-    // Verify worker fencing and active lease
+    // Verify worker fencing and active lease strictly (fail closed on any missing/malformed/mismatched credential)
     if (
-      job.leaseOwner !== worker.leaseOwner ||
-      job.leaseToken !== worker.leaseToken ||
-      job.fencingToken !== worker.fencingToken ||
       job.status !== "in_progress" ||
-      now >= (job.leaseExpiresAt || 0)
+      !job.leaseOwner || typeof job.leaseOwner !== "string" || !job.leaseOwner.trim() ||
+      !worker.leaseOwner || typeof worker.leaseOwner !== "string" || !worker.leaseOwner.trim() ||
+      job.leaseOwner !== worker.leaseOwner ||
+      !job.leaseToken || typeof job.leaseToken !== "string" || !job.leaseToken.trim() ||
+      !worker.leaseToken || typeof worker.leaseToken !== "string" || !worker.leaseToken.trim() ||
+      job.leaseToken !== worker.leaseToken ||
+      typeof job.fencingToken !== "number" || !Number.isInteger(job.fencingToken) || job.fencingToken <= 0 ||
+      typeof worker.fencingToken !== "number" || !Number.isInteger(worker.fencingToken) || worker.fencingToken <= 0 ||
+      job.fencingToken !== worker.fencingToken ||
+      typeof job.leaseExpiresAt !== "number" || !Number.isFinite(job.leaseExpiresAt) ||
+      now >= job.leaseExpiresAt
     ) {
       throw new StaleWorkerError(
         409,
@@ -1112,23 +1173,27 @@ export async function executeMergeCompletionStage(
     }
     const loser = loserSnap.data() || {};
     const keeper = keeperSnap.data() || {};
+
+    // Strict 10-field lock validation on loser (fail closed on missing, malformed or mismatched fields)
     if (
       loser.mergeJobId !== jobId ||
       loser.mergeStatus !== "in_progress" ||
-      loser.mergeFencingToken !== worker.fencingToken ||
-      (loser.mergeLeaseOwner && loser.mergeLeaseOwner !== worker.leaseOwner) ||
-      (loser.mergeLeaseExpiresAt && loser.mergeLeaseExpiresAt !== job.leaseExpiresAt)
+      !loser.mergeLeaseOwner || typeof loser.mergeLeaseOwner !== "string" || loser.mergeLeaseOwner !== job.leaseOwner ||
+      typeof loser.mergeFencingToken !== "number" || loser.mergeFencingToken !== job.fencingToken ||
+      typeof loser.mergeLeaseExpiresAt !== "number" || !Number.isFinite(loser.mergeLeaseExpiresAt) || loser.mergeLeaseExpiresAt !== job.leaseExpiresAt
     ) {
-      throw new MergeConflictError(409, "Loser player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
+      throw new MergeConflictError(409, "Loser player lock missing, incomplete or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
     }
+
+    // Strict 10-field lock validation on keeper (fail closed on missing, malformed or mismatched fields)
     if (
       keeper.mergeJobId !== jobId ||
       keeper.mergeStatus !== "in_progress" ||
-      keeper.mergeFencingToken !== worker.fencingToken ||
-      (keeper.mergeLeaseOwner && keeper.mergeLeaseOwner !== worker.leaseOwner) ||
-      (keeper.mergeLeaseExpiresAt && keeper.mergeLeaseExpiresAt !== job.leaseExpiresAt)
+      !keeper.mergeLeaseOwner || typeof keeper.mergeLeaseOwner !== "string" || keeper.mergeLeaseOwner !== job.leaseOwner ||
+      typeof keeper.mergeFencingToken !== "number" || keeper.mergeFencingToken !== job.fencingToken ||
+      typeof keeper.mergeLeaseExpiresAt !== "number" || !Number.isFinite(keeper.mergeLeaseExpiresAt) || keeper.mergeLeaseExpiresAt !== job.leaseExpiresAt
     ) {
-      throw new MergeConflictError(409, "Keeper player lock missing or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
+      throw new MergeConflictError(409, "Keeper player lock missing, incomplete or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
     }
 
     // Verify zero residual documents created during verification window (Finding 1F-R R10)
@@ -2257,8 +2322,12 @@ export async function recordMergeJobFailure(
         return { recorded: false, reason: "WORKER_FENCING_TOKEN_MISMATCH" };
       }
 
-      // 5. Expired lease check (Defined behaviour: fail closed if lease expired before recording failure)
-      if (typeof job.leaseExpiresAt === "number" && now >= job.leaseExpiresAt) {
+      // 5. Expired or invalid lease check (require finite number > now; fail closed otherwise)
+      if (
+        typeof job.leaseExpiresAt !== "number" ||
+        !Number.isFinite(job.leaseExpiresAt) ||
+        now >= job.leaseExpiresAt
+      ) {
         return { recorded: false, reason: "LEASE_EXPIRED" };
       }
 
