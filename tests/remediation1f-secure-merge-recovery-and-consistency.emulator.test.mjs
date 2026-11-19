@@ -1668,7 +1668,8 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
 
     const lease = await playerMergeModule.acquireMergeLease(db, newJobId, loserId, keeperId);
     assert.equal(lease.ok, true);
-    assert.equal(lease.workerInfo.fencingToken, 1);
+    // Monotonic fencing establishes max(prior: 1) + 1 = 2
+    assert.equal(lease.workerInfo.fencingToken, 2);
 
     const loserSnap = await db.collection("players").doc(loserId).get();
     assert.equal(loserSnap.data().mergeJobId, newJobId);
@@ -1749,7 +1750,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
       (err) => {
         assert.equal(err.status, 409);
         assert.equal(err.code, "LEASE_RENEWAL_FAILED");
-        assert.match(err.message, /keeper player lock is missing, inconsistent/);
+        assert.match(err.message, /keeper player lock (is )?missing, (inconsistent|incomplete or tampered with)/i);
         return true;
       }
     );
@@ -3081,22 +3082,34 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
       leaseExpiresAt: now + 60000,
     };
 
-    // Deterministic barrier synchronization between Operation A (completion) and Operation B (webhook)
-    let barrierOpAEnteredResolve;
-    const barrierOpAEntered = new Promise((r) => { barrierOpAEnteredResolve = r; });
+    // Deterministic barrier synchronization: release AFTER read of payments collectionGroup completes!
+    let barrierReadDoneResolve;
+    const barrierReadDone = new Promise((r) => { barrierReadDoneResolve = r; });
     let barrierOpBProceedResolve;
     const barrierOpBProceed = new Promise((r) => { barrierOpBProceedResolve = r; });
 
-    // Proxy db to hold Operation A inside its active transaction while Operation B attempts concurrent webhook write
+    // Proxy db to hold Operation A inside its active transaction after completing the payments read
     const proxyDb = Object.create(db);
     proxyDb.runTransaction = async (updateFunction, options) => {
-      return db.runTransaction(async (transaction) => {
-        if (barrierOpAEnteredResolve) {
-          barrierOpAEnteredResolve();
-          barrierOpAEnteredResolve = null;
-        }
-        await barrierOpBProceed;
-        return updateFunction(transaction);
+      return db.runTransaction(async (realTx) => {
+        const wrappedTx = Object.create(realTx);
+        wrappedTx.get = async (refOrQuery) => {
+          const res = await realTx.get(refOrQuery);
+          const isPaymentsGroupQuery =
+            refOrQuery?._queryOptions?.collectionId === "payments" &&
+            refOrQuery?._queryOptions?.allDescendants === true;
+          if (isPaymentsGroupQuery && barrierReadDoneResolve) {
+            barrierReadDoneResolve();
+            barrierReadDoneResolve = null;
+            await barrierOpBProceed;
+          }
+          return res;
+        };
+        wrappedTx.set = (...args) => realTx.set(...args);
+        wrappedTx.update = (...args) => realTx.update(...args);
+        wrappedTx.delete = (...args) => realTx.delete(...args);
+
+        return updateFunction(wrappedTx);
       }, options);
     };
 
@@ -3104,7 +3117,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     const promiseA = playerMergeModule.executeMergeCompletionStage(proxyDb, jobId, loserId, keeperId, worker);
 
     const promiseB = (async () => {
-      await barrierOpAEntered;
+      await barrierReadDone;
       try {
         await processWebhookIntentTransaction(db, eventDetails);
         return { success: true };
@@ -3183,30 +3196,37 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
       leaseExpiresAt: now + 60000,
     };
 
-    let barrierAEnteredResolve;
-    const barrierAEntered = new Promise((r) => { barrierAEnteredResolve = r; });
-    let barrierBWrittenResolve;
-    const barrierBWritten = new Promise((r) => { barrierBWrittenResolve = r; });
+    let barrierReadDoneResolve;
+    const barrierReadDone = new Promise((r) => { barrierReadDoneResolve = r; });
+    let barrierOpBWrittenResolve;
+    const barrierOpBWritten = new Promise((r) => { barrierOpBWrittenResolve = r; });
 
-    // Proxy db for Operation A
+    // Proxy db to intercept collectionGroup("payments") read boundary during final verification
     const proxyDb = Object.create(db);
-    proxyDb.runTransaction = async (updateFunction, options) => {
-      return db.runTransaction(async (transaction) => {
-        if (barrierAEnteredResolve) {
-          barrierAEnteredResolve();
-          barrierAEnteredResolve = null;
-        }
-        await barrierBWritten;
-        return updateFunction(transaction);
-      }, options);
+    const origCollectionGroup = db.collectionGroup.bind(db);
+    proxyDb.collectionGroup = (collectionId) => {
+      const query = origCollectionGroup(collectionId);
+      if (collectionId === "payments") {
+        const origGet = query.get.bind(query);
+        query.get = async (...args) => {
+          const res = await origGet(...args);
+          if (barrierReadDoneResolve) {
+            barrierReadDoneResolve();
+            barrierReadDoneResolve = null;
+            await barrierOpBWritten;
+          }
+          return res;
+        };
+      }
+      return query;
     };
 
-    // Launch Operation A
-    const promiseA = playerMergeModule.executeMergeCompletionStage(proxyDb, jobId, loserId, keeperId, worker);
+    // Launch Operation A (executeIndependentFinalVerification pipeline)
+    const promiseA = playerMergeModule.executeIndependentFinalVerification(proxyDb, jobId, loserId, keeperId, worker);
 
     // Launch Operation B (concurrent rogue payment write directly referencing loser)
     const promiseB = (async () => {
-      await barrierAEntered;
+      await barrierReadDone;
       try {
         await db.collection("matches").doc("m_s83b").collection("payments").doc("pay_concurrent_83b").set({
           id: "pay_concurrent_83b",
@@ -3216,7 +3236,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
         });
         return { success: true };
       } finally {
-        barrierBWrittenResolve();
+        barrierOpBWrittenResolve();
       }
     })();
 
@@ -4258,11 +4278,11 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     assert.equal(lease.ok, true, "Expired orphaned lock with valid metadata must be reclaimable.");
     assert.ok(lease.workerInfo);
 
-    // Verify loser is now locked to newJobId with incremented fencing token
+    // Verify loser is now locked to newJobId with monotonically incremented fencing token (3 + 1 = 4)
     const loserSnap = await db.collection("players").doc(loserId).get();
     assert.equal(loserSnap.data().mergeJobId, newJobId);
     assert.equal(loserSnap.data().mergeLeaseOwner, "new_worker_108");
-    assert.equal(loserSnap.data().mergeFencingToken, 1);
+    assert.equal(loserSnap.data().mergeFencingToken, 4);
   });
 
   it("Scenario 108b (Foreign Lock: Symmetrical keeper checks): Rejects malformed foreign keeper lock and unexpired orphaned lock", async () => {
@@ -4285,7 +4305,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     const lease1 = await playerMergeModule.acquireMergeLease(db, newJobId, loserId, keeperId, "new_worker");
     assert.equal(lease1.ok, false);
     assert.equal(lease1.code, "MALFORMED_PLAYER_LOCK");
-    assert.match(lease1.error, /Keeper player is locked by another merge job but has missing or invalid mergeLeaseExpiresAt/);
+    assert.match(lease1.error, /Keeper player is locked by (an orphaned|another) merge job but has missing or invalid mergeLeaseExpiresAt/);
 
     // 2. Unexpired orphaned keeper lock
     await db.collection("players").doc(keeperId).set({
@@ -4397,5 +4417,327 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     const overMaxP = validatePaiseAmount(1_000_000_001, "paise", { maxPaise: 1_000_000_000 });
     assert.equal(overMaxP.ok, false);
     assert.match(overMaxP.error, /exceeds maximum allowable boundary/);
+  });
+
+  // ==========================================
+  // SECTION 12: ORPHAN RECOVERY & STALE WORKER REJECTION (113 - 121b)
+  // ==========================================
+
+  it("Scenario 113 (Orphan Recovery: Monotonic fencing generation): Reclaiming orphaned lock establishes higher fencing token", async () => {
+    const loserId = "p_loser_s113";
+    const keeperId = "p_keeper_s113";
+    const foreignJobId = "job_orphaned_113";
+    const newJobId = "job_reclaim_113";
+    const pastTime = Date.now() - 10000;
+
+    await db.collection("players").doc(loserId).set({
+      id: loserId,
+      name: "Loser 113",
+      mergeStatus: "in_progress",
+      mergeJobId: foreignJobId,
+      mergeLeaseOwner: "old_worker_113",
+      mergeFencingToken: 5,
+      mergeLeaseExpiresAt: pastTime,
+    });
+    await db.collection("players").doc(keeperId).set({
+      id: keeperId,
+      name: "Keeper 113",
+      mergeStatus: "in_progress",
+      mergeJobId: foreignJobId,
+      mergeLeaseOwner: "old_worker_113",
+      mergeFencingToken: 5,
+      mergeLeaseExpiresAt: pastTime,
+    });
+    // Ensure foreignJobId doc is non-existent (orphaned lock)
+    await db.collection("mergeJobs").doc(foreignJobId).delete();
+
+    const lease = await playerMergeModule.acquireMergeLease(db, newJobId, loserId, keeperId, { workerId: "new_worker_113" });
+    assert.equal(lease.ok, true);
+    // Verifiable monotonic generation: max(prior: 5) + 1 = 6!
+    assert.equal(lease.workerInfo.fencingToken, 6);
+    assert.equal(lease.workerInfo.leaseOwner, "new_worker_113");
+
+    const loserSnap = await db.collection("players").doc(loserId).get();
+    assert.equal(loserSnap.data().mergeFencingToken, 6);
+    assert.equal(loserSnap.data().mergeJobId, newJobId);
+    assert.equal(loserSnap.data().mergeLeaseOwner, "new_worker_113");
+
+    const keeperSnap = await db.collection("players").doc(keeperId).get();
+    assert.equal(keeperSnap.data().mergeFencingToken, 6);
+    assert.equal(keeperSnap.data().mergeJobId, newJobId);
+    assert.equal(keeperSnap.data().mergeLeaseOwner, "new_worker_113");
+  });
+
+  async function setupReclaimedJobFixture(suffix) {
+    const loserId = `p_loser_s${suffix}`;
+    const keeperId = `p_keeper_s${suffix}`;
+    const jobId = `job_reclaim_s${suffix}`;
+    const now = Date.now();
+
+    await db.collection("players").doc(loserId).set({
+      id: loserId,
+      name: `Loser ${suffix}`,
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "new_worker",
+      mergeFencingToken: 6,
+      mergeLeaseExpiresAt: now + 60000,
+    });
+    await db.collection("players").doc(keeperId).set({
+      id: keeperId,
+      name: `Keeper ${suffix}`,
+      mergeStatus: "in_progress",
+      mergeJobId: jobId,
+      mergeLeaseOwner: "new_worker",
+      mergeFencingToken: 6,
+      mergeLeaseExpiresAt: now + 60000,
+    });
+    await db.collection("mergeJobs").doc(jobId).set({
+      id: jobId,
+      jobId,
+      loserId,
+      keeperId,
+      status: "in_progress",
+      stage: "identity_merged",
+      leaseOwner: "new_worker",
+      leaseToken: "tok_new",
+      fencingToken: 6,
+      leaseExpiresAt: now + 60000,
+    });
+
+    const oldWorker = {
+      leaseOwner: "old_worker",
+      leaseToken: "tok_old",
+      fencingToken: 5,
+      attemptCount: 1,
+      leaseExpiresAt: now + 60000,
+    };
+
+    return { loserId, keeperId, jobId, oldWorker, now };
+  }
+
+  it("Scenario 114 (Orphan Recovery: Stale worker on executeMergeIdentityStage): Rejects stale worker with zero data mutations", async () => {
+    const { loserId, keeperId, jobId, oldWorker } = await setupReclaimedJobFixture("114");
+
+    // Stale worker attempts to execute identity stage on the reclaimed job
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.executeMergeIdentityStage(db, jobId, loserId, keeperId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Verify player records remain completely untouched with new worker fencing
+    const loserSnap = await db.collection("players").doc(loserId).get();
+    assert.equal(loserSnap.data().mergeFencingToken, 6);
+    assert.equal(loserSnap.data().mergeLeaseOwner, "new_worker");
+  });
+
+  it("Scenario 115 (Orphan Recovery: Stale worker on migratePaymentsStage): Rejects stale worker with zero payments migrated", async () => {
+    const { loserId, keeperId, jobId, oldWorker } = await setupReclaimedJobFixture("115");
+
+    // Seed a payment referencing loser
+    await db.collection("matches").doc("m_s115").collection("payments").doc("pay_s115").set({
+      id: "pay_s115",
+      playerId: loserId,
+      amount: 150,
+      status: "Paid",
+    });
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migratePaymentsStage(db, jobId, loserId, keeperId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Verify payment was NOT reparented
+    const paySnap = await db.collection("matches").doc("m_s115").collection("payments").doc("pay_s115").get();
+    assert.equal(paySnap.data().playerId, loserId);
+  });
+
+  it("Scenario 116 (Orphan Recovery: Stale worker on migrateOtherFeesStage): Rejects stale worker with zero fees migrated", async () => {
+    const { loserId, keeperId, jobId, oldWorker } = await setupReclaimedJobFixture("116");
+
+    // Seed otherFees under loser
+    await db.collection("players").doc(loserId).collection("otherFees").doc("fee_s116").set({
+      id: "fee_s116",
+      amount: 500,
+      title: "Late Fee",
+      status: "Pending",
+    });
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migrateOtherFeesStage(db, jobId, loserId, keeperId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Verify fee still exists under loser and does NOT exist under keeper
+    const loserFee = await db.collection("players").doc(loserId).collection("otherFees").doc("fee_s116").get();
+    assert.equal(loserFee.exists, true);
+    const keeperFee = await db.collection("players").doc(keeperId).collection("otherFees").doc("fee_s116").get();
+    assert.equal(keeperFee.exists, false);
+  });
+
+  it("Scenario 117 (Orphan Recovery: Stale worker on migrateMerchOrdersStage): Rejects stale worker with zero orders reparented", async () => {
+    const { loserId, keeperId, jobId, oldWorker } = await setupReclaimedJobFixture("117");
+
+    // Seed merchOrder referencing loser
+    await db.collection("merchOrders").doc("order_s117").set({
+      id: "order_s117",
+      playerId: loserId,
+      item: "Cap",
+    });
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migrateMerchOrdersStage(db, jobId, loserId, keeperId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Verify order was not reparented
+    const orderSnap = await db.collection("merchOrders").doc("order_s117").get();
+    assert.equal(orderSnap.data().playerId, loserId);
+  });
+
+  it("Scenario 118 (Orphan Recovery: Stale worker on migrateAppUsersAndIndexesStage): Rejects stale worker with zero accounts reparented", async () => {
+    const { loserId, keeperId, jobId, oldWorker } = await setupReclaimedJobFixture("118");
+
+    await db.collection("appUsers").doc("uid_s118").set({
+      uid: "uid_s118",
+      playerId: loserId,
+    });
+    await db.collection("uidIndex").doc("uid_s118").set({
+      playerId: loserId,
+    });
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.migrateAppUsersAndIndexesStage(db, jobId, loserId, keeperId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Verify appUser and uidIndex still point to loser
+    const userSnap = await db.collection("appUsers").doc("uid_s118").get();
+    assert.equal(userSnap.data().playerId, loserId);
+    const indexSnap = await db.collection("uidIndex").doc("uid_s118").get();
+    assert.equal(indexSnap.data().playerId, loserId);
+  });
+
+  it("Scenario 119 (Orphan Recovery: Stale worker on renewMergeLease): Rejects lease renewal", async () => {
+    const { jobId, oldWorker } = await setupReclaimedJobFixture("119");
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.renewMergeLease(db, jobId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "LEASE_RENEWAL_FAILED");
+        return true;
+      }
+    );
+  });
+
+  it("Scenario 120 (Orphan Recovery: Stale worker on verifyWorkerFencingAndAdvanceStage): Rejects stage advance", async () => {
+    const { jobId, oldWorker } = await setupReclaimedJobFixture("120");
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.verifyWorkerFencingAndAdvanceStage(db, jobId, oldWorker, "completed");
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    const jobSnap = await db.collection("mergeJobs").doc(jobId).get();
+    assert.notEqual(jobSnap.data().stage, "completed");
+  });
+
+  it("Scenario 121 (Orphan Recovery: Stale worker on executeMergeCompletionStage): Rejects completion and preserves loser active state", async () => {
+    const { loserId, keeperId, jobId, oldWorker } = await setupReclaimedJobFixture("121");
+
+    await assert.rejects(
+      async () => {
+        await playerMergeModule.executeMergeCompletionStage(db, jobId, loserId, keeperId, oldWorker);
+      },
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "STALE_WORKER_FENCING_ERROR");
+        return true;
+      }
+    );
+
+    // Loser must NOT be disabled or merged into keeper
+    const loserSnap = await db.collection("players").doc(loserId).get();
+    assert.notEqual(loserSnap.data().mergeStatus, "completed");
+    assert.equal(loserSnap.data().disabled, undefined);
+    assert.equal(loserSnap.data().mergedInto, undefined);
+  });
+
+  it("Scenario 121b (Orphan Recovery: Stale worker on recordMergeJobFailure): Rejects recording failure and preserves job state", async () => {
+    const { jobId, oldWorker } = await setupReclaimedJobFixture("121b");
+
+    const res = await playerMergeModule.recordMergeJobFailure(db, jobId, oldWorker, new Error("stale crash"), "payments");
+    assert.equal(res.recorded, false);
+    assert.equal(res.reason, "WORKER_LEASE_OWNER_MISMATCH");
+
+    const jobSnap = await db.collection("mergeJobs").doc(jobId).get();
+    assert.equal(jobSnap.data().status, "in_progress");
+  });
+
+  // ==========================================
+  // SECTION 13: NUMERIC TOLERANCE & PRECISION BOUNDARIES (122)
+  // ==========================================
+
+  it("Scenario 122 (Rupee Precision Contract: 1e-6 tolerance boundary tests): Differentiates floating noise absorption from extra decimals", () => {
+    const { validateRupeeAmount } = playerMergeModule;
+
+    // 1. Value just within 1e-6 tolerance (diff = 1e-7 <= 1e-6) -> accepted
+    const withinTolerance = validateRupeeAmount(100.50 + 1e-9);
+    assert.equal(withinTolerance.ok, true);
+    assert.equal(withinTolerance.value, 100.50);
+
+    // 2. Value beyond 1e-6 tolerance (diff = 1e-5 > 1e-6) -> rejected
+    const beyondTolerance = validateRupeeAmount(100.50 + 1e-7);
+    assert.equal(beyondTolerance.ok, false);
+    assert.match(beyondTolerance.error, /invalid precision: more than 2 decimal places in rupees/);
+
+    // 3. String with whitespace is trimmed and accepted
+    const withSpaces = validateRupeeAmount("   250.75   ");
+    assert.equal(withSpaces.ok, true);
+    assert.equal(withSpaces.value, 250.75);
+
+    // 4. String with trailing zero in 3rd decimal place is strictly rejected per 2-decimal regex
+    const trailingZero3rd = validateRupeeAmount("250.750");
+    assert.equal(trailingZero3rd.ok, false);
+    assert.match(trailingZero3rd.error, /invalid precision/);
   });
 });

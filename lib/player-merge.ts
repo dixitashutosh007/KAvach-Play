@@ -533,7 +533,12 @@ export async function acquireMergeLease(
     }
 
     // Lease is free to acquire
-    const fencingToken = (existingJob?.fencingToken || 0) + 1;
+    const maxPriorFencing = Math.max(
+      existingJob?.fencingToken || 0,
+      typeof loser.mergeFencingToken === "number" ? loser.mergeFencingToken : 0,
+      typeof keeper.mergeFencingToken === "number" ? keeper.mergeFencingToken : 0
+    );
+    const fencingToken = maxPriorFencing + 1;
     const attemptCount = (existingJob?.attemptCount || 0) + 1;
     const leaseOwner = options?.workerId || `worker_${crypto.randomUUID()}`;
     const leaseToken = `lease_${crypto.randomUUID()}`;
@@ -598,6 +603,175 @@ export async function acquireMergeLease(
   });
 }
 
+export interface LockValidationResult {
+  valid: boolean;
+  reason?: string;
+  error?: string;
+  code?: string;
+  isPlayerLockFailure?: boolean;
+}
+
+/**
+ * Shared lock invariant validator (Finding 1F-R P2 / Section 1).
+ * Strictly validates:
+ * 1. Job status === "in_progress"
+ * 2. Persisted job lease metadata (owner, token, fencingToken > 0 integer)
+ * 3. Worker details (owner, token, fencingToken > 0 integer)
+ * 4. Exact equality of every lease credential with the worker
+ * 5. Expired or invalid lease check (finite number > now)
+ * 6. Optional Loser player lock metadata exact match
+ * 7. Optional Keeper player lock metadata exact match
+ */
+export function validateMergeWorkerAndPlayerLocks(
+  jobId: string,
+  job: Record<string, any>,
+  worker: { leaseOwner: string; leaseToken: string; fencingToken: number } | null,
+  now: number,
+  loserData?: Record<string, any> | null,
+  keeperData?: Record<string, any> | null
+): LockValidationResult {
+  // 1. Never overwrite a completed or recovered/failed job
+  if (job.status !== "in_progress") {
+    return {
+      valid: false,
+      reason: `JOB_NOT_IN_PROGRESS_${String(job.status || "UNKNOWN").toUpperCase()}`,
+      error: `Job is not in_progress (status: ${String(job.status || "UNKNOWN")}).`,
+      code: "STALE_WORKER_FENCING_ERROR",
+    };
+  }
+
+  // 2. Strict validation of persisted job lease metadata (Fail closed if missing - Section 4)
+  if (!job.leaseOwner || typeof job.leaseOwner !== "string" || !job.leaseOwner.trim()) {
+    return { valid: false, reason: "MISSING_JOB_LEASE_OWNER", error: "Missing job lease owner.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (!job.leaseToken || typeof job.leaseToken !== "string" || !job.leaseToken.trim()) {
+    return { valid: false, reason: "MISSING_JOB_LEASE_TOKEN", error: "Missing job lease token.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (typeof job.fencingToken !== "number" || !Number.isInteger(job.fencingToken) || job.fencingToken <= 0) {
+    return { valid: false, reason: "MISSING_JOB_FENCING_TOKEN", error: "Missing job fencing token.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+
+  // 3. Strict worker details validation
+  if (!worker) {
+    return { valid: false, reason: "MISSING_WORKER_INFO", error: "Missing worker info.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (!worker.leaseOwner || typeof worker.leaseOwner !== "string" || !worker.leaseOwner.trim()) {
+    return { valid: false, reason: "MISSING_WORKER_LEASE_OWNER", error: "Missing worker lease owner.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (!worker.leaseToken || typeof worker.leaseToken !== "string" || !worker.leaseToken.trim()) {
+    return { valid: false, reason: "MISSING_WORKER_LEASE_TOKEN", error: "Missing worker lease token.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (typeof worker.fencingToken !== "number" || !Number.isInteger(worker.fencingToken) || worker.fencingToken <= 0) {
+    return { valid: false, reason: "MISSING_WORKER_FENCING_TOKEN", error: "Missing worker fencing token.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+
+  // 4. Exact equality of every lease credential with the worker
+  if (job.leaseOwner !== worker.leaseOwner) {
+    return { valid: false, reason: "WORKER_LEASE_OWNER_MISMATCH", error: "Worker lease owner mismatch.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (job.leaseToken !== worker.leaseToken) {
+    return { valid: false, reason: "WORKER_LEASE_TOKEN_MISMATCH", error: "Worker lease token mismatch.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+  if (job.fencingToken !== worker.fencingToken) {
+    return { valid: false, reason: "WORKER_FENCING_TOKEN_MISMATCH", error: "Worker fencing token mismatch.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+
+  // 5. Expired or invalid lease check (require finite number > now)
+  if (
+    typeof job.leaseExpiresAt !== "number" ||
+    !Number.isFinite(job.leaseExpiresAt) ||
+    now >= job.leaseExpiresAt
+  ) {
+    return { valid: false, reason: "LEASE_EXPIRED", error: "Stale worker detected: lease has expired or is invalid.", code: "STALE_WORKER_FENCING_ERROR" };
+  }
+
+  // 6. Optional Loser player lock validation
+  if (loserData !== undefined) {
+    if (!loserData) {
+      return { valid: false, isPlayerLockFailure: true, reason: "LOSER_PLAYER_MISSING", error: "Loser player record not found.", code: "PLAYER_NOT_FOUND" };
+    }
+    if (
+      loserData.mergeJobId !== jobId ||
+      loserData.mergeStatus !== "in_progress" ||
+      !loserData.mergeLeaseOwner ||
+      typeof loserData.mergeLeaseOwner !== "string" ||
+      loserData.mergeLeaseOwner !== job.leaseOwner ||
+      typeof loserData.mergeFencingToken !== "number" ||
+      loserData.mergeFencingToken !== job.fencingToken ||
+      typeof loserData.mergeLeaseExpiresAt !== "number" ||
+      !Number.isFinite(loserData.mergeLeaseExpiresAt) ||
+      loserData.mergeLeaseExpiresAt !== job.leaseExpiresAt
+    ) {
+      return {
+        valid: false,
+        isPlayerLockFailure: true,
+        reason: "LOSER_LOCK_INCONSISTENT",
+        error: "Loser player lock missing, incomplete or tampered with.",
+        code: "FINAL_VERIFICATION_FAILED",
+      };
+    }
+  }
+
+  // 7. Optional Keeper player lock validation
+  if (keeperData !== undefined) {
+    if (!keeperData) {
+      return { valid: false, isPlayerLockFailure: true, reason: "KEEPER_PLAYER_MISSING", error: "Keeper player record not found.", code: "PLAYER_NOT_FOUND" };
+    }
+    if (
+      keeperData.mergeJobId !== jobId ||
+      keeperData.mergeStatus !== "in_progress" ||
+      !keeperData.mergeLeaseOwner ||
+      typeof keeperData.mergeLeaseOwner !== "string" ||
+      keeperData.mergeLeaseOwner !== job.leaseOwner ||
+      typeof keeperData.mergeFencingToken !== "number" ||
+      keeperData.mergeFencingToken !== job.fencingToken ||
+      typeof keeperData.mergeLeaseExpiresAt !== "number" ||
+      !Number.isFinite(keeperData.mergeLeaseExpiresAt) ||
+      keeperData.mergeLeaseExpiresAt !== job.leaseExpiresAt
+    ) {
+      return {
+        valid: false,
+        isPlayerLockFailure: true,
+        reason: "KEEPER_LOCK_INCONSISTENT",
+        error: "Keeper player lock missing, incomplete or tampered with.",
+        code: "FINAL_VERIFICATION_FAILED",
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Shared lock invariant assertion (Finding 1F-R P2 / Section 1).
+ * Calls validateMergeWorkerAndPlayerLocks and throws appropriate typed error.
+ */
+export function assertMergeWorkerAndPlayerLocks(
+  jobId: string,
+  job: Record<string, any>,
+  worker: { leaseOwner: string; leaseToken: string; fencingToken: number } | null,
+  now = Date.now(),
+  loserSnap?: FirebaseFirestore.DocumentSnapshot | null,
+  keeperSnap?: FirebaseFirestore.DocumentSnapshot | null,
+  options?: { defaultErrorCode?: string; playerErrorCode?: string }
+): void {
+  const loserData = loserSnap !== undefined ? (loserSnap && loserSnap.exists ? loserSnap.data() || {} : null) : undefined;
+  const keeperData = keeperSnap !== undefined ? (keeperSnap && keeperSnap.exists ? keeperSnap.data() || {} : null) : undefined;
+
+  const result = validateMergeWorkerAndPlayerLocks(jobId, job, worker, now, loserData, keeperData);
+  if (!result.valid) {
+    if (result.isPlayerLockFailure) {
+      if (result.code === "PLAYER_NOT_FOUND") {
+        throw new MergeConflictError(404, result.error || "Player record not found.", "PLAYER_NOT_FOUND");
+      }
+      const code = options?.playerErrorCode || result.code || "FINAL_VERIFICATION_FAILED";
+      throw new MergeConflictError(409, result.error || "Player lock validation failed.", code);
+    }
+    const code = options?.defaultErrorCode || result.code || "STALE_WORKER_FENCING_ERROR";
+    throw new StaleWorkerError(409, result.error || "Stale worker validation failed.", code);
+  }
+}
+
 /**
  * Renew an active merge lease. Validates current worker ownership and non-expired lease.
  */
@@ -615,63 +789,16 @@ export async function renewMergeLease(
     }
     const job = jobSnap.data() || {};
     const now = Date.now();
-    if (
-      job.leaseOwner !== worker.leaseOwner ||
-      job.leaseToken !== worker.leaseToken ||
-      job.fencingToken !== worker.fencingToken ||
-      job.status !== "in_progress" ||
-      now >= (job.leaseExpiresAt || 0)
-    ) {
-      throw new StaleWorkerError(
-        409,
-        "Cannot renew lease: lease is invalid, expired, or superseded.",
-        "LEASE_RENEWAL_FAILED"
-      );
-    }
 
     // ALL READS BEFORE WRITES (Firestore transaction requirement)
     const loserSnap = job.loserId ? await transaction.get(db.collection("players").doc(job.loserId)) : null;
     const keeperSnap = job.keeperId ? await transaction.get(db.collection("players").doc(job.keeperId)) : null;
 
-    // Strict validation of both player locks (Finding 1F-R R2/R3)
-    if (!loserSnap?.exists || !keeperSnap?.exists) {
-      throw new StaleWorkerError(
-        409,
-        "Cannot renew lease: required player record not found.",
-        "LEASE_RENEWAL_FAILED"
-      );
-    }
-
-    const loser = loserSnap.data() || {};
-    const keeper = keeperSnap.data() || {};
-
-    if (
-      loser.mergeJobId !== jobId ||
-      loser.mergeStatus !== "in_progress" ||
-      loser.mergeFencingToken !== worker.fencingToken ||
-      loser.mergeLeaseOwner !== worker.leaseOwner ||
-      loser.mergeLeaseExpiresAt !== job.leaseExpiresAt
-    ) {
-      throw new StaleWorkerError(
-        409,
-        "Cannot renew lease: loser player lock is missing, inconsistent, or superseded.",
-        "LEASE_RENEWAL_FAILED"
-      );
-    }
-
-    if (
-      keeper.mergeJobId !== jobId ||
-      keeper.mergeStatus !== "in_progress" ||
-      keeper.mergeFencingToken !== worker.fencingToken ||
-      keeper.mergeLeaseOwner !== worker.leaseOwner ||
-      keeper.mergeLeaseExpiresAt !== job.leaseExpiresAt
-    ) {
-      throw new StaleWorkerError(
-        409,
-        "Cannot renew lease: keeper player lock is missing, inconsistent, or superseded.",
-        "LEASE_RENEWAL_FAILED"
-      );
-    }
+    // Strict validation of worker and both player locks via shared helper
+    assertMergeWorkerAndPlayerLocks(jobId, job, worker, now, loserSnap, keeperSnap, {
+      defaultErrorCode: "LEASE_RENEWAL_FAILED",
+      playerErrorCode: "LEASE_RENEWAL_FAILED",
+    });
 
     // ALL WRITES AFTER READS
     const newExpiresAt = now + additionalDurationMs;
@@ -681,15 +808,19 @@ export async function renewMergeLease(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    transaction.update(loserSnap.ref, {
-      mergeLeaseExpiresAt: newExpiresAt,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (loserSnap) {
+      transaction.update(loserSnap.ref, {
+        mergeLeaseExpiresAt: newExpiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
-    transaction.update(keeperSnap.ref, {
-      mergeLeaseExpiresAt: newExpiresAt,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (keeperSnap) {
+      transaction.update(keeperSnap.ref, {
+        mergeLeaseExpiresAt: newExpiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     return { ok: true, newExpiresAt };
   });
@@ -713,19 +844,7 @@ export async function verifyWorkerFencingAndAdvanceStage(
     }
     const job = jobSnap.data() || {};
     const now = Date.now();
-    if (
-      job.leaseOwner !== worker.leaseOwner ||
-      job.leaseToken !== worker.leaseToken ||
-      job.fencingToken !== worker.fencingToken ||
-      job.status !== "in_progress" ||
-      now >= (job.leaseExpiresAt || 0)
-    ) {
-      throw new StaleWorkerError(
-        409,
-        "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-        "STALE_WORKER_FENCING_ERROR"
-      );
-    }
+    assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
     const updates: Record<string, any> = {
       stage: nextStage,
@@ -773,20 +892,8 @@ export async function executeMergeIdentityStage(
     const job = jobSnap.data() || {};
     const now = Date.now();
 
-    // Stale worker fencing verification
-    if (
-      job.leaseOwner !== worker.leaseOwner ||
-      job.leaseToken !== worker.leaseToken ||
-      job.fencingToken !== worker.fencingToken ||
-      job.status !== "in_progress" ||
-      now >= (job.leaseExpiresAt || 0)
-    ) {
-      throw new StaleWorkerError(
-        409,
-        "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-        "STALE_WORKER_FENCING_ERROR"
-      );
-    }
+    // Verify worker fencing and player locks via shared helper
+    assertMergeWorkerAndPlayerLocks(jobId, job, worker, now, loserSnap, keeperSnap);
 
     if (!loserSnap.exists || !keeperSnap.exists) {
       throw new MergeConflictError(404, "Loser or keeper record not found during transaction.", "PLAYER_NOT_FOUND");
@@ -1145,56 +1252,8 @@ export async function executeMergeCompletionStage(
     const job = jobSnap.data() || {};
     const now = Date.now();
 
-    // Verify worker fencing and active lease strictly (fail closed on any missing/malformed/mismatched credential)
-    if (
-      job.status !== "in_progress" ||
-      !job.leaseOwner || typeof job.leaseOwner !== "string" || !job.leaseOwner.trim() ||
-      !worker.leaseOwner || typeof worker.leaseOwner !== "string" || !worker.leaseOwner.trim() ||
-      job.leaseOwner !== worker.leaseOwner ||
-      !job.leaseToken || typeof job.leaseToken !== "string" || !job.leaseToken.trim() ||
-      !worker.leaseToken || typeof worker.leaseToken !== "string" || !worker.leaseToken.trim() ||
-      job.leaseToken !== worker.leaseToken ||
-      typeof job.fencingToken !== "number" || !Number.isInteger(job.fencingToken) || job.fencingToken <= 0 ||
-      typeof worker.fencingToken !== "number" || !Number.isInteger(worker.fencingToken) || worker.fencingToken <= 0 ||
-      job.fencingToken !== worker.fencingToken ||
-      typeof job.leaseExpiresAt !== "number" || !Number.isFinite(job.leaseExpiresAt) ||
-      now >= job.leaseExpiresAt
-    ) {
-      throw new StaleWorkerError(
-        409,
-        "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-        "STALE_WORKER_FENCING_ERROR"
-      );
-    }
-
-    // Verify player locks are consistent with this job
-    if (!loserSnap.exists || !keeperSnap.exists) {
-      throw new MergeConflictError(404, "Player records not found during completion.", "PLAYER_NOT_FOUND");
-    }
-    const loser = loserSnap.data() || {};
-    const keeper = keeperSnap.data() || {};
-
-    // Strict 10-field lock validation on loser (fail closed on missing, malformed or mismatched fields)
-    if (
-      loser.mergeJobId !== jobId ||
-      loser.mergeStatus !== "in_progress" ||
-      !loser.mergeLeaseOwner || typeof loser.mergeLeaseOwner !== "string" || loser.mergeLeaseOwner !== job.leaseOwner ||
-      typeof loser.mergeFencingToken !== "number" || loser.mergeFencingToken !== job.fencingToken ||
-      typeof loser.mergeLeaseExpiresAt !== "number" || !Number.isFinite(loser.mergeLeaseExpiresAt) || loser.mergeLeaseExpiresAt !== job.leaseExpiresAt
-    ) {
-      throw new MergeConflictError(409, "Loser player lock missing, incomplete or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
-    }
-
-    // Strict 10-field lock validation on keeper (fail closed on missing, malformed or mismatched fields)
-    if (
-      keeper.mergeJobId !== jobId ||
-      keeper.mergeStatus !== "in_progress" ||
-      !keeper.mergeLeaseOwner || typeof keeper.mergeLeaseOwner !== "string" || keeper.mergeLeaseOwner !== job.leaseOwner ||
-      typeof keeper.mergeFencingToken !== "number" || keeper.mergeFencingToken !== job.fencingToken ||
-      typeof keeper.mergeLeaseExpiresAt !== "number" || !Number.isFinite(keeper.mergeLeaseExpiresAt) || keeper.mergeLeaseExpiresAt !== job.leaseExpiresAt
-    ) {
-      throw new MergeConflictError(409, "Keeper player lock missing, incomplete or tampered with before completion.", "FINAL_VERIFICATION_FAILED");
-    }
+    // Verify worker fencing and player locks strictly via shared helper (Finding 1F-R P2)
+    assertMergeWorkerAndPlayerLocks(jobId, job, worker, now, loserSnap, keeperSnap);
 
     // Verify zero residual documents created during verification window (Finding 1F-R R10)
     if (
@@ -1569,26 +1628,14 @@ export async function migratePaymentsStage(
     }
 
     await db.runTransaction(async (transaction) => {
-      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1, P2)
       const jobSnap = await transaction.get(mergeJobRef);
       if (!jobSnap.exists) {
         throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       }
       const job = jobSnap.data() || {};
       const now = Date.now();
-      if (
-        job.leaseOwner !== worker.leaseOwner ||
-        job.leaseToken !== worker.leaseToken ||
-        job.fencingToken !== worker.fencingToken ||
-        job.status !== "in_progress" ||
-        now >= (job.leaseExpiresAt || 0)
-      ) {
-        throw new StaleWorkerError(
-          409,
-          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-          "STALE_WORKER_FENCING_ERROR"
-        );
-      }
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
       // 2. Process payments in chunk
       for (const d of pageSnap.docs) {
@@ -1668,26 +1715,14 @@ export async function migrateOtherFeesStage(
     const destRefs = pageSnap.docs.map((d) => keeperRef.collection("otherFees").doc(d.id));
 
     await db.runTransaction(async (transaction) => {
-      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1, P2)
       const jobSnap = await transaction.get(mergeJobRef);
       if (!jobSnap.exists) {
         throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       }
       const job = jobSnap.data() || {};
       const now = Date.now();
-      if (
-        job.leaseOwner !== worker.leaseOwner ||
-        job.leaseToken !== worker.leaseToken ||
-        job.fencingToken !== worker.fencingToken ||
-        job.status !== "in_progress" ||
-        now >= (job.leaseExpiresAt || 0)
-      ) {
-        throw new StaleWorkerError(
-          409,
-          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-          "STALE_WORKER_FENCING_ERROR"
-        );
-      }
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
       // 2. Read destination fees in transaction
       const destSnaps = await Promise.all(destRefs.map((ref) => transaction.get(ref)));
@@ -1820,26 +1855,14 @@ export async function migrateMerchOrdersStage(
     }
 
     await db.runTransaction(async (transaction) => {
-      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1)
+      // 1. Transactionally read mergeJobRef to verify fencing and lease (Finding 1F-R R1, P2)
       const jobSnap = await transaction.get(mergeJobRef);
       if (!jobSnap.exists) {
         throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       }
       const job = jobSnap.data() || {};
       const now = Date.now();
-      if (
-        job.leaseOwner !== worker.leaseOwner ||
-        job.leaseToken !== worker.leaseToken ||
-        job.fencingToken !== worker.fencingToken ||
-        job.status !== "in_progress" ||
-        now >= (job.leaseExpiresAt || 0)
-      ) {
-        throw new StaleWorkerError(
-          409,
-          "Stale worker detected: lease has expired, been reclaimed, or superseded.",
-          "STALE_WORKER_FENCING_ERROR"
-        );
-      }
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
       // 2. Update each merch order
       for (const d of pageSnap.docs) {
@@ -1926,15 +1949,7 @@ export async function migrateAppUsersAndIndexesStage(
       if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       const job = jobSnap.data() || {};
       const now = Date.now();
-      if (
-        job.leaseOwner !== worker.leaseOwner ||
-        job.leaseToken !== worker.leaseToken ||
-        job.fencingToken !== worker.fencingToken ||
-        job.status !== "in_progress" ||
-        now >= (job.leaseExpiresAt || 0)
-      ) {
-        throw new StaleWorkerError(409, "Stale worker detected: lease has expired, been reclaimed, or superseded.", "STALE_WORKER_FENCING_ERROR");
-      }
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
       for (const d of pageSnap.docs) {
         transaction.update(d.ref, {
@@ -1975,9 +1990,8 @@ export async function migrateAppUsersAndIndexesStage(
       const jobSnap = await transaction.get(mergeJobRef);
       if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       const job = jobSnap.data() || {};
-      if (job.fencingToken !== worker.fencingToken || job.status !== "in_progress") {
-        throw new StaleWorkerError(409, "Stale worker detected.", "STALE_WORKER_FENCING_ERROR");
-      }
+      const now = Date.now();
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
       transaction.update(directUserDoc.ref, {
         playerId: keeperId,
         updatedAt: FieldValue.serverTimestamp(),
@@ -2010,15 +2024,7 @@ export async function migrateAppUsersAndIndexesStage(
       if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       const job = jobSnap.data() || {};
       const now = Date.now();
-      if (
-        job.leaseOwner !== worker.leaseOwner ||
-        job.leaseToken !== worker.leaseToken ||
-        job.fencingToken !== worker.fencingToken ||
-        job.status !== "in_progress" ||
-        now >= (job.leaseExpiresAt || 0)
-      ) {
-        throw new StaleWorkerError(409, "Stale worker detected.", "STALE_WORKER_FENCING_ERROR");
-      }
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
       for (const d of pageSnap.docs) {
         transaction.update(d.ref, {
@@ -2062,15 +2068,7 @@ export async function migrateAppUsersAndIndexesStage(
       if (!jobSnap.exists) throw new StaleWorkerError(404, "Merge job not found.", "MERGE_JOB_NOT_FOUND");
       const job = jobSnap.data() || {};
       const now = Date.now();
-      if (
-        job.leaseOwner !== worker.leaseOwner ||
-        job.leaseToken !== worker.leaseToken ||
-        job.fencingToken !== worker.fencingToken ||
-        job.status !== "in_progress" ||
-        now >= (job.leaseExpiresAt || 0)
-      ) {
-        throw new StaleWorkerError(409, "Stale worker detected.", "STALE_WORKER_FENCING_ERROR");
-      }
+      assertMergeWorkerAndPlayerLocks(jobId, job, worker, now);
 
       for (const d of pageSnap.docs) {
         transaction.update(d.ref, {
@@ -2281,54 +2279,10 @@ export async function recordMergeJobFailure(
       const job = jobSnap.data() || {};
       const now = Date.now();
 
-      // 1. Never overwrite a completed or recovered/failed job
-      if (job.status !== "in_progress") {
-        return { recorded: false, reason: `JOB_NOT_IN_PROGRESS_${String(job.status || "UNKNOWN").toUpperCase()}` };
-      }
-
-      // 2. Strict validation of persisted job lease metadata (Fail closed if missing - Section 4)
-      if (!job.leaseOwner || typeof job.leaseOwner !== "string" || !job.leaseOwner.trim()) {
-        return { recorded: false, reason: "MISSING_JOB_LEASE_OWNER" };
-      }
-      if (!job.leaseToken || typeof job.leaseToken !== "string" || !job.leaseToken.trim()) {
-        return { recorded: false, reason: "MISSING_JOB_LEASE_TOKEN" };
-      }
-      if (typeof job.fencingToken !== "number" || !Number.isInteger(job.fencingToken)) {
-        return { recorded: false, reason: "MISSING_JOB_FENCING_TOKEN" };
-      }
-
-      // 3. Strict worker details validation
-      if (!worker) {
-        return { recorded: false, reason: "MISSING_WORKER_INFO" };
-      }
-      if (!worker.leaseOwner || typeof worker.leaseOwner !== "string" || !worker.leaseOwner.trim()) {
-        return { recorded: false, reason: "MISSING_WORKER_LEASE_OWNER" };
-      }
-      if (!worker.leaseToken || typeof worker.leaseToken !== "string" || !worker.leaseToken.trim()) {
-        return { recorded: false, reason: "MISSING_WORKER_LEASE_TOKEN" };
-      }
-      if (typeof worker.fencingToken !== "number" || !Number.isInteger(worker.fencingToken)) {
-        return { recorded: false, reason: "MISSING_WORKER_FENCING_TOKEN" };
-      }
-
-      // 4. Exact equality of every lease credential with the worker
-      if (job.leaseOwner !== worker.leaseOwner) {
-        return { recorded: false, reason: "WORKER_LEASE_OWNER_MISMATCH" };
-      }
-      if (job.leaseToken !== worker.leaseToken) {
-        return { recorded: false, reason: "WORKER_LEASE_TOKEN_MISMATCH" };
-      }
-      if (job.fencingToken !== worker.fencingToken) {
-        return { recorded: false, reason: "WORKER_FENCING_TOKEN_MISMATCH" };
-      }
-
-      // 5. Expired or invalid lease check (require finite number > now; fail closed otherwise)
-      if (
-        typeof job.leaseExpiresAt !== "number" ||
-        !Number.isFinite(job.leaseExpiresAt) ||
-        now >= job.leaseExpiresAt
-      ) {
-        return { recorded: false, reason: "LEASE_EXPIRED" };
+      // Validate worker fencing and active lease strictly via shared validator (Finding 1F-R P2)
+      const check = validateMergeWorkerAndPlayerLocks(jobId, job, worker, now);
+      if (!check.valid) {
+        return { recorded: false, reason: check.reason };
       }
 
       // 6. Atomically persist structured failure state
