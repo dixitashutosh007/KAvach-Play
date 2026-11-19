@@ -23,6 +23,10 @@ export interface RoleConfig {
     opinion?: boolean;
   };
   tournaments?: any[];
+  matches?: any[];
+  payments?: any[];
+  posts?: any[];
+  withAlertMatch?: boolean;
 }
 
 export function createSyntheticStore(roleConfig: RoleConfig) {
@@ -102,7 +106,45 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     inviteStatus: "Accepted",
   };
 
-  const matches = [
+  const alertDate = new Date(Date.now() + 3 * 3600000);
+  const alertDateStr = alertDate.toISOString().split("T")[0];
+  const alertHours = String(alertDate.getHours()).padStart(2, "0");
+  const alertMins = String(alertDate.getMinutes()).padStart(2, "0");
+
+  const alertMatch = {
+    id: "match-alert-today",
+    groundId: "ground-1",
+    format: "T20",
+    jerseyColor: "Scarlet Red",
+    date: alertDateStr,
+    time: `${alertHours}:${alertMins}`,
+    opponent: "Mumbai Masters",
+    ourScore: "",
+    opponentScore: "",
+    result: "Pending",
+    fee: 650,
+    reportingTime: "06:30",
+    notes: "Match Day Alert live fixture starting today.",
+  };
+
+  const tournamentMatch = {
+    id: "match-tournament-1",
+    tournamentId: "tournament-winter-cup-2026",
+    groundId: "ground-1",
+    format: "T20",
+    jerseyColor: "Scarlet Red",
+    date: "2026-12-15",
+    time: "08:00",
+    opponent: "Winter Warriors",
+    ourScore: "",
+    opponentScore: "",
+    result: "Pending",
+    fee: 650,
+    reportingTime: "07:30",
+    notes: "Round 1 of Winter Super Cup 2026.",
+  };
+
+  const baseMatches = [
     {
       id: "match-upcoming-1",
       groundId: "ground-1",
@@ -221,7 +263,7 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     },
   ];
 
-  const payments = [
+  const basePayments = [
     {
       id: `pay-upcoming-${playerId}`,
       playerId: playerId,
@@ -294,6 +336,50 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       availability: "Confirmed",
     },
   ];
+
+  let matches = [...baseMatches];
+  let payments = [...basePayments];
+
+  if (roleConfig.withAlertMatch) {
+    matches.unshift(alertMatch);
+    payments.unshift(
+      {
+        id: `pay-alert-${playerId}`,
+        playerId: playerId,
+        matchId: "match-alert-today",
+        status: "Unpaid",
+        availability: "Confirmed",
+      },
+      {
+        id: "pay-alert-teammate-1",
+        playerId: "player-teammate-1",
+        matchId: "match-alert-today",
+        status: "Unpaid",
+        availability: "Confirmed",
+      }
+    );
+  }
+
+  if (
+    roleConfig.tournaments &&
+    roleConfig.tournaments.some((t) => t.id === "tournament-winter-cup-2026")
+  ) {
+    matches.push(tournamentMatch);
+    payments.push({
+      id: `pay-tourn-1-${playerId}`,
+      playerId: playerId,
+      matchId: "match-tournament-1",
+      status: "Unpaid",
+      availability: "Confirmed",
+    });
+  }
+
+  if (roleConfig.matches) {
+    matches = roleConfig.matches;
+  }
+  if (roleConfig.payments) {
+    payments = roleConfig.payments;
+  }
 
   const grounds = [
     {
@@ -384,7 +470,7 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     payments: payments,
     grounds: grounds,
     otherFees: otherFees,
-    posts: posts,
+    posts: roleConfig.posts || posts,
     tournaments: roleConfig.tournaments || tournaments,
     playerStats: [],
     subscriptionPlans: [],

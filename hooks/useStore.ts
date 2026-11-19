@@ -207,7 +207,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (ts.badgeTypeDefs) setBadgeTypeDefs(ts.badgeTypeDefs);
       if (ts.leads) setLeads(ts.leads);
       setIsLoaded(true);
-      return;
+
+      const handleTestStoreUpdate = (e: any) => {
+        const detail = e.detail;
+        if (!detail) return;
+        if (detail.matches) setMatches(detail.matches);
+        if (detail.players) setPlayers(detail.players);
+        if (detail.payments) setPayments(detail.payments);
+        if (detail.tournaments) setTournaments(detail.tournaments);
+      };
+      window.addEventListener("kavach:test:update-store", handleTestStoreUpdate);
+      return () => {
+        window.removeEventListener("kavach:test:update-store", handleTestStoreUpdate);
+      };
     }
 
     if (!user) {

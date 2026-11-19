@@ -114,7 +114,7 @@ export function HomeTab({
 
   // Match Day Alerts (Starts within 18 hours, player is confirmed in squad and eligible)
   const activeMatchAlerts = useMemo(() => {
-    if (!mePlayer || isAdmin) return [];
+    if (!mePlayer) return [];
     const now = Date.now();
 
     return matches
@@ -189,12 +189,34 @@ export function HomeTab({
   const handleNavigate = (tab: string, targetId?: string) => {
     if (tab === "finance") {
       onNavigateToPayments?.();
-    } else if (tab === "matches" && targetId) {
+    } else if (tab === "matches") {
+      if (!targetId) {
+        if (onNavigateToTab) {
+          onNavigateToTab("matches");
+        } else {
+          onNavigateToMatch?.("");
+        }
+        return;
+      }
+      // If targetId is a tournament, navigate to tournament fixtures in matches tab without match eligibility check
+      const isTournament =
+        targetId.startsWith("tournament_") ||
+        store.tournaments.some((t) => t.id === targetId);
+      if (isTournament) {
+        const action = targetId.startsWith("tournament_")
+          ? targetId
+          : `tournament_${targetId}`;
+        if (onNavigateToTab) {
+          onNavigateToTab("matches", action);
+        } else {
+          onNavigateToMatch?.("");
+        }
+        return;
+      }
+      // Target ID is an individual match: apply guarded match navigation
       handleGuardedNavigateToMatch(targetId);
     } else if (onNavigateToTab) {
       onNavigateToTab(tab, targetId);
-    } else if (tab === "matches") {
-      onNavigateToMatch?.("");
     }
   };
 

@@ -130,10 +130,16 @@ export function MatchesTab({
       if (match) {
         setSelectedMatch(match);
       }
+    } else if (defaultAction && defaultAction.startsWith("tournament_")) {
+      const targetTournId = defaultAction.replace("tournament_", "");
+      const tourn = store.tournaments.find(t => t.id === targetTournId);
+      if (tourn) {
+        setPlayerSearch(tourn.name || "");
+      }
     } else if (defaultAction === "assign") {
       setSubTab("assign");
     }
-  }, [defaultAction, store.matches]);
+  }, [defaultAction, store.matches, store.tournaments]);
 
   const getInitialFee = () => {
      const ground = store.grounds[0];
@@ -1402,7 +1408,9 @@ export function MatchesTab({
                     const q = playerSearch.toLowerCase().trim();
                     const groundName = store.grounds.find((g) => g.id === m.groundId)?.name?.toLowerCase() || "";
                     const opp = (m.opponent || "").toLowerCase();
-                    if (!opp.includes(q) && !groundName.includes(q)) return false;
+                    const tourn = store.tournaments.find((tt) => tt.id === m.tournamentId);
+                    const tournName = tourn?.name?.toLowerCase() || "";
+                    if (!opp.includes(q) && !groundName.includes(q) && !tournName.includes(q)) return false;
                   }
                   return true;
                 }).sort((a, b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());

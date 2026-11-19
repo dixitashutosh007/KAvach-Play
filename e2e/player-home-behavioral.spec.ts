@@ -248,7 +248,219 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByRole("heading", { name: /My Dues & Payments/i })).toBeVisible({ timeout: 5000 });
   });
 
-  test("4B. Guarded match navigation: eligible player navigates from search results", async ({
+  test("4B. Tournament campaign navigation opens tournament fixtures without missing-match rejection", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      tournaments: [
+        {
+          id: "tournament-winter-cup-2026",
+          name: "Winter Super Cup 2026",
+          status: "Ongoing",
+          format: "T20",
+          jerseyColor: "Scarlet Red",
+          notes: "Official Winter Championship.",
+        },
+      ],
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    // 1. Verify Campaign Hero Banner renders tournament slide with realistic tournament ID
+    const banner = page.locator('[data-testid="campaign-hero-banner"]');
+    await expect(banner).toBeVisible();
+    await expect(banner.getByText("Winter Super Cup 2026")).toBeVisible();
+
+    const viewFixturesBtn = banner.getByRole("button", { name: "View Fixtures" });
+    await expect(viewFixturesBtn).toBeVisible();
+    await viewFixturesBtn.click();
+
+    // 2. Verify navigation opens Match Schedule view without missing-match error toast
+    await expect(page.getByRole("heading", { name: /Match Schedule/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Match not found or no longer available/i)).toHaveCount(0);
+    await expect(page.getByText(/You are not eligible/i)).toHaveCount(0);
+
+    // 3. Verify tournament fixture with tournament badge is visible
+    await expect(page.getByText(/vs Winter Warriors/i)).toBeVisible();
+    await expect(page.getByText(/Winter Super Cup 2026/i)).toBeVisible();
+  });
+
+  test("4C. Match Day Alert: eligible player opens match, ineligible player blocked, admin retains access", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    // 1. Eligible Player: Opens match from alert
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      withAlertMatch: true,
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const alertBanner = page.locator('[data-testid="match-day-alert-match-alert-today"]');
+    await expect(alertBanner).toBeVisible({ timeout: 5000 });
+    await expect(alertBanner.getByText(/vs Mumbai Masters/i)).toBeVisible();
+
+    const viewMatchBtn = alertBanner.getByRole("button", { name: /View Match/i });
+    await expect(viewMatchBtn).toBeVisible();
+    await viewMatchBtn.click();
+
+    // Verifies navigation to Match Details view
+    await expect(page.getByRole("button", { name: /Back/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /vs Mumbai Masters/i })).toBeVisible();
+
+    // 2. Ineligible Player: Blocked from alert match navigation
+    await injectSyntheticSession(page, {
+      uid: "player-ineligible-demo",
+      role: "player",
+      playerDisabled: true, // Disables profile -> ineligible
+      withAlertMatch: true,
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    // Disabled player has no access; alert is not rendered for inactive profile
+    const disabledAlert = page.locator('[data-testid="match-day-alert-match-alert-today"]');
+    await expect(disabledAlert).toHaveCount(0);
+
+    // 3. Administrator: Retains legitimate access to fixtures from alert
+    await injectSyntheticSession(page, {
+      uid: "admin-alpha",
+      role: "admin",
+      isMatchAdmin: true,
+      isClubAdmin: true,
+      withAlertMatch: true,
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const adminAlert = page.locator('[data-testid="match-day-alert-match-alert-today"]');
+    await expect(adminAlert).toBeVisible({ timeout: 5000 });
+    await adminAlert.getByRole("button", { name: /View Match/i }).click();
+    await expect(page.getByRole("button", { name: /Back/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /vs Mumbai Masters/i })).toBeVisible();
+  });
+
+  test("4D. Guarded match navigation: eligibility revoked after rendering blocks navigation", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      tournaments: [],
+      posts: [
+        {
+          id: "post-featured-match",
+          authorId: "admin-system",
+          authorName: "Club Management",
+          title: "Super Clash: Delhi Challengers",
+          text: "Official matchday preview and squad details.",
+          isPinned: true,
+          isAnnouncement: true,
+          matchId: "match-upcoming-1",
+        },
+      ],
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    // 1. Verify Campaign Hero Banner renders the featured match slide
+    const banner = page.locator('[data-testid="campaign-hero-banner"]');
+    await expect(banner).toBeVisible();
+    await expect(banner.getByText("Super Clash: Delhi Challengers")).toBeVisible();
+
+    const viewMatchCta = banner.getByRole("button", { name: "View Match" });
+    await expect(viewMatchCta).toBeVisible();
+
+    // 2. Revoke player eligibility dynamically after rendering:
+    // Admin assigns squad to teammates (teammate-1, teammate-2), excluding player-alpha
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent("kavach:test:update-store", {
+          detail: {
+            payments: [
+              {
+                id: "pay-upcoming-teammate-1",
+                playerId: "player-teammate-1",
+                matchId: "match-upcoming-1",
+                status: "Unpaid",
+                availability: "Confirmed",
+              },
+              {
+                id: "pay-upcoming-teammate-2",
+                playerId: "player-teammate-2",
+                matchId: "match-upcoming-1",
+                status: "Unpaid",
+                availability: "Confirmed",
+              },
+            ],
+          },
+        })
+      );
+    });
+
+    // 3. Trigger navigation on the rendered CTA button
+    await viewMatchCta.click();
+
+    // 4. Verify guard uses updated context, blocks navigation, and shows authoritative toast
+    await expect(page.getByText(/You are not eligible to access this match/i)).toBeVisible({ timeout: 4000 });
+    // Player remains on Home tab (no Match Details heading mounted)
+    await expect(page.getByRole("button", { name: /Back/i })).toHaveCount(0);
+  });
+
+  test("4E. Guarded match navigation: missing match blocks navigation with authoritative error", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      tournaments: [],
+      posts: [
+        {
+          id: "post-missing-match",
+          authorId: "admin-system",
+          authorName: "Club Management",
+          title: "Cancelled Fixture Preview",
+          text: "This fixture has been removed from the schedule.",
+          isPinned: true,
+          isAnnouncement: true,
+          matchId: "match-missing-nonexistent-999",
+        },
+      ],
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    // 1. Verify Campaign Hero Banner renders the slide
+    const banner = page.locator('[data-testid="campaign-hero-banner"]');
+    await expect(banner).toBeVisible();
+    await expect(banner.getByText("Cancelled Fixture Preview")).toBeVisible();
+
+    const viewMatchCta = banner.getByRole("button", { name: "View Match" });
+    await expect(viewMatchCta).toBeVisible();
+
+    // 2. Trigger navigation for missing match
+    await viewMatchCta.click();
+
+    // 3. Verify guard blocks navigation and displays authoritative missing-match toast
+    await expect(page.getByText(/Match not found or no longer available/i)).toBeVisible({ timeout: 4000 });
+    await expect(page.getByRole("button", { name: /Back/i })).toHaveCount(0);
+  });
+
+  test("4F. Guarded match navigation: eligible player navigates from search results", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -260,7 +472,6 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // Navigate from search results
     const header = page.locator('[data-testid="player-home-header"]');
     const searchInput = header.getByPlaceholder(/Search matches, announcements/i);
     await searchInput.fill("Delhi");
@@ -273,7 +484,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByRole("heading", { name: /vs Delhi Challengers/i })).toBeVisible();
   });
 
-  test("4C. Guarded match navigation: eligible player navigates from upcoming matches", async ({
+  test("4G. Guarded match navigation: eligible player navigates from upcoming matches", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -294,7 +505,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByRole("heading", { name: /vs Delhi Challengers/i })).toBeVisible();
   });
 
-  test("4D. Guarded match navigation: administrator navigates to restricted and tentative matches", async ({
+  test("4H. Guarded match navigation: administrator navigates to restricted and tentative matches", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -318,40 +529,6 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await restrictedResult.click();
     await expect(page.getByRole("button", { name: /Back/i })).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole("heading", { name: /vs Jaipur Strikers/i })).toBeVisible();
-  });
-
-  test("4E. Guarded match navigation: blocks navigation and displays authoritative toast when match is missing or player is ineligible", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
-    // Configure tournament campaigns linking to an ineligible squad match
-    await injectSyntheticSession(page, {
-      uid: "player-alpha",
-      role: "player",
-      tournaments: [
-        {
-          id: "match-ineligible-squad",
-          name: "Restricted Championship Final",
-          status: "Ongoing",
-          format: "T20",
-          notes: "Squad restricted tournament final.",
-        },
-      ],
-    });
-
-    await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
-
-    // 1. Attempt navigation to restricted match via campaign CTA
-    const banner = page.locator('[data-testid="campaign-hero-banner"]');
-    await expect(banner).toBeVisible();
-    await expect(banner.getByText("Restricted Championship Final")).toBeVisible();
-    await banner.getByRole("button", { name: "View Fixtures" }).click();
-
-    // Authoritative rejection toast appears
-    await expect(page.getByText(/You are not eligible to access this match/i)).toBeVisible({ timeout: 4000 });
-    // Remains on Home (did not navigate)
-    await expect(banner).toBeVisible();
   });
 
   // ── 5. Responsive Viewport Verification & Screenshots (5 Viewports) ────────

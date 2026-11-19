@@ -66,9 +66,9 @@ export function CampaignHeroBanner({
         badge: "Club Notice",
         badgeColor: "scarlet",
         imageUrl: (topPinned as any).mediaUrl || topPinned.imageUrl,
-        ctaText: "Read Notice",
-        ctaDestination: "announcements",
-        targetId: topPinned.id,
+        ctaText: (topPinned as any).matchId ? "View Match" : "Read Notice",
+        ctaDestination: (topPinned as any).matchId ? "matches" : "announcements",
+        targetId: (topPinned as any).matchId || topPinned.id,
       });
     }
 
