@@ -9,6 +9,8 @@
 **Initial Correction Commit:** `eaf01db82e707e7c8ef12ae62f556d3c3df5ff9f`  
 **Real Persisted Model Correction Commit:** `a2b998818f994f83b1a8d0554162e245cb75c7ea`  
 **Guarded Navigation Correction Commit:** `2d2436c1789134b22b0c9b0d425ab8bc7c3943c4`  
+**Prior Documentation Submission:** `ee66bc6ee003a28c3578cd7be0e745e6f265fafd`  
+**Tournament Navigation & Regression Test Commit:** `1922ff84204b0287bd499ec8c3d7fdf74b6b4e2a`  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Product & Technical Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -22,9 +24,12 @@ In Phase 2.1, we implemented a complete, production-quality, mobile-first **Play
 
 Following independent reviews, consolidated corrections were executed addressing:
 1. **Real Persisted Match Data Model & Eligibility:** Replaced speculative or non-existent fields (`squadPlayerIds`, `eligiblePlayerIds`) with authoritative evaluation of real persisted `MatchPayment` records (`lib/match-eligibility.ts`). Ineligible matches (squad-assigned fixtures where the player is not an assigned member) and tentative fixtures are hidden from ordinary player views, search results, and RSVP handlers, while preserving full administrator access.
-2. **Centralised Guarded Match Navigation:** Implemented `validateMatchNavigation` and wired a unified guarded navigation handler (`handleGuardedNavigateToMatch`) across all Player Home entry points: search-result match clicks, Upcoming Matches card action ("details & directions →"), Match Day Alert cards and "View Match" CTA, and generic tab-navigation dispatches. When target match is missing or eligibility is revoked, navigation is blocked and an authoritative error toast is displayed.
+2. **Centralised Guarded Match Navigation & Tournament Campaign Routing:**
+   - Implemented `validateMatchNavigation(matchId, matches, player, payments, isAdmin)` returning `{ allowed: boolean; error?: "NOT_FOUND" | "INELIGIBLE"; message?: string }`.
+   - Wired a unified guarded navigation handler (`handleGuardedNavigateToMatch`) across all Player Home match entry points: search-result match clicks, Upcoming Matches card action ("details & directions →"), Match Day Alert cards and "View Match" CTA, and generic match tab-navigation dispatches. When the target match is missing or eligibility is revoked, navigation is blocked and an authoritative error toast is displayed.
+   - Distinguished tournament campaign navigation from individual match navigation: tournament slides in `CampaignHeroBanner` passing tournament IDs route via `onNavigateToTab("matches", action)` to the Match Schedule with tournament search filtering without triggering missing-match validation errors.
 3. **Deterministic Birthday Parsing & Leap-Day Policy:** Replaced ambiguous JavaScript date parsing with a strict regex and calendar validator (`lib/birthday-utils.ts`) supporting both `YYYY-MM-DD` and `DD/MM/YYYY`, handling year-boundary rollovers (Dec/Jan), rejecting invalid calendar dates (e.g. Feb 29 in non-leap years), and implementing an approved Feb 28 non-leap-year celebration policy.
-4. **Zero Production Test Hooks:** Removed all debug/test shims from production components (`window.__TEST_...`), relying solely on standard DOM and component interfaces.
+4. **Zero Production Test Hooks:** Ensured production code contains no test shims or synthetic bypasses on `window`. Automated browser tests exercise real DOM, component callbacks, and synthetic state providers.
 5. **Portable Verification Artifacts:** Converted all visual screenshot references from machine-specific absolute paths to repository-relative paths and permanent GitHub links.
 
 All existing business rules, security boundaries, financial invariants (Option A policy for abandoned matches), and RBAC capabilities are strictly preserved without regressions.
@@ -67,23 +72,45 @@ The authoritative eligibility validator (`isPlayerEligibleForMatch`) enforces th
 
 ### B. Centralised Guarded Match Navigation (`lib/match-eligibility.ts` & `components/HomeTab.tsx`)
 All match-detail navigation triggers across Player Home are routed through a single guarded dispatch function (`handleGuardedNavigateToMatch`), which validates target availability and eligibility via `validateMatchNavigation`:
-- **Validation:**
+- **Validation Signature & Contract:**
   ```typescript
-  const navResult = validateMatchNavigation(mePlayer, matchId, matches, payments, isAdmin);
-  if (!navResult.canNavigate) {
-    showToast(navResult.errorReason || "You are not eligible to access this match.", "error");
-    return;
-  }
+  export function validateMatchNavigation(
+    matchId: string,
+    matches: Match[],
+    player: Player | null,
+    payments: MatchPayment[],
+    isAdmin: boolean
+  ): { allowed: boolean; error?: "NOT_FOUND" | "INELIGIBLE"; message?: string }
+  ```
+- **Handler Implementation in `HomeTab.tsx`:**
+  ```typescript
+  const handleGuardedNavigateToMatch = (matchId: string) => {
+    const navCheck = validateMatchNavigation(
+      matchId,
+      store.matches,
+      mePlayer,
+      store.payments,
+      isAdmin
+    );
+    if (!navCheck.allowed) {
+      showToast(navCheck.message || "You are not eligible to access this match.", "error");
+      return;
+    }
+    onNavigateToMatch?.(matchId);
+  };
   ```
 - **Entry Points Protected:**
   1. *Search Results:* Match list items in live search results (`data-testid="search-result-match-${m.id}"`).
   2. *Upcoming Matches Cards:* Card-level and "details & directions →" clicks (`UpcomingMatchesSection`).
-  3. *Match Day Alerts:* Alert banner container and "View Match" CTA button (`data-testid="match-day-alert-${match.id}"`).
-  4. *Generic Navigation:* Tab switches targeting `"matches"` with match ID parameters (`handleNavigate("matches", targetId)`).
-- **Behavior:**
+  3. *Match Day Alerts:* Alert banner container and "View Match" CTA button (`data-testid="match-day-alert-${match.id}"`), which verifies active eligibility while preserving legitimate administrator access.
+  4. *Generic Navigation Dispatches:* Tab switches targeting `"matches"` with match ID parameters (`handleNavigate("matches", targetId)`).
+- **Tournament Campaign Navigation Disambiguation:**
+  Tournament campaign slides in `CampaignHeroBanner` provide CTAs to "View Fixtures" with `targetId` set to the tournament ID and destination `"matches"`. `HomeTab.tsx` detects tournament IDs (`isTournament = targetId.startsWith("tournament_") || store.tournaments.some(t => t.id === targetId)`) and routes them directly via `onNavigateToTab("matches", action)`. `MatchesTab.tsx` resolves the tournament and filters fixtures by tournament name (`tournName.includes(q)`). Tournament navigation bypasses individual match ID checks, preventing false "match not found" errors.
+- **Authoritative Behavior & Security Invariants:**
   - Eligible players are navigated directly to the match details view.
-  - Ineligible players or missing matches receive an immediate error toast (`"You are not eligible to access this match."` or `"Match not found or no longer available."`) and navigation is prevented.
-  - Administrators maintain full navigation access to all active and tentative fixtures.
+  - Ineligible players (e.g. squad assigned to teammates excluding player, or unlinked/disabled profiles) receive an immediate authoritative error toast (`"You are not eligible to access this match."`) and navigation is blocked.
+  - Missing matches receive an immediate authoritative error toast (`"Match not found or no longer available."`) and navigation is blocked.
+  - Administrators maintain full navigation access to all active, restricted squad, and tentative fixtures.
 
 ### C. Strict Birthday Parsing & Leap-Day Policy (`lib/birthday-utils.ts`)
 - Strict regex validation enforcing exact `DD/MM/YYYY` (`^\d{2}\/\d{2}\/\d{4}$`) or `YYYY-MM-DD` (`^\d{4}-\d{2}-\d{2}$`) formats.
@@ -113,12 +140,12 @@ All match-detail navigation triggers across Player Home are routed through a sin
 | **6. Upcoming Matches** | Shows next 4 matches with date, venue, directions link, format, jersey, 1-tap RSVP | PASS | `UpcomingMatchesSection.tsx`, tested in Playwright test 2 |
 | **7. Match Eligibility** | Player sees only eligible matches; ineligible squad & tentative matches are hidden | PASS | `lib/match-eligibility.ts`, tested in Playwright test 2, 3 & unit tests |
 | **8. Ineligible RSVP Blocking** | Direct RSVP attempts for ineligible matches are rejected with authoritative error toast | PASS | `HomeTab.tsx`, tested in Playwright test 3 & unit tests |
-| **9. Guarded Match Navigation** | All match navigation entry points validate eligibility before navigating; blocks ineligible access | PASS | `HomeTab.tsx`, `validateMatchNavigation`, tested in Playwright tests 4B, 4C, 4D, 4E & unit tests |
-| **10. Admin Access Preservation** | Admins retain full visibility and navigation into all active and tentative fixtures | PASS | `app/page.tsx`, `lib/match-eligibility.ts`, tested in Playwright test 4D |
+| **9. Guarded Match Navigation** | All match navigation entry points validate eligibility before navigating; blocks ineligible access | PASS | `HomeTab.tsx`, `validateMatchNavigation`, tested in Playwright tests 4B–4H & unit tests |
+| **10. Admin Access Preservation** | Admins retain full visibility and navigation into all active, restricted squad, and tentative fixtures | PASS | `app/page.tsx`, `lib/match-eligibility.ts`, tested in Playwright tests 4C, 4H |
 | **11. Announcements Modal** | Lists notices with pinned status; opens accessible dialog with close button | PASS | `ClubAnnouncementsSection.tsx`, tested in Playwright test 5 |
 | **12. Team Birthdays** | Horizontal carousel with deterministic parsing (`YYYY-MM-DD`, `DD/MM/YYYY`) & 14-day window | PASS | `BirthdaysCarousel.tsx`, `lib/birthday-utils.ts`, Playwright test 5 & unit tests |
 | **13. Feed Preview** | Displays recent club activity with author, timestamp, media, comment count | PASS | `ClubFeedPreview.tsx`, tested in Playwright test 5 |
-| **14. Responsive Viewports** | Validated across 360×800, 375×812, 390×844, 768×1024, 1280×800 with 0 horizontal overflow | PASS | Playwright tests 7–11, 22–26 |
+| **14. Responsive Viewports** | Validated across 360×800, 375×812, 390×844, 768×1024, 1280×800 with 0 horizontal overflow | PASS | Playwright tests 6–10, 16–20 |
 
 ---
 
@@ -127,16 +154,19 @@ All match-detail navigation triggers across Player Home are routed through a sin
 The full Playwright test suite (`e2e/player-home-behavioral.spec.ts`) was executed across Chromium (both Mobile Chrome and Desktop Chrome projects):
 
 ```
-Running 30 tests using 1 worker
+Running 36 tests using 1 worker
 
   ✓ 1. Player Home loads greeting, identity, search, hero carousel, performance, and dues (Mobile Chrome)
   ✓ 2. Displays next 4 upcoming matches with accurate availability and enables 1-tap RSVP updates (Mobile Chrome)
   ✓ 3. Enforces player-specific match visibility, search isolation, and blocks ineligible match RSVP (Mobile Chrome)
   ✓ 4A. Pay Now navigates to Finance tab (Mobile Chrome)
-  ✓ 4B. Guarded match navigation: eligible player navigates from search results to Match Details view (Mobile Chrome)
-  ✓ 4C. Guarded match navigation: eligible player navigates from Upcoming Matches card to Match Details view (Mobile Chrome)
-  ✓ 4D. Guarded match navigation: admin navigates to restricted and tentative matches from search (Mobile Chrome)
-  ✓ 4E. Guarded match navigation: revoked eligibility or missing match blocks navigation and shows error toast (Mobile Chrome)
+  ✓ 4B. Tournament campaign navigation opens tournament fixtures without missing-match rejection (Mobile Chrome)
+  ✓ 4C. Match Day Alert: eligible player opens match, ineligible player blocked, admin retains access (Mobile Chrome)
+  ✓ 4D. Guarded match navigation: eligibility revoked after rendering blocks navigation and shows error toast (Mobile Chrome)
+  ✓ 4E. Guarded match navigation: missing match blocks navigation and shows authoritative error toast (Mobile Chrome)
+  ✓ 4F. Guarded match navigation: eligible player navigates from search results to Match Details view (Mobile Chrome)
+  ✓ 4G. Guarded match navigation: eligible player navigates from Upcoming Matches card to Match Details view (Mobile Chrome)
+  ✓ 4H. Guarded match navigation: admin navigates to restricted and tentative matches from search (Mobile Chrome)
   ✓ 5. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity (Mobile Chrome)
   ✓ 6. Responsive visual validation at 360x800 with zero horizontal overflow (Mobile Chrome)
   ✓ 7. Responsive visual validation at 375x812 with zero horizontal overflow (Mobile Chrome)
@@ -147,10 +177,13 @@ Running 30 tests using 1 worker
   ✓ 12. Displays next 4 upcoming matches with accurate availability and enables 1-tap RSVP updates (Desktop Chrome)
   ✓ 13. Enforces player-specific match visibility, search isolation, and blocks ineligible match RSVP (Desktop Chrome)
   ✓ 14A. Pay Now navigates to Finance tab (Desktop Chrome)
-  ✓ 14B. Guarded match navigation: eligible player navigates from search results to Match Details view (Desktop Chrome)
-  ✓ 14C. Guarded match navigation: eligible player navigates from Upcoming Matches card to Match Details view (Desktop Chrome)
-  ✓ 14D. Guarded match navigation: admin navigates to restricted and tentative matches from search (Desktop Chrome)
-  ✓ 14E. Guarded match navigation: revoked eligibility or missing match blocks navigation and shows error toast (Desktop Chrome)
+  ✓ 14B. Tournament campaign navigation opens tournament fixtures without missing-match rejection (Desktop Chrome)
+  ✓ 14C. Match Day Alert: eligible player opens match, ineligible player blocked, admin retains access (Desktop Chrome)
+  ✓ 14D. Guarded match navigation: eligibility revoked after rendering blocks navigation and shows error toast (Desktop Chrome)
+  ✓ 14E. Guarded match navigation: missing match blocks navigation and shows authoritative error toast (Desktop Chrome)
+  ✓ 14F. Guarded match navigation: eligible player navigates from search results to Match Details view (Desktop Chrome)
+  ✓ 14G. Guarded match navigation: eligible player navigates from Upcoming Matches card to Match Details view (Desktop Chrome)
+  ✓ 14H. Guarded match navigation: admin navigates to restricted and tentative matches from search (Desktop Chrome)
   ✓ 15. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity (Desktop Chrome)
   ✓ 16. Responsive visual validation at 360x800 with zero horizontal overflow (Desktop Chrome)
   ✓ 17. Responsive visual validation at 375x812 with zero horizontal overflow (Desktop Chrome)
@@ -158,7 +191,7 @@ Running 30 tests using 1 worker
   ✓ 19. Responsive visual validation at 768x1024 with zero horizontal overflow (Desktop Chrome)
   ✓ 20. Responsive visual validation at 1280x800 with zero horizontal overflow (Desktop Chrome)
 
-30 passed (36.4s)
+36 passed (1.1m)
 ```
 
 ---
@@ -183,7 +216,7 @@ All regression test suites across the application passed cleanly with zero regre
 
 | Suite | Command | Total Tests | Passed | Failed | Skipped | Status |
 |---|---|---|---|---|---|---|
-| Player Home Real Browser | `npx playwright test e2e/player-home-behavioral.spec.ts` | 30 | 30 | 0 | 0 | PASS |
+| Player Home Real Browser | `npx playwright test e2e/player-home-behavioral.spec.ts` | 36 | 36 | 0 | 0 | PASS |
 | Phase 2.1 Corrections Unit | `node --test tests/phase2.1-player-home-corrections.test.mjs` | 32 | 32 | 0 | 0 | PASS |
 | Shared Shell Real Browser | `npx playwright test e2e/shared-shell-behavioral.spec.ts --project="Mobile Chrome"` | 7 | 7 | 0 | 0 | PASS |
 | UI/UX Design System | `node --test tests/ui-ux-design.test.mjs` | 14 | 14 | 0 | 0 | PASS |
@@ -207,6 +240,8 @@ All regression test suites across the application passed cleanly with zero regre
 | `a2b998818f994f83b1a8d0554162e245cb75c7ea` | Fix | `fix(ui): enforce real persisted match eligibility and strict birthday validation` |
 | `e571b16c80c2f21fe1f9e21820689b94236e78ad` | Docs | `docs(ui): finalize phase 2.1 report with real match model and strict validation` |
 | `2d2436c1789134b22b0c9b0d425ab8bc7c3943c4` | Fix | `fix(ui): centralise guarded match navigation across player home` |
+| `ee66bc6ee003a28c3578cd7be0e745e6f265fafd` | Docs | `docs(ui): update phase 2.1 report with guarded navigation verification` (Prior documentation submission) |
+| `1922ff84204b0287bd499ec8c3d7fdf74b6b4e2a` | Fix | `fix(ui): resolve tournament navigation and add genuine guarded navigation tests` (Implementation Commit) |
 
 ---
 
