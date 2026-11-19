@@ -281,7 +281,7 @@ describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Real-Model Mat
           id: "pay-1",
           matchId: standardMatch.id,
           playerId: activePlayer.id,
-          status: "Not Playing",
+          status: "Waived",
           availability: "Waitlist",
         },
         {

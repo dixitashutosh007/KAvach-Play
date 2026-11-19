@@ -32,13 +32,16 @@ export function isSquadAssignedToMatch(
  *
  * Requirements:
  * - A player is considered part of the assigned squad ONLY if they have an authoritative
- *   admin squad assignment: an active match fee obligation (status !== "Not Playing",
- *   specifically "Paid" | "Unpaid" | "Waived") OR an explicit admin waitlist assignment
- *   (availability === "Waitlist" where a squad is officially assigned to the match).
- * - Player-controlled availability RSVPs ("Confirmed", "Playing", "Tentative", "Yes", "No", "Out")
+ *   admin squad assignment: an active match fee obligation (status !== "Not Playing" && status !== "Failed",
+ *   specifically "Paid" | "Unpaid" | "Waived") OR an explicit active admin waitlist assignment
+ *   (availability === "Waitlist" where a squad is officially assigned to the match and status is active).
+ * - Administrative removal (status === "Not Playing") and failed transactions (status === "Failed")
+ *   are strictly authoritative across every eligibility path. Stale availability values (including "Waitlist"
+ *   and "Confirmed") strictly cannot override a removal status.
+ * - Player-controlled availability RSVPs ("Confirmed", "Playing", "Tentative", "Yes", "No", "Out", "Waitlist")
  *   with status === "Not Playing" strictly do NOT establish squad membership.
- * - If an admin removes a player from the squad (setting status === "Not Playing"),
- *   their squad membership is revoked immediately, even if availability was previously "Confirmed".
+ * - If an admin removes a player from the squad or waitlist (setting status === "Not Playing"),
+ *   their squad membership is revoked immediately.
  */
 export function isPlayerInAssignedSquad(
   playerId: string,
@@ -50,9 +53,11 @@ export function isPlayerInAssignedSquad(
       p.matchId === matchId &&
       p.playerId === playerId &&
       !p.guestName &&
-      ((p.status !== "Not Playing" &&
-        p.status !== "Failed" &&
-        (p.status === "Paid" || p.status === "Unpaid" || p.status === "Waived")) ||
+      p.status !== "Not Playing" &&
+      p.status !== "Failed" &&
+      (p.status === "Paid" ||
+        p.status === "Unpaid" ||
+        p.status === "Waived" ||
         (p.availability === "Waitlist" && isSquadAssignedToMatch(matchId, payments)))
   );
 }

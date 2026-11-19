@@ -15,6 +15,8 @@
 **Correction Pass 3 starting baseline:** `904a71ccd08a29d0bb1b5fc15188efcaee22dadd`  
 **Correction Pass 3 implementation commit:** `450c4873cfa8881273934397a61d1ea5d3ee212a`  
 **Correction Pass 3 verified GitHub Actions CI Run:** [Run 44570189619](https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44570189619) (All 5 jobs passed)  
+**Correction Pass 4 starting baseline:** `5c562f23b2075727e466b040e340b12fe920eb18`  
+**Correction Pass 4 implementation commit:** `PENDING_COMMIT`  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Technical & Product Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -24,7 +26,7 @@
 
 ## 1. Executive Summary & Objective
 
-In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach Play, followed by three targeted independent review correction passes addressing material findings:
+In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach Play, followed by four targeted independent review correction passes addressing material findings:
 
 ### Correction Pass 1 Key Findings Resolved
 1. **P0 — Enforce eligibility for every match-detail entry point (`components/matches/PlayerMatchCenter.tsx`):** Match detail views strictly enforce authoritative eligibility validation (`validateMatchNavigation`) across all entry points: in-app match selection, `defaultMatchId`, `defaultAction`, URL/deep-link parameters (`?match=` or `?matchId=`), browser history back/forward navigation (`popstate`), and dynamic eligibility revocation while the modal is open. When a player is ineligible, match details fail closed (`selectedMatch` evaluates to `null`), the invalid URL parameters are purged, and a prominent restricted-access alert is rendered.
@@ -67,6 +69,11 @@ In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach
    - Enforced finite number validation across `match.fee`, `feeOverride`, `feeCollectedAmount`, `feeOffsetAmount`, `totalCollected`, `totalOffset`, `totalRecognized`, and `netPayable`.
    - Guaranteed that non-finite or malformed values never silently convert unpaid obligations to a paid state.
 
+### Correction Pass 4 Key Findings Resolved
+1. **P0 — Fix waitlist eligibility after administrative removal (`lib/match-eligibility.ts`):**
+   - **Root Cause:** In `lib/match-eligibility.ts`, the waitlist alternative `(p.availability === "Waitlist" && isSquadAssignedToMatch(matchId, payments))` permitted access without checking whether the player's status was `Not Playing` or `Failed`. When an admin explicitly removed a waitlisted player, the removal was persisted by setting `status: "Not Playing"` (documented in `firestore.rules:601`), but the document retained its existing `availability: "Waitlist"` value. As long as other assigned squad members existed, the removed player retained unauthorized match access.
+   - **Remediation:** In `isPlayerInAssignedSquad()`, `p.status !== "Not Playing" && p.status !== "Failed"` was enforced as a non-bypassable top-level prerequisite across all eligibility paths. Administrative removals (`status === "Not Playing"`) and failed transactions (`status === "Failed"`) are now strictly authoritative. Stale `availability: "Waitlist"` (and `availability: "Confirmed"`) cannot override removal. Furthermore, ordinary player self-RSVPs (which initialize with `status: "Not Playing"`) cannot create waitlist squad membership. Actively assigned waitlisted players (assigned by an admin with active fee statuses `Waived`, `Unpaid`, or `Paid`) retain legitimate access.
+
 ---
 
 ## 2. Requirements Traceability Matrix
@@ -97,6 +104,7 @@ In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach
 | **22** | Authoritative fee override precedence (timestamp precedence, safe fallback on tie) | Pass 2 & Pass 3 Review & `lib/personal-match-payment.ts` (`resolvePlayerFeeOverride`) | `phase2.2-player-match-center.test.mjs` (Section 9 Tests 1–8) | **Verified** |
 | **23** | Strict separation of player RSVP from administrative squad assignment | Pass 3 Review & `lib/match-eligibility.ts`, `hooks/useStore.ts`, `components/HomeTab.tsx` | `phase2.2-player-match-center.test.mjs` (Section 6 Tests 11–18) | **Verified** |
 | **24** | Validation of all monetary amounts as finite, non-negative numbers | Pass 3 Review & `lib/personal-match-payment.ts` (`parseMonetaryAmount`) | `phase2.2-player-match-center.test.mjs` (Section 10 Tests 1–11) | **Verified** |
+| **25** | Authoritative waitlist removal & removal precedence over stale availability | Pass 4 Review & `lib/match-eligibility.ts` (`isPlayerInAssignedSquad`) | `phase2.2-player-match-center.test.mjs` (Section 6 Tests 19–29) | **Verified** |
 
 ---
 
@@ -145,6 +153,19 @@ In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach
   - Applied to `match.fee`, `feeOverride`, `feeCollectedAmount`, `feeOffsetAmount`, `totalCollected`, `totalOffset`, `totalRecognized`, and `netPayable`.
   - Guarantees that malformed or non-finite inputs can never wipe balances or mark unpaid obligations as paid.
 
+### 6. P0 — Authoritative Waitlist Removal & Elimination of Stale Availability Bypass (`lib/match-eligibility.ts`)
+- **Root Cause & Write-Path Analysis:**
+  - In KAvach Play, match payment records are never deleted (`firestore.rules:601`: `allow delete: if false; // Do not delete payments, mark as Not Playing`).
+  - Administrative squad and waitlist removals are persisted by setting `status = "Not Playing"` (or `status = "Failed"` on failure) via `store.updatePaymentStatus()`.
+  - However, `updatePaymentStatus()` does not overwrite the `availability` field when mutating status. Therefore, removed waitlisted players retained stale `availability: "Waitlist"`.
+  - In `lib/match-eligibility.ts`, `isPlayerInAssignedSquad()` allowed `(p.availability === "Waitlist" && isSquadAssignedToMatch(matchId, payments))` without independently requiring `p.status !== "Not Playing" && p.status !== "Failed"`.
+  - Consequently, once other squad members had active fee assignments, removed waitlisted players or ordinary players attempting self-RSVP with waitlist availability could bypass squad gating and access match details.
+- **Remediation:**
+  - Enforced `p.status !== "Not Playing" && p.status !== "Failed"` as a top-level prerequisite for all squad and waitlist access in `isPlayerInAssignedSquad()`.
+  - Administrative removal is now unconditionally authoritative: `status === "Not Playing"` or `status === "Failed"` denies access immediately regardless of `availability` value.
+  - Actively assigned waitlisted players (assigned by admin with active fee obligations or waivers `Waived`, `Unpaid`, or `Paid`) retain legitimate access.
+  - Updated Phase 2.1 Scenario 3 test fixture to use active administrative waitlist status (`status: "Waived"`).
+
 ---
 
 ## 4. Verification & Testing Evidence
@@ -159,7 +180,7 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
   ▶ 3. Availability State Derivation (1 test pass)
   ▶ 4. Clarified Abandoned-Match Payment Presentation (Option A Policy) (5 tests pass)
   ▶ 5. Match-Detail Entry Point & Deep Link Pre-flight Eligibility (10 tests pass)
-  ▶ 6. Assigned-Squad Eligibility Bypass & RSVP Decoupling Regression Tests (18 tests pass)
+  ▶ 6. Assigned-Squad Eligibility Bypass, RSVP Decoupling & Waitlist Removal Regression Tests (29 tests pass)
     ✔ 1. Open fixture with no assigned squad: active verified player is eligible
     ✔ 2. Open fixture: player can submit RSVP
     ✔ 3. Player responds Yes before squad assignment, then is excluded: denied
@@ -178,6 +199,17 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
     ✔ 16. Ordinary RSVP does not establish squad assignment (multiple player RSVPs)
     ✔ 17. Admin access remains intact across all squad states
     ✔ 18. Direct URL and browser back/forward history cannot bypass eligibility
+    ✔ 19. Active administrative waitlist assignment grants eligibility when squad is assigned
+    ✔ 20. Active waitlist player with Unpaid or Paid status grants eligibility
+    ✔ 21. Waitlisted player removed by admin (status: 'Not Playing'): access is strictly denied
+    ✔ 22. Removed waitlisted player retains stale availability 'Waitlist': status 'Not Playing' is authoritative and denies access
+    ✔ 23. Another player's active squad assignment exists: must not restore removed waitlisted player's access
+    ✔ 24. Waitlisted player with Failed status is strictly denied
+    ✔ 25. Ordinary player RSVP cannot create waitlist squad membership on squad-assigned match
+    ✔ 26. Open fixture with no assigned squad remains accessible to eligible players even with waitlist RSVP
+    ✔ 27. Explicitly assigned player remains eligible across all squad states
+    ✔ 28. Admin retains access across all waitlist and squad removal states
+    ✔ 29. Deep link, direct selection, and popstate navigation fail closed for removed waitlisted player
   ▶ 7. Payment Transaction Deduplication Tests (6 tests pass)
     ✔ 1. Two docs with same Razorpay payment ID count once
     ✔ 2. Two different Razorpay payment IDs count independently
@@ -218,15 +250,15 @@ Command: `node --test tests/phase2.2-player-match-center.test.mjs`
     ✔ 10. Match fee finite safeguard: non-finite match.fee defaults safely to 0
     ✔ 11. Net payable and totalRecognized are always finite and non-negative
 ✔ Phase 2.2 Player Match Center: Payment Derivation & Match Grouping
-ℹ tests 94
+ℹ tests 105
 ℹ suites 11
-ℹ pass 94
+ℹ pass 105
 ℹ fail 0
 ```
 
 ### 2. Full Functional Suite
 Command: `npm run test:functional`
-- **Result:** 385 tests passed across 86 suites, 0 failures.
+- **Result:** 396 tests passed across 86 suites, 0 failures.
 
 ### 3. Firestore Security Rules Emulator Tests
 Command: `npm run test:emulator`
@@ -295,11 +327,21 @@ All screenshots are stored under `docs/qa/screenshots/player-matches/` using rep
    - Expanded Section 6 to 18 regression tests covering squad exclusion, Confirmed RSVP on open fixtures, admin access, and deep link validation.
    - Expanded Section 9 to 8 deterministic fee override precedence tests.
    - Added Section 10 with 11 comprehensive monetary finite number validation tests (94 tests total in suite, all passing).
-7. `docs/redesign/reports/phase-2.2-player-match-center.md`:
-   - Updated report with Correction Pass 3 root causes, data model write paths, authoritative squad assignment separation, fee override precedence rules, finite monetary validation, updated test counts (94 unit tests, 385 functional tests, 308 emulator tests, 108 E2E tests, 4 prod smoke tests).
+
+### Files Modified in Correction Pass 4
+1. `lib/match-eligibility.ts`:
+   - Enforced `p.status !== "Not Playing" && p.status !== "Failed"` as a mandatory top-level prerequisite across all branches of `isPlayerInAssignedSquad()`.
+   - Guaranteed that administrative removal (`status: "Not Playing"`) and payment failures (`status: "Failed"`) are unconditionally authoritative over stale `availability: "Waitlist"` and stale `availability: "Confirmed"`.
+   - Prevented ordinary player RSVPs from obtaining squad access via waitlist availability.
+2. `tests/phase2.1-player-home-corrections.test.mjs`:
+   - Updated Scenario 3 test fixture to use active administrative waitlist status (`status: "Waived"`).
+3. `tests/phase2.2-player-match-center.test.mjs`:
+   - Expanded Section 6 with 11 dedicated waitlist eligibility, removal, stale availability, and deep-link regression tests (Tests 19–29, suite total 105 tests, all passing).
+4. `docs/redesign/reports/phase-2.2-player-match-center.md`:
+   - Updated report with Correction Pass 4 root causes, write-path analysis, waitlist removal precedence, updated test metrics (105 unit tests, 396 functional tests, 308 emulator tests), and CI run tracking.
 
 ---
 
 ## 7. Submission & Status
 
-Phase 2.2 (Correction Pass 3) is complete, all review findings resolved, and submitted for independent review verification and product-owner acceptance.
+Phase 2.2 (Correction Pass 4) is complete, all review findings resolved, and submitted for independent review verification and product-owner acceptance.

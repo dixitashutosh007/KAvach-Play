@@ -1076,6 +1076,219 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(navNotFound.allowed, false);
       assert.equal(navNotFound.error, "MATCH_NOT_FOUND");
     });
+
+    // ── Waitlist Eligibility & Administrative Removal Tests (Correction Pass 4) ──
+    it("19. Active administrative waitlist assignment grants eligibility when squad is assigned", () => {
+      const waitlistPayments = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-active",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Waived",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", waitlistPayments), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, waitlistPayments, false), true);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, waitlistPayments, false);
+      assert.equal(nav.allowed, true);
+    });
+
+    it("20. Active waitlist player with Unpaid or Paid status grants eligibility", () => {
+      const waitlistUnpaid = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-unpaid",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", waitlistUnpaid), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, waitlistUnpaid, false), true);
+      assert.equal(validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, waitlistUnpaid, false).allowed, true);
+
+      const waitlistPaid = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-paid",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Paid",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", waitlistPaid), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, waitlistPaid, false), true);
+      assert.equal(validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, waitlistPaid, false).allowed, true);
+    });
+
+    it("21. Waitlisted player removed by admin (status: 'Not Playing'): access is strictly denied", () => {
+      const removedWaitlist = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-removed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", removedWaitlist), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, removedWaitlist, false), false);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, removedWaitlist, false);
+      assert.equal(nav.allowed, false);
+      assert.equal(nav.error, "INELIGIBLE");
+    });
+
+    it("22. Removed waitlisted player retains stale availability 'Waitlist': status 'Not Playing' is authoritative and denies access", () => {
+      const staleWaitlist = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-stale",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", staleWaitlist), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, staleWaitlist, false), false);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, staleWaitlist, false);
+      assert.equal(nav.allowed, false);
+      assert.equal(nav.error, "INELIGIBLE");
+    });
+
+    it("23. Another player's active squad assignment exists: must not restore removed waitlisted player's access", () => {
+      const activeSquadWithRemovedWaitlist = [
+        { id: "p-teammate-1", matchId: "reg-match-squad", playerId: "player-beta", status: "Paid", availability: "Confirmed" },
+        { id: "p-teammate-2", matchId: "reg-match-squad", playerId: "player-gamma", status: "Unpaid", availability: "Confirmed" },
+        { id: "p-teammate-3", matchId: "reg-match-squad", playerId: "player-delta", status: "Waived", availability: "Confirmed" },
+        {
+          id: "p-wait-removed-multi",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+      ];
+      // Match definitely has an assigned squad
+      assert.equal(isSquadAssignedToMatch("reg-match-squad", activeSquadWithRemovedWaitlist), true);
+      // But removed waitlisted player cannot piggyback on the assigned squad
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", activeSquadWithRemovedWaitlist), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, activeSquadWithRemovedWaitlist, false), false);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, activeSquadWithRemovedWaitlist, false);
+      assert.equal(nav.allowed, false);
+      assert.equal(nav.error, "INELIGIBLE");
+    });
+
+    it("24. Waitlisted player with Failed status is strictly denied", () => {
+      const failedWaitlist = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-failed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Failed",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", failedWaitlist), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, failedWaitlist, false), false);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, failedWaitlist, false);
+      assert.equal(nav.allowed, false);
+      assert.equal(nav.error, "INELIGIBLE");
+    });
+
+    it("25. Ordinary player RSVP cannot create waitlist squad membership on squad-assigned match", () => {
+      // Ordinary player RSVP initializes with status "Not Playing"
+      const ordinaryRsvpWaitlist = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-rsvp-waitlist",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", ordinaryRsvpWaitlist), false);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, ordinaryRsvpWaitlist, false), false);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, ordinaryRsvpWaitlist, false);
+      assert.equal(nav.allowed, false);
+      assert.equal(nav.error, "INELIGIBLE");
+    });
+
+    it("26. Open fixture with no assigned squad remains accessible to eligible players even with waitlist RSVP", () => {
+      const openFixturePayments = [
+        {
+          id: "p-open-waitlist",
+          matchId: "reg-match-open",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+      ];
+      // Open fixture has no authoritative assigned squad
+      assert.equal(isSquadAssignedToMatch("reg-match-open", openFixturePayments), false);
+      // Active player remains eligible because fixture is open
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, openFixture, openFixturePayments, false), true);
+      const nav = validateMatchNavigation("reg-match-open", [openFixture], dummyPlayer, openFixturePayments, false);
+      assert.equal(nav.allowed, true);
+    });
+
+    it("27. Explicitly assigned player remains eligible across all squad states", () => {
+      const mixedPayments = [
+        { id: "p-assigned", matchId: "reg-match-squad", playerId: "player-alpha", status: "Unpaid", availability: "Confirmed" },
+        { id: "p-wait-other", matchId: "reg-match-squad", playerId: "player-beta", status: "Not Playing", availability: "Waitlist" },
+      ];
+      assert.equal(isPlayerInAssignedSquad("player-alpha", "reg-match-squad", mixedPayments), true);
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, mixedPayments, false), true);
+      const nav = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, mixedPayments, false);
+      assert.equal(nav.allowed, true);
+    });
+
+    it("28. Admin retains access across all waitlist and squad removal states", () => {
+      const removedWaitlist = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-removed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+      ];
+      assert.equal(isPlayerEligibleForMatch(dummyPlayer, squadAssignedMatch, removedWaitlist, true), true);
+      assert.equal(isPlayerEligibleForMatch(null, squadAssignedMatch, removedWaitlist, true), true);
+      const navAdmin = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, removedWaitlist, true);
+      assert.equal(navAdmin.allowed, true);
+    });
+
+    it("29. Deep link, direct selection, and popstate navigation fail closed for removed waitlisted player", () => {
+      const removedWaitlist = [
+        ...confirmedSquadPayments,
+        {
+          id: "p-wait-removed",
+          matchId: "reg-match-squad",
+          playerId: "player-alpha",
+          status: "Not Playing",
+          availability: "Waitlist",
+        },
+      ];
+      // Direct in-app selection
+      const navDirect = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, removedWaitlist, false);
+      assert.equal(navDirect.allowed, false);
+      assert.equal(navDirect.error, "INELIGIBLE");
+
+      // Deep link parameter (?match=reg-match-squad)
+      const navDeepLink = validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, removedWaitlist, false);
+      assert.equal(navDeepLink.allowed, false);
+      assert.equal(navDeepLink.error, "INELIGIBLE");
+    });
   });
 
   describe("7. Payment Transaction Deduplication Tests", () => {
