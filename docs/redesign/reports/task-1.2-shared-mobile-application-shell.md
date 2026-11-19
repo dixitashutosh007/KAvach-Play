@@ -1,5 +1,5 @@
 # KAvach Play — Task 1.2 Implementation Report
-## Shared Mobile Application Shell (Consolidated Review Corrections)
+## Shared Mobile Application Shell (Final Implementation & Real Browser Verification)
 
 **Document type:** Implementation & Verification Report  
 **Task ID:** Task 1.2 — Shared Mobile Application Shell  
@@ -10,24 +10,33 @@
 **Branch:** `mig-mov`  
 **Baseline Starting Commit:** `e699ac0ea4ff1d337feab2240510263caff6a00c`  
 **Initial Implementation Commit:** `08f10b0608888f9a1470f31f55d50b45eaa1e083`  
-**Review Corrections Commit:** `9932219fbc65b4b0dbceca8944a51f5e5185b12b`  
-**Status:** Complete — Ready for Independent Review  
+**Consolidated Corrections Commit:** `9932219fbc65b4b0dbceca8944a51f5e5185b12b`  
+**Focus Stability & Playwright Test Commit:** `7aaaddf45e00f3d2cc30c7d13f2508cd8a6c44cd`  
+**Status:** Complete — Ready for Independent Acceptance  
 
 ---
 
-## 1. Executive Summary & Review Corrections
+## 1. Executive Summary
 
-Following the independent technical review of Task 1.2, a consolidated correction round was executed to address all review findings across Admin More Drawer completeness, Admin navigation labelling, modal accessibility, header responsive verification, and automated test strengthening.
+Task 1.2 delivers the shared responsive application shell for KAvach Play, establishing consistent, accessible, and high-performance navigation across all viewports. Following independent technical review, all findings—including Admin More Drawer completeness, Admin navigation labelling, modal focus stability under parent rerenders, and actual Chromium browser validation—have been resolved and verified.
 
-### Consolidated Corrections Completed
+### Key Corrections Completed in this Final Cycle
 
-| Finding ID | Priority | Area | Remediation Applied | Changed Files |
-|---|---|---|---|---|
-| **REV-1.2-01** | **P1** | **Admin More Drawer Completeness** | Reconciled `ADMIN_OVERFLOW_TABS` with `ADMIN_MORE_ITEMS`. Added all 8 overflow destinations (`settings`, `studio`, `grounds`, `design`, `shop`, `leaderboard`, `opinion`, `notifications`) with granular RBAC permission gating (`isSuperAdmin`, `isStudioAdmin`, `isMatchAdmin`, `canDesign`, and feature flags). Added admin routing/rendering in `app/page.tsx` for `grounds`, `shop`, `leaderboard`, and `opinion`. | `components/layout/MoreDrawer.tsx`<br>`app/page.tsx` |
-| **REV-1.2-02** | **P1** | **Admin Navigation Labels** | Updated Admin mobile bottom navigation to the approved five-item hierarchy: **Overview \| Match Centre \| Player Roster \| Finance & Dues \| More**. Changed user-facing label and accessible name for button 3 from "Club" to **Player Roster** (`aria-label="Player Roster"`, `title="Player Roster"`). Maintained internal `club` route and active highlighting for `activeTab === "club" \|\| activeTab === "players"`. | `components/layout/MobileBottomNav.tsx` |
-| **REV-1.2-03** | **P1** | **More Drawer Modal Accessibility** | Implemented complete modal keyboard and focus management: automatic initial focus into close button, focus trap containing Tab and Shift+Tab within the sheet, focus restoration to trigger element on close, background page scroll lock (`document.body.style.overflow = "hidden"` on open, restored on close/unmount), and accessible labeling (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-describedby`). | `components/layout/MoreDrawer.tsx`<br>`components/layout/MobileBottomNav.tsx` |
-| **REV-1.2-04** | **P2** | **Header Responsiveness & Touch Targets** | Verified responsive geometry and flex constraints across 360px, 375px, 390px, and 768px viewports in both Player and Admin personas. Confirmed club name heading truncates cleanly with ellipsis (`min-w-0 flex-1 truncate`) without pushing action controls out (`shrink-0`). Enforced strict `min-w-[44px] min-h-[44px]` on all interactive elements including persona toggle. Added `grounds: "Grounds & Venues"` to header contextual title map. | `components/layout/AppHeader.tsx` |
-| **REV-1.2-05** | **P2** | **Strengthened Behavioural Verification** | Expanded automated test coverage with 4 new behavioural test suites in `tests/ui-ux-design.test.mjs` verifying navigation dispatch, RBAC permissions gating, focus trap / scroll lock algorithms, and responsive layout arithmetic. All 14 UX tests, 259 functional regression tests, ESLint, and Next.js 15 production build passed cleanly. | `tests/ui-ux-design.test.mjs` |
+1. **Focus Lifecycle Stability (`MoreDrawer.tsx`, `MobileBottomNav.tsx`)**:
+   - Decoupled modal state transitions from callback identity changes using `useCallback` for `handleCloseMore` and a stable ref `onCloseRef`.
+   - Replaced naive open/close effect with a transition gate (`wasOpenRef`): scroll lock (`document.body.style.overflow = "hidden"`) and initial focus are applied strictly on the `closed -> open` transition.
+   - Parent component re-renders while the drawer is open do not re-run cleanup, do not release the body scroll lock, and do not steal focus from open drawer controls.
+   - Escape keydown, backdrop click, and destination selection cleanly dismiss the drawer and restore focus to the original trigger button (`triggerRef`).
+2. **Real Playwright Browser Test Suite (`e2e/shared-shell-behavioral.spec.ts`)**:
+   - Created a focused Playwright browser test suite executing in headless Chromium against real Next.js application components.
+   - Built reusable deterministic synthetic session harness (`e2e/helpers/synthetic-session.ts`).
+   - Validated:
+     - Player navigation across all 5 destinations (`Home`, `Matches`, `Finance`, `Players`, `More`) and header avatar profile navigation.
+     - Admin navigation across all 5 hubs (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `More`) with active sub-view highlighting.
+     - Granular RBAC gating in the Admin More drawer (Grounds visible to Match Admin; Settings and disabled features hidden).
+     - Focus trap containment (Tab / Shift+Tab cycling), Escape dismissal, backdrop dismissal, scroll lock, and parent rerender stability.
+     - Responsive rendering across 360×800, 375×812, 390×844, and 768×1024 viewports with zero horizontal document overflow.
+     - Captured representative review screenshots under `docs/qa/screenshots/shell/`.
 
 ---
 
@@ -65,106 +74,84 @@ Task 1.2 enforces the approved information architecture for both personas:
                                                   • Notifications (all admins)
 ```
 
-### Key Architectural Behaviors
-1. **Profile Navigation:** Exclusively accessed via header avatar button (`data-testid="header-profile-avatar"`). Not present in bottom nav.
-2. **Player Roster in Admin:** Primary mobile navigation button 3 routes to `club` with accessible name `Player Roster`. When subview is `players` or `club`, active state highlights button 3.
-3. **Finance & Dues in Admin:** Primary mobile navigation button 4 routes to `finance`. When subview is `dues_and_reminders` or `finance`, active state highlights button 4.
-4. **Admin More Drawer RBAC:** Destinations are filtered by user permissions. For instance, a Match Admin only sees `grounds`, `shop`, `leaderboard`, `opinion`, and `notifications`, but is restricted from seeing `settings` or `studio`.
+---
+
+## 3. Modal Focus & Scroll Lifecycle
+
+The `<MoreDrawer>` focus management guarantees accessibility and state stability:
+
+```
+User Clicks 'More' Trigger
+        │
+        ▼
+   [open: true]
+        │
+        ├─► Capture trigger element in previouslyFocusedElementRef
+        ├─► Lock document.body.style.overflow = "hidden"
+        ├─► Move initial focus to Close Button (closeBtnRef)
+        └─► Attach Escape listener & Focus Trap (Tab/Shift+Tab)
+        │
+ Parent Rerenders? (State Update, Window Resize, Props change)
+        │
+        ├─► wasOpenRef is true: NO-OP
+        ├─► Scroll lock remains "hidden"
+        └─► Active focus inside drawer remains undisturbed
+        │
+User Presses Escape / Clicks Backdrop / Selects Destination
+        │
+        ▼
+  [open: false]
+        │
+        ├─► Release scroll lock: restore original body overflow
+        ├─► Restore focus to trigger element (previouslyFocusedElementRef)
+        └─► Detach keydown listeners
+```
 
 ---
 
-## 3. Modal Accessibility & Focus Management
+## 4. Real Browser Verification (Playwright)
 
-The `<MoreDrawer>` component implements comprehensive modal accessibility per W3C WAI-ARIA Dialog (Modal) specifications:
+### 4.1 Test Execution Results
 
-### Focus Containment & Trap Lifecycle
-1. **Trigger Memory:** When `open` transitions to `true`, the triggering button (`triggerRef` or `document.activeElement`) is captured in `previouslyFocusedElementRef`.
-2. **Initial Focus:** Initial focus moves directly to the close button (`closeBtnRef.current?.focus()`).
-3. **Focus Trap:** A `keydown` listener intercepts `Tab` and `Shift+Tab`:
-   - `Shift + Tab` on the first focusable element wraps focus to the last focusable element in the drawer.
-   - `Tab` on the last focusable element wraps focus back to the close button.
-4. **Escape Dismissal:** Pressing `Escape` calls `onClose()`.
-5. **Backdrop Dismissal:** Tapping the backdrop calls `onClose()`.
-6. **Focus Restoration:** On drawer exit (via close button, Escape, backdrop, or destination selection), cleanup restores focus to the original trigger element.
-7. **Scroll Lock:** Background page scroll is locked via `document.body.style.overflow = "hidden"` on open, and cleanly restored to original overflow upon close or component unmount.
+Command:
+```bash
+npx playwright test e2e/shared-shell-behavioral.spec.ts --project="Mobile Chrome"
+```
+
+Output:
+```
+Running 7 tests using 1 worker
+
+  ✓ 1. Player navigation renders 5 approved items, changes screens, opens drawer, and routes avatar to profile (4.0s)
+  ✓ 2. Admin navigation renders 5 approved items, respects RBAC in More drawer, and hides unauthorized hubs (1.1s)
+  ✓ 3. MoreDrawer implements focus trap, scroll lock, Escape dismissal, and preserves state across rerenders (701ms)
+  ✓ 4. Responsive check at 360x800 (360x800) has zero overflow and usable controls (1.1s)
+  ✓ 5. Responsive check at 375x812 (375x812) has zero overflow and usable controls (504ms)
+  ✓ 6. Responsive check at 390x844 (390x844) has zero overflow and usable controls (515ms)
+  ✓ 7. Responsive check at 768x1024 (768x1024) has zero overflow and usable controls (678ms)
+
+  7 passed (13.6s)
+```
+
+### 4.2 Browser Screenshots Captured
+
+Representative screenshots saved in `docs/qa/screenshots/shell/`:
+1. `shell-player-360x800.png`: Standard Player View at narrow 360px viewport showing header branding, avatar, and 5-item bottom navigation.
+2. `shell-admin-360x800.png`: Admin Console at 360px viewport showing persona switcher, overview banner, and **Overview | Match Centre | Player Roster | Finance & Dues | More** bottom navigation.
+3. `shell-drawer-360x800.png`: Slide-up More drawer opened over darkened backdrop at 360px showing RBAC-filtered administrative hubs and close button.
+4. `shell-admin-768x1024.png`: Admin Console at tablet viewport (768px) showing contextual active badge and expanded header affordances.
 
 ---
 
-## 4. Viewport Responsiveness Evidence (360px – 768px)
+## 5. Automated Verification Summary
 
-### Geometric & Layout Verification
-
-| Viewport Width | Persona | Action Controls Width | Available Brand Width | Result |
-|---|---|---|---|---|
-| **360px** (Narrow Mobile) | **Admin** | ~156px (Toggle 60px + Bell 44px + Avatar 44px + gaps 8px) | 136px (360 - 16 padding - 156 controls - 8 gap - 44 logo) | **No Overflow**: Club name truncates with ellipsis (`truncate min-w-0 flex-1`). Controls never pushed off screen (`shrink-0`). |
-| **360px** (Narrow Mobile) | **Player** | ~92px (Bell 44px + Avatar 44px + gap 4px) | 200px | **No Overflow**: Spacious brand heading presentation with single-line truncation if name exceeds 200px. |
-| **375px** (Standard Mobile) | **Admin** | ~156px | 151px | **No Overflow**: Clean presentation, 0 horizontal scroll. |
-| **390px** (Large Mobile) | **Admin** | ~156px | 166px | **No Overflow**: Clean presentation, 0 horizontal scroll. |
-| **768px** (Tablet / Breakpoint) | **Admin** | ~220px (Toggle + Bell + Avatar + Exit button) | 480px | **No Overflow**: Displays contextual active view title badge (`sm:inline-flex`) alongside club brand. |
-
----
-
-## 5. Verification & Test Evidence
-
-### 5.1 Automated Test Execution Summary
-
-| Test Suite / Check | Command | Result | Details |
+| Suite / Command | Execution Engine | Result | Verification Scope |
 |---|---|---|---|
-| **UX Design & Shell Tests** | `node --test tests/ui-ux-design.test.mjs` | **14 / 14 PASS** | Validates design tokens, touch targets (>= 44px), 360px collision avoidance, 5-item Player & Admin navigation, AppHeader avatar, MoreDrawer completeness, focus trap, scroll lock, and responsive geometry. |
-| **All Functional Unit Tests** | `npm run test:functional` | **259 / 259 PASS** | Complete functional test suite spanning 71 test suites (accounting formulas, deterministic timezone dates, RBAC permissions, late fees, utilities). |
-| **ESLint Quality Check** | `npm run lint` | **0 ERRORS** | Clean code quality across all application components. (Only 4 pre-existing Firestore rules info warnings). |
-| **Production Build** | `npm run build` | **19 / 19 ROUTES** | Next.js 15 optimized production build passed with static generation for all 19 routes and zero TypeScript/type-check errors. |
-
-### 5.2 Verification Output Excerpts
-
-#### `node --test tests/ui-ux-design.test.mjs`
-```
-✔ UX-002: Design tokens define approved palette and maintain legacy runtime theme compatibility (1.586ms)
-✔ UX-003: LoadingScreen uses light-first scarlet sports-tech design and has zero dark-green #022c22 (0.446ms)
-✔ UX-004: MobileBottomNav provides complete navigation for both admin and player personas (0.370ms)
-✔ UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and prevents narrow viewport collision (0.793ms)
-✔ UX-P0-01: Player Club Screen is connected and renders player sub-views (0.627ms)
-✔ UX-P0-03: Player MobileBottomNav renders the 5 approved primary items (0.300ms)
-✔ UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View (0.363ms)
-✔ UX-P1-02: Enforce scarlet-led design tokens and eliminate hardcoded emerald shadows and dark themes (1.661ms)
-✔ UX-P1-03 & UX-P1-04: Adaptive responsive cards for dense mobile data and rich empty states (0.708ms)
-✔ UX-SHELL-01: Shared application shell components contract (Task 1.2) (1.322ms)
-✔ UX-SHELL-02: Behavioural verification — Player and Admin navigation dispatch and active state (0.139ms)
-✔ UX-SHELL-03: Behavioural verification — Admin More Drawer completeness and RBAC permissions gating (0.498ms)
-✔ UX-SHELL-04: Behavioural verification — MoreDrawer modal accessibility, focus containment, and scroll lock (0.172ms)
-✔ UX-SHELL-05: Behavioural verification — AppHeader responsiveness and persona switching across viewports (0.072ms)
-ℹ tests 14 | suites 0 | pass 14 | fail 0 | cancelled 0 | duration_ms 86.91ms
-```
-
-#### `npm run build` (Next.js 15)
-```
- ✓ Compiled successfully
- ✓ Linting and checking validity of types
- ✓ Collecting page data
- ✓ Generating static pages (19/19)
- ✓ Finalizing page optimization
-
-Route (app)                              Size     First Load JS
-┌ ○ /                                    61.8 kB         392 kB
-├ ○ /_not-found                          178 B          99.6 kB
-├ ○ /admin-tools                         3.44 kB         304 kB
-├ ƒ /api/admin/generate-kavach-ids       177 B          99.6 kB
-├ ƒ /api/admin/merge-players             179 B          99.6 kB
-├ ƒ /api/admin/reconcile-abandoned       179 B          99.6 kB
-├ ƒ /api/calendar/sync                   178 B          99.6 kB
-├ ƒ /api/email/send                      179 B          99.6 kB
-├ ƒ /api/player/link-account             179 B          99.6 kB
-├ ƒ /api/razorpay/order                  179 B          99.6 kB
-├ ƒ /api/razorpay/webhook                178 B          99.6 kB
-├ ƒ /api/whatsapp/invite                 179 B          99.6 kB
-├ ƒ /api/whatsapp/remind-studio          179 B          99.6 kB
-├ ƒ /api/whatsapp/send                   179 B          99.6 kB
-├ ○ /legal                               178 B           109 kB
-├ ƒ /pay/[playerId]                      2.53 kB         324 kB
-├ ○ /policy                              178 B           109 kB
-└ ○ /prototype                           36.4 kB         136 kB
-+ First Load JS shared by all            99.4 kB
-```
+| `npx playwright test e2e/shared-shell-behavioral.spec.ts` | **Chromium Browser** | **7 / 7 PASS** | Real browser workflow: navigation dispatch, screen changes, RBAC gating, focus trap, Escape/backdrop dismissal, scroll lock, rerender stability, responsive viewports (360px, 375px, 390px, 768px). |
+| `node --test tests/ui-ux-design.test.mjs` | **Node.js Test Runner** | **14 / 14 PASS** | Static contracts & unit behavioural logic (design tokens, touch targets >= 44px, navigation dispatch simulation, RBAC algorithms). |
+| `npm run test:functional` | **Node.js Test Runner** | **259 / 259 PASS** | 71 test suites covering financial accounting, match billability, timezone dates, permissions, and utility functions. |
+| `npm run lint` | **ESLint** | **0 ERRORS** | Code quality verification across all application source files. |
+| `npm run build` | **Next.js 15 Compiler** | **19 / 19 ROUTES** | Production build with static page generation for all routes and zero TypeScript errors. |
 
 ---
 
@@ -183,23 +170,18 @@ Route (app)                              Size     First Load JS
 4. **Task 1.2 Review Corrections Commit:**  
    `9932219fbc65b4b0dbceca8944a51f5e5185b12b`  
    *fix(ui): resolve task 1.2 review corrections for admin drawer, nav labels, modal a11y, and verification*
-5. **Task 1.2 Consolidated Report Update Commit:**  
+5. **Task 1.2 Focus Stability & Playwright Test Commit:**  
+   `7aaaddf45e00f3d2cc30c7d13f2508cd8a6c44cd`  
+   *feat(test): add real Playwright browser test suite and stabilize MoreDrawer focus lifecycle*
+6. **Task 1.2 Final Report Publication Commit:**  
    *(This Documentation Commit — recorded in final completion response)*  
-   *docs(ui): update task 1.2 implementation report with review corrections and verification evidence*
+   *docs(ui): finalize task 1.2 report with real browser verification and focus stability evidence*
 
 ### Working Tree Status
-- **Developer-Reported Status:** Clean (`nothing to commit, working tree clean`) following commit and push of report updates.
+- **Developer-Reported Status:** Clean (`nothing to commit, working tree clean`) following commit and push.
 
 ---
 
-## 7. Known Limitations & Scope Boundaries
+## 7. Conclusion & Stop Condition Notice
 
-- **Zero Screen Content Redesign:** In strict accordance with Core Foundation guidelines, internal layouts and workflows of `HomeTab.tsx`, `MatchesTab.tsx`, `FinanceTab.tsx`, `PlayersTab.tsx`, and `ClubTab.tsx` were preserved without modification.
-- **Backend / Financial Workflows:** Zero changes to Razorpay endpoints, Firestore security rules, or database models.
-- **Independent QA Environment:** Staging testing is awaiting product owner deployment; all reported behavioural verification was executed via the repository's native Node.js test harness and Next.js compiler.
-
----
-
-## 8. Conclusion & Stop Condition Notice
-
-All consolidated review corrections for Task 1.2 are complete and verified. Per the mandatory workflow constraints, execution is **STOPPED**. No work on Player Home (Task 1.3) or subsequent Phase 2 roadmap tasks will proceed until independent review acceptance and explicit product owner authorization are granted.
+Task 1.2 is fully verified in both unit test and headless Chromium browser environments. Per the mandatory workflow constraints, execution is **STOPPED**. No work on Player Home or subsequent Phase 2 tasks will proceed until independent acceptance and explicit product owner authorization are received.
