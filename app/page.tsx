@@ -153,6 +153,7 @@ export default function Home() {
     | "club"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
+  const [, setTestRerenderCount] = useState(0);
 
   const setActiveTab = useCallback((tab: any, action?: string) => {
     setActiveTabBase(tab);
@@ -222,6 +223,9 @@ export default function Home() {
       };
       (window as any).__KAVACH_SET_PERSONA__ = (p: "player" | "admin") => {
         setPersona(p);
+      };
+      (window as any).__KAVACH_TRIGGER_PARENT_RERENDER__ = () => {
+        setTestRerenderCount((c) => c + 1);
       };
     }
   }, [setActiveTab]);

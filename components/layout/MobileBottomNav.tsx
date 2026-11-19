@@ -58,6 +58,12 @@ export function MobileBottomNav({
   const adminMoreBtnRef = useRef<HTMLButtonElement>(null);
   const playerMoreBtnRef = useRef<HTMLButtonElement>(null);
 
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
+    (window as any).__KAVACH_BOTTOM_NAV_RENDER_COUNT__ = renderCountRef.current;
+  }
+
   if (hasMissingMandatory) return null;
 
   const btnCls = (isActive: boolean) =>
@@ -87,6 +93,7 @@ export function MobileBottomNav({
         />
         <nav
           data-testid="admin-mobile-bottom-nav"
+          data-render-count={process.env.NODE_ENV !== "production" ? renderCountRef.current : undefined}
           aria-label="Admin primary mobile navigation"
           className="fixed bottom-0 left-0 right-0 w-full bg-surface/95 backdrop-blur-2xl !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-lg justify-around border-t border-border px-1"
         >
@@ -159,6 +166,7 @@ export function MobileBottomNav({
       />
       <nav
         data-testid="player-mobile-bottom-nav"
+        data-render-count={process.env.NODE_ENV !== "production" ? renderCountRef.current : undefined}
         aria-label="Player primary mobile navigation"
         className="fixed bottom-0 left-0 right-0 w-full bg-surface/95 backdrop-blur-2xl !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-lg justify-around border-t border-border px-1"
       >

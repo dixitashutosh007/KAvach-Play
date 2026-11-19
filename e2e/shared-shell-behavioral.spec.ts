@@ -77,12 +77,12 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    // Match Admin and Club Admin only (not Super Admin) with shop feature disabled
+    // Match Admin strictly without Club Admin or Super Admin privileges (isolated RBAC test)
     await injectSyntheticSession(page, {
       uid: "admin-beta",
       role: "admin",
       isMatchAdmin: true,
-      isClubAdmin: true,
+      isClubAdmin: false,
       isSuperAdmin: false,
       features: {
         shop: false,
@@ -117,11 +117,17 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     const sheet = page.locator('[data-testid="more-drawer-sheet"]');
     await expect(sheet).toBeVisible();
 
-    // RBAC: Grounds & Venues must be visible (user is Match Admin)
+    // RBAC: Grounds & Venues must be visible specifically due to Match Admin permission
     await expect(sheet.locator('[data-testid="more-item-grounds"]')).toBeVisible();
 
     // RBAC: Settings & Access must NOT be visible (user is NOT Super Admin)
     await expect(sheet.locator('[data-testid="more-item-settings"]')).toBeHidden();
+
+    // RBAC: Studio & Nets must NOT be visible (user is NOT Studio Admin)
+    await expect(sheet.locator('[data-testid="more-item-studio"]')).toBeHidden();
+
+    // RBAC: Design Studio must NOT be visible (user is NOT Designer / Club Admin)
+    await expect(sheet.locator('[data-testid="more-item-design"]')).toBeHidden();
 
     // Feature Flags: Merchandise Shop must NOT be visible (feature disabled)
     await expect(sheet.locator('[data-testid="more-item-shop"]')).toBeHidden();
@@ -171,17 +177,46 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     await page.keyboard.press("Tab");
     await expect(closeBtn).toBeFocused();
 
-    // Rerender stability: trigger parent re-renders while drawer remains open
+    // User moves focus to a specific item inside the drawer
+    const targetDrawerControl = sheet.locator('[data-testid="more-item-club"]');
+    await targetDrawerControl.focus();
+    await expect(targetDrawerControl).toBeFocused();
+
+    // Record baseline parent render count before triggering rerender
+    const initialRenderCount = await page.evaluate(
+      () => (window as any).__KAVACH_BOTTOM_NAV_RENDER_COUNT__ || 0
+    );
+
+    // Deterministic parent re-render: trigger genuine React state update in parent (app/page.tsx)
     await page.evaluate(() => {
-      window.dispatchEvent(new Event("resize"));
+      if (typeof (window as any).__KAVACH_TRIGGER_PARENT_RERENDER__ === "function") {
+        (window as any).__KAVACH_TRIGGER_PARENT_RERENDER__();
+      }
     });
 
-    // Verify focus remains inside drawer and body overflow remains hidden
+    // Confirm that the parent rerender actually occurred in the DOM / component lifecycle
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => (window as any).__KAVACH_BOTTOM_NAV_RENDER_COUNT__ || 0),
+        { message: "Expected parent component to execute at least one re-render", timeout: 4000 }
+      )
+      .toBeGreaterThan(initialRenderCount);
+
+    // Confirm drawer remains open
+    await expect(sheet).toBeVisible();
+
+    // Confirm focus remains on the SAME drawer control (neither stolen by trigger nor reset)
+    await expect(targetDrawerControl).toBeFocused();
+
+    // Confirm original focus trigger (moreBtn) is NOT focused prematurely
+    await expect(moreBtn).not.toBeFocused();
+
+    // Confirm document.body.style.overflow remains hidden
     const isStillLocked = await page.evaluate(() => document.body.style.overflow === "hidden");
     expect(isStillLocked).toBe(true);
-    await expect(closeBtn).toBeFocused();
 
-    // Escape key dismissal
+    // Close drawer via Escape key
     await page.keyboard.press("Escape");
     await expect(sheet).toBeHidden();
 
@@ -189,7 +224,7 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     const isUnlocked = await page.evaluate(() => document.body.style.overflow !== "hidden");
     expect(isUnlocked).toBe(true);
 
-    // Focus restored to More trigger button
+    // Focus restored cleanly to More trigger button
     await expect(moreBtn).toBeFocused();
 
     // Test Backdrop dismissal
