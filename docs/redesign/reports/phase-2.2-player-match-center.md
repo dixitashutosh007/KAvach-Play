@@ -10,7 +10,8 @@
 **Correction Pass 1 implementation commit:** `9fa56d1d3f2976582b1fca3508095fc6050946b0`  
 **Correction Pass 1 baseline branch HEAD:** `955dfb3a7b3e4ae4bca3468a3a674003bd1158a4`  
 **Correction Pass 2 implementation commit:** `7c000b213fe282a7a489748d29020d9640cd8361`  
-**Correction Pass 2 CI & report commit:** `1b4a6231c13f123b85d9aea10a63d5c96b1eb77f`  
+**Correction Pass 2 verification & CI commit:** `4b96d013d443b51fd149cdc5dadbc972d375c080`  
+**Verified GitHub Actions CI Run:** [Run 44559161481](https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44559161481) (All 5 jobs passed)  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Technical & Product Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -181,9 +182,18 @@ Command: `npx playwright test e2e/production-app.spec.ts e2e/player-match-center
 - `npx tsc --noEmit`: 0 errors.
 - `npm run build`: Compiled successfully; 19 static pages generated; 0 errors.
 
+### 5. Verified GitHub Actions CI Pipeline
+- **Run URL:** [GitHub Actions Run 44559161481](https://github.com/dixitashutosh007/KAvach-Play/actions/runs/44559161481)
+- **Status:** `Success` (All 5 jobs passed)
+  - `Lint & Typecheck`: Passed in 1m4s (0 errors)
+  - `Functional Tests`: Passed in 56s (363 passed)
+  - `Firestore Security Rules Emulator Tests`: Passed in 1m34s (308 passed)
+  - `Playwright Production Smoke Suite`: Passed in 4m14s (4 passed)
+  - `Playwright E2E Development Suite`: Passed in 4m54s (108 passed across 4 behavioral suites)
+
 ---
 
-## 5. Responsive Screenshots & Visual Verification
+## 6. Responsive Screenshots & Visual Verification
 
 All screenshots are stored under `docs/qa/screenshots/player-matches/` using repository-relative paths:
 
@@ -197,7 +207,7 @@ All screenshots are stored under `docs/qa/screenshots/player-matches/` using rep
 
 ---
 
-## 6. Git Handover & File Inventory
+## 7. Git Handover & File Inventory
 
 ### Files Modified & Created in Correction Pass 2
 1. `lib/match-eligibility.ts`:
@@ -220,13 +230,15 @@ All screenshots are stored under `docs/qa/screenshots/player-matches/` using rep
    - Added `--project demo-kavach-play` flag to `firebase emulators:exec` for non-interactive execution in CI.
 7. `.github/workflows/ci.yml`:
    - Updated `test-e2e-dev` job to run `e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`.
-8. `tests/phase2.2-player-match-center.test.mjs`:
+8. `tests/remediation1f-secure-merge-recovery-and-consistency.emulator.test.mjs`:
+   - Eliminated query interceptor deadlock in Scenario 83b by recursively wrapping chained Firestore `.where()` and `.limit()` queries with Proxy to preserve overridden `.get()`. Added 5s timeout guards to prevent indefinite CI test hangs.
+9. `tests/phase2.2-player-match-center.test.mjs`:
    - Added 31 new regression tests across Sections 6, 7, 8, 9 (total suite expanded to 72 tests).
-9. `docs/redesign/reports/phase-2.2-player-match-center.md`:
-   - Complete updated report with design tokens, correction passes, test evidence, and file inventory.
+10. `docs/redesign/reports/phase-2.2-player-match-center.md`:
+   - Complete updated report with design tokens, correction passes, test evidence, verified CI run reference, and file inventory.
 
 ---
 
-## 7. Submission & Status
+## 8. Submission & Status
 
 Phase 2.2 (Correction Pass 2) is complete, all review findings resolved, and submitted for independent review verification and product-owner acceptance.
