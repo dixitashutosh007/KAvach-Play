@@ -51,21 +51,22 @@ The monolithic legacy `components/HomeTab.tsx` was refactored into a modular com
 ## 3. Authoritative Business Logic & Invariants
 
 ### A. Authoritative Match Visibility & RSVP Eligibility (`lib/match-eligibility.ts`)
-The authoritative eligibility validator (`isPlayerEligibleForMatch`) enforces the following invariants:
+The authoritative eligibility validator (`isPlayerEligibleForMatch`) enforces the following invariants based strictly on the real persisted data model (`Match` and `MatchPayment`), without reliance on non-existent or parallel fields:
 1. **Administrative Access:** Authorized club/match/super admins can view and manage all active (non-archived) fixtures across the club.
-2. **Linked Player Invariant:** Unlinked users (where `resolvePlayerForUser` is null) cannot view player fixtures or submit RSVPs.
-3. **Active Player Requirement:** Players who are disabled (`player.disabled`), merged (`player.mergedInto`, `mergeStatus === "in_progress"`), or unverified (`inviteStatus === "Pending"` or `"Rejected"`) are strictly disqualified from match participation.
+2. **Linked Player Invariant:** Unlinked users (where `resolvePlayerForUser` is null) cannot view personal player fixtures or submit RSVPs.
+3. **Active Player Requirement:** Players who are disabled (`player.disabled`), merged (`player.mergedInto`, `mergeStatus === "in_progress"`), or unverified (`inviteStatus === "Pending"` or `"Rejected"`) are strictly disqualified from match participation and RSVPs.
 4. **Fixture Invariants:** Archived matches (`isArchived`) and Tentatively blocked fixtures (`isTentative`) are excluded from ordinary player display.
-5. **Explicit Squad & Participation Precedence:** If a player has an existing payment/squad record for a match, they are explicitly linked and eligible.
-6. **Restricted Squad Gating:** If a match defines an announced/assigned squad list (`squadPlayerIds`), a player must be present in the squad list to be eligible.
-7. **Open Club Fixtures:** Open upcoming fixtures without assigned squad restrictions are visible and actionable for active verified club players before squad announcement.
-8. **Consistent Enforcement:** Applied across Upcoming Matches, Match Day Alerts, Search Results, Navigation dispatch, and the `handleRsvp` mutation handler.
+5. **Real Persisted Squad Assignment Detection:** Evaluates `isSquadAssignedToMatch` based on real `MatchPayment` records (`availability === "Confirmed"` or `"Waitlist"`, or `status !== "Not Playing"` and not a self-RSVP).
+6. **Restricted Squad Gating:** Once a squad has been assigned to a match, only confirmed/assigned squad members (`isPlayerInAssignedSquad`) are eligible. Players outside the squad are strictly excluded from viewing, searching, and submitting RSVPs.
+7. **Open Club Fixtures:** Genuinely open upcoming fixtures with no assigned squad are visible and actionable for all active verified club players to submit RSVPs. Self-RSVPs on open fixtures do not lock the fixture for other active players.
+8. **Consistent Enforcement:** Applied across Upcoming Matches, Match Day Alerts, Search Results, Navigation dispatch, and the `handleRsvp` mutation handler. Production code contains zero test hooks on `window`.
 
-### B. Deterministic Birthday Parsing (`lib/birthday-utils.ts`)
-- Explicitly parses `YYYY-MM-DD` and `DD/MM/YYYY` formats.
-- Avoids ambiguous JavaScript Date parsing where day/month order is undefined.
-- Validates calendar dates strictly (e.g. rejects February 31st).
-- Handles year-boundary rollovers deterministically (e.g. today is Dec 28th and birthday is Jan 3rd).
+### B. Strict Birthday Parsing & Leap-Day Policy (`lib/birthday-utils.ts`)
+- Strict regex validation enforcing exact `DD/MM/YYYY` (`^\d{2}\/\d{2}\/\d{4}$`) or `YYYY-MM-DD` (`^\d{4}-\d{2}-\d{2}$`) formats.
+- Strictly rejects malformed inputs with embedded letters, trailing junk (`1995-04-12junk`), invalid separators, or unpadded numeric components (`1/4/1995`).
+- Strictly validates calendar dates against leap years using `isLeapYear` and `getDaysInMonth` (e.g. `29/02/2000` is valid, `29/02/2001` is rejected).
+- **Leap-Day Recurrence Policy:** For Feb 29 birthdays, in non-leap years (e.g. 2026), the birthday is celebrated on February 28 (`isToday: true`, `daysUntil: 0`). In leap years (e.g. 2028), it is celebrated on February 29.
+- Handles year-boundary rollovers deterministically across December and January (e.g. reference Dec 28 with birthday on Jan 3rd is 6 days away).
 - Sorts upcoming birthdays chronologically by nearest date within the 14-day window.
 
 ### C. Financial Integrity & Option A Policy
@@ -152,10 +153,10 @@ All regression test suites across the application passed cleanly with zero regre
 | Suite | Command | Total Tests | Passed | Failed | Skipped |
 |---|---|---|---|---|---|
 | Player Home Real Browser | `npx playwright test e2e/player-home-behavioral.spec.ts` | 22 | 22 | 0 | 0 |
-| Phase 2.1 Corrections Unit | `node --test tests/phase2.1-player-home-corrections.test.mjs` | 17 | 17 | 0 | 0 |
+| Phase 2.1 Corrections Unit | `node --test tests/phase2.1-player-home-corrections.test.mjs` | 24 | 24 | 0 | 0 |
 | Shared Shell Real Browser | `npx playwright test e2e/shared-shell-behavioral.spec.ts --project="Mobile Chrome"` | 7 | 7 | 0 | 0 |
 | UI/UX Design System | `node --test tests/ui-ux-design.test.mjs` | 14 | 14 | 0 | 0 |
-| Production Unit / Functional | `npm run test:functional` | 276 | 276 | 0 | 0 |
+| Production Unit / Functional | `npm run test:functional` | 283 | 283 | 0 | 0 |
 | ESLint Rules Validation | `npm run lint` | — | 0 errors | 0 | 4 warnings (existing firestore.rules open reads) |
 | Next.js Static Production Build | `npm run build` | 19 routes | 19 | 0 | 0 |
 
@@ -169,7 +170,9 @@ All regression test suites across the application passed cleanly with zero regre
 | `0168c51375241f8b032746164177267bac0a87ed` | Feature | `feat(ui): implement mobile-first player home dashboard (phase 2.1)` |
 | `7a282a758cdfd387d2026b4fbae66a4e6fdc5c82` | Docs | Initial Phase 2.1 implementation report |
 | `eaf01db82e707e7c8ef12ae62f556d3c3df5ff9f` | Fix | `fix(ui): enforce player match eligibility and deterministic birthday parsing (phase 2.1)` |
-| `*(This Documentation Commit)*` | Docs | `docs(ui): finalize phase 2.1 player home report with corrections and portable links` |
+| `b680844f06a303d1c978d46c0b16cb11a53b186b` | Docs | Initial report update with relative links |
+| `a2b998818f994f83b1a8d0554162e245cb75c7ea` | Fix | `fix(ui): enforce real persisted match eligibility and strict birthday validation` |
+| `*(This Documentation Commit)*` | Docs | `docs(ui): finalize phase 2.1 report with real match model and strict validation` |
 
 ---
 
