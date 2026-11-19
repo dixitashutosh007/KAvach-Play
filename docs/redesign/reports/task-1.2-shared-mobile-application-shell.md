@@ -12,6 +12,7 @@
 **Initial Implementation Commit:** `08f10b0608888f9a1470f31f55d50b45eaa1e083`  
 **Consolidated Corrections Commit:** `9932219fbc65b4b0dbceca8944a51f5e5185b12b`  
 **Focus Stability & Playwright Test Commit:** `7aaaddf45e00f3d2cc30c7d13f2508cd8a6c44cd`  
+**Final Test Correction Commit:** `bf503eb8bbd52e5572bc8cb7bf8c0aaee83cf655`  
 **Status:** Complete — Ready for Independent Acceptance  
 
 ---
@@ -27,16 +28,16 @@ Task 1.2 delivers the shared responsive application shell for KAvach Play, estab
    - Replaced naive open/close effect with a transition gate (`wasOpenRef`): scroll lock (`document.body.style.overflow = "hidden"`) and initial focus are applied strictly on the `closed -> open` transition.
    - Parent component re-renders while the drawer is open do not re-run cleanup, do not release the body scroll lock, and do not steal focus from open drawer controls.
    - Escape keydown, backdrop click, and destination selection cleanly dismiss the drawer and restore focus to the original trigger button (`triggerRef`).
-2. **Real Playwright Browser Test Suite (`e2e/shared-shell-behavioral.spec.ts`)**:
-   - Created a focused Playwright browser test suite executing in headless Chromium against real Next.js application components.
-   - Built reusable deterministic synthetic session harness (`e2e/helpers/synthetic-session.ts`).
-   - Validated:
-     - Player navigation across all 5 destinations (`Home`, `Matches`, `Finance`, `Players`, `More`) and header avatar profile navigation.
-     - Admin navigation across all 5 hubs (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `More`) with active sub-view highlighting.
-     - Granular RBAC gating in the Admin More drawer (Grounds visible to Match Admin; Settings and disabled features hidden).
-     - Focus trap containment (Tab / Shift+Tab cycling), Escape dismissal, backdrop dismissal, scroll lock, and parent rerender stability.
-     - Responsive rendering across 360×800, 375×812, 390×844, and 768×1024 viewports with zero horizontal document overflow.
-     - Captured representative review screenshots under `docs/qa/screenshots/shell/`.
+2. **Deterministic Parent-Rerender Stability Test (`e2e/shared-shell-behavioral.spec.ts`)**:
+   - Replaced generic `window.dispatchEvent("resize")` with a deterministic React parent state update mechanism (`__KAVACH_TRIGGER_PARENT_RERENDER__` in `app/page.tsx`).
+   - Verified that parent re-renders genuinely occurred by asserting on the `MobileBottomNav` render counter (`__KAVACH_BOTTOM_NAV_RENDER_COUNT__`).
+   - Verified that while the drawer remains open: focus stays strictly on the active drawer control (`more-item-club`), body scroll lock remains `hidden`, the original trigger (`moreBtn`) is not prematurely focused, and closing via `Escape` restores focus and unlocks scroll.
+3. **Isolated Admin RBAC Test (`e2e/shared-shell-behavioral.spec.ts`)**:
+   - Configured synthetic user strictly as Match Admin without Club Admin or Super Admin privileges (`isMatchAdmin: true, isClubAdmin: false, isSuperAdmin: false`).
+   - Verified that Grounds & Venues is visible specifically due to Match Admin permission, while Settings & Access, Studio & Nets, Design Studio, and Merchandise Shop (disabled feature flag) remain strictly hidden.
+4. **Real Playwright Browser Test Suite**:
+   - Executed in headless Chromium against real Next.js application components (7/7 tests passed in 13.9s).
+   - Captured representative review screenshots under `docs/qa/screenshots/shell/`.
 
 ---
 
@@ -173,9 +174,12 @@ Representative screenshots saved in `docs/qa/screenshots/shell/`:
 5. **Task 1.2 Focus Stability & Playwright Test Commit:**  
    `7aaaddf45e00f3d2cc30c7d13f2508cd8a6c44cd`  
    *feat(test): add real Playwright browser test suite and stabilize MoreDrawer focus lifecycle*
-6. **Task 1.2 Final Report Publication Commit:**  
+6. **Task 1.2 Final Test Correction Commit:**  
+   `bf503eb8bbd52e5572bc8cb7bf8c0aaee83cf655`  
+   *fix(test): isolate Match Admin RBAC test and verify deterministic parent-rerender stability*
+7. **Task 1.2 Final Report Publication Commit:**  
    *(This Documentation Commit — recorded in final completion response)*  
-   *docs(ui): finalize task 1.2 report with real browser verification and focus stability evidence*
+   *docs(ui): finalize task 1.2 report with isolated RBAC and parent-rerender stability evidence*
 
 ### Working Tree Status
 - **Developer-Reported Status:** Clean (`nothing to commit, working tree clean`) following commit and push.
