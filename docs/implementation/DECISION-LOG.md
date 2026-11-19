@@ -153,3 +153,33 @@ Source: Product Rationalisation Report, Section 12.
 
 **Reconciliation Decision (D-10):** Elimination of Global Persona Switcher & Implementation of Unified Player Model with Authorised Admin Console Entry.
 The application eliminates any separate global player/admin persona-switching experience (`persona: 'player' | 'admin'`). The standard player experience is the default for all authenticated users. Authorised administrators are provided a distinct "Admin Console" entry point in the application header and navigation to access administrative hubs (`Overview`, `Match Centre`, `Player Roster`, `Finance & Dues`, `Studio & Nets`, `Club Operations`, `Settings & Access`). Entering and leaving administrative functionality preserves the user's player identity, session, and navigation context. Design-preview inspection controls in prototype environments are visually and structurally isolated as prototype inspection harnesses and do not replace production server-side RBAC enforcement. Granular administrative roles (Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin, Designer) are strictly retained.
+
+---
+
+## Remediation 1F-R Decisions Register
+
+**Decision (D-1FR-08): Strict 10-Field Lock Invariant Validation in `executeMergeCompletionStage()`:**
+In the atomic completion stage, optional comparison checks (`(loser.mergeLeaseOwner && ...)`) are eliminated. The transaction strictly requires and validates 10 lock fields:
+1. Job `status === "in_progress"`
+2. Job `leaseOwner` matches worker exactly (non-empty string)
+3. Job `leaseToken` matches worker exactly (non-empty string)
+4. Job `fencingToken` matches worker exactly (positive integer)
+5. Job `leaseExpiresAt` is a finite number and strictly unexpired (`now < leaseExpiresAt`)
+6. Loser `mergeJobId === jobId`
+7. Loser `mergeStatus === "in_progress"`
+8. Loser `mergeLeaseOwner` matches job and worker exactly
+9. Loser `mergeFencingToken` matches job and worker exactly
+10. Loser `mergeLeaseExpiresAt` is a finite number and matches job `leaseExpiresAt` exactly
+Identical symmetric rules apply to the keeper player. Any missing, malformed, or mismatched field fails closed with HTTP 409 (`STALE_WORKER_FENCING_ERROR` or `FINAL_VERIFICATION_FAILED`) before any completion writes are executed.
+
+**Decision (D-1FR-09): Failure Lifecycle Lease Expiry Validation:**
+`recordMergeJobFailure()` requires `job.leaseExpiresAt` to exist, be a finite number (`Number.isFinite`), and strictly greater than current time (`now < job.leaseExpiresAt`). Missing, null, string, NaN, Infinity, or expired timestamps immediately return `{ recorded: false, reason: "LEASE_EXPIRED" }` without mutating job status, preventing stale or malformed workers from altering job state.
+
+**Decision (D-1FR-10): Foreign Lock Recovery & Orphaned Lock Integrity:**
+In `acquireMergeLease()`, an existing foreign job is authoritative: if active, it returns 409 `MERGE_IN_PROGRESS`; if expired/failed, it returns 409 `PLAYER_LOCKED_BY_ANOTHER_JOB` (operator resolution required). When the foreign job document is missing in `mergeJobs` (orphaned lock):
+- Missing, null, or malformed lock metadata (`mergeLeaseOwner`, `mergeFencingToken`, `mergeLeaseExpiresAt`) fails closed with HTTP 409 `MALFORMED_PLAYER_LOCK` and never counts as proof of expiry.
+- An unexpired player lock returns HTTP 409 `PLAYER_LOCKED_BY_ANOTHER_JOB`.
+- An orphaned lock is reclaimable ONLY when complete valid metadata exists AND `now >= mergeLeaseExpiresAt`. Identical symmetric validation applies to both loser and keeper.
+
+**Decision (D-1FR-11): Rupee-Paise Monetary Precision & Half-Paise Boundary Handling:**
+`validateRupeeAmount()` enforces strict 2-decimal rupee precision with floating-point tolerance `1e-6` (`Math.abs(val * 100 - Math.round(val * 100)) <= 1e-6`). Half-paise values (`123.454`, `123.455`, `123.456`) and >2 decimal representations are strictly rejected without silent rounding. `validatePaiseAmount()` strictly enforces integer paise and rejects non-integers and fractional paise strings. Maximum allowable amount is bounded at `10,000,000` rupees (`1,000,000,000` paise).

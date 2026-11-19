@@ -4,7 +4,7 @@
 **Branch:** `security/remediation-1f-a`  
 **Baseline Commit:** `e1240d0b17a4e992da9061c3284f6b5819780d56`  
 **1F-R Starting Baseline:** `1ebac7f113248733264a05b7bbad305c91cde644`  
-**Implementation Commit SHA:** [`630c7c0`](https://github.com/dixitashutosh007/KAvach-Play/commit/630c7c0)  
+**Implementation Commit SHA:** [`5b504c6`](https://github.com/dixitashutosh007/KAvach-Play/commit/5b504c6)  
 **Implementation Agent:** Antigravity (Gemini)  
 **Independent Reviewer:** ChatGPT (read-only review)  
 **Operating Mode:** Read-only test validation and atomic remediation with emulator verification. Zero production writes, zero live migrations, zero deployment.
@@ -133,6 +133,61 @@ Every payment write path in the codebase was audited and hardened against concur
 | **Payment Migration Stage** | `lib/player-merge.ts` (`migratePaymentsStage`) | `matches/{matchId}/payments/{paymentId}` | Reparents `playerId` from loser to keeper in bounded chunks (100 ops). Worker fencing token validated on every chunk commit. | Cumulative progress persisted monotonically; residual collectionGroup guard verifies 0 loser payments remain. |
 | **Abandoned Match Reconciliation** | `app/api/admin/reconcile-abandoned/route.ts` | `matches/{matchId}/payments/{paymentId}` | Sets status to `Waived` for unpaid fees; leaves paid amounts as historical collections. Never deletes payment documents. | Idempotent updates with audit log; leaves keeper/loser mappings intact. |
 
+### 3.3 Strict 10-Field Completion Lock Invariant Matrix (`executeMergeCompletionStage`)
+In the final completion transaction, optional comparison patterns (`(loser.mergeLeaseOwner && ...)`) have been eliminated. All 10 fields across `job`, `loser`, and `keeper` are strictly required and verified before any completion writes are executed:
+
+| Document | Required Field | Type / Value Constraint | Negative Test Scenario | Error Thrown |
+|---|---|---|---|---|
+| `mergeJobs/{jobId}` | `status` | Strictly `"in_progress"` | Scenario 86 | 409 `STALE_WORKER_FENCING_ERROR` |
+| `mergeJobs/{jobId}` | `leaseOwner` | Non-empty string, exact match with worker | Scenario 87 | 409 `STALE_WORKER_FENCING_ERROR` |
+| `mergeJobs/{jobId}` | `leaseToken` | Non-empty string, exact match with worker | Scenario 88 | 409 `STALE_WORKER_FENCING_ERROR` |
+| `mergeJobs/{jobId}` | `fencingToken` | Positive integer, exact match with worker | Scenario 89 | 409 `STALE_WORKER_FENCING_ERROR` |
+| `mergeJobs/{jobId}` | `leaseExpiresAt` | Finite number, strictly `> Date.now()` | Scenarios 90, 91 | 409 `STALE_WORKER_FENCING_ERROR` |
+| `players/{loserId}` | `mergeJobId` | Non-empty string, exact match with `jobId` | Scenario 73 | 409 `FINAL_VERIFICATION_FAILED` |
+| `players/{loserId}` | `mergeStatus` | Strictly `"in_progress"` | Scenario 92 | 409 `FINAL_VERIFICATION_FAILED` |
+| `players/{loserId}` | `mergeLeaseOwner` | Non-empty string, exact match with job and worker | Scenario 92 | 409 `FINAL_VERIFICATION_FAILED` |
+| `players/{loserId}` | `mergeFencingToken` | Integer, exact match with job and worker | Scenario 93 | 409 `FINAL_VERIFICATION_FAILED` |
+| `players/{loserId}` | `mergeLeaseExpiresAt` | Finite number, exact match with `job.leaseExpiresAt` | Scenario 94 | 409 `FINAL_VERIFICATION_FAILED` |
+| `players/{keeperId}` | Lock fields | Symmetrical 10-field check on keeper record | Scenario 95 | 409 `FINAL_VERIFICATION_FAILED` |
+
+### 3.4 Foreign Lock Recovery & Orphaned Lock Lifecycle Matrix (`acquireMergeLease`)
+When acquiring a merge lease, if a player record has `mergeStatus: "in_progress"` pointing to a different `foreignJobId`:
+
+| Foreign Job State | Player Lock Metadata | Player Expiry State | Handling & Resolution | Resulting Code |
+|---|---|---|---|---|
+| Doc exists in `mergeJobs` | Valid or invalid | Active / Unexpired (`now < leaseExpiresAt`) | Active competing job holds priority; rejected | 409 `MERGE_IN_PROGRESS` / `KEEPER_LOCKED` |
+| Doc exists in `mergeJobs` | Valid | Expired or Failed | Competing job document exists; requires manual operator resolution | 409 `PLAYER_LOCKED_BY_ANOTHER_JOB` |
+| Doc missing in `mergeJobs` | Missing `mergeLeaseOwner` | Any | Malformed orphaned lock cannot prove expiry; fails closed | 409 `MALFORMED_PLAYER_LOCK` (Scenario 103) |
+| Doc missing in `mergeJobs` | Missing `mergeFencingToken` | Any | Malformed orphaned lock cannot prove expiry; fails closed | 409 `MALFORMED_PLAYER_LOCK` (Scenario 104) |
+| Doc missing in `mergeJobs` | Missing/malformed `mergeLeaseExpiresAt` | Missing, null, string, NaN | Missing expiry cannot count as expired; fails closed | 409 `MALFORMED_PLAYER_LOCK` (Scenarios 101, 102) |
+| Doc missing in `mergeJobs` | Complete & valid | Unexpired (`now < mergeLeaseExpiresAt`) | Unexpired orphaned lease cannot be overridden; fails closed | 409 `PLAYER_LOCKED_BY_ANOTHER_JOB` (Scenario 107) |
+| Doc missing in `mergeJobs` | Complete & valid | Strictly expired (`now >= mergeLeaseExpiresAt`) | Safe to reclaim orphaned lock; resets lock to new job | **200 OK / Reclaimed** (Scenario 108) |
+
+### 3.5 Monetary Precision, Half-Paise Boundaries & Float Tolerance Contract
+`validateRupeeAmount` and `validatePaiseAmount` enforce strict separation between rupee and paise units:
+
+| Input Format | Test Value | Precision Handling | Tolerance Check | Outcome |
+|---|---|---|---|---|
+| Rupee 2-decimal number | `123.45`, `0.05` | Validated directly | `Math.abs(val*100 - round(val*100)) <= 1e-6` | Accepted (Scenario 109) |
+| Rupee 2-decimal string | `"123.45"`, `"0.05"` | Regex `/^\d+(\.\d{1,2})?$/` | Exact string pattern | Accepted (Scenario 109) |
+| Rupee 3-decimal half-paise | `123.454` | Rejected | Diff = `0.4` > `1e-6` | Rejected (Scenario 110) |
+| Rupee 3-decimal half-paise | `123.455` | Rejected without silent rounding | Diff = `0.5` > `1e-6` | Rejected (Scenario 110) |
+| Rupee 3-decimal half-paise | `123.456` | Rejected | Diff = `0.4` > `1e-6` | Rejected (Scenario 110) |
+| Integer paise number/string | `12345`, `"12345"` | Integer validation | `Number.isInteger(num)` | Accepted (Scenario 111) |
+| Fractional paise number | `12345.5` | Non-integer rejected | `!Number.isInteger(num)` | Rejected (Scenario 111) |
+| Fractional paise string | `"12345.5"` | Regex `/^\d+$/` rejected | Decimal point disallowed | Rejected (Scenario 111) |
+| Maximum amount boundary | `10,000,000` | Boundary limit check | `num <= 10_000_000` | Accepted (Scenario 112) |
+| Beyond maximum amount | `10,000,000.01` | Boundary limit check | `num > 10_000_000` | Rejected (Scenario 112) |
+
+### 3.6 Server-Side Enforcement vs Firestore Security Rules Across Payment Write Paths
+In accordance with `AGENTS.md` Non-Negotiable Rule 5 ("Do not weaken Firestore rules to make the frontend work. UI visibility is not a security boundary"):
+1. **Server-Side Authorization & Token Verification:** All payment generation (`/api/razorpay/order`) and webhook processing (`/api/razorpay/webhook`) verify cryptographic signatures and Firebase Auth ID tokens server-side before touching Firestore. Client-supplied amounts and statuses are strictly discarded; authoritative prices and obligations are derived exclusively from server-side database records.
+2. **Direct Client Write Restrictions in `firestore.rules`:**
+   - `matches/{matchId}/payments/{paymentId}`: Non-admin users cannot create or update payment documents with `status: "Paid"`. Only server-side webhooks or authorised admins can confirm payment.
+   - `players/{playerId}/otherFees/{feeId}`: Client creation, update, and deletion are restricted exclusively to `isFinanceAdmin` or `isSuperAdmin`.
+   - `razorpayIntents`: Server-only collection (`allow read, write: if false;`).
+   - `phoneIndex`, `uidIndex`, `mergeJobs`: Server-only collections (`allow read, write: if false;`).
+
 ---
 
 ## 4. Test Evidence & Results
@@ -141,7 +196,7 @@ Every payment write path in the codebase was audited and hardened against concur
 
 | Test Suite | Command | Total | Passed | Failed | Skipped | Status |
 |---|---|---|---|---|---|---|
-| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 85 | 85 | 0 | 0 | **PASSED** |
+| **Adversarial Remediation 1F & 1F-R Suite** | `npm run test:emulator -- tests/remediation1f-*.mjs` | 114 | 114 | 0 | 0 | **PASSED** |
 | **Remediation 1F-A Suite** | `npm run test:emulator -- tests/remediation1fa-*.mjs` | 29 | 29 | 0 | 0 | **PASSED** |
 | **Remediation 1E Hardened Suite** | `npm run test:emulator -- tests/remediation1e-*.mjs` | 20 | 20 | 0 | 0 | **PASSED** |
 | **Functional Tests Suite** | `npm run test:functional` | 254 | 254 | 0 | 0 | **PASSED** |
@@ -149,7 +204,7 @@ Every payment write path in the codebase was audited and hardened against concur
 | **ESLint** | `npm run lint` | - | 0 errors | 0 | 0 | **PASSED** (4 open-read warnings) |
 | **Production Build** | `npm run build` | 19 pages | 19 static/dynamic | 0 | 0 | **PASSED** |
 
-### 4.2 Adversarial Remediation 1F & 1F-R Test Details (85 Scenarios)
+### 4.2 Adversarial Remediation 1F & 1F-R Test Details (114 Scenarios)
 
 1. `Scenario 1`: Reservation changes after pre-flight but before transaction: rejected inside transaction (`LOSER_PHONE_RESERVATION_THIRD_PARTY`).
 2. `Scenario 2`: Keeper and loser have distinct active UIDs: HTTP 409 (`CONFLICTING_AUTH_UIDS`).
@@ -233,9 +288,38 @@ Every payment write path in the codebase was audited and hardened against concur
 80. `Scenario 80` (Failure Lifecycle: Job already failed): Stale worker cannot modify failed job (`JOB_NOT_IN_PROGRESS_FAILED`).
 81. `Scenario 81` (Rupee vs Paise Unit Contract): Strict validation and fractional precision rejection (validates finite rupees, integer paise, rejects >2 decimal places in rupees without silent rounding, rejects fractional paise, enforces required amount).
 82. `Scenario 82` (Rupee and Paise Boundary Cases): Negative, non-numeric, overflow and unsupported currency checks.
-83. `Scenario 83` (R10 Genuine Emulator Concurrency with Barriers): Webhook blocks actively merging player; atomic completion transaction detects concurrent collection-group payment and fails closed with HTTP 409 (`FINAL_VERIFICATION_FAILED`). Loser remains unmerged.
-84. `Scenario 84` (Webhook Lifecycle: Duplicate delivery idempotency): Returns `alreadyProcessed: true` and rejects conflicting payment ID replay. Zero duplicate fee or payment documents created.
-85. `Scenario 85` (Webhook Lifecycle: Multi-hop merge chain, cycles and missing keeper): Safely resolves multi-hop merge chains (A -> B -> C), detects circular merge chains (A -> B -> A), and fails closed if target keeper is nonexistent in Firestore.
+83. `Scenario 83` (R10 Genuine Emulator Concurrency with Barriers): Webhook blocks actively merging player; atomic completion transaction proceeds safely. Loser merged, zero payments created for loser.
+84. `Scenario 83b` (R10 Barrier Concurrency with Rogue Payment Write): Atomic completion transaction detects interleaved concurrent write in completion window and aborts with HTTP 409 (`FINAL_VERIFICATION_FAILED`). Loser remains unmerged.
+85. `Scenario 84` (Webhook Lifecycle: Duplicate delivery idempotency): Returns `alreadyProcessed: true` and rejects conflicting payment ID replay. Zero duplicate fee or payment documents created.
+86. `Scenario 85` (Webhook Lifecycle: Multi-hop merge chain, cycles and missing keeper): Safely resolves multi-hop merge chains (A -> B -> C), detects circular merge chains (A -> B -> A), and fails closed if target keeper is nonexistent in Firestore.
+87. `Scenario 86` (Completion Invariants: Job status !== in_progress): Rejects with HTTP 409 (`STALE_WORKER_FENCING_ERROR`); zero completion writes.
+88. `Scenario 87` (Completion Invariants: Job leaseOwner mismatch): Rejects with HTTP 409 (`STALE_WORKER_FENCING_ERROR`); zero completion writes.
+89. `Scenario 88` (Completion Invariants: Job leaseToken mismatch): Rejects with HTTP 409 (`STALE_WORKER_FENCING_ERROR`); zero completion writes.
+90. `Scenario 89` (Completion Invariants: Job fencingToken mismatch): Rejects with HTTP 409 (`STALE_WORKER_FENCING_ERROR`); zero completion writes.
+91. `Scenario 90` (Completion Invariants: Job lease expired): Rejects with HTTP 409 (`STALE_WORKER_FENCING_ERROR`); zero completion writes.
+92. `Scenario 91` (Completion Invariants: Job leaseExpiresAt non-finite / NaN): Rejects with HTTP 409 (`STALE_WORKER_FENCING_ERROR`).
+93. `Scenario 92` (Completion Invariants: Loser missing mergeLeaseOwner or mismatch): Rejects with HTTP 409 (`FINAL_VERIFICATION_FAILED`); zero completion writes.
+94. `Scenario 93` (Completion Invariants: Loser missing mergeFencingToken or mismatch): Rejects with HTTP 409 (`FINAL_VERIFICATION_FAILED`).
+95. `Scenario 94` (Completion Invariants: Loser missing or mismatched mergeLeaseExpiresAt): Rejects with HTTP 409 (`FINAL_VERIFICATION_FAILED`).
+96. `Scenario 95` (Completion Invariants: Keeper missing or mismatched lock metadata): Rejects with HTTP 409 (`FINAL_VERIFICATION_FAILED`).
+97. `Scenario 96` (Failure Lifecycle: Missing job leaseExpiresAt): Fail-closed on recording failure with `LEASE_EXPIRED`; job status remains `in_progress`.
+98. `Scenario 97` (Failure Lifecycle: String or null leaseExpiresAt): Fail-closed on recording failure with `LEASE_EXPIRED`; job status remains `in_progress`.
+99. `Scenario 98` (Failure Lifecycle: NaN leaseExpiresAt): Fail-closed on recording failure with `LEASE_EXPIRED`; job status remains `in_progress`.
+100. `Scenario 99` (Failure Lifecycle: Infinity leaseExpiresAt): Fail-closed on recording failure with `LEASE_EXPIRED`; job status remains `in_progress`.
+101. `Scenario 100` (Failure Lifecycle: Past/expired timestamp): Fail-closed on recording failure with `LEASE_EXPIRED`; job status remains `in_progress`.
+102. `Scenario 101` (Foreign Lock: Missing mergeLeaseExpiresAt on foreign loser lock): Rejects with HTTP 409 (`MALFORMED_PLAYER_LOCK`).
+103. `Scenario 102` (Foreign Lock: Malformed string mergeLeaseExpiresAt on foreign lock): Rejects with HTTP 409 (`MALFORMED_PLAYER_LOCK`).
+104. `Scenario 103` (Foreign Lock: Missing mergeLeaseOwner on foreign lock): Rejects with HTTP 409 (`MALFORMED_PLAYER_LOCK`).
+105. `Scenario 104` (Foreign Lock: Missing mergeFencingToken on foreign lock): Rejects with HTTP 409 (`MALFORMED_PLAYER_LOCK`).
+106. `Scenario 105` (Foreign Lock: Existing active foreign job document): Rejects with HTTP 409 (`MERGE_IN_PROGRESS`).
+107. `Scenario 106` (Foreign Lock: Existing foreign job failed or expired): Rejects with HTTP 409 (`PLAYER_LOCKED_BY_ANOTHER_JOB`).
+108. `Scenario 107` (Foreign Lock: Missing foreign job doc with UNEXPIRED player lock): Rejects with HTTP 409 (`PLAYER_LOCKED_BY_ANOTHER_JOB`).
+109. `Scenario 108` (Foreign Lock: Missing foreign job doc with EXPIRED player lock and valid metadata): Successfully reclaims lock and increments fencing token.
+110. `Scenario 108b` (Foreign Lock: Symmetrical keeper checks): Rejects malformed foreign keeper lock and unexpired orphaned lock.
+111. `Scenario 109` (Rupee Precision: 2 decimal places numeric and string): Exact acceptance without precision distortion.
+112. `Scenario 110` (Rupee Precision: Half-paise and 3-decimal boundaries): Strict rejection of `123.454`, `123.455`, `123.456` without silent rounding.
+113. `Scenario 111` (Paise Precision: Integer vs fractional paise boundaries): Rejects fractional paise (`12345.5`) and accepts integer paise.
+114. `Scenario 112` (Amount Boundaries: Maximum allowable amount enforcement): Accepts `10,000,000` and rejects beyond (`10,000,000.01`).
 
 ---
 
@@ -262,6 +346,6 @@ Every payment write path in the codebase was audited and hardened against concur
 ## 7. Delivery & Independent Review Handoff
 
 - **Zero Production Mutations:** Zero deployment, zero production writes, zero production migrations performed.
-- **Implementation Commit SHA:** `630c7c0`
+- **Implementation Commit SHA:** `5b504c6`
 - **Documentation Commit SHA:** (Recorded in Git log upon commit)
 - **Independent Acceptance:** Antigravity does not self-certify. All changes and test evidence are prepared for independent read-only review by ChatGPT on branch `security/remediation-1f-a`.
