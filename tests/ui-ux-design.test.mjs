@@ -78,15 +78,15 @@ test("UX-004: MobileBottomNav provides complete navigation for both admin and pl
 });
 
 test("UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and prevents narrow viewport collision", () => {
-  const pageCode = fs.readFileSync(path.resolve("app/page.tsx"), "utf-8");
+  const headerCode = fs.readFileSync(path.resolve("components/layout/AppHeader.tsx"), "utf-8");
 
   // Check touch targets in header
-  assert.ok(pageCode.includes("min-h-[44px]"), "Header action buttons must enforce min 44px touch target height");
-  assert.ok(pageCode.includes("min-w-[44px]"), "Header icon buttons must enforce min 44px touch target width");
+  assert.ok(headerCode.includes("min-h-[44px]"), "Header action buttons must enforce min 44px touch target height");
+  assert.ok(headerCode.includes("min-w-[44px]"), "Header icon buttons must enforce min 44px touch target width");
 
   // Check truncation and compact mobile toggle to prevent header collision at 360px
-  assert.ok(pageCode.includes("truncate leading-tight uppercase"), "Header title must truncate to prevent line collision");
-  assert.ok(pageCode.includes('xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>'), "Header must use compact label on narrow mobile");
+  assert.ok(headerCode.includes("truncate leading-tight uppercase"), "Header title must truncate to prevent line collision");
+  assert.ok(headerCode.includes('xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>'), "Header must use compact label on narrow mobile");
 });
 
 test("UX-P0-01: Player Club Screen is connected and renders player sub-views", () => {
@@ -131,9 +131,9 @@ test("UX-P0-03: Player MobileBottomNav renders the 5 approved primary items", ()
 
   assert.ok(navCode.includes('<span className={labelCls}>Home</span>'), "Nav must include Home");
   assert.ok(navCode.includes('<span className={labelCls}>Matches</span>'), "Nav must include Matches");
-  assert.ok(navCode.includes('<span className={labelCls}>Payments</span>'), "Nav must include Payments");
-  assert.ok(navCode.includes('<span className={labelCls}>Performance</span>'), "Nav must include Performance");
-  assert.ok(navCode.includes('<span className={labelCls}>Club</span>'), "Nav must include Club");
+  assert.ok(navCode.includes('<span className={labelCls}>Finance</span>'), "Nav must include Finance");
+  assert.ok(navCode.includes('<span className={labelCls}>Players</span>'), "Nav must include Players");
+  assert.ok(navCode.includes('<span className={labelCls}>More</span>'), "Nav must include More");
 });
 
 test("UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View", () => {
@@ -217,4 +217,40 @@ test("UX-P1-03 & UX-P1-04: Adaptive responsive cards for dense mobile data and r
     playersCode.includes('min-h-[44px]'),
     "PlayersTab viewMode button must enforce min 44px touch target",
   );
+});
+
+test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () => {
+  const headerCode = fs.readFileSync(path.resolve("components/layout/AppHeader.tsx"), "utf-8");
+  const navCode = fs.readFileSync(path.resolve("components/layout/MobileBottomNav.tsx"), "utf-8");
+  const drawerCode = fs.readFileSync(path.resolve("components/layout/MoreDrawer.tsx"), "utf-8");
+  const pageCode = fs.readFileSync(path.resolve("app/page.tsx"), "utf-8");
+  const css = fs.readFileSync(path.resolve("app/globals.css"), "utf-8");
+
+  // 1. AppHeader integration & testids
+  assert.ok(pageCode.includes("<AppHeader"), "app/page.tsx must integrate AppHeader");
+  assert.ok(headerCode.includes('data-testid="app-header"'), "AppHeader must have data-testid");
+  assert.ok(headerCode.includes('data-testid="header-profile-avatar"'), "AppHeader must provide header profile avatar entry point");
+  assert.ok(headerCode.includes('data-testid="header-notifications-btn"'), "AppHeader must provide notifications button");
+
+  // 2. Profile accessed via header avatar, NOT a 6th bottom nav item
+  assert.equal(navCode.includes('<span className={labelCls}>Profile</span>'), false, "MobileBottomNav must NOT include Profile as a bottom nav item");
+
+  // 3. MoreDrawer secondary navigation drawer
+  assert.ok(drawerCode.includes('data-testid="more-drawer-sheet"'), "MoreDrawer must have sheet container");
+  assert.ok(drawerCode.includes('data-testid={`more-item-${item.tab}`}'), "MoreDrawer buttons must include data-testid");
+  assert.ok(drawerCode.includes('tab: "profile"'), "MoreDrawer must include Profile item");
+  assert.ok(drawerCode.includes('tab: "leaderboard"'), "MoreDrawer must include Performance item");
+  assert.ok(drawerCode.includes('tab: "studio"'), "MoreDrawer must include Studio item");
+  assert.ok(drawerCode.includes('tab: "shop"'), "MoreDrawer must include Shop item");
+  assert.ok(drawerCode.includes('tab: "club"'), "MoreDrawer must include Club item");
+  assert.ok(drawerCode.includes('e.key === "Escape"'), "MoreDrawer must close on Escape key");
+
+  // 4. Safe area insets support
+  assert.ok(css.includes(".pb-safe"), "globals.css must define .pb-safe utility");
+  assert.ok(css.includes(".pt-safe"), "globals.css must define .pt-safe utility");
+  assert.ok(navCode.includes("pb-safe"), "MobileBottomNav must use pb-safe for mobile home indicator");
+
+  // 5. Desktop sidebar alignment
+  assert.ok(pageCode.includes('onClick={() => setActiveTab("finance")}'), "Sidebar must link to finance tab");
+  assert.ok(pageCode.includes('onClick={() => setActiveTab("players")}'), "Sidebar must link to players tab");
 });

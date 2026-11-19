@@ -2,17 +2,19 @@
 
 import { useEffect, useRef } from "react";
 import {
-  CalendarDays,
   Trophy,
   Video,
   ShoppingBag,
   Image as ImageIcon,
   Settings as SettingsIcon,
   X,
+  PieChart,
+  Users,
+  User as UserIcon,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
 
-type Tab =
+export type Tab =
   | "home"
   | "matches"
   | "grounds"
@@ -34,21 +36,23 @@ type Feature = keyof NonNullable<AppConfig["features"]>;
 const PLAYER_MORE_ITEMS: Array<{
   tab: Tab;
   label: string;
-  icon: typeof CalendarDays;
+  icon: any;
   feature?: Feature;
   requireDesign?: boolean;
 }> = [
-  { tab: "matches", label: "Matches", icon: CalendarDays, feature: "matches" },
-  { tab: "leaderboard", label: "Leaderboard", icon: Trophy, feature: "leaderboard" },
-  { tab: "studio", label: "Studio", icon: Video, feature: "studio" },
-  { tab: "shop", label: "Shop", icon: ShoppingBag, feature: "shop" },
-  { tab: "design", label: "Design", icon: ImageIcon, requireDesign: true },
+  { tab: "leaderboard", label: "Performance & Stats", icon: Trophy, feature: "leaderboard" },
+  { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio" },
+  { tab: "shop", label: "Club Merchandise", icon: ShoppingBag, feature: "shop" },
+  { tab: "opinion", label: "Polls & Pulse", icon: PieChart, feature: "opinion" },
+  { tab: "design", label: "Design Studio", icon: ImageIcon, requireDesign: true },
+  { tab: "club", label: "Club Details & Info", icon: Users },
+  { tab: "profile", label: "My Profile", icon: UserIcon },
 ];
 
 const ADMIN_MORE_ITEMS: Array<{
   tab: Tab;
   label: string;
-  icon: typeof CalendarDays;
+  icon: any;
   feature?: Feature;
   requireDesign?: boolean;
 }> = [
@@ -97,45 +101,63 @@ export function MoreDrawer({
   });
 
   return (
-    <div className="fixed inset-0 z-40 md:hidden">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={persona === "admin" ? "Admin Tools Navigation" : "More Secondary Navigation"}
+      className="fixed inset-0 z-50 md:hidden"
+    >
+      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
         onClick={onClose}
+        aria-hidden="true"
       />
+
+      {/* Slide-up Sheet */}
       <div
         ref={sheetRef}
-        className="absolute bottom-0 left-0 right-0 bg-surface border-t border-border rounded-t-2xl pb-safe animate-slide-up"
+        data-testid="more-drawer-sheet"
+        className="absolute bottom-0 left-0 right-0 bg-surface border-t border-border rounded-t-2xl pb-safe shadow-2xl animate-slide-up max-h-[85vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary">
-            {persona === "admin" ? "Admin Tools" : "More"}
-          </h3>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-border/50">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-text-primary">
+              {persona === "admin" ? "Admin Console Hubs" : "More Destinations"}
+            </h3>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              {persona === "admin" ? "Administrative settings and operations" : "Secondary club features and resources"}
+            </p>
+          </div>
           <button
             onClick={onClose}
+            aria-label="Close navigation drawer"
             className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-surface-hover transition text-text-muted hover:text-text-primary cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-3 pb-4 space-y-1">
+
+        <div className="p-3 space-y-1">
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.tab;
             return (
               <button
                 key={item.tab}
+                data-testid={`more-item-${item.tab}`}
                 onClick={() => {
                   onSelectTab(item.tab);
                   onClose();
                 }}
                 className={`w-full min-h-[44px] flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition cursor-pointer ${
                   isActive
-                    ? "bg-accent text-text-accent"
-                    : "text-text-secondary hover:bg-surface-hover"
+                    ? "bg-accent text-text-accent shadow-xs"
+                    : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                 }`}
               >
                 <Icon className="w-5 h-5 shrink-0" />
-                {item.label}
+                <span className="flex-1 text-left">{item.label}</span>
               </button>
             );
           })}

@@ -64,6 +64,7 @@ import { AccountDisabledScreen } from "@/components/onboarding/AccountDisabledSc
 import { QuotaExceededScreen } from "@/components/onboarding/QuotaExceededScreen";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { AppHeader } from "@/components/layout/AppHeader";
 import { useToast } from "@/components/ui/Toast";
 
 // Lazy-loaded tab components — only downloaded when the user navigates to them
@@ -670,95 +671,32 @@ export default function Home() {
       style={themeStyles}
     >
       {/* Dynamic Header */}
-      <header className="bg-surface/95 backdrop-blur-xl border-b border-border fixed top-0 w-full z-40 p-2 sm:p-3 sm:px-6 flex items-center shadow-sm transition-all">
-        <div className="max-w-7xl xl:max-w-[1440px] mx-auto w-full px-1 sm:px-2 md:px-4 flex items-center justify-between gap-2 sm:gap-4">
-          <button onClick={() => setActiveTab("home")} className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 text-left cursor-pointer group">
-            {logoUrl ? (
-              <Image
-                src={logoUrl}
-                width={40}
-                height={40}
-                alt="Logo"
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-border shrink-0 shadow-md group-hover:opacity-80 transition"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition">
-                <Shield className="w-5 h-5 text-brand" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <h1 className="font-black text-sm sm:text-lg md:text-xl tracking-tight text-brand truncate leading-tight uppercase group-hover:opacity-80 transition">
-                {clubName}
-              </h1>
-            </div>
-          </button>
-
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {isAdmin && (
-              <button
-                onClick={() => {
-                  if (persona === "admin") {
-                    setPersona("player");
-                    setActiveTab("home");
-                  } else {
-                    setPersona("admin");
-                    if (isSuperAdmin) setActiveTab("home");
-                    else if (isFinanceAdmin) setActiveTab("finance");
-                    else if (isMatchAdmin) setActiveTab("matches");
-                    else if (isStudioAdmin) setActiveTab("studio");
-                    else if (isClubAdmin) setActiveTab("club");
-                    else setActiveTab("home");
-                  }
-                }}
-                className="min-h-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center gap-1"
-                title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
-              >
-                <Shield className="w-3.5 h-3.5 shrink-0 text-brand" />
-                <span className="hidden xs:inline">{persona === "admin" ? "Player View" : "Admin Console"}</span>
-                <span className="xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setActiveTab("notifications")}
-              className="relative min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0 text-text-secondary hover:text-text-primary cursor-pointer"
-              title="Notifications"
-            >
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border border-surface animate-pulse" />
-              )}
-            </button>
-
-            {(user.photoURL || appUser?.photoURL) && (
-              <button
-                onClick={() => setActiveTab("profile")}
-                className="min-h-[44px] min-w-[44px] rounded-full ring-2 ring-transparent hover:ring-brand/20 hover:bg-surface-hover transition flex items-center justify-center shrink-0 cursor-pointer"
-                title="My Profile"
-              >
-                <Image
-                  src={user.photoURL || appUser?.photoURL || ""}
-                  width={32}
-                  height={32}
-                  alt="Profile"
-                  className="w-8 h-8 rounded-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </button>
-            )}
-
-            <button
-              onClick={() => logOut()}
-              className="min-h-[44px] text-[9px] sm:text-[10px] font-bold uppercase tracking-widest border border-border text-text-secondary px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-surface-hover hover:text-text-primary transition hidden sm:flex items-center justify-center gap-1 shrink-0 cursor-pointer"
-              title="Sign Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Exit</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        clubName={clubName}
+        logoUrl={logoUrl}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        user={user}
+        appUser={appUser}
+        isAdmin={isAdmin}
+        persona={persona}
+        onTogglePersona={() => {
+          if (persona === "admin") {
+            setPersona("player");
+            setActiveTab("home");
+          } else {
+            setPersona("admin");
+            if (isSuperAdmin) setActiveTab("home");
+            else if (isFinanceAdmin) setActiveTab("finance");
+            else if (isMatchAdmin) setActiveTab("matches");
+            else if (isStudioAdmin) setActiveTab("studio");
+            else if (isClubAdmin) setActiveTab("club");
+            else setActiveTab("home");
+          }
+        }}
+        unreadCount={unreadCount}
+        onSignOut={logOut}
+      />
 
       {/* Main Content Responsive Workspace */}
       <main className="max-w-7xl xl:max-w-[1440px] mx-auto px-4 md:px-6 lg:px-8 pt-24 sm:pt-28 pb-12">
@@ -906,7 +844,21 @@ export default function Home() {
                     }`}
                   >
                     <span className="flex items-center gap-3">
-                      <Wallet className="w-4.5 h-4.5 shrink-0" /> Payments
+                      <Wallet className="w-4.5 h-4.5 shrink-0" /> Finance
+                    </span>
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("players")}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                      activeTab === "players"
+                        ? "bg-accent text-text-accent"
+                        : "text-text-secondary hover:bg-surface-hover"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Users className="w-4.5 h-4.5 shrink-0" /> Players
                     </span>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
                   </button>
@@ -1140,6 +1092,13 @@ export default function Home() {
                       persona={persona}
                       isFinanceAdmin={false}
                       isSuperAdmin={false}
+                    />
+                  )}
+                  {activeTab === "players" && (
+                    <PlayersTab
+                      store={store}
+                      persona={persona}
+                      isStudioAdmin={false}
                     />
                   )}
                   {activeTab === "leaderboard" && (
