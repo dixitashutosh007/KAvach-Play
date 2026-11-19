@@ -126,7 +126,7 @@ jobs:
         run: npx playwright install-deps chromium
 
       - name: Run Playwright E2E Suite
-        run: npx playwright test e2e/production-app.spec.ts
+        run: npx playwright test e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts
 
       - name: Upload E2E Test Report
         if: always()

@@ -7,9 +7,10 @@
 **Starting remote HEAD at assignment:** `27723e39b27ac722b936bb9ba79430bf125bccc7`  
 **Initial feature implementation commit:** `d9c488f2ad539073db62c0acef13dbbdda0b3544`  
 **Initial report & evidence commit:** `00d89ba0c299fcc17f93876985c0179af0c05cd1`  
-**Review baseline branch HEAD:** `48376c99b74a2f1f90c3e4c381e2b87712c9be28`  
-**Correction implementation commit:** `9fa56d1d3f2976582b1fca3508095fc6050946b0`  
-**Correction report & evidence commit:** `f9063f848f07be89b5bc7b99378caef6e2b963a7`  
+**Correction Pass 1 implementation commit:** `9fa56d1d3f2976582b1fca3508095fc6050946b0`  
+**Correction Pass 1 baseline branch HEAD:** `955dfb3a7b3e4ae4bca3468a3a674003bd1158a4`  
+**Correction Pass 2 implementation commit:** `7c000b213fe282a7a489748d29020d9640cd8361`  
+**Correction Pass 2 CI & report commit:** `1b4a6231c13f123b85d9aea10a63d5c96b1eb77f`  
 **Developer:** Antigravity (Implementation Developer)  
 **Reviewer:** ChatGPT (Independent Technical & Product Reviewer)  
 **Product Owner:** KAvach Cricket Club  
@@ -19,12 +20,30 @@
 
 ## 1. Executive Summary & Objective
 
-In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach Play, followed by an independent review correction round addressing three material review findings:
-1. **P0 — Enforce eligibility for every match-detail entry point (`components/matches/PlayerMatchCenter.tsx`):** Match detail views now strictly enforce authoritative eligibility validation (`validateMatchNavigation`) across all entry points: in-app match selection, `defaultMatchId`, `defaultAction`, URL/deep-link parameters (`?match=` or `?matchId=`), browser history back/forward navigation (`popstate`), and dynamic eligibility revocation while the modal is open. When a player is ineligible, match details fail closed (`selectedMatch` evaluates to `null`), the invalid URL parameters are purged, and a prominent restricted-access alert is rendered.
-2. **P1 — Correct payment aggregation and status derivation (`lib/personal-match-payment.ts`):** Multiple legitimate partial collections for the same player obligation are authoritatively aggregated (e.g. ₹300 + ₹350 = ₹650 on a ₹650 fee correctly transitions to `PAID`). Shared transaction identifiers (`razorpay_payment_id` or doc id) are deduplicated, fee overrides and sponsorship/plan offsets are applied in deterministic order, legacy `Paid` records are preserved, and arithmetic operations are safeguarded against negative balances.
-3. **P1 — Clarify abandoned-match payment presentation under Option A (`lib/personal-match-payment.ts`, `PlayerMatchCard.tsx`, `PlayerMatchDetailModal.tsx`):** Clear separation between historical cash collected and current outstanding obligations. For all abandoned matches, the obligation status is unconditionally `WAIVED` (`netPayable: 0`), never described as unpaid or overdue. Historical collected amounts are displayed as informational records (`WAIVED • ₹X collected` when `amountPaid > 0`), and the financial breakdown modal transparently presents standard fees, offsets, historical payments preserved, and zero payable dues with policy context.
+In Phase 2.2, we implemented the mobile-first **Player Match Center** for KAvach Play, followed by two independent review correction passes addressing material findings:
 
-All 100% of existing approved Phase 2.2 capabilities, design system tokens (`#A30F2D`, `#D51F43`, `#FCE8ED`), and administrative match features are fully preserved without regression.
+### Correction Pass 1 Key Findings Resolved
+1. **P0 — Enforce eligibility for every match-detail entry point (`components/matches/PlayerMatchCenter.tsx`):** Match detail views strictly enforce authoritative eligibility validation (`validateMatchNavigation`) across all entry points: in-app match selection, `defaultMatchId`, `defaultAction`, URL/deep-link parameters (`?match=` or `?matchId=`), browser history back/forward navigation (`popstate`), and dynamic eligibility revocation while the modal is open. When a player is ineligible, match details fail closed (`selectedMatch` evaluates to `null`), the invalid URL parameters are purged, and a prominent restricted-access alert is rendered.
+2. **P1 — Correct payment aggregation and status derivation (`lib/personal-match-payment.ts`):** Multiple legitimate partial collections for the same player obligation are authoritatively aggregated. Shared transaction identifiers are deduplicated, fee overrides and sponsorship/plan offsets are applied, legacy `Paid` records are preserved, and arithmetic operations are safeguarded against negative balances.
+3. **P1 — Clarify abandoned-match payment presentation under Option A (`lib/personal-match-payment.ts`, `PlayerMatchCard.tsx`, `PlayerMatchDetailModal.tsx`):** Clear separation between historical cash collected and current outstanding obligations. For all abandoned matches, the obligation status is unconditionally `WAIVED` (`netPayable: 0`), never described as unpaid or overdue. Historical collected amounts are displayed as informational records (`WAIVED • ₹X collected` when `amountPaid > 0`).
+
+### Correction Pass 2 Key Findings Resolved
+1. **P0 — Fix assigned-squad eligibility bypass (`lib/match-eligibility.ts`, `components/matches/PlayerMatchCenter.tsx`):**
+   - Corrected `isPlayerInAssignedSquad` and `isSquadAssignedToMatch` so that historical player RSVPs (`Yes`, `No`, `Tentative`) submitted when a fixture was open with `status === "Not Playing"` strictly do **not** grant squad membership once an official squad is assigned.
+   - Authoritative squad membership requires `availability === "Confirmed"` or `"Waitlist"`, or an active playing/fee obligation (`status !== "Not Playing"`, e.g. `"Unpaid"`, `"Paid"`, `"Waived"`).
+   - In open fixtures (no squad assigned), all active verified players remain eligible to view the match and submit 1-tap RSVPs.
+   - Administrators retain legitimate access to all matches regardless of squad assignment.
+   - Refactored `PlayerMatchCenter.tsx` `handleRsvp` to update availability (`store.updateMatchAvailability`) without modifying payment status, ensuring players can freely update RSVPs without triggering unintended exclusion.
+2. **P1 — Payment transaction deduplication & isolation (`lib/personal-match-payment.ts`):**
+   - Deduplication tracking normalizes both camelCase (`razorpayPaymentId`) and snake_case (`razorpay_payment_id`) as well as document IDs (`id`).
+   - Distinct legitimate collections and offsets aggregate independently, while duplicated records count exactly once.
+3. **P1 — Sponsored-payment accounting (`lib/personal-match-payment.ts`):**
+   - Legacy `Paid` records with `manualMethod === "club_sponsored"` without explicit collection amounts contribute `0` to `totalCollected` (cash from player) and contribute `effectiveFee` to `totalOffset` (club-sponsored fee offset). This eliminates double-counting where sponsorship was previously counted as both cash and offset.
+4. **P1 — Deterministic fee override precedence (`lib/personal-match-payment.ts`):**
+   - Implemented `resolvePlayerFeeOverride` which deterministically resolves fee overrides by sorting valid non-negative numeric overrides descending by authoritative update timestamp (`updatedAt`, fallback `createdAt`), with document ID descending as a deterministic tie-breaker independent of input array order. Conflicting overrides log an observable warning.
+5. **CI & Design System Alignment:**
+   - Updated `.github/workflows/ci.yml` `test-e2e-dev` workflow to execute all development E2E suites: `e2e/production-app.spec.ts`, `e2e/player-match-center-behavioral.spec.ts`, `e2e/player-home-behavioral.spec.ts`, and `e2e/shared-shell-behavioral.spec.ts`.
+   - Replaced earlier draft color references with the approved KAvach Design System tokens: Deep Wine (`#7A1E2B`), Scarlet (`#C0394B`), Dusty Red (`#E76B73`), Muted Gold (`#D6A84F`), Warm White (`#FFF6F4`), Soft Blush (`#F8EDEE`), White (`#FFFFFF`), Charcoal (`#29252A`), Poppins headings, Inter body/data.
 
 ---
 
@@ -41,219 +60,126 @@ All 100% of existing approved Phase 2.2 capabilities, design system tokens (`#A3
 | **7** | Older partially paid matches remain visible until fully settled | Master Plan & `components/matches/PlayerMatchCenter.tsx` (`unsettledOlderMatches`) | `phase2.2-player-match-center.test.mjs` (Test 7) & Playwright Test 2 | **Verified** |
 | **8** | Match does not disappear when date crosses section boundary | Master Plan & `lib/personal-match-payment.ts` (deterministic boundaries) | `phase2.2-player-match-center.test.mjs` (Test 8) | **Verified** |
 | **9** | No unintended duplicate matches across sections | Master Plan & `lib/personal-match-payment.ts` (partitioning & deduplication) | `phase2.2-player-match-center.test.mjs` (Test 9) | **Verified** |
-| **10** | Abandoned matches follow approved Option A policy (unpaid waived, historical paid preserved) | Approved Option A & `lib/personal-match-payment.ts` (`getPersonalMatchPaymentStatus`) | `phase2.2-player-match-center.test.mjs` (Tests 10a–10e) & Playwright Test 3, 9 | **Verified** |
-| **11** | Fully paid obligation displays PAID (including aggregated collections) | Master Plan & Review & `lib/personal-match-payment.ts` (`aggregatePlayerMatchPayment`) | `phase2.2-player-match-center.test.mjs` (Tests 11a–11e) & Playwright Test 3, 8 | **Verified** |
+| **10** | Abandoned matches follow approved Option A policy (unpaid waived, historical paid preserved) | Approved Option A & `lib/personal-match-payment.ts` (`getPersonalMatchPaymentStatus`) | `phase2.2-player-match-center.test.mjs` (Tests 10a–10e, Section 8 Test 10) & Playwright Test 3, 9 | **Verified** |
+| **11** | Fully paid obligation displays PAID (including aggregated collections) | Master Plan & Review & `lib/personal-match-payment.ts` (`aggregatePlayerMatchPayment`) | `phase2.2-player-match-center.test.mjs` (Tests 11a–11e, Section 7) & Playwright Test 3, 8 | **Verified** |
 | **12** | Unpaid obligation displays UNPAID | Master Plan & `lib/personal-match-payment.ts` (`status === "UNPAID"`) | `phase2.2-player-match-center.test.mjs` (Test 12) & Playwright Test 3 | **Verified** |
-| **13** | Partially settled obligation displays PARTIALLY PAID with remaining balance | Master Plan & `lib/personal-match-payment.ts` (`status === "PARTIALLY PAID"`) | `phase2.2-player-match-center.test.mjs` (Test 13) & Playwright Test 3 | **Verified** |
+| **13** | Partially settled obligation displays PARTIALLY PAID with remaining balance | Master Plan & `lib/personal-match-payment.ts` (`status === "PARTIALLY PAID"`) | `phase2.2-player-match-center.test.mjs` (Test 13, Section 7) & Playwright Test 3 | **Verified** |
 | **14** | Waived/non-billable obligations not falsely shown as unpaid | Master Plan & `lib/personal-match-payment.ts` (`status === "WAIVED"`) | `phase2.2-player-match-center.test.mjs` (Test 14) & Playwright Test 3 | **Verified** |
-| **15** | Fee overrides and offsets correctly accounted for | Master Plan & `lib/personal-match-payment.ts` (`feeOverride`, `offsetAmount`) | `phase2.2-player-match-center.test.mjs` (Tests 15a–15c) | **Verified** |
-| **16** | Multiple payment records aggregate without duplicate transaction counting | Review P1 & `lib/personal-match-payment.ts` (`aggregatePlayerMatchPayment`) | `phase2.2-player-match-center.test.mjs` (Tests 16a–16c) & Playwright Test 8 | **Verified** |
+| **15** | Fee overrides and offsets correctly accounted for | Master Plan & `lib/personal-match-payment.ts` (`feeOverride`, `offsetAmount`) | `phase2.2-player-match-center.test.mjs` (Tests 15a–15c, Section 8, Section 9) | **Verified** |
+| **16** | Multiple payment records aggregate without duplicate transaction counting | Review P1 & `lib/personal-match-payment.ts` (`aggregatePlayerMatchPayment`) | `phase2.2-player-match-center.test.mjs` (Section 7 Tests 1–6) & Playwright Test 8 | **Verified** |
 | **17** | Teammate payment information is never exposed to another player (SEC-004) | Master Plan & `PlayerMatchDetailModal.tsx` (`squadMembers` privacy isolation) | `phase2.2-player-match-center.test.mjs` (Test 17) & Playwright Test 5 | **Verified** |
 | **18** | Existing availability is displayed accurately & 1-tap updates work | Master Plan & `PlayerMatchCard.tsx` (`onRsvp`) | `phase2.2-player-match-center.test.mjs` (Test 18) & Playwright Test 4 | **Verified** |
-| **19** | Pre-flight eligibility guard on all match-detail entry points & deep links | Review P0 & `PlayerMatchCenter.tsx` (`validateMatchNavigation` fail-closed) | `phase2.2-player-match-center.test.mjs` (Tests 19a–19j) & Playwright Test 7 | **Verified** |
+| **19** | Pre-flight eligibility guard on all match-detail entry points & deep links | Review P0 & `PlayerMatchCenter.tsx` (`validateMatchNavigation` fail-closed) | `phase2.2-player-match-center.test.mjs` (Tests 19a–19j, Section 6) & Playwright Test 7 | **Verified** |
+| **20** | Assigned-squad eligibility bypass prevention (historical RSVPs excluded) | Pass 2 Review & `lib/match-eligibility.ts` (`isPlayerInAssignedSquad`) | `phase2.2-player-match-center.test.mjs` (Section 6 Tests 1–10) | **Verified** |
+| **21** | Sponsored payment accounting (no double-counting of cash and offset) | Pass 2 Review & `lib/personal-match-payment.ts` (`aggregatePlayerMatchPayment`) | `phase2.2-player-match-center.test.mjs` (Section 8 Tests 1–10) | **Verified** |
+| **22** | Deterministic fee override precedence (timestamp + docId tie-break) | Pass 2 Review & `lib/personal-match-payment.ts` (`resolvePlayerFeeOverride`) | `phase2.2-player-match-center.test.mjs` (Section 9 Tests 1–5) | **Verified** |
 
 ---
 
-## 3. Independent Review Correction Analysis
+## 3. Detailed Technical Remediation
 
-### Correction 1 (P0): Match-Detail Entry-Point & Deep-Link Pre-Flight Eligibility Guard
+### 1. P0 — Fix Assigned-Squad Eligibility Bypass (`lib/match-eligibility.ts`, `components/matches/PlayerMatchCenter.tsx`)
+- **Problem:** `isPlayerInAssignedSquad` accepted historical RSVP responses (`Yes`, `No`, `Tentative`) as sufficient to establish squad membership. When an open fixture had an RSVP from a player who was subsequently excluded when the squad was officially announced, their historical RSVP document could grant them unintended access.
+- **Remediation:**
+  - `isSquadAssignedToMatch`: Evaluates to `true` when at least one authoritative squad assignment exists (`availability === "Confirmed" | "Waitlist"` or active fee status `status !== "Not Playing"` with `"Unpaid" | "Paid" | "Waived"`).
+  - `isPlayerInAssignedSquad`: Strictly requires an authoritative squad assignment. Records with `status === "Not Playing"` and `availability: "Yes" | "No" | "Tentative"` do **not** grant squad membership.
+  - `isPlayerEligibleForMatch`: If `hasSquad` is true, player must be in the assigned squad (`isPlayerInAssignedSquad`). If `hasSquad` is false, all active, verified, non-disabled players are eligible.
+  - `PlayerMatchCenter.tsx`: Fixed `handleRsvp` so updating availability only invokes `store.updateMatchAvailability` and does not mutate `payment.status` to `"Not Playing"`.
 
-- **Finding:** A match detail view could be accessed directly via URL query parameters (`?match=` or `?matchId=`), `defaultMatchId`, `defaultAction`, or browser history (`popstate`) without running pre-flight player eligibility checks. If a player was not part of an assigned squad, this could allow viewing restricted match details.
-- **Root Cause:** Detail view selection previously relied on setting `selectedMatchId` directly from navigation parameters before eligibility evaluation completed.
-- **Remediation Implemented:**
-  1. `components/matches/PlayerMatchCenter.tsx`:
-     - Applied `validateMatchNavigation(targetId, matches, mePlayer, payments, effectiveIsAdmin)` to all entry points: `initialMatchId` on mount, `handleOpenMatch` on card selection, `handlePopState` on browser history changes, and continuous `useEffect` monitoring.
-     - Enforced **Fail-Closed Invariant**: `selectedMatch` directly evaluates `validateMatchNavigation(selectedMatchId, ...)` inside `useMemo`. If `check.allowed` is `false`, `selectedMatch` evaluates to `null`, preventing `<PlayerMatchDetailModal>` from rendering under any circumstance.
-     - Dynamic revocation: if a player's eligibility is revoked (e.g. unassigned from squad or disabled), `selectedMatchId` is cleared immediately.
-     - Unauthorized alert: renders `data-testid="ineligible-match-alert"` with authoritative error messaging and purges invalid query parameters from browser URL history.
-     - Preserves legitimate administrator access (`isAdmin`, `appUser.role === 'admin'`, `isClubAdmin`, `isMatchAdmin`).
+### 2. P1 — Transaction Deduplication & Isolation (`lib/personal-match-payment.ts`)
+- **Remediation:**
+  - `seenDocIds` and `seenRazorpayIds` track seen records before accumulating collections or offsets.
+  - Checks both `p.razorpayPaymentId` and `p.razorpay_payment_id`.
+  - Excludes failed transactions (`status === "Failed"`).
+  - Deduplicates shared payment IDs while aggregating distinct legitimate manual/gateway payments.
 
-### Correction 2 (P1): Multiple Legitimate Collection Aggregation
+### 3. P1 — Sponsored-Payment Accounting (`lib/personal-match-payment.ts`)
+- **Remediation:**
+  - If `p.manualMethod === "club_sponsored"` and `p.status === "Paid"` without explicit collection amounts:
+    - `collectedFromThisDoc = 0` (cash collected from player is ₹0).
+    - `offsetFromThisDoc = effectiveFee` (or explicit `feeOffsetAmount`).
+  - Cash collected from player (`totalCollected`) and club sponsorship offsets (`totalOffset`) are tracked separately and summed into `totalRecognized`.
+  - Net payable obligation is calculated as `Math.max(0, effectiveFee - totalRecognized)`.
 
-- **Finding:** In `lib/personal-match-payment.ts`, the previous implementation selected the first matching `MatchPayment` record. In scenarios where multiple legitimate payments were collected for the same player obligation (e.g. ₹300 cash collected + ₹350 Razorpay payment = ₹650), the system did not sum the collections, falsely leaving the status as `PARTIALLY PAID` instead of `PAID`.
-- **Remediation Implemented:**
-  1. Created `aggregatePlayerMatchPayment(playerPayments, standardFee, match)`:
-     - Iterates through all payment documents belonging to the player for the match.
-     - Deduplicates duplicate transaction records sharing the same transaction ID (`razorpay_payment_id` or doc id).
-     - Resolves the effective base fee by respecting explicit `feeOverride` values.
-     - Sums legitimate collected amounts (`feeCollectedAmount` or positive legacy amounts).
-     - Sums legitimate offsets (`offsetAmount` from sponsorship or fee plans).
-     - Recognizes legacy `Paid` status records where `feeCollectedAmount` was omitted by treating them as fully settling the standard fee.
-     - Calculates net payable balance using `Math.max(0, effectiveFee - totalOffset - totalCollected)`.
-     - Transitions status accurately:
-       - `PAID` when `totalCollected + totalOffset >= effectiveFee` (or legacy `Paid`).
-       - `PARTIALLY PAID` when `0 < totalCollected + totalOffset < effectiveFee`.
-       - `UNPAID` when `totalCollected + totalOffset === 0`.
-       - `WAIVED` when match is abandoned or non-billable.
-
-### Correction 3 (P1): Clarified Abandoned-Match Presentation under Option A Policy
-
-- **Finding:** Under approved Option A policy, abandoned matches create no player match-fee obligation. However, displaying historical partial collections as active dues or describing obligations as unpaid created accounting ambiguity.
-- **Remediation Implemented:**
-  1. In `lib/personal-match-payment.ts`:
-     - For all abandoned matches (`match.result === "Abandoned"` or `!isMatchBillable(match)`), the obligation status is unconditionally `status: "WAIVED"`, `isWaived: true`, and `netPayable: 0`.
-     - Preserves historical collections as informational data (`amountPaid: totalCollected`), never treating them as active balances or pending dues.
-  2. In `components/matches/PlayerMatchCard.tsx`:
-     - Payment badge renders `WAIVED • ₹X collected` when `amountPaid > 0`, and clean `WAIVED` when zero.
-  3. In `components/matches/PlayerMatchDetailModal.tsx`:
-     - Detailed financial breakdown displays:
-       - Standard Match Fee: `₹X`
-       - Plan / Sponsored Offset: `-₹X` (if applicable)
-       - Historical Payment (Preserved): `₹X` (if `amountPaid > 0`)
-       - Outstanding Payable: `₹0 (Waived)`
-       - Prominent policy explanatory banner: *"Match fee obligation is waived under club policy. Historical payments remain recorded in your transaction history."*
+### 4. P1 — Deterministic Fee Override Resolution (`lib/personal-match-payment.ts`)
+- **Remediation:**
+  - Created and exported `resolvePlayerFeeOverride(playerPayments: MatchPayment[]): number | undefined`.
+  - Filters to valid non-negative numeric overrides.
+  - Sorts descending by authoritative update timestamp (`updatedAt`, fallback `createdAt`), using document ID descending as a deterministic tie-breaker.
+  - Detects conflicting overrides and logs an observable console warning.
 
 ---
 
-## 4. Verification Evidence & Test Suites
+## 4. Verification & Testing Evidence
 
-### 1. Phase 2.2 Unit Test Matrix (`tests/phase2.2-player-match-center.test.mjs`)
+### 1. Node.js Unit & Regression Test Suite
 Command: `node --test tests/phase2.2-player-match-center.test.mjs`
 
 ```
 ▶ Phase 2.2 Player Match Center: Payment Derivation & Match Grouping
-  ▶ 1. Personal Match Payment Status Derivation
-    ✔ 11. Fully paid obligation (feeCollectedAmount >= fee) displays PAID (0.2475ms)
-    ✔ 11b. Legacy record with status 'Paid' but missing feeCollectedAmount defaults to PAID (0.0468ms)
-    ✔ 11c. Multiple partial collections aggregate to PAID (₹300 + ₹350 = ₹650) (0.0464ms)
-    ✔ 11d. Multiple partial collections with duplicate transaction IDs do not double count (0.0494ms)
-    ✔ 11e. Multiple partial collections with fee override aggregate correctly (0.0425ms)
-    ✔ 12. Unpaid obligation displays UNPAID (0.0454ms)
-    ✔ 13. Partially settled obligation displays PARTIALLY PAID with remaining balance (0.0526ms)
-    ✔ 13b. Multiple partial collections that remain below fee display PARTIALLY PAID with net balance (0.0396ms)
-    ✔ 14. Waived obligation displays WAIVED with zero payable balance (0.0456ms)
-    ✔ 15a. Fee override takes precedence over standard match fee (0.0416ms)
-    ✔ 15b. Plan / sponsored offset deduction correctly reduces net payable balance (0.0407ms)
-    ✔ 15c. Combined fee override, offset deduction, and partial payment calculate accurately (0.0401ms)
-    ✔ 16. Multiple payment records deduplicate safely and do not double count amounts (0.0408ms)
-    ✔ 16b. Malformed payment amounts (NaN, negative, string) parse safely without breaking calculation (0.0441ms)
-    ✔ 16c. Collections exceeding standard fee do not produce negative net payable balance (0.0384ms)
-    ✔ 17. Teammate payment information is isolated and never leaks to other players (0.0375ms)
-  ✔ 1. Personal Match Payment Status Derivation (1.0851ms)
-  ▶ 2. Match Grouping and Visibility Rules
-    ✔ 1. Upcoming match within next two weeks is visible (0.2801ms)
-    ✔ 2. Upcoming match beyond two weeks is also visible (0.0678ms)
-    ✔ 3. Upcoming matches are sorted chronologically (nearest first) and nextMatch is identified (0.0603ms)
-    ✔ 4. Recent past matches are visible in Recent Matches (0.0557ms)
-    ✔ 5. Older paid matches are accessible under Previous Matches (0.0467ms)
-    ✔ 6. Older unpaid matches remain visible in active/recent until settled (0.0464ms)
-    ✔ 7. Older partially paid matches remain visible until fully settled (0.0443ms)
-    ✔ 8. A match does not disappear when its date crosses a section boundary (0.0581ms)
-    ✔ 9. No unintended duplicate matches across sections (0.0651ms)
-  ✔ 2. Match Grouping and Visibility Rules (0.8115ms)
-  ▶ 3. Availability State Derivation
-    ✔ 18. Existing availability is displayed accurately (0.0805ms)
-  ✔ 3. Availability State Derivation (0.1037ms)
-  ▶ 4. Clarified Abandoned-Match Payment Presentation (Option A Policy)
-    ✔ Abandoned match with no collection displays WAIVED, amountPaid: 0, netPayable: 0 (0.0487ms)
-    ✔ Abandoned match with partial historical collection displays WAIVED, preserves amountPaid: 300, netPayable: 0 (0.0272ms)
-    ✔ Abandoned match with full historical collection displays WAIVED, preserves amountPaid: 600, netPayable: 0 (0.0267ms)
-    ✔ Abandoned match with offsets displays WAIVED with netPayable: 0 (0.0285ms)
-    ✔ Non-abandoned match behavior remains completely unchanged (unpaid / partial / paid) (0.0323ms)
-  ✔ 4. Clarified Abandoned-Match Payment Presentation (Option A Policy) (0.2120ms)
-  ▶ 5. Match-Detail Entry Point & Deep Link Pre-flight Eligibility
-    ✔ Eligible player can open a match from the list or valid deep link (0.0755ms)
-    ✔ Eligible assigned squad member can open the assigned match (0.0332ms)
-    ✔ Ineligible player cannot open assigned-squad match through defaultMatchId or deep link (0.0421ms)
-    ✔ Ineligible player cannot open tentative fixture through defaultAction (0.0306ms)
-    ✔ Non-existent match deep link fails with MATCH_NOT_FOUND (0.0245ms)
-    ✔ Eligibility revocation blocks navigation and detail access (0.0658ms)
-    ✔ Player identity change does not retain access from previous identity (0.0276ms)
-    ✔ Loading or unavailable match data fails closed without exposing details (0.0236ms)
-    ✔ Authorized Admin retains legitimate access to restricted and tentative matches (0.0306ms)
-    ✔ Archived matches are blocked for all users including admin (0.0242ms)
-  ✔ 5. Match-Detail Entry Point & Deep Link Pre-flight Eligibility (0.4605ms)
-ℹ tests 41
-ℹ suites 5
-ℹ pass 41
+  ▶ 1. Personal Match Payment Status Derivation (16 tests pass)
+  ▶ 2. Match Grouping and Visibility Rules (9 tests pass)
+  ▶ 3. Availability State Derivation (1 test pass)
+  ▶ 4. Clarified Abandoned-Match Payment Presentation (Option A Policy) (5 tests pass)
+  ▶ 5. Match-Detail Entry Point & Deep Link Pre-flight Eligibility (10 tests pass)
+  ▶ 6. Assigned-Squad Eligibility Bypass Regression Tests (10 tests pass)
+    ✔ 1. Open fixture with no assigned squad: active verified player is eligible
+    ✔ 2. Open fixture: player can submit RSVP
+    ✔ 3. Player responds Yes before squad assignment, then is excluded: denied
+    ✔ 4. Player responds No before squad assignment, then is excluded: denied
+    ✔ 5. Player responds Tentative before squad assignment, then is excluded: denied
+    ✔ 6. Player is explicitly assigned to squad: allowed
+    ✔ 7. Player is removed from squad (status: 'Not Playing'): denied
+    ✔ 8. Admin retains access to assigned fixtures
+    ✔ 9. Disabled, rejected, pending, merged players remain ineligible
+    ✔ 10. Deep link and direct match selection use corrected validator
+  ▶ 7. Payment Transaction Deduplication Tests (6 tests pass)
+    ✔ 1. Two docs with same Razorpay payment ID count once
+    ✔ 2. Two different Razorpay payment IDs count independently
+    ✔ 3. Duplicate doc ID counts once
+    ✔ 4. Two legitimate manual collections count independently
+    ✔ 5. Same transaction through legacy and current fields is not counted twice
+    ✔ 6. Records for another player or match are excluded
+  ▶ 8. Sponsored-Payment Accounting Tests (10 tests pass)
+    ✔ 1. Legacy Paid manual payment without explicit amount
+    ✔ 2. Legacy club-sponsored Paid record without explicit amount
+    ✔ 3. Club-sponsored record with explicit offset
+    ✔ 4. Club-sponsored record with explicit collection amount
+    ✔ 5. Cash collection plus sponsorship offset
+    ✔ 6. Partial cash collection plus offset
+    ✔ 7. Full settlement through sponsorship
+    ✔ 8. Non-sponsored manual payment
+    ✔ 9. Razorpay collection
+    ✔ 10. Abandoned match with historical sponsored or cash transactions
+  ▶ 9. Deterministic Fee Override Precedence Tests (5 tests pass)
+    ✔ 1. Single valid override
+    ✔ 2. Multiple records with same override
+    ✔ 3. Conflicting overrides in different input orders resolve to the same value
+    ✔ 4. Invalid, negative, null, malformed overrides ignored
+    ✔ 5. No override: uses match fee
+✔ Phase 2.2 Player Match Center: Payment Derivation & Match Grouping (11.6ms)
+ℹ tests 72
+ℹ suites 10
+ℹ pass 72
 ℹ fail 0
 ```
 
-### 2. Full Unit & Functional Regression Suite
+### 2. Full Functional Suite
 Command: `npm run test:functional`
+- **Result:** 363 tests passed across 85 suites, 0 failures.
 
-```
-✔ Utility Function Tests (Phase 10)
-✔ Financial & Late Fee Tests (FIN-001 - FIN-007)
-✔ AST Security Rules Tests (SEC-001 - SEC-006)
-✔ Match Fee & Finance Accounting Functional Tests
-✔ ARCH-001, ARCH-002, ARCH-003 Architecture Tests
-✔ Phase 2.1 Corrections: Deterministic Birthday Parsing & Real-Model Match Eligibility (32 tests)
-✔ Phase 2.2 Player Match Center: Payment Derivation & Match Grouping (41 tests)
-✔ UI/UX Design Token & Shell Tests (14 tests)
-ℹ tests 332
-ℹ suites 81
-ℹ pass 332
-ℹ fail 0
-```
-
-### 3. Playwright Behavioral Test Suite (`e2e/player-match-center-behavioral.spec.ts`)
+### 3. Phase 2.2 Playwright Behavioral Suite
 Command: `npx playwright test e2e/player-match-center-behavioral.spec.ts`
+- **Result:** 28 passed across Mobile Chrome and Desktop Chrome (48.8s).
 
-```
-Running 28 tests using 1 worker
+### 4. Cross-Suite Playwright Behavioral Suites
+- `npx playwright test e2e/player-home-behavioral.spec.ts`: 36 passed across Mobile and Desktop Chrome (1.1m).
+- `npx playwright test e2e/shared-shell-behavioral.spec.ts`: 14 passed across Mobile and Desktop Chrome (20.8s).
 
-  ✓   1 Upcoming matches sort chronologically (nearest first), include fixtures beyond 14 days, and highlight immediate next match (1.4s)
-  ✓   2 Recent past matches render in Recent view, and active Recent view retains unsettled older past matches with prominent alert (1.3s)
-  ✓   3 Personal payment status derives accurately (PAID, UNPAID, PARTIALLY PAID, WAIVED) and waives abandoned matches (1.4s)
-  ✓   4 1-tap inline RSVP availability actions (Playing, Maybe, Out) update state with instant feedback (4.6s)
-  ✓   5 Match detail displays teammates squad availability without payment leak, and restores list on browser back (1.4s)
-  ✓   6 Search filter finds fixtures by opponent, ground, or tournament and tabs switch active slices (1.4s)
-  ✓   7 Ineligible player deep-link access is blocked, renders restricted alert, and fails closed without exposing match details (1.4s)
-  ✓   8 Multiple legitimate partial collections aggregate accurately to PAID (1.3s)
-  ✓   9 Abandoned match collection clearly communicates WAIVED and preserves historical collection (1.4s)
-  ✓  10 Responsive visual validation at 360x800 with zero horizontal overflow (1.5s)
-  ✓  11 Responsive visual validation at 375x812 with zero horizontal overflow (1.9s)
-  ✓  12 Responsive visual validation at 390x844 with zero horizontal overflow (1.5s)
-  ✓  13 Responsive visual validation at 768x1024 with zero horizontal overflow (1.7s)
-  ✓  14 Responsive visual validation at 1280x800 with zero horizontal overflow (1.8s)
-  [Desktop Chrome executions: 14/14 tests pass]
-
-  28 passed (52.5s)
-```
-
-### 4. Cross-Suite Behavioral Regression Suite
-Command: `npx playwright test e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`
-
-```
-Running 50 tests using 1 worker
-  50 passed (1.4m)
-```
-
-### 5. Production Next.js Build
-Command: `npm run build`
-
-```
- ✓ Compiled successfully
- ✓ Linting and checking validity of types
- ✓ Collecting page data
- ✓ Generating static pages (19/19)
- ✓ Collecting build traces
- ✓ Finalizing page optimization
-
-Route (app)                              Size     First Load JS
-┌ ○ /                                    65.9 kB         397 kB
-├ ○ /_not-found                          179 B          99.6 kB
-├ ○ /admin-tools                         3.44 kB         304 kB
-├ ƒ /api/admin/generate-kavach-ids       179 B          99.6 kB
-├ ƒ /api/admin/merge-players             179 B          99.6 kB
-├ ƒ /api/admin/reconcile-abandoned       179 B          99.6 kB
-├ ƒ /api/calendar/sync                   179 B          99.6 kB
-├ ƒ /api/email/send                      179 B          99.6 kB
-├ ƒ /api/player/link-account             179 B          99.6 kB
-├ ƒ /api/razorpay/order                  179 B          99.6 kB
-├ ƒ /api/razorpay/webhook                179 B          99.6 kB
-├ ƒ /api/whatsapp/invite                 179 B          99.6 kB
-├ ƒ /api/whatsapp/remind-studio          179 B          99.6 kB
-├ ƒ /api/whatsapp/send                   179 B          99.6 kB
-├ ○ /legal                               178 B           109 kB
-├ ƒ /pay/[playerId]                      2.53 kB         324 kB
-├ ○ /policy                              178 B           109 kB
-└ ○ /prototype                           36.4 kB         136 kB
-+ First Load JS shared by all            99.4 kB
-
-Exit Code: 0
-```
+### 5. Production Next.js Build & Lint
+- `npm run lint`: 0 errors (4 warnings on firestore.rules open reads).
+- `npx tsc --noEmit`: 0 errors.
+- `npm run build`: Compiled successfully; 19 static pages generated; 0 errors.
 
 ---
 
@@ -273,33 +199,25 @@ All screenshots are stored under `docs/qa/screenshots/player-matches/` using rep
 
 ## 6. Git Handover & File Inventory
 
-### Files Modified & Created in Correction Pass
-1. `lib/personal-match-payment.ts`:
-   - Added `aggregatePlayerMatchPayment` helper.
-   - Refactored `getPersonalMatchPaymentStatus` to sum legitimate collections, deduplicate shared transaction IDs, apply offsets and overrides, and unconditionally set `status: "WAIVED"` with `netPayable: 0` for all abandoned matches while preserving historical payments.
-2. `components/matches/PlayerMatchCard.tsx`:
-   - Updated payment badge to display `WAIVED • ₹X collected` when historical payments exist, and `WAIVED` when 0.
-3. `components/matches/PlayerMatchDetailModal.tsx`:
-   - Added Option A policy explanation banner and financial breakdown for abandoned matches displaying standard fee, offset, historical payments preserved, and zero payable dues.
-4. `components/matches/PlayerMatchCenter.tsx`:
-   - Guarded all match-detail entry points (`initialMatchId`, `handleOpenMatch`, `handlePopState`, and continuous `useEffect` guard) with `validateMatchNavigation`.
-   - Enforced Fail-Closed invariant on `selectedMatch`.
-   - Added `data-testid="ineligible-match-alert"` banner and automatic URL query parameter cleanup.
-5. `components/MatchesTab.tsx`:
-   - Passed `isAdmin={isAdmin}` to `PlayerMatchCenter`.
-6. `hooks/useStore.ts`:
-   - Guarded lazy subscriptions (`ensurePayments`, `ensureMatchPayments`, `ensureOtherFees`) against executing Firestore queries when synthetic test store `__KAVACH_TEST_STORE__` is active.
-7. `tests/phase2.2-player-match-center.test.mjs`:
-   - Expanded unit test matrix from 19 to 41 comprehensive tests covering multiple partial payment collections, transaction ID deduplication, legacy status records, malformed inputs, Option A abandoned matches, and pre-flight eligibility validation.
-8. `e2e/player-match-center-behavioral.spec.ts`:
-   - Added automated Playwright tests 7 (ineligible deep-link access blocked & fail closed), 8 (multiple partial collections aggregate to PAID), and 9 (abandoned match collection communicates WAIVED and preserves historical collection). Total suite expanded to 14 tests across viewports.
-9. `docs/redesign/reports/phase-2.2-player-match-center.md`:
-   - Comprehensive implementation, verification, and correction pass report with zero absolute paths.
+### Files Modified & Created in Correction Pass 2
+1. `lib/match-eligibility.ts`:
+   - Updated `isSquadAssignedToMatch` and `isPlayerInAssignedSquad` to eliminate squad eligibility bypass from historical unassigned RSVPs.
+   - Enforced strict authoritative squad assignment invariant while preserving open fixture RSVP access and admin access.
+2. `lib/personal-match-payment.ts`:
+   - Added `resolvePlayerFeeOverride` with timestamp + document ID descending determinism and conflict warning.
+   - Fixed transaction ID deduplication to check both `razorpayPaymentId` and `razorpay_payment_id` as well as doc IDs.
+   - Corrected sponsored payment accounting so `club_sponsored` Paid records contribute to `totalOffset` and 0 to `totalCollected`.
+3. `components/matches/PlayerMatchCenter.tsx`:
+   - Refactored `handleRsvp` to update availability without modifying payment status.
+4. `.github/workflows/ci.yml`:
+   - Updated `test-e2e-dev` job to run `e2e/production-app.spec.ts e2e/player-match-center-behavioral.spec.ts e2e/player-home-behavioral.spec.ts e2e/shared-shell-behavioral.spec.ts`.
+5. `tests/phase2.2-player-match-center.test.mjs`:
+   - Added 31 new regression tests across Sections 6, 7, 8, 9 (total suite expanded to 72 tests).
+6. `docs/redesign/reports/phase-2.2-player-match-center.md`:
+   - Complete updated report with design tokens, correction passes, test evidence, and file inventory.
 
 ---
 
-## 7. Next Steps
+## 7. Submission & Status
 
-With the Phase 2.2 correction pass complete, all review findings addressed, 332 functional/unit tests passing, 28 Phase 2.2 Playwright tests passing, 50 cross-suite regression tests passing, and a clean Next.js production build:
-- Ready for independent review verification by ChatGPT and product-owner acceptance.
-- Do not begin Phase 2.3 or any Admin Experience work until Phase 2.2 is accepted by the product owner.
+Phase 2.2 (Correction Pass 2) is complete, all review findings resolved, and submitted for independent review verification and product-owner acceptance.
