@@ -47,6 +47,9 @@ export function isPlayerInAssignedSquad(
   return (
     payment.availability === "Confirmed" ||
     payment.availability === "Waitlist" ||
+    payment.availability === "Tentative" ||
+    payment.availability === "Yes" ||
+    payment.availability === "No" ||
     payment.status === "Paid" ||
     payment.status === "Unpaid" ||
     payment.status === "Waived"

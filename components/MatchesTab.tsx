@@ -60,6 +60,7 @@ import { MatchToolbar } from "./MatchToolbar";
 import { MatchSheetView } from "./MatchSheetView";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
 
 export function MatchesTab({
   store,
@@ -296,7 +297,8 @@ export function MatchesTab({
     currentUserObj?.isMatchAdmin ||
     currentUserObj?.isClubAdmin;
 
-  const isAdmin = Boolean(persona === "admin" || userHasAdminPrivileges);
+  const isPlayerView = persona === "player" || (!persona && !userHasAdminPrivileges);
+  const isAdmin = !isPlayerView && Boolean(persona === "admin" || userHasAdminPrivileges);
 
   useEffect(() => {
     if (!isAdmin && subTab !== "matches") {
@@ -918,6 +920,15 @@ export function MatchesTab({
       </div>
     </div>
   ) : null;
+
+  if (isPlayerView) {
+    return (
+      <PlayerMatchCenter
+        store={store}
+        defaultAction={defaultAction}
+      />
+    );
+  }
 
   if (selectedMatch) {
     return (
@@ -2232,26 +2243,28 @@ export function MatchPayments({
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className={`grid ${isAdmin ? "grid-cols-3" : "grid-cols-1"} gap-2 mb-4`}>
           <div className="bg-surface-hover border border-border rounded-lg p-3 text-center">
             <p className="text-3xl font-light">{played}</p>
             <p className="text-[9px] font-bold uppercase tracking-widest text-text-muted mt-1">
               Playing
             </p>
           </div>
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
-            <p className="text-3xl font-light text-accent">{paid}</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-400/70 mt-1">
-              Paid
-            </p>
-          </div>
-          {(isAdmin || (!isAdmin && myPayment?.status === "Unpaid")) && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
-              <p className="text-3xl font-light text-red-400">{unpaid}</p>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-red-400/70 mt-1">
-                Unpaid
-              </p>
-            </div>
+          {isAdmin && (
+            <>
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
+                <p className="text-3xl font-light text-accent">{paid}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-400/70 mt-1">
+                  Paid
+                </p>
+              </div>
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
+                <p className="text-3xl font-light text-red-400">{unpaid}</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-red-400/70 mt-1">
+                  Unpaid
+                </p>
+              </div>
+            </>
           )}
         </div>
 
@@ -2723,11 +2736,11 @@ export function MatchPayments({
                     return (
                       <span
                         key={payment.id}
-                        className={`bg-surface-hover border px-2 py-1 rounded inline-flex items-center gap-1.5 max-w-[250px] ${isPaid ? "border-emerald-500/30" : "border-border"}`}
+                        className={`bg-surface-hover border px-2 py-1 rounded inline-flex items-center gap-1.5 max-w-[250px] ${isAdmin && isPaid ? "border-emerald-500/30" : "border-border"}`}
                       >
                         <span className="truncate flex items-center gap-1">
                           {payment.guestName || p.name}
-                          {isPaid && <span className="text-[9px] uppercase tracking-widest text-emerald-400 font-bold ml-1">Paid</span>}
+                          {isAdmin && isPaid && <span className="text-[9px] uppercase tracking-widest text-emerald-400 font-bold ml-1">Paid</span>}
                         </span>
                         {isAdmin && (
                           <select
