@@ -14,9 +14,16 @@ import assert from "node:assert/strict";
 import {
   parseMatchDateTime,
   getPersonalMatchPaymentStatus,
+  aggregatePlayerMatchPayment,
   derivePlayerAvailability,
   groupPlayerMatches,
 } from "../lib/personal-match-payment.ts";
+import {
+  isPlayerEligibleForMatch,
+  validateMatchNavigation,
+  isSquadAssignedToMatch,
+  isPlayerInAssignedSquad,
+} from "../lib/match-eligibility.ts";
 
 describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", () => {
   const dummyPlayer = {
@@ -219,10 +226,13 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
         },
       ]);
       assert.equal(unpaidRes.status, "WAIVED");
+      assert.equal(unpaidRes.label, "WAIVED");
       assert.equal(unpaidRes.amountDue, 0);
+      assert.equal(unpaidRes.netPayable, 0);
+      assert.equal(unpaidRes.amountPaid, 0);
       assert.equal(unpaidRes.isWaived, true);
 
-      // Paid player on abandoned match -> Historical PAID preserved
+      // Paid player on abandoned match -> Obligation status WAIVED, historical amount paid preserved
       const paidRes = getPersonalMatchPaymentStatus(dummyPlayer, abandonedMatch, [
         {
           id: "pay-ab-paid",
@@ -232,9 +242,189 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
           feeCollectedAmount: 600,
         },
       ]);
-      assert.equal(paidRes.status, "PAID");
+      assert.equal(paidRes.status, "WAIVED");
+      assert.equal(paidRes.label, "WAIVED");
       assert.equal(paidRes.amountDue, 0);
+      assert.equal(paidRes.netPayable, 0);
       assert.equal(paidRes.amountPaid, 600);
+      assert.equal(paidRes.isWaived, true);
+    });
+
+    // Required Matrix Scenarios from Independent Review
+    it("Two legitimate partial collections totalling fee aggregates to PAID", () => {
+      const payments = [
+        {
+          id: "pay-part-1",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: 300,
+        },
+        {
+          id: "pay-part-2",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: 350,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 650);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+    });
+
+    it("Multiple legitimate collections below fee aggregates to PARTIALLY PAID", () => {
+      const payments = [
+        {
+          id: "pay-part-a",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: 150,
+        },
+        {
+          id: "pay-part-b",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: 200,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 350);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 300);
+      assert.equal(res.status, "PARTIALLY PAID");
+    });
+
+    it("Duplicate transaction records (shared razorpayPaymentId or docId) are counted only once", () => {
+      const payments = [
+        {
+          id: "pay-rzp-1",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Paid",
+          razorpayPaymentId: "pay_dup_order_123",
+          feeCollectedAmount: 650,
+        },
+        {
+          id: "pay-rzp-2",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Paid",
+          razorpayPaymentId: "pay_dup_order_123",
+          feeCollectedAmount: 650,
+        },
+        {
+          id: "pay-rzp-1",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 650,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 650);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+    });
+
+    it("Legacy Paid record without feeCollectedAmount preserves established Paid semantics", () => {
+      const payments = [
+        {
+          id: "pay-legacy-single",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Paid",
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 650);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+    });
+
+    it("Collections plus offset correctly derives outstanding balance and settles obligation", () => {
+      const payments = [
+        {
+          id: "pay-mix",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: 350,
+          feeOffsetAmount: 300,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 350);
+      assert.equal(res.totalOffset, 300);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "PAID");
+    });
+
+    it("Malformed, negative, or NaN amounts are safely handled without corrupting balance", () => {
+      const payments = [
+        {
+          id: "pay-bad-1",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: -500,
+        },
+        {
+          id: "pay-bad-2",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: NaN,
+        },
+        {
+          id: "pay-bad-3",
+          matchId: "match-1",
+          playerId: "player-alpha",
+          status: "Unpaid",
+          feeCollectedAmount: "invalid",
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 650);
+      assert.equal(res.status, "UNPAID");
+    });
+
+    it("Different player's and different match's payment records are strictly excluded", () => {
+      const payments = [
+        {
+          id: "pay-other-pl",
+          matchId: "match-1",
+          playerId: "player-beta",
+          status: "Paid",
+          feeCollectedAmount: 650,
+        },
+        {
+          id: "pay-other-m",
+          matchId: "match-other-xyz",
+          playerId: "player-alpha",
+          status: "Paid",
+          feeCollectedAmount: 650,
+        },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, standardMatch, payments);
+      assert.equal(res.effectiveFee, 650);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 650);
+      assert.equal(res.status, "UNPAID");
     });
   });
 
@@ -453,6 +643,156 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(avPending.status, "Pending");
       assert.equal(avPending.badgeLabel, "Awaiting Response");
       assert.equal(avPending.isPending, true);
+    });
+  });
+
+  describe("4. Clarified Abandoned-Match Payment Presentation (Option A Policy)", () => {
+    const abandonedMatch = {
+      id: "match-ab-1",
+      opponent: "Monsoon Warriors",
+      date: "2026-11-10",
+      time: "07:00",
+      fee: 600,
+      result: "Abandoned",
+    };
+
+    it("Abandoned match with no collection displays WAIVED, amountPaid: 0, netPayable: 0", () => {
+      const payments = [
+        { id: "p-ab-0", matchId: "match-ab-1", playerId: "player-alpha", status: "Unpaid", feeCollectedAmount: 0 },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, abandonedMatch, payments);
+      assert.equal(res.effectiveFee, 600);
+      assert.equal(res.totalCollected, 0);
+      assert.equal(res.totalOffset, 0);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "WAIVED");
+      assert.equal(res.isWaived, true);
+    });
+
+    it("Abandoned match with partial historical collection displays WAIVED, preserves amountPaid: 300, netPayable: 0", () => {
+      const payments = [
+        { id: "p-ab-part", matchId: "match-ab-1", playerId: "player-alpha", status: "Unpaid", feeCollectedAmount: 300 },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, abandonedMatch, payments);
+      assert.equal(res.effectiveFee, 600);
+      assert.equal(res.totalCollected, 300);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "WAIVED");
+      assert.equal(res.isWaived, true);
+    });
+
+    it("Abandoned match with full historical collection displays WAIVED, preserves amountPaid: 600, netPayable: 0", () => {
+      const payments = [
+        { id: "p-ab-full", matchId: "match-ab-1", playerId: "player-alpha", status: "Paid", feeCollectedAmount: 600 },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, abandonedMatch, payments);
+      assert.equal(res.effectiveFee, 600);
+      assert.equal(res.totalCollected, 600);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "WAIVED");
+      assert.equal(res.isWaived, true);
+    });
+
+    it("Abandoned match with offsets displays WAIVED with netPayable: 0", () => {
+      const payments = [
+        { id: "p-ab-off", matchId: "match-ab-1", playerId: "player-alpha", status: "Unpaid", feeCollectedAmount: 100, feeOffsetAmount: 200 },
+      ];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, abandonedMatch, payments);
+      assert.equal(res.effectiveFee, 600);
+      assert.equal(res.totalCollected, 100);
+      assert.equal(res.totalOffset, 200);
+      assert.equal(res.netPayable, 0);
+      assert.equal(res.status, "WAIVED");
+      assert.equal(res.isWaived, true);
+    });
+
+    it("Non-abandoned match behavior remains completely unchanged (unpaid / partial / paid)", () => {
+      const regularMatch = { id: "match-reg", opponent: "Strikers", fee: 600, result: "Pending", date: "2026-11-28" };
+      const partialPmt = [{ id: "p-reg-1", matchId: "match-reg", playerId: "player-alpha", status: "Unpaid", feeCollectedAmount: 300 }];
+      const res = aggregatePlayerMatchPayment(dummyPlayer, regularMatch, partialPmt);
+      assert.equal(res.effectiveFee, 600);
+      assert.equal(res.totalCollected, 300);
+      assert.equal(res.netPayable, 300);
+      assert.equal(res.status, "PARTIALLY PAID");
+      assert.equal(res.isWaived, false);
+    });
+  });
+
+  describe("5. Match-Detail Entry Point & Deep Link Pre-flight Eligibility", () => {
+    const openFixture = { id: "match-open", opponent: "Open FC", date: "2026-11-28", time: "07:00", fee: 500 };
+    const squadAssignedMatch = { id: "match-squad", opponent: "Elite Club", date: "2026-11-29", time: "07:00", fee: 500 };
+    const tentativeMatch = { id: "match-tentative", opponent: "Blocked XI", date: "2026-11-30", time: "07:00", isTentative: true };
+    const archivedMatch = { id: "match-archived", opponent: "Old Club", date: "2026-10-01", time: "07:00", isArchived: true };
+
+    const squadPayments = [
+      { id: "p-beta", matchId: "match-squad", playerId: "player-beta", availability: "Confirmed", status: "Unpaid" },
+    ];
+
+    it("Eligible player can open a match from the list or valid deep link", () => {
+      const res = validateMatchNavigation("match-open", [openFixture], dummyPlayer, [], false);
+      assert.equal(res.allowed, true);
+    });
+
+    it("Eligible assigned squad member can open the assigned match", () => {
+      const assignedPayments = [
+        ...squadPayments,
+        { id: "p-alpha", matchId: "match-squad", playerId: "player-alpha", availability: "Confirmed", status: "Unpaid" },
+      ];
+      const res = validateMatchNavigation("match-squad", [squadAssignedMatch], dummyPlayer, assignedPayments, false);
+      assert.equal(res.allowed, true);
+    });
+
+    it("Ineligible player cannot open assigned-squad match through defaultMatchId or deep link", () => {
+      // player-alpha has no payment doc in match-squad where squad is assigned to player-beta
+      const res = validateMatchNavigation("match-squad", [squadAssignedMatch], dummyPlayer, squadPayments, false);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "INELIGIBLE");
+    });
+
+    it("Ineligible player cannot open tentative fixture through defaultAction", () => {
+      const res = validateMatchNavigation("match-tentative", [tentativeMatch], dummyPlayer, [], false);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "INELIGIBLE");
+    });
+
+    it("Non-existent match deep link fails with MATCH_NOT_FOUND", () => {
+      const res = validateMatchNavigation("missing-match-id", [openFixture], dummyPlayer, [], false);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "MATCH_NOT_FOUND");
+    });
+
+    it("Eligibility revocation blocks navigation and detail access", () => {
+      const disabledPlayer = { ...dummyPlayer, disabled: true };
+      const res = validateMatchNavigation("match-open", [openFixture], disabledPlayer, [], false);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "INELIGIBLE");
+    });
+
+    it("Player identity change does not retain access from previous identity", () => {
+      const unlinkedUser = null;
+      const res = validateMatchNavigation("match-open", [openFixture], unlinkedUser, [], false);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "INELIGIBLE");
+    });
+
+    it("Loading or unavailable match data fails closed without exposing details", () => {
+      const res = validateMatchNavigation("match-open", [], dummyPlayer, [], false);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "MATCH_NOT_FOUND");
+    });
+
+    it("Authorized Admin retains legitimate access to restricted and tentative matches", () => {
+      const resSquad = validateMatchNavigation("match-squad", [squadAssignedMatch], dummyPlayer, squadPayments, true);
+      assert.equal(resSquad.allowed, true);
+
+      const resTentative = validateMatchNavigation("match-tentative", [tentativeMatch], dummyPlayer, [], true);
+      assert.equal(resTentative.allowed, true);
+    });
+
+    it("Archived matches are blocked for all users including admin", () => {
+      const res = validateMatchNavigation("match-archived", [archivedMatch], dummyPlayer, [], true);
+      assert.equal(res.allowed, false);
+      assert.equal(res.error, "INELIGIBLE");
     });
   });
 });

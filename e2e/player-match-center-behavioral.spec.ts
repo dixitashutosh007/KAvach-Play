@@ -349,6 +349,182 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     await expect(page.locator('[data-testid="recent-matches-section"]')).toHaveCount(0);
   });
 
+  // ── 7. Deep-link & Entry-Point Eligibility Guard (P0) ────────────────────────
+  test("7. Ineligible player deep-link access is blocked, renders restricted alert, and fails closed without exposing match details", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    // A match with an assigned squad restricted to player-beta only
+    const restrictedSquadMatch = {
+      id: "match-squad-restricted",
+      groundId: "ground-1",
+      format: "T20",
+      jerseyColor: "Scarlet Red",
+      date: "2026-11-29",
+      time: "07:30",
+      opponent: "Restricted Squad XI",
+      result: "Pending",
+      fee: 650,
+    };
+
+    const restrictedPayments = [
+      {
+        id: "pay-teammate-1-confirmed",
+        playerId: "player-teammate-1",
+        matchId: "match-squad-restricted",
+        status: "Unpaid",
+        availability: "Confirmed",
+      },
+    ];
+
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      matches: [restrictedSquadMatch],
+      payments: restrictedPayments,
+    });
+
+    // Attempt direct deep link via query parameter ?match=match-squad-restricted
+    await page.goto("/?match=match-squad-restricted");
+    await page.waitForLoadState("domcontentloaded");
+
+    const playerNav = page.locator("nav");
+    await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
+
+    // Verify Match Center loads
+    await expect(page.locator('[data-testid="player-match-center"]')).toBeVisible({ timeout: 5000 });
+
+    // 1. Verify ineligible match alert is displayed
+    const alertBanner = page.locator('[data-testid="ineligible-match-alert"]');
+    await expect(alertBanner).toBeVisible();
+    await expect(alertBanner.getByText(/Match Access Restricted/i)).toBeVisible();
+
+    // 2. FAIL CLOSED: Match detail view MUST NOT be exposed!
+    const detailView = page.locator('[data-testid="player-match-detail-view"]');
+    await expect(detailView).toHaveCount(0);
+  });
+
+  // ── 8. Payment Aggregation: Multiple Partial Payments (P1) ───────────────────
+  test("8. Multiple legitimate partial collections aggregate accurately to PAID", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    const multiPayMatch = {
+      id: "match-multi-col",
+      groundId: "ground-1",
+      format: "T20",
+      jerseyColor: "Scarlet Red",
+      date: "2026-11-27",
+      time: "07:30",
+      opponent: "Installment Challengers",
+      result: "Pending",
+      fee: 650,
+    };
+
+    // Two separate collections: ₹300 + ₹350 = ₹650 (Exact fee)
+    const multiPayments = [
+      {
+        id: "pay-col-1",
+        playerId: "player-player-alpha",
+        matchId: "match-multi-col",
+        status: "Unpaid",
+        availability: "Confirmed",
+        feeCollectedAmount: 300,
+      },
+      {
+        id: "pay-col-2",
+        playerId: "player-player-alpha",
+        matchId: "match-multi-col",
+        status: "Unpaid",
+        availability: "Confirmed",
+        feeCollectedAmount: 350,
+      },
+    ];
+
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      matches: [multiPayMatch],
+      payments: multiPayments,
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const playerNav = page.locator("nav");
+    await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
+
+    // Verify payment badge aggregates to PAID
+    const statusBadge = page.locator('[data-testid="payment-status-match-multi-col"]');
+    await expect(statusBadge).toBeVisible({ timeout: 5000 });
+    await expect(statusBadge).toHaveText(/PAID/);
+  });
+
+  // ── 9. Abandoned Match Presentation: Preserves Historical Paid (P1) ──────────
+  test("9. Abandoned match with partial historical collection clearly communicates WAIVED and preserves historical collection", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    const abandonedPartialMatch = {
+      id: "match-ab-partial",
+      groundId: "ground-2",
+      format: "T20",
+      jerseyColor: "Whites",
+      date: "2026-11-08",
+      time: "08:00",
+      opponent: "Stormy Weather CC",
+      result: "Abandoned",
+      fee: 600,
+    };
+
+    // Historical payment of ₹300 before abandonment
+    const abPayments = [
+      {
+        id: "pay-ab-col",
+        playerId: "player-player-alpha",
+        matchId: "match-ab-partial",
+        status: "Unpaid",
+        availability: "Confirmed",
+        feeCollectedAmount: 300,
+      },
+    ];
+
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+      matches: [abandonedPartialMatch],
+      payments: abPayments,
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const playerNav = page.locator("nav");
+    await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
+
+    // 1. Verify card badge displays WAIVED • ₹300 collected (never PARTIALLY PAID or ₹0 due!)
+    const waivedBadge = page.locator('[data-testid="payment-status-match-ab-partial"]');
+    await expect(waivedBadge).toBeVisible({ timeout: 5000 });
+    await expect(waivedBadge).toHaveText(/WAIVED • ₹300 collected/);
+    await expect(waivedBadge).not.toHaveText(/PARTIALLY PAID/);
+
+    // 2. Open detail view and verify financial breakdown
+    await page.locator('[data-testid="player-match-card-match-ab-partial"]').click();
+
+    const detailView = page.locator('[data-testid="player-match-detail-view"]');
+    await expect(detailView).toBeVisible({ timeout: 5000 });
+
+    const paymentCard = detailView.locator('[data-testid="personal-payment-detail-card"]');
+    await expect(paymentCard).toBeVisible();
+    await expect(paymentCard.getByText(/WAIVED/)).toBeVisible();
+    await expect(paymentCard.getByText(/Historical Payment \(Preserved\):/)).toBeVisible();
+    await expect(paymentCard.getByText(/₹300/)).toBeVisible();
+    await expect(paymentCard.getByText(/₹0 \(Waived\)/)).toBeVisible();
+  });
+
   // ── 7. Responsive Visual Screenshots Across 5 Viewports ──────────────────────
   const viewports = [
     { name: "360x800", width: 360, height: 800 },

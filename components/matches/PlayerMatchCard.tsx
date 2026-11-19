@@ -158,12 +158,16 @@ export function PlayerMatchCard({
       );
     }
     if (status === "WAIVED" || isWaived) {
+      const historicalCollected =
+        personalPaymentStatus.amountPaid > 0
+          ? ` • ₹${personalPaymentStatus.amountPaid} collected`
+          : "";
       return (
         <span
           data-testid={`payment-status-${match.id}`}
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200"
         >
-          <span>WAIVED</span>
+          <span>WAIVED{historicalCollected}</span>
         </span>
       );
     }

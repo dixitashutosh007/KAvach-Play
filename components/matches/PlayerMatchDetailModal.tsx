@@ -357,9 +357,22 @@ export function PlayerMatchDetailModal({
                 </div>
               )}
 
+              {personalPaymentStatus.totalOffset !== undefined && personalPaymentStatus.totalOffset > 0 && (
+                <div className="flex justify-between items-center py-1 border-b border-border/50">
+                  <span>Plan / Sponsored Offset:</span>
+                  <span className="font-bold text-emerald-700">
+                    -₹{personalPaymentStatus.totalOffset}
+                  </span>
+                </div>
+              )}
+
               {personalPaymentStatus.paidAmount > 0 && (
                 <div className="flex justify-between items-center py-1 border-b border-border/50">
-                  <span>Amount Paid / Settled:</span>
+                  <span>
+                    {personalPaymentStatus.isWaived || match.result === "Abandoned"
+                      ? "Historical Payment (Preserved):"
+                      : "Amount Paid / Settled:"}
+                  </span>
                   <span className="font-bold text-emerald-700">
                     ₹{personalPaymentStatus.paidAmount}
                   </span>
@@ -370,20 +383,24 @@ export function PlayerMatchDetailModal({
                 <span>Outstanding Payable:</span>
                 <span
                   className={
-                    personalPaymentStatus.netPayable > 0
+                    personalPaymentStatus.isWaived || match.result === "Abandoned"
+                      ? "text-blue-700 font-bold"
+                      : personalPaymentStatus.netPayable > 0
                       ? "text-rose-600 font-black text-base"
                       : "text-emerald-700 font-bold"
                   }
                 >
-                  ₹{personalPaymentStatus.netPayable}
+                  {personalPaymentStatus.isWaived || match.result === "Abandoned"
+                    ? "₹0 (Waived)"
+                    : `₹${personalPaymentStatus.netPayable}`}
                 </span>
               </div>
             </div>
 
             {/* Status Explanations & Payment Link */}
-            {personalPaymentStatus.status === "WAIVED" ? (
-              <div className="mt-3 p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 text-[11px] text-blue-900 font-medium">
-                Fee obligation is waived under club policy. No action needed.
+            {personalPaymentStatus.status === "WAIVED" || personalPaymentStatus.isWaived || match.result === "Abandoned" ? (
+              <div className="mt-3 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/70 text-[11px] text-blue-900 leading-relaxed font-medium">
+                <span className="font-bold">Obligation Waived:</span> In accordance with club financial policy (Option A), outstanding obligations are waived. Historical transactions are preserved without automatic refunds.
               </div>
             ) : personalPaymentStatus.status === "PAID" ? (
               <div className="mt-3 p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 font-medium">

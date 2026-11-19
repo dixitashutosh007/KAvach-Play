@@ -585,6 +585,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const ensurePayments = useCallback((playerIdFilter?: string) => {
     if (!user || lazySubsRef.current.has("allPayments")) return;
+    if (
+      process.env.NODE_ENV !== "production" &&
+      typeof window !== "undefined" &&
+      (window as any).__KAVACH_TEST_STORE__
+    ) {
+      return;
+    }
     const baseQuery = collectionGroup(db, "payments");
     const q = playerIdFilter
       ? query(baseQuery, where("playerId", "==", playerIdFilter))
@@ -605,6 +612,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const ensureMatchPayments = useCallback(
     (matchId: string) => {
       if (!user || !matchId) return;
+      if (
+        process.env.NODE_ENV !== "production" &&
+        typeof window !== "undefined" &&
+        (window as any).__KAVACH_TEST_STORE__
+      ) {
+        return;
+      }
       const key = `match-payments:${matchId}`;
       if (lazySubsRef.current.has(key)) return;
       const unsub = onSnapshot(
@@ -938,6 +952,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const ensureOtherFees = useCallback((playerIdFilter?: string) => {
     if (!user || lazySubsRef.current.has("allOtherFees")) return;
+    if (
+      process.env.NODE_ENV !== "production" &&
+      typeof window !== "undefined" &&
+      (window as any).__KAVACH_TEST_STORE__
+    ) {
+      return;
+    }
     const baseQuery = collectionGroup(db, "otherFees");
     const q = playerIdFilter
       ? query(baseQuery, where("playerId", "==", playerIdFilter))

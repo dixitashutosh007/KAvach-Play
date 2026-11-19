@@ -926,6 +926,7 @@ export function MatchesTab({
       <PlayerMatchCenter
         store={store}
         defaultAction={defaultAction}
+        isAdmin={isAdmin}
       />
     );
   }

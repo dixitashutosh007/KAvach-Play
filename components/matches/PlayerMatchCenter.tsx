@@ -16,7 +16,12 @@ import { useStore } from "@/hooks/useStore";
 import { useAuth } from "@/components/AuthProvider";
 import { resolvePlayerForUser } from "@/lib/player-identity";
 import { useToast } from "@/components/ui/Toast";
-import { isPlayerEligibleForMatch } from "@/lib/match-eligibility";
+import {
+  isPlayerEligibleForMatch,
+  validateMatchNavigation,
+  isSquadAssignedToMatch,
+  isPlayerInAssignedSquad,
+} from "@/lib/match-eligibility";
 import {
   groupPlayerMatches,
   getPersonalMatchPaymentStatus,
@@ -30,6 +35,7 @@ export interface PlayerMatchCenterProps {
   defaultMatchId?: string | null;
   defaultAction?: string | null;
   onNavigateToPayments?: () => void;
+  isAdmin?: boolean;
 }
 
 export function PlayerMatchCenter({
@@ -37,6 +43,7 @@ export function PlayerMatchCenter({
   defaultMatchId,
   defaultAction,
   onNavigateToPayments,
+  isAdmin = false,
 }: PlayerMatchCenterProps) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -45,11 +52,24 @@ export function PlayerMatchCenter({
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
   const mePlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
 
-  // Compute initial search or initial match ID from defaultAction
+  // Authoritative admin determination
+  const effectiveIsAdmin = Boolean(
+    isAdmin ||
+    appUser?.role === "admin" ||
+    appUser?.isClubAdmin ||
+    appUser?.isMatchAdmin
+  );
+
+  // Compute initial search or initial match ID from defaultAction / defaultMatchId / URL
   const initialMatchId = useMemo(() => {
     if (defaultMatchId) return defaultMatchId;
     if (defaultAction && defaultAction.startsWith("match_")) {
       return defaultAction.replace("match_", "");
+    }
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const urlMatchId = params.get("match") || params.get("matchId");
+      if (urlMatchId) return urlMatchId;
     }
     return null;
   }, [defaultMatchId, defaultAction]);
@@ -72,7 +92,10 @@ export function PlayerMatchCenter({
   >({});
 
   // Selected match for detail view
-  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(initialMatchId);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+
+  // Unauthorized / Ineligible access alert message state
+  const [ineligibleAccessAlert, setIneligibleAccessAlert] = useState<string | null>(null);
 
   // Pagination for previous matches
   const [previousPageSize, setPreviousPageSize] = useState<number>(6);
@@ -95,16 +118,96 @@ export function PlayerMatchCenter({
       store.matches || [],
       mePlayer,
       store.payments || [],
-      false,
+      effectiveIsAdmin,
       { recentCutoffDays: 30 }
     );
-  }, [store.matches, store.payments, mePlayer]);
+  }, [store.matches, store.payments, mePlayer, effectiveIsAdmin]);
 
-  // Handle browser back button (popstate) & scroll restoration
+  // Validate initialMatchId on mount or when data changes
+  useEffect(() => {
+    if (!initialMatchId) return;
+
+    // Fail closed if data is still loading
+    if (!store.matches || store.matches.length === 0) return;
+
+    const check = validateMatchNavigation(
+      initialMatchId,
+      store.matches || [],
+      mePlayer,
+      store.payments || [],
+      effectiveIsAdmin
+    );
+
+
+    if (check.allowed) {
+      setSelectedMatchId(initialMatchId);
+      setIneligibleAccessAlert(null);
+    } else {
+      setSelectedMatchId(null);
+      setIneligibleAccessAlert(
+        check.message || "The requested match is unavailable or restricted to assigned squad members."
+      );
+      // Clean invalid URL parameters so browser history does not loop
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has("match") || params.has("matchId")) {
+          params.delete("match");
+          params.delete("matchId");
+          const newSearch = params.toString() ? `?${params.toString()}` : "";
+          window.history.replaceState(null, "", `${window.location.pathname}${newSearch}`);
+        }
+      }
+    }
+  }, [initialMatchId, store.matches, mePlayer, store.payments, effectiveIsAdmin]);
+
+  // Continuous guard: if selectedMatchId becomes ineligible (e.g. eligibility revoked, match archived, or player unassigned)
+  useEffect(() => {
+    if (!selectedMatchId) return;
+
+    const check = validateMatchNavigation(
+      selectedMatchId,
+      store.matches || [],
+      mePlayer,
+      store.payments || [],
+      effectiveIsAdmin
+    );
+
+    if (!check.allowed) {
+      setSelectedMatchId(null);
+      setIneligibleAccessAlert(
+        check.message || "Match access restricted: you are not authorized to view this match."
+      );
+      if (typeof window !== "undefined" && window.history.state?.matchDetail === selectedMatchId) {
+        window.history.replaceState({ matchDetail: null }, "", window.location.pathname);
+      }
+    }
+  }, [selectedMatchId, store.matches, mePlayer, store.payments, effectiveIsAdmin]);
+
+  // Handle browser back button (popstate) & scroll restoration with authoritative validation
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       if (event.state && event.state.matchDetail) {
-        setSelectedMatchId(event.state.matchDetail);
+        const targetId = event.state.matchDetail;
+        const check = validateMatchNavigation(
+          targetId,
+          store.matches || [],
+          mePlayer,
+          store.payments || [],
+          effectiveIsAdmin
+        );
+
+        if (check.allowed) {
+          setSelectedMatchId(targetId);
+          setIneligibleAccessAlert(null);
+        } else {
+          setSelectedMatchId(null);
+          setIneligibleAccessAlert(
+            check.message || "The requested match is unavailable or restricted to assigned squad members."
+          );
+          if (typeof window !== "undefined") {
+            window.history.replaceState({ matchDetail: null }, "", window.location.pathname);
+          }
+        }
       } else {
         setSelectedMatchId(null);
         // Restore previous scroll position
@@ -122,17 +225,34 @@ export function PlayerMatchCenter({
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [store.matches, mePlayer, store.payments, effectiveIsAdmin]);
 
-  // Open match detail with history state & scroll capture
+  // Open match detail with guarded validation, history state & scroll capture
   const handleOpenMatch = useCallback((matchId: string) => {
+    const check = validateMatchNavigation(
+      matchId,
+      store.matches || [],
+      mePlayer,
+      store.payments || [],
+      effectiveIsAdmin
+    );
+
+    if (!check.allowed) {
+      toast(check.message || "You are not eligible to view this match.", "error");
+      setIneligibleAccessAlert(
+        check.message || "You are not eligible to view this match."
+      );
+      return;
+    }
+
+    setIneligibleAccessAlert(null);
     if (typeof window !== "undefined") {
       scrollPositionRef.current =
         window.scrollY || document.documentElement.scrollTop || 0;
       window.history.pushState({ matchDetail: matchId }, "", window.location.href);
     }
     setSelectedMatchId(matchId);
-  }, []);
+  }, [store.matches, mePlayer, store.payments, effectiveIsAdmin, toast]);
 
   // Close match detail
   const handleCloseMatch = useCallback(() => {
@@ -248,11 +368,19 @@ export function PlayerMatchCenter({
     [grouped.previous, matchesSearch]
   );
 
-  // Selected match object
+  // Selected match object with authoritative pre-flight validation (Fail Closed)
   const selectedMatch = useMemo(() => {
     if (!selectedMatchId) return null;
-    return store.matches.find((m) => m.id === selectedMatchId) || null;
-  }, [selectedMatchId, store.matches]);
+    const check = validateMatchNavigation(
+      selectedMatchId,
+      store.matches || [],
+      mePlayer,
+      store.payments || [],
+      effectiveIsAdmin
+    );
+    if (!check.allowed) return null; // Fail closed: Never expose match details
+    return (store.matches || []).find((m) => m.id === selectedMatchId) || null;
+  }, [selectedMatchId, store.matches, mePlayer, store.payments, effectiveIsAdmin]);
 
   // Selected match personal payment info
   const selectedMatchPayment = useMemo(() => {
@@ -321,6 +449,27 @@ export function PlayerMatchCenter({
       data-testid="player-match-center"
       className="space-y-5 pb-12 max-w-4xl mx-auto"
     >
+      {/* Ineligible / Unauthorized Access Alert Banner */}
+      {ineligibleAccessAlert && (
+        <div
+          data-testid="ineligible-match-alert"
+          className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start gap-3 shadow-xs animate-in fade-in duration-200"
+        >
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1 text-xs">
+            <div className="font-bold text-sm text-rose-900">Match Access Restricted</div>
+            <p className="mt-0.5 text-rose-800 leading-relaxed">{ineligibleAccessAlert}</p>
+            <button
+              type="button"
+              onClick={() => setIneligibleAccessAlert(null)}
+              className="mt-2 text-[11px] font-bold text-rose-700 underline hover:text-rose-900 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header & Title */}
       <div className="flex flex-col gap-1">
         <h1 className="text-xl sm:text-2xl font-black font-heading tracking-tight text-text-primary">

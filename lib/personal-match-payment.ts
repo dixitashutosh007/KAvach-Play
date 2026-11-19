@@ -36,12 +36,220 @@ export interface PersonalMatchPaymentInfo {
   amountPaid: number;
   paidAmount: number;
   totalFee: number;
+  effectiveFee?: number;
+  totalCollected?: number;
+  totalOffset?: number;
   isWaived: boolean;
   feeOverride?: number;
   paymentRecord: MatchPayment | null;
+  records?: MatchPayment[];
 }
 
 export type PersonalPaymentStatusResult = PersonalMatchPaymentInfo;
+
+export interface AggregatedPaymentResult {
+  effectiveFee: number;
+  totalCollected: number;
+  totalOffset: number;
+  totalRecognized: number;
+  netPayable: number;
+  status: PersonalPaymentDisplayStatus;
+  label: "PAID" | "UNPAID" | "PARTIALLY PAID" | "WAIVED" | null;
+  isWaived: boolean;
+  feeOverride?: number;
+  contributingPayments: MatchPayment[];
+}
+
+/**
+ * Authoritative Payment Aggregation Engine.
+ *
+ * Scopes records to the authenticated player's own match obligation,
+ * aggregates distinct legitimate collections across multiple payments,
+ * deduplicates shared transaction identifiers, applies fee overrides and offsets,
+ * preserves legacy Paid records, and handles malformed amounts deterministically.
+ */
+export function aggregatePlayerMatchPayment(
+  player: Player | null | undefined,
+  match: Match,
+  payments: MatchPayment[] = []
+): AggregatedPaymentResult {
+  if (!player) {
+    return {
+      effectiveFee: match.fee || 0,
+      totalCollected: 0,
+      totalOffset: 0,
+      totalRecognized: 0,
+      netPayable: 0,
+      status: "NOT_APPLICABLE",
+      label: null,
+      isWaived: false,
+      feeOverride: undefined,
+      contributingPayments: [],
+    };
+  }
+
+  // 1. Scope records strictly to this player and this match
+  const playerPayments = (payments || []).filter(
+    (p) => p && p.playerId === player.id && p.matchId === match.id && !p.guestName
+  );
+
+  // 2. Resolve effective fee (feeOverride vs match.fee)
+  let feeOverride: number | undefined = undefined;
+  for (const p of playerPayments) {
+    if (typeof p.feeOverride === "number" && !isNaN(p.feeOverride) && p.feeOverride >= 0) {
+      feeOverride = p.feeOverride;
+      break;
+    }
+  }
+
+  const baseFee =
+    typeof match.fee === "number" && !isNaN(match.fee) && match.fee >= 0
+      ? match.fee
+      : 0;
+  const effectiveFee = feeOverride !== undefined ? feeOverride : baseFee;
+
+  // 3. Option A Abandoned match policy
+  const isAbandoned = match.result === "Abandoned";
+  const hasWaivedDoc = playerPayments.some((p) => p.status === "Waived");
+
+  // 4. Aggregate distinct legitimate collections and offsets
+  const seenDocIds = new Set<string>();
+  const seenRazorpayIds = new Set<string>();
+  let totalCollected = 0;
+  let totalOffset = 0;
+  const contributing: MatchPayment[] = [];
+
+  for (const p of playerPayments) {
+    // Ignore failed transactions
+    if (p.status === "Failed") continue;
+
+    // Deduplication check by document ID
+    if (p.id) {
+      if (seenDocIds.has(p.id)) continue;
+      seenDocIds.add(p.id);
+    }
+
+    // Deduplication check by Razorpay Payment ID
+    if (p.razorpayPaymentId) {
+      if (seenRazorpayIds.has(p.razorpayPaymentId)) continue;
+      seenRazorpayIds.add(p.razorpayPaymentId);
+    }
+
+    contributing.push(p);
+
+    // Calculate collection for this record
+    let collectedFromThisDoc = 0;
+    if (
+      typeof p.feeCollectedAmount === "number" &&
+      !isNaN(p.feeCollectedAmount) &&
+      p.feeCollectedAmount > 0
+    ) {
+      collectedFromThisDoc = p.feeCollectedAmount;
+    } else if (p.status === "Paid") {
+      // Legacy Paid record without explicit feeCollectedAmount
+      const offsetOnDoc =
+        typeof p.feeOffsetAmount === "number" &&
+        !isNaN(p.feeOffsetAmount) &&
+        p.feeOffsetAmount > 0
+          ? p.feeOffsetAmount
+          : 0;
+      collectedFromThisDoc = Math.max(0, effectiveFee - offsetOnDoc);
+    }
+
+    totalCollected += collectedFromThisDoc;
+
+    // Calculate offset for this record
+    if (
+      typeof p.feeOffsetAmount === "number" &&
+      !isNaN(p.feeOffsetAmount) &&
+      p.feeOffsetAmount > 0
+    ) {
+      totalOffset += p.feeOffsetAmount;
+    } else if (p.manualMethod === "club_sponsored" && p.status === "Paid") {
+      totalOffset += effectiveFee;
+    }
+  }
+
+  // Cap offset to effectiveFee
+  totalOffset = Math.min(effectiveFee, Math.max(0, totalOffset));
+
+  // If match is abandoned or obligation is explicitly waived:
+  if (isAbandoned || hasWaivedDoc) {
+    return {
+      effectiveFee,
+      totalCollected,
+      totalOffset,
+      totalRecognized: totalCollected + totalOffset,
+      netPayable: 0,
+      status: "WAIVED",
+      label: "WAIVED",
+      isWaived: true,
+      feeOverride,
+      contributingPayments: contributing,
+    };
+  }
+
+  // Non-billable match (e.g. 0 fee match)
+  if (!isMatchBillable(match) || effectiveFee === 0) {
+    return {
+      effectiveFee: 0,
+      totalCollected,
+      totalOffset: 0,
+      totalRecognized: totalCollected,
+      netPayable: 0,
+      status: "PAID",
+      label: "PAID",
+      isWaived: false,
+      feeOverride,
+      contributingPayments: contributing,
+    };
+  }
+
+  // Outstanding payable derivation
+  const totalRecognized = totalCollected + totalOffset;
+  const netPayable = Math.max(0, effectiveFee - totalRecognized);
+
+  // Status derivation
+  let status: PersonalPaymentDisplayStatus = "UNPAID";
+  let label: "PAID" | "UNPAID" | "PARTIALLY PAID" | "WAIVED" | null = "UNPAID";
+
+  if (netPayable === 0) {
+    status = "PAID";
+    label = "PAID";
+  } else if (totalCollected > 0 || totalOffset > 0) {
+    status = "PARTIALLY PAID";
+    label = "PARTIALLY PAID";
+  } else {
+    // 0 collected, 0 offset, netPayable > 0
+    const isNotPlaying = playerPayments.some(
+      (p) => p.status === "Not Playing" || p.availability === "No"
+    );
+    if (
+      isNotPlaying &&
+      playerPayments.length === 1 &&
+      (playerPayments[0].feeCollectedAmount || 0) === 0
+    ) {
+      status = "NOT_APPLICABLE";
+      label = null;
+    } else {
+      status = "UNPAID";
+      label = "UNPAID";
+    }
+  }
+
+  return {
+    effectiveFee,
+    totalCollected,
+    totalOffset,
+    totalRecognized,
+    netPayable,
+    status,
+    label,
+    isWaived: false,
+    feeOverride,
+    contributingPayments: contributing,
+  };
+}
 
 /**
  * Parses match date and time into a deterministic local Date object.
@@ -85,137 +293,32 @@ export function parseMatchDateTime(dateStr: string, timeStr?: string): Date {
  * - Unpaid obligation displays UNPAID.
  * - Partially settled obligation displays PARTIALLY PAID.
  * - Waived or non-billable obligations are NOT shown as unpaid.
- * - Multiple payment records are deduplicated without double counting.
+ * - Multiple payment records are aggregated and deduplicated without double counting.
  */
 export function getPersonalMatchPaymentStatus(
   player: Player | null | undefined,
   match: Match,
   payments: MatchPayment[] = []
 ): PersonalMatchPaymentInfo {
-  if (!player) {
-    return {
-      status: "NOT_APPLICABLE",
-      label: null,
-      amountDue: 0,
-      netPayable: 0,
-      amountPaid: 0,
-      paidAmount: 0,
-      totalFee: match.fee || 0,
-      isWaived: false,
-      feeOverride: undefined,
-      paymentRecord: null,
-    };
-  }
+  const agg = aggregatePlayerMatchPayment(player, match, payments);
+  const primaryRecord = agg.contributingPayments[0] || null;
 
-  // Find all payment records for this player and match
-  const playerPayments = payments.filter(
-    (p) => p.playerId === player.id && p.matchId === match.id
-  );
-
-  // Deduplicate: prioritize Paid record or record with highest collection
-  const payment =
-    playerPayments.find((p) => p.status === "Paid") ||
-    playerPayments.find((p) => (p.feeCollectedAmount || 0) > 0) ||
-    playerPayments[0] ||
-    null;
-
-  const totalFee =
-    payment?.feeOverride !== undefined
-      ? payment.feeOverride
-      : match.fee !== undefined
-      ? match.fee
-      : 0;
-
-  const makeResult = (
-    status: PersonalPaymentDisplayStatus,
-    label: "PAID" | "UNPAID" | "PARTIALLY PAID" | "WAIVED" | null,
-    amountDue: number,
-    amountPaid: number,
-    fee: number,
-    isWaived: boolean,
-    pmt: MatchPayment | null
-  ): PersonalPaymentStatusResult => ({
-    status,
-    label,
-    amountDue,
-    netPayable: amountDue,
-    amountPaid,
-    paidAmount: amountPaid,
-    totalFee: fee,
-    isWaived,
-    feeOverride: pmt?.feeOverride,
-    paymentRecord: pmt,
-  });
-
-  // 1. Abandoned match handling (Approved Option A Policy)
-  if (match.result === "Abandoned") {
-    // If player paid before the match was abandoned, historical transaction is preserved
-    const collected =
-      (payment?.feeCollectedAmount || 0) + (payment?.feeOffsetAmount || 0);
-
-    if (payment?.status === "Paid" || (collected >= totalFee && totalFee > 0)) {
-      return makeResult("PAID", "PAID", 0, totalFee, totalFee, false, payment);
-    }
-
-    if (collected > 0) {
-      // Unpaid portion is waived under Option A
-      return makeResult("PARTIALLY PAID", "PARTIALLY PAID", 0, collected, totalFee, true, payment);
-    }
-
-    // Unpaid obligations are waived under Option A
-    return makeResult("WAIVED", "WAIVED", 0, 0, totalFee, true, payment);
-  }
-
-  // 2. Explicitly waived obligation
-  if (payment?.status === "Waived") {
-    return makeResult("WAIVED", "WAIVED", 0, 0, totalFee, true, payment);
-  }
-
-  // 3. Player is marked Not Playing and has paid 0
-  if (
-    payment?.status === "Not Playing" &&
-    (payment?.feeCollectedAmount || 0) === 0
-  ) {
-    return makeResult("NOT_APPLICABLE", null, 0, 0, totalFee, false, payment);
-  }
-
-  // 4. Non-billable match (e.g. 0 fee match)
-  if (!isMatchBillable(match) || totalFee === 0) {
-    return makeResult("PAID", "PAID", 0, 0, 0, false, payment);
-  }
-
-  // 5. Payment marked Paid
-  if (payment?.status === "Paid") {
-    return makeResult("PAID", "PAID", 0, totalFee, totalFee, false, payment);
-  }
-
-  // 6. Payment marked Unpaid
-  if (payment?.status === "Unpaid") {
-    const collected =
-      (payment.feeCollectedAmount || 0) + (payment.feeOffsetAmount || 0);
-
-    if (collected > 0 && collected < totalFee) {
-      return makeResult(
-        "PARTIALLY PAID",
-        "PARTIALLY PAID",
-        Math.max(0, totalFee - collected),
-        collected,
-        totalFee,
-        false,
-        payment
-      );
-    }
-
-    if (collected >= totalFee && totalFee > 0) {
-      return makeResult("PAID", "PAID", 0, totalFee, totalFee, false, payment);
-    }
-
-    return makeResult("UNPAID", "UNPAID", totalFee, 0, totalFee, false, payment);
-  }
-
-  // 7. No payment document exists yet
-  // If player is viewing an upcoming open match before RSVP or squad assignment
-  return makeResult("NOT_APPLICABLE", null, 0, 0, totalFee, false, null);
+  return {
+    status: agg.status,
+    label: agg.label,
+    amountDue: agg.netPayable,
+    netPayable: agg.netPayable,
+    amountPaid: agg.totalCollected,
+    paidAmount: agg.totalCollected,
+    totalFee: agg.effectiveFee,
+    effectiveFee: agg.effectiveFee,
+    totalCollected: agg.totalCollected,
+    totalOffset: agg.totalOffset,
+    isWaived: agg.isWaived,
+    feeOverride: agg.feeOverride,
+    paymentRecord: primaryRecord,
+    records: agg.contributingPayments,
+  };
 }
 
 export type PlayerAvailabilityStatus =
