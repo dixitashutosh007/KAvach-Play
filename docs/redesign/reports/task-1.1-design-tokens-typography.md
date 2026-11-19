@@ -28,7 +28,7 @@
 
 | Stage | Commit SHA | Description |
 |---|---|---|
-| **Starting Baseline** | `6539a212384ec98271119122edb6a82cc463f347` | Starting point on `mig-mov` (`merge branch 'security/remediation-1f-a'`) |
+| **Original Starting Baseline** | `6539a212384ec98271119122edb6a82cc463f347` | Starting point on `mig-mov` (`merge branch 'security/remediation-1f-a'`) |
 | **Initial Implementation** | `f9ff25f33f89cafddf4931fa0d55815922685b6d` | Added approved palette tokens, font loaders (`Inter`, `Poppins`), and base utilities |
 | **Initial Report** | `cb1fb4b35dde77b93f22375313eaaf25d41cb39e` | Initial publication of Task 1.1 documentation |
 | **Correction 1: Implementation** | `8fa233302ac987d7cc7763e6ec431ac5a285320f` | `feat(ui): resolve design token source of truth and accent consistency` |
@@ -37,6 +37,7 @@
 | **Correction 2: Report** | `9fcdbaed0af490412e55ed432619970b7cf79fb9` | `docs(ui): finalize task 1.1 verification report with tailwind and runtime theme proof` |
 | **Handover Metadata Correction** | `a910878f5d4df098d4fa702d2e1e5a5fccd503c8` | `docs(ui): complete task 1.1 handover metadata and relative link normalization` |
 | **Report Accuracy Correction** | `fff00dc5ad0979372e9ec786b861a2bbf760bd22` | `docs(ui): finalize task 1.1 report accuracy and git handover` |
+| **Handover Sequence Correction** | `3a4851c1f19b8a08dcc072681d70fa56aaadb7ad` | `docs(ui): record complete report handover sequence and developer-reported worktree state` |
 
 ---
 
@@ -158,10 +159,12 @@ We confirm with zero exceptions:
 
 ### 10. Final Git Handover Record
 
-- **Baseline Starting HEAD:** `9fcdbaed0af490412e55ed432619970b7cf79fb9`
+- **Original Task 1.1 Baseline HEAD:** `6539a212384ec98271119122edb6a82cc463f347`
+- **Handover Correction Starting HEAD:** `9fcdbaed0af490412e55ed432619970b7cf79fb9`
 - **Preceding Handover Commits:**
   - `a910878f5d4df098d4fa702d2e1e5a5fccd503c8` (`docs(ui): complete task 1.1 handover metadata and link normalization`)
   - `fff00dc5ad0979372e9ec786b861a2bbf760bd22` (`docs(ui): finalize task 1.1 report accuracy and git handover`)
+  - `3a4851c1f19b8a08dcc072681d70fa56aaadb7ad` (`docs(ui): record complete report handover sequence and developer-reported worktree state`)
 - **Target Branch:** `mig-mov`
 - **Remote Repository:** `https://github.com/dixitashutosh007/KAvach-Play`
 - **Direct GitHub Report Link:**  
