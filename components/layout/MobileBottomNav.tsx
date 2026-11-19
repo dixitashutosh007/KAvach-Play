@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Home as HomeIcon,
   Wallet,
@@ -9,7 +9,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
-import { MoreDrawer, Tab } from "./MoreDrawer";
+import { MoreDrawer, Tab, AdminPermissions } from "./MoreDrawer";
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
@@ -42,6 +42,7 @@ export function MobileBottomNav({
   hasMissingMandatory,
   canDesign,
   currentPlayerId,
+  adminPermissions,
 }: {
   activeTab: Tab;
   onSelectTab: (tab: Tab) => void;
@@ -50,8 +51,11 @@ export function MobileBottomNav({
   hasMissingMandatory: boolean;
   canDesign?: boolean;
   currentPlayerId?: string;
+  adminPermissions?: AdminPermissions;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const adminMoreBtnRef = useRef<HTMLButtonElement>(null);
+  const playerMoreBtnRef = useRef<HTMLButtonElement>(null);
 
   if (hasMissingMandatory) return null;
 
@@ -61,7 +65,8 @@ export function MobileBottomNav({
         ? "text-accent font-extrabold"
         : "text-text-muted hover:text-text-primary"
     }`;
-  const labelCls = "text-[9px] font-bold uppercase tracking-wider";
+  const labelCls =
+    "text-[8px] xs:text-[9px] font-bold uppercase tracking-wider truncate max-w-full px-0.5 text-center leading-tight";
 
   if (persona === "admin") {
     const isMoreActive = ADMIN_OVERFLOW_TABS.includes(activeTab);
@@ -76,6 +81,8 @@ export function MobileBottomNav({
           isFeatureEnabled={isFeatureEnabled}
           canDesign={canDesign ?? false}
           persona="admin"
+          adminPermissions={adminPermissions}
+          triggerRef={adminMoreBtnRef}
         />
         <nav
           data-testid="admin-mobile-bottom-nav"
@@ -85,8 +92,8 @@ export function MobileBottomNav({
           <button
             onClick={() => onSelectTab("home")}
             className={btnCls(activeTab === "home")}
-            title="Dashboard Overview"
-            aria-label="Dashboard Overview"
+            title="Overview"
+            aria-label="Overview"
           >
             <HomeIcon className="w-5 h-5" />
             <span className={labelCls}>Overview</span>
@@ -98,7 +105,16 @@ export function MobileBottomNav({
             aria-label="Match Centre"
           >
             <CalendarDays className="w-5 h-5" />
-            <span className={labelCls}>Matches</span>
+            <span className={labelCls}>Match Centre</span>
+          </button>
+          <button
+            onClick={() => onSelectTab("club")}
+            className={btnCls(activeTab === "club" || activeTab === "players")}
+            title="Player Roster"
+            aria-label="Player Roster"
+          >
+            <Users className="w-5 h-5" />
+            <span className={labelCls}>Player Roster</span>
           </button>
           <button
             onClick={() => onSelectTab("finance")}
@@ -107,22 +123,14 @@ export function MobileBottomNav({
             aria-label="Finance & Dues"
           >
             <Wallet className="w-5 h-5" />
-            <span className={labelCls}>Finance</span>
+            <span className={labelCls}>Finance & Dues</span>
           </button>
           <button
-            onClick={() => onSelectTab("club")}
-            className={btnCls(activeTab === "club" || activeTab === "players")}
-            title="Club & Roster"
-            aria-label="Club & Roster"
-          >
-            <Users className="w-5 h-5" />
-            <span className={labelCls}>Club</span>
-          </button>
-          <button
+            ref={adminMoreBtnRef}
             onClick={() => setMoreOpen(true)}
             className={btnCls(isMoreActive)}
-            title="More Admin Hubs"
-            aria-label="More Admin Hubs"
+            title="More"
+            aria-label="More"
           >
             <MoreHorizontal className="w-5 h-5" />
             <span className={labelCls}>More</span>
@@ -145,6 +153,8 @@ export function MobileBottomNav({
         isFeatureEnabled={isFeatureEnabled}
         canDesign={canDesign ?? false}
         persona="player"
+        adminPermissions={adminPermissions}
+        triggerRef={playerMoreBtnRef}
       />
       <nav
         data-testid="player-mobile-bottom-nav"
@@ -188,6 +198,7 @@ export function MobileBottomNav({
           <span className={labelCls}>Players</span>
         </button>
         <button
+          ref={playerMoreBtnRef}
           onClick={() => setMoreOpen(true)}
           className={btnCls(isPlayerMoreActive)}
           title="More Features"

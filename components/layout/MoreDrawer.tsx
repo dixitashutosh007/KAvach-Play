@@ -11,6 +11,8 @@ import {
   PieChart,
   Users,
   User as UserIcon,
+  MapPin,
+  Bell,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
 
@@ -33,13 +35,27 @@ export type Tab =
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
-const PLAYER_MORE_ITEMS: Array<{
+export interface AdminPermissions {
+  isSuperAdmin?: boolean;
+  isClubAdmin?: boolean;
+  isMatchAdmin?: boolean;
+  isFinanceAdmin?: boolean;
+  isStudioAdmin?: boolean;
+  canDesign?: boolean;
+}
+
+interface MoreDrawerItem {
   tab: Tab;
   label: string;
   icon: any;
   feature?: Feature;
   requireDesign?: boolean;
-}> = [
+  requireSuperAdmin?: boolean;
+  requireStudioAdmin?: boolean;
+  requireMatchAdmin?: boolean;
+}
+
+const PLAYER_MORE_ITEMS: MoreDrawerItem[] = [
   { tab: "leaderboard", label: "Performance & Stats", icon: Trophy, feature: "leaderboard" },
   { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio" },
   { tab: "shop", label: "Club Merchandise", icon: ShoppingBag, feature: "shop" },
@@ -49,18 +65,15 @@ const PLAYER_MORE_ITEMS: Array<{
   { tab: "profile", label: "My Profile", icon: UserIcon },
 ];
 
-const ADMIN_MORE_ITEMS: Array<{
-  tab: Tab;
-  label: string;
-  icon: any;
-  feature?: Feature;
-  requireDesign?: boolean;
-}> = [
-  { tab: "settings", label: "Settings & Access", icon: SettingsIcon },
-  { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio" },
+const ADMIN_MORE_ITEMS: MoreDrawerItem[] = [
+  { tab: "settings", label: "Settings & Access", icon: SettingsIcon, requireSuperAdmin: true },
+  { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio", requireStudioAdmin: true },
+  { tab: "grounds", label: "Grounds & Venues", icon: MapPin, requireMatchAdmin: true },
   { tab: "design", label: "Design Studio", icon: ImageIcon, requireDesign: true },
   { tab: "shop", label: "Merchandise Shop", icon: ShoppingBag, feature: "shop" },
   { tab: "leaderboard", label: "Leaderboard & Stats", icon: Trophy, feature: "leaderboard" },
+  { tab: "opinion", label: "Polls & Pulse", icon: PieChart, feature: "opinion" },
+  { tab: "notifications", label: "Notifications", icon: Bell },
 ];
 
 export function MoreDrawer({
@@ -71,6 +84,8 @@ export function MoreDrawer({
   isFeatureEnabled,
   canDesign,
   persona,
+  adminPermissions,
+  triggerRef,
 }: {
   open: boolean;
   onClose: () => void;
@@ -79,24 +94,113 @@ export function MoreDrawer({
   isFeatureEnabled: (key: Feature) => boolean;
   canDesign: boolean;
   persona?: "admin" | "player";
+  adminPermissions?: AdminPermissions;
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+
+    // Capture the trigger or currently focused element to restore focus when closing
+    previouslyFocusedElementRef.current =
+      triggerRef?.current || (document.activeElement as HTMLElement | null);
+
+    // Lock background page scroll while drawer is open
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    // Move initial focus into the drawer (close button)
+    const focusTimer = setTimeout(() => {
+      closeBtnRef.current?.focus();
+    }, 30);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape key dismissal
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      // Focus trap containment within open modal sheet
+      if (e.key === "Tab" && sheetRef.current) {
+        const focusableElements = sheetRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+
+        if (focusableElements.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (
+            document.activeElement === firstElement ||
+            !sheetRef.current.contains(document.activeElement)
+          ) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (
+            document.activeElement === lastElement ||
+            !sheetRef.current.contains(document.activeElement)
+          ) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      // Restore background page scroll
+      document.body.style.overflow = originalOverflow;
+      // Restore focus to trigger element
+      const targetToRestore = previouslyFocusedElementRef.current;
+      if (targetToRestore && typeof targetToRestore.focus === "function") {
+        targetToRestore.focus();
+      }
+    };
+  }, [open, onClose, triggerRef]);
 
   if (!open) return null;
 
   const targetItems = persona === "admin" ? ADMIN_MORE_ITEMS : PLAYER_MORE_ITEMS;
   const visibleItems = targetItems.filter((item) => {
     if (item.feature && !isFeatureEnabled(item.feature)) return false;
-    if (item.requireDesign && !canDesign) return false;
+
+    if (persona === "admin") {
+      if (item.requireSuperAdmin && !adminPermissions?.isSuperAdmin) return false;
+      if (
+        item.requireStudioAdmin &&
+        !(adminPermissions?.isStudioAdmin || adminPermissions?.isSuperAdmin)
+      )
+        return false;
+      if (
+        item.requireMatchAdmin &&
+        !(
+          adminPermissions?.isMatchAdmin ||
+          adminPermissions?.isSuperAdmin ||
+          adminPermissions?.isClubAdmin
+        )
+      )
+        return false;
+      if (item.requireDesign && !(adminPermissions?.canDesign || canDesign)) return false;
+    } else {
+      if (item.requireDesign && !canDesign) return false;
+    }
+
     return true;
   });
 
@@ -104,7 +208,8 @@ export function MoreDrawer({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={persona === "admin" ? "Admin Tools Navigation" : "More Secondary Navigation"}
+      aria-labelledby="more-drawer-title"
+      aria-describedby="more-drawer-desc"
       className="fixed inset-0 z-50 md:hidden"
     >
       {/* Backdrop */}
@@ -122,14 +227,20 @@ export function MoreDrawer({
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-border/50">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-widest text-text-primary">
+            <h3
+              id="more-drawer-title"
+              className="text-xs font-bold uppercase tracking-widest text-text-primary"
+            >
               {persona === "admin" ? "Admin Console Hubs" : "More Destinations"}
             </h3>
-            <p className="text-[11px] text-text-muted mt-0.5">
-              {persona === "admin" ? "Administrative settings and operations" : "Secondary club features and resources"}
+            <p id="more-drawer-desc" className="text-[11px] text-text-muted mt-0.5">
+              {persona === "admin"
+                ? "Administrative settings and operations"
+                : "Secondary club features and resources"}
             </p>
           </div>
           <button
+            ref={closeBtnRef}
             onClick={onClose}
             aria-label="Close navigation drawer"
             className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-surface-hover transition text-text-muted hover:text-text-primary cursor-pointer"

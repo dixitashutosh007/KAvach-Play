@@ -1271,6 +1271,25 @@ export default function Home() {
                         </div>
                       )
                     )}
+                    {activeTab === "grounds" && (
+                      isMatchAdmin || isSuperAdmin || isClubAdmin ? (
+                        <GroundsTab store={store} persona={persona} />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Match Admin permissions for Grounds management.</p>
+                        </div>
+                      )
+                    )}
+                    {activeTab === "shop" && (
+                      <ShopTab store={store} persona={persona} isAdmin={isClubAdmin || isSuperAdmin} />
+                    )}
+                    {activeTab === "leaderboard" && (
+                      <LeaderboardTab store={store} persona={persona} />
+                    )}
+                    {activeTab === "opinion" && (
+                      <OpinionTab store={store} persona={persona} />
+                    )}
                     {activeTab === "profile" && <ProfileTab store={store} />}
                     {activeTab === "finance" && (
                       isFinanceAdmin || isSuperAdmin ? (
@@ -1304,6 +1323,14 @@ export default function Home() {
         hasMissingMandatory={hasMissingMandatory}
         canDesign={canDesign}
         currentPlayerId={player?.id || user?.uid}
+        adminPermissions={{
+          isSuperAdmin,
+          isClubAdmin,
+          isMatchAdmin,
+          isFinanceAdmin,
+          isStudioAdmin,
+          canDesign,
+        }}
       />
     </div>
   );

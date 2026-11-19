@@ -33,6 +33,7 @@ const TAB_TITLES: Record<string, string> = {
   profile: "My Profile",
   club: "Club Roster & Ops",
   settings: "Settings & Access",
+  grounds: "Grounds & Venues",
   notifications: "Notifications",
 };
 
@@ -125,7 +126,8 @@ export function AppHeader({
           {isAdmin && onTogglePersona && (
             <button
               onClick={onTogglePersona}
-              className="min-h-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center gap-1"
+              data-testid="header-persona-toggle"
+              className="min-h-[44px] min-w-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center gap-1"
               title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
             >
               <Shield className="w-3.5 h-3.5 shrink-0 text-brand" />
