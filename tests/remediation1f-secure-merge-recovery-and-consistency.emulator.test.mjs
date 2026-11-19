@@ -3084,9 +3084,21 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
 
     // Deterministic barrier synchronization: release AFTER read of payments collectionGroup completes!
     let barrierReadDoneResolve;
-    const barrierReadDone = new Promise((r) => { barrierReadDoneResolve = r; });
+    const barrierReadDone = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("barrierReadDone timed out")), 5000);
+      barrierReadDoneResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
     let barrierOpBProceedResolve;
-    const barrierOpBProceed = new Promise((r) => { barrierOpBProceedResolve = r; });
+    const barrierOpBProceed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("barrierOpBProceed timed out")), 5000);
+      barrierOpBProceedResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
 
     // Proxy db to hold Operation A inside its active transaction after completing the payments read
     const proxyDb = Object.create(db);
@@ -3197,9 +3209,50 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     };
 
     let barrierReadDoneResolve;
-    const barrierReadDone = new Promise((r) => { barrierReadDoneResolve = r; });
+    const barrierReadDone = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("barrierReadDone timed out")), 5000);
+      barrierReadDoneResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
     let barrierOpBWrittenResolve;
-    const barrierOpBWritten = new Promise((r) => { barrierOpBWrittenResolve = r; });
+    const barrierOpBWritten = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("barrierOpBWritten timed out")), 5000);
+      barrierOpBWrittenResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+
+    function wrapQuery(q) {
+      return new Proxy(q, {
+        get(target, prop, receiver) {
+          if (prop === "get") {
+            return async (...args) => {
+              const res = await target.get(...args);
+              if (barrierReadDoneResolve) {
+                barrierReadDoneResolve();
+                barrierReadDoneResolve = null;
+                await barrierOpBWritten;
+              }
+              return res;
+            };
+          }
+          const val = Reflect.get(target, prop, receiver);
+          if (typeof val === "function") {
+            return (...args) => {
+              const result = val.apply(target, args);
+              if (result && typeof result === "object" && typeof result.get === "function") {
+                return wrapQuery(result);
+              }
+              return result;
+            };
+          }
+          return val;
+        },
+      });
+    }
 
     // Proxy db to intercept collectionGroup("payments") read boundary during final verification
     const proxyDb = Object.create(db);
@@ -3207,16 +3260,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
     proxyDb.collectionGroup = (collectionId) => {
       const query = origCollectionGroup(collectionId);
       if (collectionId === "payments") {
-        const origGet = query.get.bind(query);
-        query.get = async (...args) => {
-          const res = await origGet(...args);
-          if (barrierReadDoneResolve) {
-            barrierReadDoneResolve();
-            barrierReadDoneResolve = null;
-            await barrierOpBWritten;
-          }
-          return res;
-        };
+        return wrapQuery(query);
       }
       return query;
     };
