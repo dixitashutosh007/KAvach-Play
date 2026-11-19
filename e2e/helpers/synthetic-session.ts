@@ -74,7 +74,8 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
   };
 
   const todayDate = new Date();
-  const todayMMDD = `${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
+  const todayDD = String(todayDate.getDate()).padStart(2, "0");
+  const todayMM = String(todayDate.getMonth() + 1).padStart(2, "0");
   const upcomingDate = new Date(Date.now() + 4 * 86400000);
   const upcomingMMDD = `${String(upcomingDate.getMonth() + 1).padStart(2, "0")}-${String(upcomingDate.getDate()).padStart(2, "0")}`;
 
@@ -82,7 +83,8 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     id: "player-teammate-1",
     name: "Rohit Sharma",
     mobile: "+919811100001",
-    dob: `1990-${todayMMDD}`,
+    // Deterministic DD/MM/YYYY format test for Today's birthday
+    dob: `${todayDD}/${todayMM}/1990`,
     kavachId: "KAV-045",
     disabled: false,
     inviteStatus: "Accepted",
@@ -92,6 +94,7 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
     id: "player-teammate-2",
     name: "Virat Kohli",
     mobile: "+919811100002",
+    // Deterministic YYYY-MM-DD format test for Upcoming birthday in 4 days
     dob: `1988-${upcomingMMDD}`,
     kavachId: "KAV-018A",
     disabled: false,
@@ -158,6 +161,40 @@ export function createSyntheticStore(roleConfig: RoleConfig) {
       result: "Pending",
       fee: 600,
       reportingTime: "08:00",
+      squadPlayerIds: [playerId],
+    },
+    {
+      // INELIGIBLE FIXTURE: Squad restricted to other teammates; excludes current player
+      id: "match-ineligible-squad",
+      groundId: "ground-1",
+      format: "T20",
+      jerseyColor: "Scarlet Red",
+      date: "2026-12-08",
+      time: "09:00",
+      opponent: "Jaipur Strikers",
+      ourScore: "",
+      opponentScore: "",
+      result: "Pending",
+      fee: 650,
+      reportingTime: "08:30",
+      squadPlayerIds: ["player-teammate-1", "player-teammate-2"],
+    },
+    {
+      // INELIGIBLE FIXTURE: Tentatively blocked slot (only visible to admin)
+      id: "match-ineligible-tentative",
+      groundId: "ground-2",
+      format: "T30",
+      jerseyColor: "Whites",
+      date: "2026-12-10",
+      time: "07:30",
+      opponent: "Tentative Challengers",
+      ourScore: "",
+      opponentScore: "",
+      result: "Pending",
+      fee: 600,
+      reportingTime: "07:00",
+      isTentative: true,
+      tentativelyBlockedBy: "Admin",
       squadPlayerIds: [playerId],
     },
     {

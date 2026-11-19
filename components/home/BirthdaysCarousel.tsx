@@ -2,58 +2,19 @@
 
 import { useMemo } from "react";
 import { Cake, Sparkles } from "lucide-react";
-import { format, addDays, isWithinInterval } from "date-fns";
 import { Player } from "@/lib/types";
+import { partitionBirthdays } from "@/lib/birthday-utils";
 
-export function BirthdaysCarousel({ players = [] }: { players: Player[] }) {
+export function BirthdaysCarousel({
+  players = [],
+  referenceDate,
+}: {
+  players: Player[];
+  referenceDate?: Date;
+}) {
   const { todayBirthdays, upcomingBirthdays } = useMemo(() => {
-    const today = new Date();
-    const nextTwoWeeks = addDays(today, 14);
-    const todayStr = format(today, "MM-dd");
-
-    const todayList: Player[] = [];
-    const upcomingList: Player[] = [];
-
-    players.forEach((p) => {
-      if (!p.dob || p.disabled) return;
-      try {
-        const dobDate = new Date(p.dob);
-        const dobMonthDay = format(dobDate, "MM-dd");
-
-        if (dobMonthDay === todayStr) {
-          todayList.push(p);
-        } else {
-          const currentYearBday = new Date(
-            today.getFullYear(),
-            dobDate.getMonth(),
-            dobDate.getDate()
-          );
-          if (isWithinInterval(currentYearBday, { start: today, end: nextTwoWeeks })) {
-            upcomingList.push(p);
-          } else {
-            const nextYearBday = new Date(
-              today.getFullYear() + 1,
-              dobDate.getMonth(),
-              dobDate.getDate()
-            );
-            if (isWithinInterval(nextYearBday, { start: today, end: nextTwoWeeks })) {
-              upcomingList.push(p);
-            }
-          }
-        }
-      } catch {
-        // Ignore date parsing errors
-      }
-    });
-
-    upcomingList.sort((a, b) => {
-      const aDate = new Date(a.dob!);
-      const bDate = new Date(b.dob!);
-      return aDate.getMonth() - bDate.getMonth() || aDate.getDate() - bDate.getDate();
-    });
-
-    return { todayBirthdays: todayList, upcomingBirthdays: upcomingList };
-  }, [players]);
+    return partitionBirthdays(players, referenceDate || new Date());
+  }, [players, referenceDate]);
 
   const allBirthdayItems = [...todayBirthdays, ...upcomingBirthdays];
   const hasBirthdays = allBirthdayItems.length > 0;
@@ -86,12 +47,7 @@ export function BirthdaysCarousel({ players = [] }: { players: Player[] }) {
         <div className="flex overflow-x-auto gap-3 pb-2 pt-1 no-scrollbar snap-x snap-mandatory scroll-smooth">
           {allBirthdayItems.map((p) => {
             const isTodayBirthday = todayBirthdays.some((t) => t.id === p.id);
-            let bdayFormatted = "";
-            try {
-              bdayFormatted = format(new Date(p.dob!), "MMM do");
-            } catch {
-              bdayFormatted = "Upcoming";
-            }
+            const bdayFormatted = p.birthdayStatus?.formattedDate || "Upcoming";
 
             return (
               <div

@@ -1074,7 +1074,7 @@ export default function Home() {
                   {activeTab === "home" && (
                     <HomeTab
                       store={store}
-                      isAdmin={false}
+                      isAdmin={isAdmin}
                       currentUserId={user.uid}
                       currentUserName={player?.name || "Player"}
                       onNavigateToMatch={(matchId) => setActiveTab("matches", `match_${matchId}`)}

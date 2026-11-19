@@ -19,6 +19,7 @@ import { useStore } from "@/hooks/useStore";
 import { Post, Player, Match, Ground } from "@/lib/types";
 import { resolveMyPlayers } from "@/lib/player-identity";
 import { calculatePlayerDues } from "@/lib/player-dues";
+import { isPlayerEligibleForMatch } from "@/lib/match-eligibility";
 import {
   MapPin,
   Clock,
@@ -87,12 +88,12 @@ export function HomeTab({
     [myPlayers, payments, matches, store.otherFees]
   );
 
-  // Upcoming matches (sorted by date/time ascending)
+  // Upcoming matches (sorted by date/time ascending, filtered by player eligibility)
   const upcomingMatches = useMemo(() => {
     const now = Date.now();
     return matches
       .filter((m) => {
-        if (m.isTentative) return false;
+        if (!isPlayerEligibleForMatch(mePlayer, m, payments, isAdmin)) return false;
         if (m.result && m.result !== "Pending") return false;
         let matchDateObj = new Date(m.date);
         if (m.time) {
@@ -106,16 +107,16 @@ export function HomeTab({
         return matchDateObj.getTime() >= now;
       })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [matches]);
+  }, [matches, mePlayer, payments, isAdmin]);
 
-  // Match Day Alerts (Starts within 18 hours and player is confirmed in squad)
+  // Match Day Alerts (Starts within 18 hours, player is confirmed in squad and eligible)
   const activeMatchAlerts = useMemo(() => {
     if (!mePlayer || isAdmin) return [];
     const now = Date.now();
 
     return matches
       .filter((m) => {
-        if (m.isTentative) return false;
+        if (!isPlayerEligibleForMatch(mePlayer, m, payments, isAdmin)) return false;
         const myPay = payments.find((p) => p.playerId === mePlayer.id && p.matchId === m.id);
         const isPlaying =
           myPay &&
@@ -165,6 +166,11 @@ export function HomeTab({
     if (tab === "finance") {
       onNavigateToPayments?.();
     } else if (tab === "matches" && targetId) {
+      const targetMatch = matches.find((m) => m.id === targetId);
+      if (targetMatch && !isPlayerEligibleForMatch(mePlayer, targetMatch, payments, isAdmin)) {
+        toast("You are not eligible to access this match.", "error");
+        return;
+      }
       onNavigateToMatch?.(targetId);
     } else if (onNavigateToTab) {
       onNavigateToTab(tab, targetId);
@@ -173,12 +179,20 @@ export function HomeTab({
     }
   };
 
-  // 1-Tap RSVP Handler
+  // 1-Tap RSVP Handler with strict eligibility check
   const handleRsvp = async (
     matchId: string,
     availability: "Confirmed" | "Tentative" | "No"
   ) => {
-    if (!mePlayer) return;
+    if (!mePlayer) {
+      toast("Please complete or link your player profile to mark availability.", "error");
+      return;
+    }
+    const targetMatch = matches.find((m) => m.id === matchId);
+    if (!targetMatch || !isPlayerEligibleForMatch(mePlayer, targetMatch, payments, isAdmin)) {
+      toast("You are not eligible to participate in this match.", "error");
+      return;
+    }
     const payment = payments.find((p) => p.playerId === mePlayer.id && p.matchId === matchId);
     try {
       if (payment) {
@@ -207,6 +221,18 @@ export function HomeTab({
     }
   };
 
+  // Expose test hook for deterministic E2E verification of direct RSVP boundary attempts
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__kavachTestRsvp = handleRsvp;
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__kavachTestRsvp;
+      }
+    };
+  }, [handleRsvp]);
+
   // Profile completion check for non-admin players
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [profileFormData, setProfileFormData] = useState({
@@ -233,16 +259,17 @@ export function HomeTab({
     }
   }, [mePlayer, isAdmin, appUser]);
 
-  // Search Results filtering (Section 4.A)
+  // Search Results filtering (Section 4.A) - strictly excludes ineligible matches for players
   const filteredResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
 
     const matchedMatches = matches.filter(
       (m) =>
-        m.opponent?.toLowerCase().includes(q) ||
-        m.date?.toLowerCase().includes(q) ||
-        m.format?.toLowerCase().includes(q)
+        isPlayerEligibleForMatch(mePlayer, m, payments, isAdmin) &&
+        (m.opponent?.toLowerCase().includes(q) ||
+          m.date?.toLowerCase().includes(q) ||
+          m.format?.toLowerCase().includes(q))
     );
     const matchedAnnouncements = posts.filter(
       (p) => (p as any).title?.toLowerCase().includes(q) || p.text?.toLowerCase().includes(q)
@@ -258,7 +285,7 @@ export function HomeTab({
       announcements: matchedAnnouncements,
       players: matchedPlayers,
     };
-  }, [searchQuery, matches, posts, players]);
+  }, [searchQuery, matches, posts, players, mePlayer, payments, isAdmin]);
 
   return (
     <div

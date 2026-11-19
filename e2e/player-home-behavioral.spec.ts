@@ -99,6 +99,10 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(match3).toBeVisible();
     await expect(match4).toBeVisible();
 
+    // Verify ineligible matches are strictly hidden from player upcoming fixtures
+    await expect(page.locator('[data-testid="match-card-match-ineligible-squad"]')).toBeHidden();
+    await expect(page.locator('[data-testid="match-card-match-ineligible-tentative"]')).toBeHidden();
+
     // Verify opponent names
     await expect(match1.getByText(/vs Delhi Challengers/i)).toBeVisible();
     await expect(match2.getByText(/vs Noida Strikers/i)).toBeVisible();
@@ -112,6 +116,71 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
 
     // Toast notification confirms update
     await expect(page.getByText(/Availability marked as Playing/i)).toBeVisible({ timeout: 4000 });
+  });
+
+  test("2B. Enforces player-specific match visibility, search isolation, and blocks ineligible match RSVP", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await injectSyntheticSession(page, {
+      uid: "player-alpha",
+      role: "player",
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const header = page.locator('[data-testid="player-home-header"]');
+    const searchInput = header.getByPlaceholder(/Search matches, announcements/i);
+
+    // 1. Search for squad-restricted ineligible match -> must NOT appear
+    await searchInput.fill("Jaipur");
+    await expect(page.getByText(/Search Results for “Jaipur”/i)).toBeVisible();
+    await expect(page.getByText(/vs Jaipur Strikers/i)).toBeHidden();
+
+    // 2. Search for tentative match -> must NOT appear for regular player
+    await searchInput.fill("Tentative");
+    await expect(page.getByText(/Search Results for “Tentative”/i)).toBeVisible();
+    await expect(page.getByText(/vs Tentative Challengers/i)).toBeHidden();
+
+    // Clear search
+    await searchInput.fill("");
+
+    // 3. Attempt to submit RSVP for ineligible match directly -> must be rejected with error toast
+    await page.evaluate(async () => {
+      await (window as any).__kavachTestRsvp?.("match-ineligible-squad", "Confirmed");
+    });
+    await expect(
+      page.getByText(/You are not eligible to participate in this match/i)
+    ).toBeVisible({ timeout: 4000 });
+  });
+
+  test("2C. Preserves legitimate administrator match access and search visibility for admin users", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await injectSyntheticSession(page, {
+      uid: "admin-alpha",
+      role: "admin",
+      isMatchAdmin: true,
+      isClubAdmin: true,
+    });
+
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const header = page.locator('[data-testid="player-home-header"]');
+    const searchInput = header.getByPlaceholder(/Search matches, announcements/i);
+
+    // Admin searches for squad-restricted match -> visible
+    await searchInput.fill("Jaipur");
+    await expect(page.getByText(/Search Results for “Jaipur”/i)).toBeVisible();
+    await expect(page.getByText(/vs Jaipur Strikers/i)).toBeVisible();
+
+    // Admin searches for tentative match -> visible
+    await searchInput.fill("Tentative");
+    await expect(page.getByText(/Search Results for “Tentative”/i)).toBeVisible();
+    await expect(page.getByText(/vs Tentative Challengers/i)).toBeVisible();
   });
 
   // ── 3. Announcements, Birthdays, and Feed Preview ─────────────────────────
