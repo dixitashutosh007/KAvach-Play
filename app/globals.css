@@ -1,23 +1,82 @@
 @import "tailwindcss";
 
+:root {
+  /* Approved KAvach Play Brand Colour Tokens */
+  --brand-wine: #7A1E2B;
+  --brand-scarlet: #C0394B;
+  --brand-dusty: #E76B73;
+  --brand-gold: #D6A84F;
+  --canvas-warm: #FFF6F4;
+  --surface-blush: #F8EDEE;
+  --surface-card: #FFFFFF;
+  --text-charcoal: #29252A;
+
+  /* Semantic Aliases */
+  --color-primary: var(--brand-wine);
+  --color-primary-hover: var(--brand-scarlet);
+  --color-accent: var(--brand-scarlet);
+  --color-background: var(--canvas-warm);
+  --color-surface: var(--surface-card);
+  --color-surface-muted: var(--surface-blush);
+  --color-text: var(--text-charcoal);
+  --color-border: #E5E7EB;
+  --color-highlight: var(--brand-gold);
+}
+
 @theme {
+  /* Approved Named Brand Tokens */
+  --color-deep-wine: #7A1E2B;
+  --color-scarlet: #C0394B;
+  --color-dusty-red: #E76B73;
+  --color-muted-gold: #D6A84F;
+  --color-warm-white: #FFF6F4;
+  --color-soft-blush: #F8EDEE;
+  --color-white: #FFFFFF;
+  --color-charcoal: #29252A;
+
+  /* Semantic Aliases */
+  --color-primary: #7A1E2B;
+  --color-primary-hover: #C0394B;
+  --color-background: #FFF6F4;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #F8EDEE;
+  --color-text: #29252A;
+  --color-border: #E5E7EB;
+  --color-highlight: #D6A84F;
+
+  /* Font Families */
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-poppins), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Existing Legacy Tokens Preserved for Backward Compatibility */
+  --color-accent: var(--theme-accent, #D51F43);
+  --color-brand: var(--theme-brand, #A30F2D);
+  --color-brand-surface: var(--theme-brand-surface, #FCE8ED);
   --color-glass-bg: var(--theme-glass-bg, #FFFFFF);
   --color-glass-border: var(--theme-glass-border, #E5E7EB);
-  --color-accent: var(--theme-accent, #D51F43);
   --color-text-primary: var(--theme-text-primary, #171C26);
   --color-text-secondary: var(--theme-text-secondary, #667085);
   --color-text-muted: var(--theme-text-muted, #9CA3AF);
-  --color-surface: var(--theme-surface, #FFFFFF);
   --color-surface-hover: var(--theme-surface-hover, #F3F4F6);
-  --color-border: var(--theme-border, #E5E7EB);
   --color-text-accent: var(--theme-text-accent, #FFFFFF);
   --color-brand: var(--theme-brand, #A30F2D);
   --color-brand-surface: var(--theme-brand-surface, #FCE8ED);
 }
 
+/* Typography Utility Classes */
+.font-heading {
+  font-family: var(--font-poppins), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
 body {
   background: var(--theme-bg, #F6F7F9);
   color: var(--theme-text-primary, #171C26);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   transition: all 0.3s ease-in-out;
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
