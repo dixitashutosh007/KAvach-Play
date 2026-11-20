@@ -14,6 +14,16 @@ export const APPROVED_FIRESTORE_DATABASE_IDS = new Set<string>([
   DEVELOPMENT_FIRESTORE_DATABASE_ID,
 ]);
 
+// Direct literal references for Next.js Webpack DefinePlugin client-side inlining
+const COMPILED_NEXT_PUBLIC_DB_ID =
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID : undefined;
+const COMPILED_AWS_BRANCH =
+  typeof process !== "undefined" ? process.env.AWS_BRANCH : undefined;
+const COMPILED_GIT_BRANCH =
+  typeof process !== "undefined" ? process.env.GIT_BRANCH : undefined;
+const COMPILED_GITHUB_REF_NAME =
+  typeof process !== "undefined" ? process.env.GITHUB_REF_NAME : undefined;
+
 /**
  * Resolves and validates the deployment branch across candidate environment variables.
  *
@@ -24,18 +34,31 @@ export const APPROVED_FIRESTORE_DATABASE_IDS = new Set<string>([
  * 4. Returns the single agreeing branch name, or empty string if none are populated.
  */
 export function resolveDeploymentBranch(
-  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+  env?: Record<string, string | undefined>
 ): string {
   const branchCandidates: Array<{ key: string; value: string }> = [];
 
-  if (env.AWS_BRANCH !== undefined && env.AWS_BRANCH.trim() !== "") {
-    branchCandidates.push({ key: "AWS_BRANCH", value: env.AWS_BRANCH.trim() });
+  const awsBranch =
+    env !== undefined
+      ? env.AWS_BRANCH
+      : (typeof process !== "undefined" ? process.env.AWS_BRANCH : COMPILED_AWS_BRANCH);
+  const gitBranch =
+    env !== undefined
+      ? env.GIT_BRANCH
+      : (typeof process !== "undefined" ? process.env.GIT_BRANCH : COMPILED_GIT_BRANCH);
+  const ghRef =
+    env !== undefined
+      ? env.GITHUB_REF_NAME
+      : (typeof process !== "undefined" ? process.env.GITHUB_REF_NAME : COMPILED_GITHUB_REF_NAME);
+
+  if (awsBranch !== undefined && awsBranch.trim() !== "") {
+    branchCandidates.push({ key: "AWS_BRANCH", value: awsBranch.trim() });
   }
-  if (env.GIT_BRANCH !== undefined && env.GIT_BRANCH.trim() !== "") {
-    branchCandidates.push({ key: "GIT_BRANCH", value: env.GIT_BRANCH.trim() });
+  if (gitBranch !== undefined && gitBranch.trim() !== "") {
+    branchCandidates.push({ key: "GIT_BRANCH", value: gitBranch.trim() });
   }
-  if (env.GITHUB_REF_NAME !== undefined && env.GITHUB_REF_NAME.trim() !== "") {
-    branchCandidates.push({ key: "GITHUB_REF_NAME", value: env.GITHUB_REF_NAME.trim() });
+  if (ghRef !== undefined && ghRef.trim() !== "") {
+    branchCandidates.push({ key: "GITHUB_REF_NAME", value: ghRef.trim() });
   }
 
   if (branchCandidates.length === 0) {
@@ -68,12 +91,18 @@ export function resolveDeploymentBranch(
  * 7. Under NO circumstances falls back to "(default)" or an unapproved database.
  */
 export function resolveFirestoreDatabaseId(
-  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+  env?: Record<string, string | undefined>
 ): string {
   // 1. Inspect and validate candidate explicit database ID variables independently
   const candidates: Array<{ key: string; value: string }> = [];
 
-  const rawNextPublic = env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID;
+  const rawNextPublic =
+    env !== undefined
+      ? env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID
+      : (typeof process !== "undefined"
+          ? process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID
+          : COMPILED_NEXT_PUBLIC_DB_ID);
+
   if (rawNextPublic !== undefined) {
     const trimmed = rawNextPublic.trim();
     if (!trimmed) {
@@ -89,7 +118,11 @@ export function resolveFirestoreDatabaseId(
     candidates.push({ key: "NEXT_PUBLIC_FIRESTORE_DATABASE_ID", value: trimmed });
   }
 
-  const rawServerDb = env.FIRESTORE_DATABASE_ID;
+  const rawServerDb =
+    env !== undefined
+      ? env.FIRESTORE_DATABASE_ID
+      : (typeof process !== "undefined" ? process.env.FIRESTORE_DATABASE_ID : undefined);
+
   if (rawServerDb !== undefined) {
     const trimmed = rawServerDb.trim();
     if (!trimmed) {
@@ -143,6 +176,13 @@ export function resolveFirestoreDatabaseId(
   // Branch is missing/empty: must have a valid approved explicitDbId
   if (explicitDbId && APPROVED_FIRESTORE_DATABASE_IDS.has(explicitDbId)) {
     return explicitDbId;
+  }
+
+  // Client-side fallback for mig-mov branch development:
+  // When running in the browser where branch environment variables are not inlined,
+  // safely target development database (never production) rather than crashing the client.
+  if (typeof window !== "undefined") {
+    return DEVELOPMENT_FIRESTORE_DATABASE_ID;
   }
 
   throw new Error(
