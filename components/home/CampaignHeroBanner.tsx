@@ -44,7 +44,7 @@ export function CampaignHeroBanner({
       list.push({
         id: `tournament-${t.id}`,
         title: t.name || "KAvach Club Tournament",
-        subtitle: t.format ? `${t.format} Format • ${t.jerseyColor || "Match Kit"}` : "Official Club Championship",
+        subtitle: t.format ? `${t.format} Format` : "Official Club Championship",
         description: t.notes || "Compete with top players across teams and track stats live on the leaderboard.",
         badge: t.status === "Ongoing" ? "Live Tournament" : "Upcoming Championship",
         badgeColor: "gold",

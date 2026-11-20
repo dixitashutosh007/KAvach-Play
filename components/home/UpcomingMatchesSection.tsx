@@ -8,13 +8,12 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
-  AlertCircle,
   ChevronRight,
-  Shirt,
   Calendar,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Match, Ground, MatchPayment, Player } from "@/lib/types";
+import { JerseyInfographic } from "@/components/matches/JerseyInfographic";
 
 export function UpcomingMatchesSection({
   matches = [],
@@ -92,7 +91,7 @@ export function UpcomingMatchesSection({
 
       {displayMatches.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {displayMatches.map((match) => {
+          {displayMatches.map((match, idx) => {
             const payment = getMatchPayment(match.id);
             const ground = grounds.find((g) => g.id === match.groundId);
             const availability = getEffectiveAvailability(payment);
@@ -100,7 +99,6 @@ export function UpcomingMatchesSection({
             const isPlaying = availability === "Confirmed" || availability === "Yes";
             const isTentative = availability === "Tentative";
             const isOut = availability === "No";
-            const isPending = !isPlaying && !isTentative && !isOut;
             const isUpdating = updatingMatchId === match.id;
 
             let formattedDate = match.date;
@@ -123,9 +121,20 @@ export function UpcomingMatchesSection({
               <div
                 key={match.id}
                 data-testid={`match-card-${match.id}`}
-                className="bg-surface border border-border rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 transition hover:border-scarlet/30"
+                data-variant={idx % 2 === 1 ? "alternate" : "default"}
+                className={`relative overflow-hidden border rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 transition ${
+                  idx % 2 === 1
+                    ? "bg-soft-blush border-deep-wine/10 hover:border-deep-wine/20"
+                    : "bg-surface border-border hover:border-scarlet/30"
+                }`}
               >
-                {/* Header Row: Format, Jersey, and RSVP Badge */}
+                {idx % 2 === 1 && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-0 top-4 bottom-4 w-[3px] rounded-r-full bg-dusty-red/45"
+                  />
+                )}
+                {/* Header Row: Format, Jersey infographic, and availability state */}
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -133,10 +142,7 @@ export function UpcomingMatchesSection({
                         {match.format || "T20"}
                       </span>
                       {match.jerseyColor && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold text-text-secondary bg-surface-hover border border-border/60">
-                          <Shirt className="w-2.5 h-2.5 text-scarlet" />
-                          <span>{match.jerseyColor}</span>
-                        </span>
+                        <JerseyInfographic color={match.jerseyColor} size="sm" />
                       )}
                     </div>
 
@@ -154,14 +160,9 @@ export function UpcomingMatchesSection({
                     ) : isOut ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
                         <XCircle className="w-3 h-3 text-rose-600" />
-                        <span>Not Playing</span>
+                        <span>Out</span>
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-scarlet/10 text-scarlet border border-scarlet/20">
-                        <AlertCircle className="w-3 h-3" />
-                        <span>RSVP Needed</span>
-                      </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Opponent & Match Title */}
@@ -199,10 +200,9 @@ export function UpcomingMatchesSection({
                   </div>
                 </div>
 
-                {/* 1-Tap RSVP Availability Actions (Section 4.G) */}
+                {/* 1-Tap availability actions (Section 4.G) */}
                 <div className="pt-2 border-t border-border/60 flex flex-col gap-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center justify-between">
-                    <span>Your Availability</span>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center justify-end">
                     <button
                       type="button"
                       onClick={() => onNavigateToMatch(match.id)}
@@ -249,7 +249,7 @@ export function UpcomingMatchesSection({
                       type="button"
                       disabled={isUpdating}
                       aria-pressed={isOut}
-                      aria-label="Mark availability as Not Playing"
+                      aria-label="Mark availability as Out"
                       onClick={() => handleAction(match.id, "No")}
                       className={`min-h-[44px] px-2 py-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-60 ${
                         isOut

@@ -284,9 +284,14 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByText(/Match not found or no longer available/i)).toHaveCount(0);
     await expect(page.getByText(/You are not eligible/i)).toHaveCount(0);
 
-    // 3. Verify tournament fixture with tournament badge is visible
-    await expect(page.getByText(/vs Winter Warriors/i)).toBeVisible();
-    await expect(page.getByText(/Winter Super Cup 2026/i)).toBeVisible();
+    // 3. Verify tournament fixture is visible; the tournament badge lives in the
+    //    card's progressive-disclosure details, so expand the card to reveal it.
+    const tournamentCard = page
+      .locator('[data-testid^="player-match-card-"]')
+      .filter({ hasText: /vs Winter Warriors/i });
+    await expect(tournamentCard).toBeVisible();
+    await tournamentCard.locator('[data-testid^="expand-button-"]').click();
+    await expect(tournamentCard.getByText(/Winter Super Cup 2026/i)).toBeVisible();
   });
 
   test("4C. Match Day Alert: eligible player opens match, squad-ineligible player alert suppressed, admin retains access", async ({

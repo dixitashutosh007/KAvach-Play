@@ -14,6 +14,8 @@ import { resolveFirestoreDatabaseId } from "./database-config.ts";
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const dbId = resolveFirestoreDatabaseId();
+/** The Firestore database this client is bound to (non-secret identifier). */
+export const firestoreDatabaseId = dbId;
 
 const isClient = typeof window !== "undefined";
 const isEmbedded = isClient && window.self !== window.top;

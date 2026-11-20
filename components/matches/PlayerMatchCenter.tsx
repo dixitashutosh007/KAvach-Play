@@ -28,6 +28,7 @@ import {
   derivePlayerAvailability,
 } from "@/lib/personal-match-payment";
 import { PlayerMatchCard } from "./PlayerMatchCard";
+import { MatchesLoadError } from "./MatchesLoadError";
 import { PlayerMatchDetailModal } from "./PlayerMatchDetailModal";
 
 export interface PlayerMatchCenterProps {
@@ -46,16 +47,19 @@ export function PlayerMatchCenter({
   isAdmin = false,
 }: PlayerMatchCenterProps) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, hasAdminClaim } = useAuth();
 
   // Resolve current logged-in player
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
   const mePlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
 
-  // Authoritative admin determination
+  // Authoritative admin determination: the verified `admin` custom claim or the
+  // rules-protected appUsers permission flags. The free-form `role` string is
+  // deliberately NOT treated as an authority (same model as app/page.tsx and
+  // firestore.rules isMatchAdmin()/isClubAdmin()).
   const effectiveIsAdmin = Boolean(
     isAdmin ||
-    appUser?.role === "admin" ||
+    hasAdminClaim ||
     appUser?.isClubAdmin ||
     appUser?.isMatchAdmin
   );
@@ -474,6 +478,8 @@ export function PlayerMatchCenter({
           Track upcoming club fixtures, mark availability, and manage match obligations.
         </p>
       </div>
+
+      <MatchesLoadError message={store.matchesError} />
 
       {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-2.5">

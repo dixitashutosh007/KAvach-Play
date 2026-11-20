@@ -217,3 +217,18 @@ As of November 20, 2026:
 - Razorpay operations must remain disabled on `mig-mov`.
 
 Always re-verify live state before relying on this historical snapshot.
+
+## 8. Admin access after the refresh (verification notes)
+
+Admin authority in the client, the server and `firestore.rules` comes from exactly two sources:
+- the Firebase Auth custom claim `admin: true` (super admin), which lives on the shared Auth project and is unaffected by Firestore imports;
+- the `appUsers/{uid}` permission flags `isClubAdmin`, `isMatchAdmin`, `isFinanceAdmin`, `isStudioAdmin` (and `isDesigner` in the client), read from the database the app is bound to.
+
+The free-form `appUsers.role` string does not grant access to the current user.
+
+Because the November 20 import replaced every `appUsers` document in `kavach-play-db-ext` with the production copy, any admin flag or `appUsers` document that existed only in the old development database is gone. Such a user signs in successfully but resolves as a non-admin, and if no player record is linked to their UID they see no fixtures.
+
+The `mig-mov` build logs a one-time `[KAvach access diagnostic]` line to the browser console when bound to the development database. It contains booleans only: database ID, whether the admin claim is present, whether `appUsers/{uid}` exists, each permission flag, and the matches load state. Use it to tell missing role data apart from a code or database-resolution fault before requesting any permission change. Restoring a flag is a Firestore data change and needs explicit owner approval.
+
+A failure of the realtime `matches` subscription is now shown in the Match Center as a visible alert instead of an empty list.
+

@@ -134,6 +134,10 @@ Core rules:
 
 Use a staged validation strategy. Do not run the entire Playwright suite after every small change.
 
+Note: `.github/workflows/ci.yml` runs automatically on every push to `mig-mov` (lint, typecheck, functional, emulator and Playwright jobs). Treat a push as a CI trigger.
+
+Local Playwright behavioural specs inject a synthetic store (`e2e/helpers/synthetic-session.ts`) and do not read Firestore. Run them against a local `next dev` with `AWS_BRANCH=mig-mov`.
+
 ### Small, isolated change
 - Run the narrowest relevant unit/functional test.
 - Run targeted lint/type checks when useful.

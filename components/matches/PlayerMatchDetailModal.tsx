@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { Match, MatchPayment, Ground, Player } from "@/lib/types";
 import { JerseyInfographic, getJerseyDetails } from "./JerseyInfographic";
+import { getMatchResultDisplay } from "./matchResult";
 import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
@@ -110,6 +111,8 @@ export function PlayerMatchDetailModal({
       };
     });
 
+  const resultDisplay = getMatchResultDisplay(match.result);
+
   // Handle Share Match
   const handleShare = () => {
     const jerseyDetails = getJerseyDetails(match.jerseyColor);
@@ -198,18 +201,20 @@ export function PlayerMatchDetailModal({
                   Match Outcome
                 </span>
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-extrabold ${
-                    match.result === "KAvach Won"
-                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                      : match.result === "KAvach Lost"
-                      ? "bg-rose-100 text-rose-800 border border-rose-300"
-                      : match.result === "Abandoned"
-                      ? "bg-gray-200 text-gray-800 border border-gray-300"
-                      : "bg-amber-100 text-amber-800 border border-amber-300"
+                  data-testid="detail-result-stamp"
+                  className={`px-3 py-1 rounded-full text-xs font-extrabold border ${
+                    resultDisplay?.tone === "won"
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      : resultDisplay?.tone === "lost"
+                      ? "bg-rose-100 text-rose-800 border-rose-300"
+                      : resultDisplay?.tone === "tied"
+                      ? "bg-amber-100 text-amber-800 border-amber-300"
+                      : "bg-gray-100 text-gray-700 border-gray-300"
                   }`}
                 >
-                  {match.result}
-                  {match.resultMarginAmount
+                  {resultDisplay ? resultDisplay.label : match.result}
+                  {match.resultMarginAmount &&
+                  (resultDisplay?.tone === "won" || resultDisplay?.tone === "lost")
                     ? ` by ${match.resultMarginAmount} ${match.resultMarginType || "runs"}`
                     : ""}
                 </span>

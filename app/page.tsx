@@ -50,7 +50,8 @@ import {
   updateDoc,
   getDocFromServer,
 } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { db, auth, firestoreDatabaseId } from "@/lib/firebase";
+import { DEVELOPMENT_FIRESTORE_DATABASE_ID } from "@/lib/database-config";
 import { normalizeIndianMobile } from "@/lib/utils";
 import { resolvePlayerForUser, resolveMyPlayers } from "@/lib/player-identity";
 import { calculatePlayerDues } from "@/lib/player-dues";
@@ -205,6 +206,30 @@ export default function Home() {
       // provided in the header.
     }
   }, [isAdminUser, currentUserObj, user]);
+
+  // Development-only access diagnostic. Logs which database the client is bound
+  // to and which authority sources grant admin access. Booleans only: never the
+  // UID, email, phone or any token. Disabled when bound to production.
+  const hasLoggedAccessDiagnosticRef = useRef(false);
+  useEffect(() => {
+    if (!store.isLoaded || !user || hasLoggedAccessDiagnosticRef.current) return;
+    if (store.selfAppUserStatus === "loading") return;
+    if (firestoreDatabaseId !== DEVELOPMENT_FIRESTORE_DATABASE_ID) return;
+    hasLoggedAccessDiagnosticRef.current = true;
+    console.info("[KAvach access diagnostic]", {
+      firestoreDatabaseId,
+      adminCustomClaim: !!hasAdminClaim,
+      appUserDocument: store.selfAppUserStatus,
+      isClubAdmin: !!currentUserObj?.isClubAdmin,
+      isMatchAdmin: !!currentUserObj?.isMatchAdmin,
+      isFinanceAdmin: !!currentUserObj?.isFinanceAdmin,
+      isStudioAdmin: !!currentUserObj?.isStudioAdmin,
+      isDesigner: !!currentUserObj?.isDesigner,
+      resolvedAsAdmin: !!isAdminUser,
+      matchesLoaded: store.matches.length,
+      matchesError: store.matchesError,
+    });
+  }, [store.isLoaded, store.selfAppUserStatus, store.matches.length, store.matchesError, user, hasAdminClaim, currentUserObj, isAdminUser]);
 
   // Guard: if persona is set to admin but the user lacks authoritative administrative privileges,
   // revert strictly to player view to prevent client-side state or URL tampering.
@@ -488,7 +513,8 @@ export default function Home() {
     currentPlayerObj &&
     currentPlayerObj.inviteStatus === "Pending"
   ) {
-    if (currentUserObj?.role !== "admin") {
+    // Admins (verified claim or appUsers permission flags) bypass the pending screen.
+    if (!isAdminUser) {
       return (
         <PendingApprovalScreen
           variant="pending"

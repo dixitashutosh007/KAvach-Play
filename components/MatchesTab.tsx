@@ -61,6 +61,7 @@ import { MatchSheetView } from "./MatchSheetView";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
+import { MatchesLoadError } from "./matches/MatchesLoadError";
 
 export function MatchesTab({
   store,
@@ -1039,6 +1040,8 @@ export function MatchesTab({
                 )}
               </div>
             )}
+
+            <MatchesLoadError message={store.matchesError} />
 
             {isAdmin && !isAdding && (
               <MatchToolbar store={store} />

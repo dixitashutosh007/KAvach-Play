@@ -28,7 +28,6 @@ import {
   Clock,
   Calendar,
   ChevronRight,
-  Shirt,
   Circle,
   Search,
 } from "lucide-react";
@@ -45,6 +44,7 @@ import { CampaignHeroBanner } from "./home/CampaignHeroBanner";
 import { CompactPerformanceSummary } from "./home/CompactPerformanceSummary";
 import { PersonalPaymentCard } from "./home/PersonalPaymentCard";
 import { UpcomingMatchesSection } from "./home/UpcomingMatchesSection";
+import { JerseyInfographic } from "./matches/JerseyInfographic";
 import { ClubAnnouncementsSection } from "./home/ClubAnnouncementsSection";
 import { BirthdaysCarousel } from "./home/BirthdaysCarousel";
 import { ClubFeedPreview } from "./home/ClubFeedPreview";
@@ -477,10 +477,7 @@ export function HomeTab({
                             Match Day Alert
                           </span>
                           {match.jerseyColor && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">
-                              <Shirt className="w-3 h-3" />
-                              <span>{match.jerseyColor}</span>
-                            </span>
+                            <JerseyInfographic color={match.jerseyColor} size="sm" />
                           )}
                         </div>
                         <h3 className="text-base sm:text-xl font-black font-heading tracking-tight text-white">

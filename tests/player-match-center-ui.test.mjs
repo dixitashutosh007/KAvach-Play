@@ -55,6 +55,12 @@ function loadTsxModule(filePath) {
     if (id.startsWith("@/lib/")) {
       return loadTsxModule(path.resolve("lib", id.slice(6) + ".ts"));
     }
+    if (id.startsWith("@/components/")) {
+      let resolved = path.resolve("components", id.slice(13));
+      if (fs.existsSync(resolved + ".tsx")) resolved += ".tsx";
+      else if (fs.existsSync(resolved + ".ts")) resolved += ".ts";
+      return loadTsxModule(resolved);
+    }
     if (id.startsWith("./") || id.startsWith("../")) {
       let resolved = path.resolve(dir, id);
       if (fs.existsSync(resolved + ".ts")) resolved += ".ts";
@@ -552,7 +558,7 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(html.includes("bg-surface"));
     });
 
-    it("15b. Renders subtle warm-tinted surface for variant='alternate'", () => {
+    it("15b. Renders a distinguishable blush brand surface and accent rail for variant='alternate'", () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -563,8 +569,42 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         })
       );
       assert.ok(html.includes('data-variant="alternate"'));
-      assert.ok(html.includes("bg-warm-white/70"));
-      assert.ok(html.includes("border-border/90"));
+      assert.ok(html.includes("bg-soft-blush"), "alternate surface must use the blush brand token");
+      assert.ok(html.includes('data-testid="alternate-accent-match-test-1"'));
+      // The page canvas is warm-white (#FFF6F4); the alternate surface must not reuse it.
+      assert.ok(!html.includes("bg-warm-white"), "alternate surface must differ from the page canvas");
+    });
+
+    it("15e. Alternate surface never overrides Next Match or unsettled highlights", () => {
+      const next = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchCard, {
+          match: baseMatch,
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Playing",
+          isImmediateNext: true,
+          variant: "alternate",
+          onSelectMatch: () => {},
+        })
+      );
+      assert.ok(!next.includes("bg-soft-blush"));
+      assert.ok(!next.includes("alternate-accent-"));
+      const unsettled = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchCard, {
+          match: baseMatch,
+          personalPaymentStatus: { status: "UNPAID", netPayable: 400, amountPaid: 0, isWaived: false },
+          availability: "Playing",
+          isUnsettledAlert: true,
+          variant: "alternate",
+          onSelectMatch: () => {},
+        })
+      );
+      assert.ok(!unsettled.includes("bg-soft-blush"));
+    });
+
+    it("15f. Alternation is deterministic by rendered index in every Match Center list", () => {
+      const src = fs.readFileSync(path.resolve("components/matches/PlayerMatchCenter.tsx"), "utf-8");
+      const occurrences = src.match(/variant=\{idx % 2 === 1 \? "alternate" : "default"\}/g) || [];
+      assert.equal(occurrences.length, 3, "upcoming, recent and previous lists must all alternate");
     });
 
     it("15c. Preserves strong semantic highlight for isImmediateNext regardless of variant", () => {

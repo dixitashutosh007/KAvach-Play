@@ -24,6 +24,7 @@ import {
   formatMatchDisplayTime,
 } from "@/lib/personal-match-payment";
 import { JerseyInfographic } from "./JerseyInfographic";
+import { getMatchResultDisplay, MATCH_RESULT_STAMP_CLASSES } from "./matchResult";
 
 export interface PlayerMatchCardProps {
   match: Match;
@@ -83,70 +84,34 @@ export function PlayerMatchCard({
   const formattedDate = formatMatchDisplayDate(match.date);
   const formattedTime = formatMatchDisplayTime(match.time);
 
-  // Prominent Sports Result Stamp (Section 5)
+  // Prominent result stamp, driven only by the authoritative stored result field.
   const getResultStamp = () => {
-    if (!match.result || match.result === "Pending") return null;
-    const res = match.result;
-    const margin = match.resultMarginAmount
+    const display = getMatchResultDisplay(match.result);
+    if (!display) return null;
+    const showMargin =
+      (display.tone === "won" || display.tone === "lost") &&
+      Boolean(match.resultMarginAmount);
+    const margin = showMargin
       ? `by ${match.resultMarginAmount} ${match.resultMarginType || "runs"}`
       : "";
 
-    if (res === "KAvach Won") {
-      return (
-        <div
-          data-testid={`result-stamp-${match.id}`}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white shadow-xs border border-emerald-700 font-heading shrink-0"
-        >
+    return (
+      <div
+        data-testid={`result-stamp-${match.id}`}
+        data-result-tone={display.tone}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border font-heading shrink-0 ${MATCH_RESULT_STAMP_CLASSES[display.tone]}`}
+      >
+        {display.tone === "won" && (
           <Trophy className="w-3.5 h-3.5 text-emerald-100 shrink-0" />
-          <span>WON</span>
-          {margin && (
-            <span className="font-semibold text-[11px] normal-case tracking-normal opacity-90 border-l border-emerald-500/80 pl-1.5 ml-0.5">
-              {margin}
-            </span>
-          )}
-        </div>
-      );
-    }
-
-    if (res === "KAvach Lost") {
-      return (
-        <div
-          data-testid={`result-stamp-${match.id}`}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs border border-rose-700 font-heading shrink-0"
-        >
-          <span>LOST</span>
-          {margin && (
-            <span className="font-semibold text-[11px] normal-case tracking-normal opacity-90 border-l border-rose-500/80 pl-1.5 ml-0.5">
-              {margin}
-            </span>
-          )}
-        </div>
-      );
-    }
-
-    if (res === "Abandoned") {
-      return (
-        <div
-          data-testid={`result-stamp-${match.id}`}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-200 text-slate-800 border border-slate-300 font-heading shrink-0"
-        >
-          <span>ABANDONED</span>
-        </div>
-      );
-    }
-
-    if (res === "Tie" || res === "Draw") {
-      return (
-        <div
-          data-testid={`result-stamp-${match.id}`}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-500 text-white shadow-xs border border-amber-600 font-heading shrink-0"
-        >
-          <span>{res.toUpperCase()}</span>
-        </div>
-      );
-    }
-
-    return null;
+        )}
+        <span>{display.label}</span>
+        {margin && (
+          <span className="font-semibold text-[11px] normal-case tracking-normal opacity-90 border-l border-white/40 pl-1.5 ml-0.5">
+            {margin}
+          </span>
+        )}
+      </div>
+    );
   };
 
   // Personal Payment Status Badge
@@ -202,21 +167,32 @@ export function PlayerMatchCard({
     return null;
   };
 
+  // Surface priority: Next Match > unsettled payment alert > alternating list rhythm.
+  // Alternation uses the blush brand surface so consecutive cards are distinguishable
+  // against the warm canvas without competing with semantic highlights.
+  const isAlternate = variant === "alternate" && !isImmediateNext && !isUnsettledAlert;
   const cardSurfaceClass = isImmediateNext
     ? "bg-surface border-scarlet/40 ring-1 ring-scarlet/20 hover:border-scarlet/60 shadow-xs"
     : isUnsettledAlert
     ? "bg-surface border-amber-300 ring-1 ring-amber-200 hover:border-amber-400 shadow-xs"
-    : variant === "alternate"
-    ? "bg-warm-white/70 border-border/90 hover:border-border hover:shadow-sm"
-    : "bg-surface border-border hover:border-border/80 hover:shadow-sm";
+    : isAlternate
+    ? "bg-soft-blush border-deep-wine/10 hover:border-deep-wine/20 hover:shadow-sm"
+    : "bg-surface border-border hover:border-scarlet/25 hover:shadow-sm";
 
   return (
     <div
       data-testid={`player-match-card-${match.id}`}
-      data-variant={variant}
+      data-variant={isAlternate ? "alternate" : "default"}
       onClick={() => onSelectMatch(match.id)}
-      className={`relative rounded-[22px] p-3.5 sm:p-4 shadow-xs transition-all duration-200 cursor-pointer border ${cardSurfaceClass}`}
+      className={`relative overflow-hidden rounded-[22px] p-3.5 sm:p-4 shadow-xs transition-all duration-200 cursor-pointer border ${cardSurfaceClass}`}
     >
+      {isAlternate && (
+        <span
+          aria-hidden="true"
+          data-testid={`alternate-accent-${match.id}`}
+          className="pointer-events-none absolute left-0 top-4 bottom-4 w-[3px] rounded-r-full bg-dusty-red/45"
+        />
+      )}
       {/* Immediate Next Match Banner (Without redundant 'Immediate Fixture' label) */}
       {isImmediateNext && (
         <div
@@ -440,10 +416,19 @@ export function PlayerMatchCard({
         <span className="font-semibold text-[11px] text-text-muted">
           {isCompletedOrPast ? "Scorecard & Squad" : "Match details & Squad"}
         </span>
-        <div className="flex items-center gap-0.5 font-bold text-scarlet text-[11px] group-hover:translate-x-0.5 transition-transform">
+        <button
+          type="button"
+          data-testid={`view-details-${match.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectMatch(match.id);
+          }}
+          aria-label={`View details for match vs ${match.opponent}`}
+          className="inline-flex items-center gap-0.5 font-bold text-scarlet hover:text-deep-wine text-[11px] min-h-[32px] -my-1.5 px-1 rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+        >
           <span>View Details</span>
           <ChevronRight className="w-3.5 h-3.5" />
-        </div>
+        </button>
       </div>
     </div>
   );

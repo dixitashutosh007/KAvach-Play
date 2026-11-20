@@ -18,6 +18,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { JerseyInfographic } from "./matches/JerseyInfographic";
 import {
   ArrowLeft,
   Copy,
@@ -659,7 +660,13 @@ function TournamentDetail({
           </div>
           <div className="bg-surface-hover rounded-lg p-2">
             <div className="text-[10px] uppercase text-text-muted tracking-widest">Jersey</div>
-            <div className="text-sm font-bold text-text-primary">{tournament.jerseyColor}</div>
+            <div className="pt-0.5">
+              {tournament.jerseyColor ? (
+                <JerseyInfographic color={tournament.jerseyColor} size="md" />
+              ) : (
+                <span className="text-sm font-bold text-text-primary">—</span>
+              )}
+            </div>
           </div>
           <div className="bg-surface-hover rounded-lg p-2">
             <div className="text-[10px] uppercase text-text-muted tracking-widest">GPay</div>

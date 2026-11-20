@@ -67,6 +67,7 @@ import {
   addDoc,
 } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
+import { describeSubscriptionError } from "@/lib/subscription-errors";
 import { User } from "firebase/auth";
 import { createNotification } from "@/lib/notifications";
 import { normalizeIndianMobile } from "@/lib/utils";
@@ -142,6 +143,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const [badgeTypeDefs, setBadgeTypeDefs] = useState<BadgeTypeDef[]>([]);
   const [leads, setLeads] = useState<ClubLead[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  // Visible subscription health for the core realtime listeners. Errors were
+  // previously only logged to the console, so a permission or database failure
+  // looked identical to "there are no matches" in the UI.
+  const [matchesError, setMatchesError] = useState<string | null>(null);
+  // "loading" until the first snapshot; "missing" when appUsers/{uid} does not
+  // exist in the resolved database (e.g. after a database refresh).
+  const [selfAppUserStatus, setSelfAppUserStatus] = useState<
+    "loading" | "present" | "missing" | "error"
+  >("loading");
 
   // Lazy subscription bookkeeping. Kept in refs so component re-renders don't
   // restart subscriptions. Keys: "allPayments" | "allOtherFees" |
@@ -416,7 +426,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const unsubAppUsers = onSnapshot(
       doc(db, "appUsers", user.uid),
       (selfSnap) => {
-        if (!selfSnap.exists()) return;
+        if (!selfSnap.exists()) {
+          setSelfAppUserStatus("missing");
+          // Drop any stale copy so role checks never use a deleted document.
+          setAppUsers((prev) => prev.filter((u) => u.id !== user.uid));
+          return;
+        }
+        setSelfAppUserStatus("present");
         const selfDoc = { id: selfSnap.id, ...selfSnap.data() } as AppUser;
         const nameLower = (selfDoc.name || "").toLowerCase();
         const emailLower = (selfDoc.email || "").toLowerCase();
@@ -426,7 +442,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           return [...others, selfDoc];
         });
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, "appUsers/self"),
+      (err) => {
+        setSelfAppUserStatus("error");
+        handleFirestoreError(err, OperationType.LIST, "appUsers/self");
+      },
     );
 
     // grounds — one-shot; refreshed by mutation methods below.
@@ -469,10 +488,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           (doc) => ({ id: doc.id, ...doc.data() }) as Match,
         );
         setMatches(ms);
+        setMatchesError(null);
         setIsLoaded(true);
       },
       (err) => {
         handleFirestoreError(err, OperationType.LIST, "matches");
+        setMatchesError(describeSubscriptionError(err));
         setIsLoaded(true);
       },
     );
@@ -2900,5 +2921,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     detachDomain,
     detachAllLazy,
     isLoaded,
+    matchesError,
+    selfAppUserStatus,
   };
 }
