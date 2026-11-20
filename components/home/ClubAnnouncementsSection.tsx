@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Bell, Pin, ChevronRight, X, Calendar, User } from "lucide-react";
 import { format } from "date-fns";
 import { Post } from "@/lib/types";
+import { getAnnouncementDisplay } from "./announcementDisplay";
 
 export function ClubAnnouncementsSection({
   posts = [],
@@ -71,59 +72,63 @@ export function ClubAnnouncementsSection({
       {displayItems.length > 0 ? (
         <div className="flex flex-col gap-2.5">
           {displayItems.map((post) => {
-            const isPinned = (post as any).isPinned || (post as any).isAnnouncement;
+            const display = getAnnouncementDisplay(post as any);
+            const isImportant = display.category === "Important";
 
             return (
-              <div
+              <button
+                type="button"
                 key={post.id}
                 data-testid={`announcement-item-${post.id}`}
                 onClick={() => setSelectedAnnouncement(post)}
-                className={`w-full bg-surface border rounded-xl p-3.5 sm:p-4 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs hover:border-scarlet/40 ${
-                  isPinned
-                    ? "border-scarlet/30 bg-gradient-to-r from-canvas-warm to-surface"
-                    : "border-border hover:bg-canvas-warm/40"
+                aria-label={`Read notice: ${display.headline || display.summary?.slice(0, 60) || "Club notice"}`}
+                className={`w-full text-left bg-surface border rounded-xl p-3 sm:p-3.5 transition cursor-pointer flex items-start gap-3 shadow-xs hover:border-scarlet/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50 ${
+                  isImportant ? "border-scarlet/30" : "border-border hover:bg-canvas-warm/40"
                 }`}
               >
-                <div className="flex items-start gap-3 min-w-0">
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                      isPinned ? "bg-scarlet/15 text-scarlet" : "bg-surface-hover text-text-muted"
-                    }`}
-                  >
-                    {isPinned ? <Pin className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                  </div>
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    isImportant ? "bg-scarlet/15 text-scarlet" : "bg-surface-hover text-text-muted"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {isImportant ? <Pin className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                </div>
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      {isPinned && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-scarlet text-white">
-                          Important
-                        </span>
-                      )}
-                      <span className="text-[10px] font-bold text-text-muted">
-                        {getPostDateString(post)}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {isImportant && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-scarlet text-white">
+                        Important
                       </span>
-                      {post.authorName && (
-                        <span className="text-[10px] font-medium text-text-secondary truncate">
-                          • {post.authorName}
-                        </span>
-                      )}
-                    </div>
-
-                    <h3 className="text-xs sm:text-sm font-bold text-text-primary tracking-tight font-heading truncate">
-                      {(post as any).title || post.text.slice(0, 60)}
-                    </h3>
-                    <p className="text-xs text-text-secondary line-clamp-2 mt-0.5 font-medium">
-                      {post.text}
-                    </p>
+                    )}
+                    <span className="text-[10px] font-bold text-text-muted">
+                      {getPostDateString(post)}
+                    </span>
                   </div>
-                </div>
 
-                <div className="self-end sm:self-center shrink-0 text-xs font-bold text-scarlet flex items-center gap-1">
-                  <span>Read Notice</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  {display.headline && (
+                    <h3
+                      data-testid={`announcement-headline-${post.id}`}
+                      className="mt-0.5 text-xs sm:text-sm font-bold text-text-primary tracking-tight font-heading line-clamp-1"
+                    >
+                      {display.headline}
+                    </h3>
+                  )}
+                  {display.summary && (
+                    <p
+                      data-testid={`announcement-summary-${post.id}`}
+                      className={`text-xs text-text-secondary line-clamp-2 font-medium ${display.headline ? "mt-0.5" : "mt-1"}`}
+                    >
+                      {display.summary}
+                    </p>
+                  )}
+                  <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-scarlet">
+                    <span>Read Notice</span>
+                    <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  </span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -159,7 +164,7 @@ export function ClubAnnouncementsSection({
                   id="announcement-modal-title"
                   className="text-base sm:text-lg font-black font-heading text-text-primary"
                 >
-                  {(selectedAnnouncement as any).title || "Club Notice"}
+                  {getAnnouncementDisplay(selectedAnnouncement as any).headline || "Club Notice"}
                 </h3>
                 {selectedAnnouncement.authorName && (
                   <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">

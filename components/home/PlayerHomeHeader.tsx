@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { Search, X, Shield, Sparkles } from "lucide-react";
+import { Search, X, Shield } from "lucide-react";
 import { Player } from "@/lib/types";
+import { getTimeOfDayGreeting, resolveGreetingName } from "@/lib/greeting";
 
 export function PlayerHomeHeader({
   player,
@@ -11,42 +12,36 @@ export function PlayerHomeHeader({
   onSearchChange,
 }: {
   player: Player | null;
-  currentUserName: string;
+  /** Fallback candidates only; placeholders such as "Player" are ignored. */
+  currentUserName?: string | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
 }) {
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 17) return "Good afternoon";
-    return "Good evening";
-  }, []);
-
-  const displayName = useMemo(() => {
-    return player?.name || currentUserName || "Player";
-  }, [player?.name, currentUserName]);
+  const greeting = useMemo(() => getTimeOfDayGreeting(), []);
+  const displayName = useMemo(
+    () => resolveGreetingName(player?.name, currentUserName),
+    [player?.name, currentUserName],
+  );
 
   return (
     <div className="w-full flex flex-col gap-3" data-testid="player-home-header">
-      {/* Greeting and Identity Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-scarlet tracking-wide uppercase">
-            <Sparkles className="w-3.5 h-3.5 text-muted-gold" />
-            <span>KAvach Cricket Club</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight font-heading mt-0.5">
-            {greeting}, <span className="text-deep-wine">{displayName}</span>
-          </h1>
-          <p className="text-xs text-text-secondary font-medium">
-            Your personalised club dashboard & matchday headquarters
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-2.5">
+        <h1
+          data-testid="player-home-greeting"
+          className="min-w-0 text-xl sm:text-2xl font-black text-text-primary tracking-tight font-heading leading-tight break-words"
+        >
+          {greeting}
+          {displayName ? (
+            <>
+              , <span className="text-deep-wine">{displayName}</span>
+            </>
+          ) : null}
+        </h1>
 
         {player?.kavachId && (
-          <div className="self-start sm:self-auto inline-flex items-center gap-2 bg-surface border border-brand/20 px-3 py-1.5 rounded-xl shadow-xs">
+          <div className="shrink-0 inline-flex items-center gap-2 bg-surface border border-brand/20 px-2.5 py-1.5 rounded-xl shadow-xs">
             <div className="w-6 h-6 rounded-full bg-deep-wine/10 border border-deep-wine/30 flex items-center justify-center shrink-0">
-              <Shield className="w-3.5 h-3.5 text-scarlet" />
+              <Shield className="w-3.5 h-3.5 text-scarlet" aria-hidden="true" />
             </div>
             <div className="flex flex-col">
               <span className="text-[9px] uppercase font-bold tracking-wider text-text-muted leading-none">
@@ -63,7 +58,7 @@ export function PlayerHomeHeader({
       {/* Search Entry Point (Section 4.A) */}
       <div className="relative w-full">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-          <Search className="w-4 h-4 text-text-muted" />
+          <Search className="w-4 h-4 text-text-muted" aria-hidden="true" />
         </div>
         <input
           type="text"
@@ -80,7 +75,7 @@ export function PlayerHomeHeader({
             aria-label="Clear search"
             className="absolute inset-y-0 right-0 pr-3 flex items-center text-text-muted hover:text-text-primary transition cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         )}
       </div>

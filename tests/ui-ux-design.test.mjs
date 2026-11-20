@@ -113,8 +113,8 @@ test("UX-P0-01: Player Club Screen is connected and renders player sub-views", (
     "ClubTab player view must offer My Card profile",
   );
   assert.ok(
-    clubTabCode.includes('key: "studio", label: "Studio & Nets"'),
-    "ClubTab player view must offer Studio & Nets passes",
+    clubTabCode.includes('key: "studio", label: "Studio"'),
+    "ClubTab player view must offer Studio passes (player-facing label: Studio)",
   );
   assert.ok(
     clubTabCode.includes('key: "shop", label: "Shop"'),

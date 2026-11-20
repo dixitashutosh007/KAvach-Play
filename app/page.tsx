@@ -303,11 +303,11 @@ export default function Home() {
     "profile",
   ]);
   const POSTS_TABS = new Set(["home"]);
-  const STATS_TABS = new Set(["club", "home"]);
+  const STATS_TABS = new Set(["club"]); // Home no longer shows the performance summary
   const MERCH_TABS = new Set(["club"]);
   const POLL_TABS = new Set(["club"]);
   const BADGE_TABS = new Set(["club", "home", "profile"]);
-  const TOURNAMENT_TABS = new Set(["matches"]);
+  const TOURNAMENT_TABS = new Set(["matches", "home"]); // Home banner shows tournament campaigns
   const SUB_PLAN_TABS = new Set(["studio", "club"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
   const FEE_PLAN_TABS = new Set(["matches", "finance", "club"]);
@@ -1102,7 +1102,7 @@ export default function Home() {
                       store={store}
                       isAdmin={isAdmin}
                       currentUserId={user.uid}
-                      currentUserName={player?.name || "Player"}
+                      currentUserName={player?.name || user?.displayName || ""}
                       onNavigateToMatch={(matchId) => setActiveTab("matches", `match_${matchId}`)}
                       onNavigateToPayments={() => setActiveTab("finance")}
                       onNavigateToTab={setActiveTab}

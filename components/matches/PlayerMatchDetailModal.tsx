@@ -9,19 +9,16 @@ import {
   ExternalLink,
   Shirt,
   Trophy,
-  CheckCircle2,
-  HelpCircle,
-  XCircle,
   Users,
   CreditCard,
   Share2,
   Video,
   Award,
-  Loader2,
 } from "lucide-react";
 import type { Match, MatchPayment, Ground, Player } from "@/lib/types";
 import { JerseyInfographic, getJerseyDetails } from "./JerseyInfographic";
 import { getMatchResultDisplay } from "./matchResult";
+import { AvailabilitySelector, toAvailabilityChoice } from "./AvailabilitySelector";
 import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
@@ -77,10 +74,6 @@ export function PlayerMatchDetailModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  const isPlaying = availability === "Playing";
-  const isTentative = availability === "Maybe";
-  const isOut = availability === "Out" || availability === "Not Playing";
-  const isPending = availability === "Pending";
 
   const isCompletedOrPast =
     match.result && match.result !== "Pending";
@@ -437,67 +430,13 @@ export function PlayerMatchDetailModal({
                   {disabledRsvpReason || "Availability locked for this match"}
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    disabled={isUpdatingRsvp}
-                    aria-pressed={isPlaying}
-                    aria-label="Mark availability as Playing"
-                    onClick={() => onRsvp(match.id, "Confirmed")}
-                    className={`min-h-[44px] px-2 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60 ${
-                      isPlaying
-                        ? "bg-emerald-600 text-white shadow-xs font-black"
-                        : "bg-surface-hover text-emerald-800 border border-emerald-200 hover:bg-emerald-50"
-                    }`}
-                  >
-                    {isUpdatingRsvp && isPlaying ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                    )}
-                    <span>Playing</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={isUpdatingRsvp}
-                    aria-pressed={isTentative}
-                    aria-label="Mark availability as Maybe"
-                    onClick={() => onRsvp(match.id, "Tentative")}
-                    className={`min-h-[44px] px-2 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60 ${
-                      isTentative
-                        ? "bg-amber-600 text-white shadow-xs font-black"
-                        : "bg-surface-hover text-amber-800 border border-amber-200 hover:bg-amber-50"
-                    }`}
-                  >
-                    {isUpdatingRsvp && isTentative ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <HelpCircle className="w-3.5 h-3.5" />
-                    )}
-                    <span>Maybe</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={isUpdatingRsvp}
-                    aria-pressed={isOut}
-                    aria-label="Mark availability as Out"
-                    onClick={() => onRsvp(match.id, "No")}
-                    className={`min-h-[44px] px-2 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60 ${
-                      isOut
-                        ? "bg-rose-600 text-white shadow-xs font-black"
-                        : "bg-surface-hover text-rose-800 border border-rose-200 hover:bg-rose-50"
-                    }`}
-                  >
-                    {isUpdatingRsvp && isOut ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <XCircle className="w-3.5 h-3.5" />
-                    )}
-                    <span>Out</span>
-                  </button>
-                </div>
+                <AvailabilitySelector
+                  matchId={match.id}
+                  opponentLabel={match.opponent}
+                  value={toAvailabilityChoice(availability)}
+                  busy={isUpdatingRsvp}
+                  onSelect={(stored) => onRsvp(match.id, stored)}
+                />
               )}
             </div>
           )}

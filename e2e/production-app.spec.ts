@@ -385,10 +385,10 @@ test.describe("Production Route (/) Verification Suite", () => {
       await expect(addNoteButton).toBeVisible();
       expect(await addNoteButton.getAttribute("aria-expanded")).toBe("false");
     } else {
-      // Modern Phase 2.1 1-tap RSVP controls
-      const playingBtn = page.locator('button[aria-label="Mark availability as Playing"]').first();
+      // Three-position availability selector
+      const playingBtn = page.locator('[role="radio"][aria-label="Mark availability as Playing"]').first();
       await expect(playingBtn).toBeVisible({ timeout: 5000 });
-      expect(await playingBtn.getAttribute("aria-pressed")).toBe("true");
+      expect(await playingBtn.getAttribute("aria-checked")).toBe("true");
     }
   });
 

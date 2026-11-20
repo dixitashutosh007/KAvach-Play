@@ -65,7 +65,7 @@ export function ClubTab({
 
   const playerTabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
     { key: "profile", label: "My Card", icon: User, visible: true },
-    { key: "studio", label: "Studio & Nets", icon: Video, visible: isFeatureEnabled("studio") },
+    { key: "studio", label: "Studio", icon: Video, visible: isFeatureEnabled("studio") },
     { key: "shop", label: "Shop", icon: ShoppingBag, visible: isFeatureEnabled("shop") },
     { key: "pulse", label: "Pulse", icon: PieChart, visible: isFeatureEnabled("opinion") },
     { key: "players", label: "Directory", icon: Users, visible: true },

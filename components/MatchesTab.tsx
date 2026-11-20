@@ -62,6 +62,8 @@ import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
 import { MatchesLoadError } from "./matches/MatchesLoadError";
+import { MatchCardHeader } from "./matches/MatchCardHeader";
+import { getMatchCardSurfaceClass, AlternateAccentRail } from "./matches/PlayerMatchCard";
 
 export function MatchesTab({
   store,
@@ -1093,7 +1095,7 @@ export function MatchesTab({
 
               const allMatches = store.matches.filter(m => !m.isArchived && (isAdmin || !m.isTentative));
 
-              const renderMatchCard = (match: Match) => {
+              const renderMatchCard = (match: Match, cardIndex: number = 0) => {
                 const ground = store.grounds.find(
                   (g) => g.id === match.groundId,
                 );
@@ -1112,72 +1114,26 @@ export function MatchesTab({
                 const cardUnpaidTotal = paymentsForMatch
                   .filter((p) => p.status === "Unpaid")
                   .reduce((s, p) => s + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
+                const isAlternateCard = cardIndex % 2 === 1;
+                const tournamentForCard = match.tournamentId
+                  ? store.tournaments.find((tt) => tt.id === match.tournamentId)
+                  : undefined;
                 return (
                   <div
                     key={match.id}
+                    data-testid={`admin-match-card-${match.id}`}
+                    data-variant={isAlternateCard ? "alternate" : "default"}
                     onClick={() => openMatch(match)}
-                    className="cursor-pointer bg-surface p-0 rounded-xl hover:-translate-y-0.5 hover:shadow-lg transition overflow-hidden"
+                    className={`relative overflow-hidden rounded-[20px] border shadow-xs transition-all duration-200 cursor-pointer ${getMatchCardSurfaceClass({ isAlternate: isAlternateCard })}`}
                   >
-                    <div className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex gap-2 items-center mb-1 flex-wrap">
-                            <span className="bg-surface-hover text-text-primary px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                              {match.matchType}
-                            </span>
-                            <span className="bg-accent/20 text-accent px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                              {match.format}
-                            </span>
-                            {match.tournamentId && (() => {
-                              const t = store.tournaments.find(
-                                (tt) => tt.id === match.tournamentId,
-                              );
-                              if (!t) return null;
-                              return (
-                                <span
-                                  className="bg-purple-500/20 text-purple-300 border border-purple-500/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[160px]"
-                                  title={t.name}
-                                >
-                                  🏆 {t.name}
-                                </span>
-                              );
-                            })()}
-                            {match.isTentative && (
-                              <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse" title={`Blocked by ${match.tentativelyBlockedBy || "Admin"}`}>
-                                Blocked{match.tentativelyBlockedBy ? ` · ${match.tentativelyBlockedBy}` : ""}
-                              </span>
-                            )}
-                          </div>
-                          {getMatchDate(match) < now &&
-                          !isAdmin &&
-                          (match.result === "KAvach Won" ||
-                            match.result === "KAvach Lost") ? (
-                            <h3 className="font-bold text-lg">
-                              vs {match.opponent}{" "}
-                              <span
-                                className={
-                                  match.result === "KAvach Won"
-                                    ? "text-accent text-base font-medium"
-                                    : "text-red-400 text-base font-medium"
-                                }
-                              >
-                                (
-                                {match.result === "KAvach Won" ? "Won" : "Lost"}{" "}
-                                {match.resultMarginAmount
-                                  ? `by ${match.resultMarginAmount} ${match.resultMarginType === "wickets" ? "wickets" : "runs"}`
-                                  : ""}
-                                )
-                              </span>
-                            </h3>
-                          ) : (
-                            <h3 className="font-bold text-lg">vs {match.opponent}</h3>
-                          )}
-                          <div className="text-text-secondary text-sm mt-0.5">
-                            {match.date} • {match.time}
-                          </div>
-                        </div>
-                        {isAdmin && (
-                          <div className="flex gap-1 items-center">
+                    {isAlternateCard && <AlternateAccentRail matchId={match.id} />}
+                    <div className="p-3 sm:p-4">
+                      <MatchCardHeader
+                        match={match}
+                        ground={ground}
+                        trailing={
+                          isAdmin ? (
+                          <div className="flex gap-1 items-center shrink-0 -mt-1">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1185,6 +1141,7 @@ export function MatchesTab({
                               }}
                               className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-surface-hover transition hover:text-text-primary"
                               title="Duplicate Match"
+                              aria-label={`Duplicate match vs ${match.opponent}`}
                             >
                               <Copy className="w-4 h-4" />
                             </button>
@@ -1195,6 +1152,7 @@ export function MatchesTab({
                               }}
                               className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-surface-hover transition hover:text-text-primary"
                               title="Edit Match"
+                              aria-label={`Edit match vs ${match.opponent}`}
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
@@ -1234,23 +1192,43 @@ export function MatchesTab({
                                   e.stopPropagation();
                                   setMatchToDelete(match.id);
                                 }}
+                                title="Delete Match"
+                                aria-label={`Delete match vs ${match.opponent}`}
                                 className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-red-500/20 text-red-400 transition"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>
-                        )}
-                      </div>
+                          ) : null
+                        }
+                      />
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm mt-3 pt-3 border-t border-border">
-                        <div className="flex items-center text-text-secondary mb-2 sm:mb-0">
-                          <MapPin className="w-4 h-4 mr-1.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-[200px]">
-                            {ground?.name || "Unknown Ground"}
-                          </span>
+                      {(match.matchType || tournamentForCard || match.isTentative) && (
+                        <div className="flex gap-1.5 items-center mt-2 flex-wrap">
+                          {match.matchType && (
+                            <span className="bg-surface-hover text-text-primary px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+                              {match.matchType}
+                            </span>
+                          )}
+                          {tournamentForCard && (
+                            <span
+                              className="bg-gold/15 text-deep-wine border border-gold/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[160px]"
+                              title={tournamentForCard.name}
+                            >
+                              🏆 {tournamentForCard.name}
+                            </span>
+                          )}
+                          {match.isTentative && (
+                            <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider" title={`Blocked by ${match.tentativelyBlockedBy || "Admin"}`}>
+                              Blocked{match.tentativelyBlockedBy ? ` · ${match.tentativelyBlockedBy}` : ""}
+                            </span>
+                          )}
                         </div>
-                        {isAdmin && (
+                      )}
+
+                      {isAdmin && (
+                        <div className="mt-2">
                           <div className="flex items-center gap-1.5 text-xs flex-wrap">
                             {match.isGroundFeePaid && (
                                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
@@ -1266,8 +1244,8 @@ export function MatchesTab({
                               <span className="opacity-70 font-mono text-[11px]">(₹{cardUnpaidTotal})</span>
                             </div>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       {(match.matchUrl || match.streamingUrl) && (
                         <div className="flex gap-4 mt-3 pt-3 border-t border-border">
@@ -1298,14 +1276,6 @@ export function MatchesTab({
 
                       {match.result && match.result !== "Pending" && (
                         <div className="mt-3 pt-3 border-t border-border">
-                          <p
-                            className={`font-bold text-sm mb-1 ${match.result === "KAvach Won" ? "text-accent" : match.result === "KAvach Lost" ? "text-red-400" : "text-text-secondary"}`}
-                          >
-                            Result: {match.result}{" "}
-                            {match.resultMarginAmount
-                              ? `by ${match.resultMarginAmount} ${match.resultMarginType === "wickets" ? "wickets" : "runs"}`
-                              : ""}
-                          </p>
                           {match.result === "KAvach Won" &&
                             (match.potmId || match.playerOfTheMatch ||
                               match.bestBatsman ||

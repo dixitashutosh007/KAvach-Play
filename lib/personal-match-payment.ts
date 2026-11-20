@@ -544,7 +544,10 @@ export function derivePlayerAvailability(
     };
   }
 
-  if (av === "No" || payment.status === "Not Playing") {
+  // Only an explicit player answer of "No" is "Out". Records seeded at match
+  // creation are { status: "Not Playing", availability: "Pending" } and represent
+  // NO RESPONSE yet; they must never be shown as Out.
+  if (av === "No") {
     return {
       status: "Not Playing",
       badgeLabel: "Not Playing",

@@ -28,7 +28,10 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     // 1. Header & Greeting (Section 4.A)
     const header = page.locator('[data-testid="player-home-header"]');
     await expect(header).toBeVisible();
-    await expect(header.getByText(/KAvach Cricket Club/i)).toBeVisible();
+    // Greeting is the primary heading; redundant club branding/subtitle removed
+    await expect(header.getByText(/KAvach Cricket Club/i)).toHaveCount(0);
+    await expect(header.getByText(/personalised club dashboard/i)).toHaveCount(0);
+    await expect(header.getByTestId("player-home-greeting")).toHaveText(/^Good (Morning|Afternoon|Evening), /);
     await expect(header.getByText(/Player player-alpha/i)).toBeVisible();
     await expect(header.getByText(/KAV-018/i)).toBeVisible();
 
@@ -48,18 +51,15 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(heroCta).toBeVisible();
 
     // Next slide navigation
-    const nextSlideBtn = heroBanner.getByLabel("Next slide");
+    const nextSlideBtn = heroBanner.getByLabel("Next highlight");
     if (await nextSlideBtn.isVisible()) {
       await nextSlideBtn.click();
       // Slide advances smoothly
     }
 
-    // 4. Compact Performance Summary (Section 4.C)
-    const perfCard = page.locator('[data-testid="compact-performance-summary"]');
-    await expect(perfCard).toBeVisible();
-    await expect(perfCard.getByText(/Personal Performance/i)).toBeVisible();
-    await expect(perfCard.getByText("420")).toBeVisible(); // Runs
-    await expect(perfCard.getByText("14")).toBeVisible(); // Wickets
+    // 4. Performance summary and Digital Pass are intentionally not on Home
+    await expect(page.locator('[data-testid="compact-performance-summary"]')).toHaveCount(0);
+    await expect(page.getByText(/Digital Pass/i)).toHaveCount(0);
 
     // 5. Personal Outstanding Dues (Section 4.F)
     const duesCard = page.locator('[data-testid="personal-payment-card"]');
@@ -89,10 +89,10 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(matchesSection.getByText(/Upcoming Fixtures/i)).toBeVisible();
 
     // Verify 4 distinct upcoming matches rendered
-    const match1 = page.locator('[data-testid="match-card-match-upcoming-1"]');
-    const match2 = page.locator('[data-testid="match-card-match-upcoming-2"]');
-    const match3 = page.locator('[data-testid="match-card-match-upcoming-3"]');
-    const match4 = page.locator('[data-testid="match-card-match-upcoming-4"]');
+    const match1 = page.locator('[data-testid="player-match-card-match-upcoming-1"]');
+    const match2 = page.locator('[data-testid="player-match-card-match-upcoming-2"]');
+    const match3 = page.locator('[data-testid="player-match-card-match-upcoming-3"]');
+    const match4 = page.locator('[data-testid="player-match-card-match-upcoming-4"]');
 
     await expect(match1).toBeVisible();
     await expect(match2).toBeVisible();
@@ -100,8 +100,8 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(match4).toBeVisible();
 
     // Verify ineligible matches are strictly hidden from player upcoming fixtures
-    await expect(page.locator('[data-testid="match-card-match-ineligible-squad"]')).toBeHidden();
-    await expect(page.locator('[data-testid="match-card-match-ineligible-tentative"]')).toBeHidden();
+    await expect(page.locator('[data-testid="player-match-card-match-ineligible-squad"]')).toBeHidden();
+    await expect(page.locator('[data-testid="player-match-card-match-ineligible-tentative"]')).toBeHidden();
 
     // Verify opponent names
     await expect(match1.getByText(/vs Delhi Challengers/i)).toBeVisible();
@@ -110,12 +110,12 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(match4.getByText(/vs Faridabad Kings/i)).toBeVisible();
 
     // 1-Tap RSVP interaction on match 2 (initially Tentative, mark as Playing)
-    const playingBtn = match2.getByRole("button", { name: "Mark availability as Playing" });
+    const playingBtn = match2.getByRole("radio", { name: "Mark availability as Playing" });
     await expect(playingBtn).toBeVisible();
     await playingBtn.click();
 
     // Toast notification confirms update
-    await expect(page.getByText(/Availability marked as Playing/i)).toBeVisible({ timeout: 4000 });
+    await expect(page.getByText(/Availability updated: Playing/i)).toBeVisible({ timeout: 4000 });
   });
 
   test("2B. Enforces player-specific match visibility, search isolation, and open fixture RSVP", async ({
@@ -147,17 +147,17 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await searchInput.fill("");
 
     // 3. Confirm squad-restricted match is strictly excluded from DOM/UI
-    await expect(page.locator('[data-testid="match-card-match-ineligible-squad"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="player-match-card-match-ineligible-squad"]')).toHaveCount(0);
 
     // 4. Confirm open fixture (match-upcoming-4) is visible and actionable for 1-tap RSVP
-    const matchOpen = page.locator('[data-testid="match-card-match-upcoming-4"]');
+    const matchOpen = page.locator('[data-testid="player-match-card-match-upcoming-4"]');
     await expect(matchOpen).toBeVisible();
     await expect(matchOpen.getByText(/vs Faridabad Kings/i)).toBeVisible();
 
-    const openPlayingBtn = matchOpen.getByRole("button", { name: "Mark availability as Playing" });
+    const openPlayingBtn = matchOpen.getByRole("radio", { name: "Mark availability as Playing" });
     await expect(openPlayingBtn).toBeVisible();
     await openPlayingBtn.click();
-    await expect(page.getByText(/Availability marked as Playing/i)).toBeVisible({ timeout: 4000 });
+    await expect(page.getByText(/Availability updated: Playing/i)).toBeVisible({ timeout: 4000 });
   });
 
   test("2C. Preserves legitimate administrator match access and search visibility for admin users", async ({
@@ -507,9 +507,9 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    const upcomingCard = page.locator('[data-testid="match-card-match-upcoming-1"]');
+    const upcomingCard = page.locator('[data-testid="player-match-card-match-upcoming-1"]');
     await expect(upcomingCard).toBeVisible();
-    await upcomingCard.getByRole("button", { name: /details & directions/i }).click();
+    await upcomingCard.getByTestId("view-details-match-upcoming-1").click();
 
     // Verifies navigation to Match Details view
     await expect(page.getByRole("button", { name: /Back/i })).toBeVisible({ timeout: 5000 });
@@ -573,7 +573,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
       // Verify core components are present and accessible
       await expect(page.locator('[data-testid="player-home-header"]')).toBeVisible();
       await expect(page.locator('[data-testid="campaign-hero-banner"]')).toBeVisible();
-      await expect(page.locator('[data-testid="compact-performance-summary"]')).toBeVisible();
+      await expect(page.locator('[data-testid="compact-performance-summary"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="personal-payment-card"]')).toBeVisible();
       await expect(page.locator('[data-testid="upcoming-matches-section"]')).toBeVisible();
 

@@ -193,14 +193,14 @@ describe("B. Player Home upcoming match cards", () => {
     assert.ok(html.includes('aria-label="White jersey"'));
   });
 
-  it("keeps Playing / Maybe / Out actions for every card", () => {
-    for (const label of ["Mark availability as Playing", "Mark availability as Maybe", "Mark availability as Out"]) {
+  it("keeps Out / Tentative / Playing availability options for every card", () => {
+    for (const label of ["Mark availability as Playing", "Mark availability as Tentative", "Mark availability as Out"]) {
       assert.equal((html.match(new RegExp(`aria-label="${label}"`, "g")) || []).length, 3, label);
     }
   });
 
   it("alternates card surfaces deterministically by index", () => {
-    const variants = [...html.matchAll(/data-testid="match-card-(h\d)" data-variant="(\w+)"/g)].map((m) => [m[1], m[2]]);
+    const variants = [...html.matchAll(/data-testid="player-match-card-(h\d)" data-variant="(\w+)"/g)].map((m) => [m[1], m[2]]);
     assert.deepEqual(variants, [["h1", "default"], ["h2", "alternate"], ["h3", "default"]]);
   });
 });

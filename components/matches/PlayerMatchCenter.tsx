@@ -276,7 +276,7 @@ export function PlayerMatchCenter({
     }
   }, []);
 
-  // 1-Tap RSVP handler with strict eligibility validation
+  // Availability handler with strict eligibility validation
   const handleRsvp = async (
     matchId: string,
     availability: "Confirmed" | "Tentative" | "No"
@@ -317,7 +317,7 @@ export function PlayerMatchCenter({
           availability === "Confirmed"
             ? "Playing"
             : availability === "Tentative"
-            ? "Maybe"
+            ? "Tentative"
             : "Out"
         }`,
         "success"

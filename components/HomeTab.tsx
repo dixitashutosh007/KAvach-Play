@@ -5,9 +5,8 @@
  * Features:
  * - Personalised greeting & search entry point
  * - Campaign-led multi-slide hero banner
- * - Compact personal performance summary
  * - Authoritative personal payment summary (isolated to logged-in player)
- * - Next 4 upcoming matches with 1-tap inline RSVP
+ * - Next 4 upcoming matches (shared match card + availability selector)
  * - Latest club announcements with full reading modal
  * - Horizontally scrollable team birthdays carousel
  * - Club community feed preview
@@ -41,7 +40,6 @@ import { useToast } from "@/components/ui/Toast";
 // Modular Phase 2.1 Subcomponents
 import { PlayerHomeHeader } from "./home/PlayerHomeHeader";
 import { CampaignHeroBanner } from "./home/CampaignHeroBanner";
-import { CompactPerformanceSummary } from "./home/CompactPerformanceSummary";
 import { PersonalPaymentCard } from "./home/PersonalPaymentCard";
 import { UpcomingMatchesSection } from "./home/UpcomingMatchesSection";
 import { JerseyInfographic } from "./matches/JerseyInfographic";
@@ -49,6 +47,8 @@ import { ClubAnnouncementsSection } from "./home/ClubAnnouncementsSection";
 import { BirthdaysCarousel } from "./home/BirthdaysCarousel";
 import { ClubFeedPreview } from "./home/ClubFeedPreview";
 import { HomeQuickActions } from "./home/HomeQuickActions";
+import { resolveGreetingName } from "@/lib/greeting";
+import { getClubCalendarDate } from "@/lib/utils";
 
 export function HomeTab({
   store,
@@ -70,7 +70,14 @@ export function HomeTab({
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { posts = [], players = [], matches = [], grounds = [], payments = [], playerStats = [], appConfig } = store;
+  const { posts = [], players = [], matches = [], grounds = [], payments = [], appConfig } = store;
+
+  // Club-local calendar day (Asia/Kolkata), so birthdays roll over at club midnight
+  // rather than at the device's or UTC midnight.
+  const clubToday = useMemo(() => {
+    const { year, month, day } = getClubCalendarDate(new Date());
+    return new Date(year, month, day);
+  }, []);
 
   // Resolve logged-in player identity
   const appUser = store.appUsers.find((u) => u.id === currentUserId);
@@ -242,12 +249,12 @@ export function HomeTab({
         await store.addPaymentWithAvailability(matchId, mePlayer.id, availability);
       }
       toast(
-        `Availability marked as ${
+        `Availability updated: ${
           availability === "Confirmed"
             ? "Playing"
             : availability === "Tentative"
-            ? "Maybe"
-            : "Not Playing"
+            ? "Tentative"
+            : "Out"
         }`,
         "success"
       );
@@ -324,7 +331,7 @@ export function HomeTab({
       {/* 2. Header & Search (Section 4.A) */}
       <PlayerHomeHeader
         player={mePlayer}
-        currentUserName={currentUserName}
+        currentUserName={resolveGreetingName(appUser?.name, currentUserName)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
@@ -528,19 +535,15 @@ export function HomeTab({
           <CampaignHeroBanner
             tournaments={store.tournaments}
             announcements={posts}
+            players={players}
+            currentUserId={currentUserId}
             appConfig={appConfig}
             isFeatureEnabled={isFeatureEnabled}
             onNavigate={handleNavigate}
           />
 
-          {/* 6. Compact Performance Summary (Section 4.C) */}
-          <CompactPerformanceSummary
-            player={mePlayer}
-            matches={matches}
-            payments={payments}
-            playerStats={playerStats}
-            onViewFullProfile={() => handleNavigate("profile")}
-          />
+          {/* Personal performance summary intentionally not shown on Home until
+              meaningful individual statistics are available (component retained). */}
 
           {/* 7. Personal Payment Summary (Section 4.F) */}
           <PersonalPaymentCard
@@ -566,7 +569,7 @@ export function HomeTab({
           />
 
           {/* 10. Team Birthdays Carousel (Section 4.E) */}
-          <BirthdaysCarousel players={players} />
+          <BirthdaysCarousel players={players} referenceDate={clubToday} />
 
           {/* 11. Club Community Feed Preview (Section 4.H) */}
           <ClubFeedPreview

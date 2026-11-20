@@ -57,7 +57,7 @@ interface MoreDrawerItem {
 
 const PLAYER_MORE_ITEMS: MoreDrawerItem[] = [
   { tab: "leaderboard", label: "Performance & Stats", icon: Trophy, feature: "leaderboard" },
-  { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio" },
+  { tab: "studio", label: "Studio", icon: Video, feature: "studio" },
   { tab: "shop", label: "Club Merchandise", icon: ShoppingBag, feature: "shop" },
   { tab: "opinion", label: "Polls & Pulse", icon: PieChart, feature: "opinion" },
   { tab: "design", label: "Design Studio", icon: ImageIcon, requireDesign: true },

@@ -26,7 +26,7 @@ const TAB_TITLES: Record<string, string> = {
   finance: "Finance",
   players: "Players",
   leaderboard: "Performance",
-  studio: "Studio & Nets",
+  studio: "Studio",
   shop: "Shop",
   opinion: "Pulse",
   design: "Design Studio",

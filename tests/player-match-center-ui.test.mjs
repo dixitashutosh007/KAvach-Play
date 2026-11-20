@@ -211,18 +211,22 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         "Expand button must stop propagation and toggle isExpanded without bubbling to card"
       );
 
-      // Verify directions link stops propagation
+      // Venue (Google Maps) link lives in the shared header and stops propagation
+      const headerSource = fs.readFileSync(
+        path.resolve("components/matches/MatchCardHeader.tsx"),
+        "utf-8"
+      );
       assert.match(
-        cardSource,
-        /aria-label=\{`Directions to \$\{ground\.name\}`\}[\s\S]*?onClick=\{\(e\)\s*=>\s*e\.stopPropagation\(\)\}/,
-        "Directions link must stop propagation"
+        headerSource,
+        /target="_blank"[\s\S]*?rel="noopener noreferrer"[\s\S]*?onClick=\{\(e\)\s*=>\s*e\.stopPropagation\(\)\}/,
+        "Venue link must open safely in a new tab and stop propagation"
       );
     });
   });
 
   // ── 6 & 7. Availability Actions & Disabled Behavior ─────────────────────────
   describe("6 & 7. 1-Tap Availability Actions & Disabled Behavior", () => {
-    it("6. Playing, Maybe and Out buttons are rendered with accessible labels and invoke onRsvp", () => {
+    it("6. Out / Tentative / Playing selector is rendered with accessible radios and routes through onRsvp", () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -233,26 +237,26 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         })
       );
 
-      // Verify all 3 action buttons exist with exact accessible names
+      assert.ok(html.includes('role="radiogroup"'));
       assert.ok(html.includes('aria-label="Mark availability as Playing"'));
-      assert.ok(html.includes('aria-label="Mark availability as Maybe"'));
+      assert.ok(html.includes('aria-label="Mark availability as Tentative"'));
       assert.ok(html.includes('aria-label="Mark availability as Out"'));
-
-      // Verify aria-pressed accurately indicates active selection
-      assert.ok(html.includes('aria-pressed="true"')); // Maybe is active
-      assert.ok(html.includes('aria-pressed="false"')); // Playing and Out are inactive
-
-      // Verify code contract for handleActionClick: stops propagation & invokes onRsvp with Confirmed/Tentative/No
-      const cardSource = fs.readFileSync(
-        path.resolve("components/matches/PlayerMatchCard.tsx"),
-        "utf-8"
+      // Order: Out → Tentative → Playing
+      assert.ok(
+        html.indexOf("Mark availability as Out") < html.indexOf("Mark availability as Tentative") &&
+          html.indexOf("Mark availability as Tentative") < html.indexOf("Mark availability as Playing")
       );
-      assert.match(cardSource, /handleActionClick\s*=\s*async\s*\(/);
-      assert.match(cardSource, /e\.stopPropagation\(\)/);
-      assert.match(cardSource, /await onRsvp\(match\.id,\s*targetAvailability\)/);
-      assert.match(cardSource, /handleActionClick\(e,\s*"Confirmed"\)/);
-      assert.match(cardSource, /handleActionClick\(e,\s*"Tentative"\)/);
-      assert.match(cardSource, /handleActionClick\(e,\s*"No"\)/);
+      // Exactly one checked option (Tentative)
+      assert.equal((html.match(/aria-checked="true"/g) || []).length, 1);
+      assert.ok(html.includes('data-value="Tentative"'));
+
+      const cardSource = fs.readFileSync(path.resolve("components/matches/PlayerMatchCard.tsx"), "utf-8");
+      assert.match(cardSource, /await onRsvp\(match\.id,\s*stored\)/);
+      const selectorSource = fs.readFileSync(path.resolve("components/matches/AvailabilitySelector.tsx"), "utf-8");
+      assert.match(selectorSource, /Out: "No"/);
+      assert.match(selectorSource, /Tentative: "Tentative"/);
+      assert.match(selectorSource, /Playing: "Confirmed"/);
+      assert.match(selectorSource, /e\.stopPropagation\(\)/);
     });
 
     it("7. Disabled availability renders reason message and prevents action clicks", async () => {
@@ -510,11 +514,12 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(!html.includes("RSVP"), "Must not display 'RSVP' anywhere in UI");
       assert.ok(!html.includes("Your Availability"), "Must not display 'Your Availability' heading");
 
-      // Verify self-explanatory Playing, Maybe, Out buttons are preserved
+      // Self-explanatory Out / Tentative / Playing selector, with no option pre-selected
       assert.ok(html.includes("Playing"));
-      assert.ok(html.includes("Maybe"));
+      assert.ok(html.includes("Tentative"));
       assert.ok(html.includes("Out"));
       assert.ok(html.includes('aria-label="Mark availability as Playing"'));
+      assert.ok(!html.includes('aria-checked="true"'), "No response must not pre-select any option");
     });
 
     it("14b. Does not display raw 'Scarlet Red' or 'Whites' strings in detail view UI", () => {

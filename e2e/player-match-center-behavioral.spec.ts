@@ -54,7 +54,10 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     await expect(beyondMatchCard.getByText(/vs Faridabad Kings/i)).toBeVisible();
 
     // 6. Verify venue and directions link
-    await expect(firstMatchCard.getByText(/Directions/i)).toBeVisible();
+    // Venue name is the Google Maps link (opens in a new tab)
+    const venueLink = firstMatchCard.getByTestId("venue-link-match-upcoming-1");
+    await expect(venueLink).toBeVisible();
+    await expect(venueLink).toHaveAttribute("target", "_blank");
   });
 
   // ── 2. Active View Retains Unsettled Older Matches ────────────────────────────
@@ -213,7 +216,7 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
   });
 
   // ── 4. 1-Tap Inline RSVP Availability Actions ────────────────────────────────
-  test("4. 1-tap availability actions (Playing, Maybe, Out) update state with instant feedback", async ({
+  test("4. Availability selector (Out, Tentative, Playing) updates state with instant feedback", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -231,25 +234,25 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     const matchCard = page.locator('[data-testid="player-match-card-match-upcoming-1"]');
     await expect(matchCard).toBeVisible({ timeout: 5000 });
 
-    // Click "Maybe" RSVP button
-    const maybeBtn = matchCard.getByRole("button", { name: "Mark availability as Maybe" });
+    // Select "Tentative" on the three-position selector
+    const maybeBtn = matchCard.getByRole("radio", { name: "Mark availability as Tentative" });
     await expect(maybeBtn).toBeVisible();
     await maybeBtn.click();
 
     // Verify toast notification appears
-    await expect(page.getByText(/Availability updated: Maybe/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Availability updated: Tentative/i)).toBeVisible({ timeout: 5000 });
 
     // Verify button state updates to active
-    await expect(maybeBtn).toHaveAttribute("aria-pressed", "true");
+    await expect(maybeBtn).toHaveAttribute("aria-checked", "true");
 
     // Click "Out" RSVP button
-    const outBtn = matchCard.getByRole("button", { name: "Mark availability as Out" });
+    const outBtn = matchCard.getByRole("radio", { name: "Mark availability as Out" });
     await expect(outBtn).toBeVisible();
     await outBtn.click();
 
     // Verify toast notification appears
     await expect(page.getByText(/Availability updated: Out/i)).toBeVisible({ timeout: 5000 });
-    await expect(outBtn).toHaveAttribute("aria-pressed", "true");
+    await expect(outBtn).toHaveAttribute("aria-checked", "true");
   });
 
   // ── 5. Detailed Match View & Browser History Navigation (`popstate`) ─────────
