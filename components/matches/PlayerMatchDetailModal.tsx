@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { Match, MatchPayment, Ground, Player } from "@/lib/types";
+import { JerseyInfographic } from "./JerseyInfographic";
 import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
@@ -171,10 +172,7 @@ export function PlayerMatchDetailModal({
               )}
 
               {match.jerseyColor && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-text-secondary bg-surface-hover border border-border/60">
-                  <Shirt className="w-3 h-3 text-scarlet" />
-                  <span>{match.jerseyColor}</span>
-                </span>
+                <JerseyInfographic color={match.jerseyColor} size="sm" />
               )}
 
               {match.matchType && (

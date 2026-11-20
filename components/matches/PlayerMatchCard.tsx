@@ -1,18 +1,18 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Calendar,
   Clock,
   MapPin,
   ExternalLink,
-  Shirt,
   Sparkles,
   CheckCircle2,
   HelpCircle,
   XCircle,
   AlertCircle,
   Trophy,
+  ChevronDown,
   ChevronRight,
   Loader2,
 } from "lucide-react";
@@ -22,8 +22,8 @@ import {
   PlayerAvailabilityStatus,
   formatMatchDisplayDate,
   formatMatchDisplayTime,
-  computeReportingTime,
 } from "@/lib/personal-match-payment";
+import { JerseyInfographic } from "./JerseyInfographic";
 
 export interface PlayerMatchCardProps {
   match: Match;
@@ -58,13 +58,15 @@ export function PlayerMatchCard({
   disabledRsvp = false,
   disabledRsvpReason,
 }: PlayerMatchCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const isPlaying = availability === "Playing";
   const isTentative = availability === "Maybe";
   const isOut = availability === "Out" || availability === "Not Playing";
-  const isPending = availability === "Pending";
 
-  const isCompletedOrPast =
-    match.result && match.result !== "Pending";
+  const isCompletedOrPast = Boolean(
+    match.result && match.result !== "Pending"
+  );
 
   const handleActionClick = async (
     e: React.MouseEvent,
@@ -77,51 +79,74 @@ export function PlayerMatchCard({
 
   const formattedDate = formatMatchDisplayDate(match.date);
   const formattedTime = formatMatchDisplayTime(match.time);
-  const reportingTime = computeReportingTime(match.time);
 
-  // Result Badge Color and Text
-  const getResultBadge = () => {
+  // Prominent Sports Result Stamp (Section 5)
+  const getResultStamp = () => {
     if (!match.result || match.result === "Pending") return null;
     const res = match.result;
+    const margin = match.resultMarginAmount
+      ? `by ${match.resultMarginAmount} ${match.resultMarginType || "runs"}`
+      : "";
+
     if (res === "KAvach Won") {
-      const margin = match.resultMarginAmount
-        ? ` by ${match.resultMarginAmount} ${match.resultMarginType || "runs"}`
-        : "";
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-          <Trophy className="w-3 h-3 text-emerald-600" />
-          <span>Won{margin}</span>
-        </span>
+        <div
+          data-testid={`result-stamp-${match.id}`}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-emerald-600 text-white shadow-xs border border-emerald-700 font-heading shrink-0"
+        >
+          <Trophy className="w-3.5 h-3.5 text-emerald-100 shrink-0" />
+          <span>WON</span>
+          {margin && (
+            <span className="font-semibold text-[11px] normal-case tracking-normal opacity-90 border-l border-emerald-500/80 pl-1.5 ml-0.5">
+              {margin}
+            </span>
+          )}
+        </div>
       );
     }
+
     if (res === "KAvach Lost") {
-      const margin = match.resultMarginAmount
-        ? ` by ${match.resultMarginAmount} ${match.resultMarginType || "runs"}`
-        : "";
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-          <span>Lost{margin}</span>
-        </span>
+        <div
+          data-testid={`result-stamp-${match.id}`}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs border border-rose-700 font-heading shrink-0"
+        >
+          <span>LOST</span>
+          {margin && (
+            <span className="font-semibold text-[11px] normal-case tracking-normal opacity-90 border-l border-rose-500/80 pl-1.5 ml-0.5">
+              {margin}
+            </span>
+          )}
+        </div>
       );
     }
+
     if (res === "Abandoned") {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700 border border-gray-300">
-          <span>Abandoned</span>
-        </span>
+        <div
+          data-testid={`result-stamp-${match.id}`}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-200 text-slate-800 border border-slate-300 font-heading shrink-0"
+        >
+          <span>ABANDONED</span>
+        </div>
       );
     }
+
     if (res === "Tie" || res === "Draw") {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-          <span>{res}</span>
-        </span>
+        <div
+          data-testid={`result-stamp-${match.id}`}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-500 text-white shadow-xs border border-amber-600 font-heading shrink-0"
+        >
+          <span>{res.toUpperCase()}</span>
+        </div>
       );
     }
+
     return null;
   };
 
-  // Payment Status Badge
+  // Personal Payment Status Badge
   const renderPaymentBadge = () => {
     const { status, netPayable, isWaived } = personalPaymentStatus;
     if (status === "PAID") {
@@ -178,7 +203,7 @@ export function PlayerMatchCard({
     <div
       data-testid={`player-match-card-${match.id}`}
       onClick={() => onSelectMatch(match.id)}
-      className={`relative bg-surface rounded-2xl p-4 shadow-xs transition-all duration-200 cursor-pointer border ${
+      className={`relative bg-surface rounded-[22px] p-3.5 sm:p-4 shadow-xs transition-all duration-200 cursor-pointer border ${
         isImmediateNext
           ? "border-scarlet/40 ring-1 ring-scarlet/20 hover:border-scarlet/60"
           : isUnsettledAlert
@@ -186,19 +211,16 @@ export function PlayerMatchCard({
           : "border-border hover:border-border/80 hover:shadow-sm"
       }`}
     >
-      {/* Immediate Next Match Banner */}
+      {/* Immediate Next Match Banner (Without redundant 'Immediate Fixture' label) */}
       {isImmediateNext && (
         <div
           data-testid="next-match-highlight"
-          className="mb-3 -mt-1 flex items-center justify-between bg-scarlet/10 -mx-4 -mt-4 px-4 py-1.5 rounded-t-2xl border-b border-scarlet/20 text-scarlet"
+          className="mb-3 -mt-3.5 -mx-3.5 sm:-mt-4 sm:-mx-4 px-3.5 sm:px-4 py-1.5 rounded-t-[21px] flex items-center justify-between bg-scarlet/10 border-b border-scarlet/20 text-scarlet"
         >
           <div className="flex items-center gap-1.5 text-xs font-black tracking-wide uppercase font-heading">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Next Match</span>
           </div>
-          <span className="text-[11px] font-semibold text-deep-wine">
-            Immediate Fixture
-          </span>
         </div>
       )}
 
@@ -206,7 +228,7 @@ export function PlayerMatchCard({
       {isUnsettledAlert && (
         <div
           data-testid={`unsettled-alert-${match.id}`}
-          className="mb-3 flex items-center gap-2 bg-amber-50 -mx-4 -mt-4 px-4 py-2 rounded-t-2xl border-b border-amber-200 text-amber-900 text-xs font-medium"
+          className="mb-3 -mt-3.5 -mx-3.5 sm:-mt-4 sm:-mx-4 px-3.5 sm:px-4 py-2 rounded-t-[21px] flex items-center gap-2 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs font-medium"
         >
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
           <span>
@@ -216,41 +238,46 @@ export function PlayerMatchCard({
         </div>
       )}
 
-      {/* Card Header Tags */}
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-canvas-warm border border-border text-deep-wine font-heading">
-            {match.format || "T20"}
-          </span>
-
-          {tournamentName && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-deep-wine bg-gold/15 border border-gold/40">
-              <Trophy className="w-2.5 h-2.5 text-gold" />
-              <span className="truncate max-w-[130px]">{tournamentName}</span>
-            </span>
-          )}
-
+      {/* Header Row: Jersey visual infographic, Personal Payment Badge, and Expand/Collapse Affordance */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
           {match.jerseyColor && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold text-text-secondary bg-surface-hover border border-border/60">
-              <Shirt className="w-2.5 h-2.5 text-scarlet" />
-              <span>{match.jerseyColor}</span>
-            </span>
+            <JerseyInfographic color={match.jerseyColor} size="sm" />
           )}
+          {renderPaymentBadge()}
         </div>
 
-        {/* Personal Payment Badge (Isolated to Logged-in Player) */}
-        {renderPaymentBadge()}
+        {/* Progressive Disclosure Toggle */}
+        <button
+          type="button"
+          data-testid={`expand-button-${match.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded((prev) => !prev);
+          }}
+          aria-expanded={isExpanded}
+          aria-label={
+            isExpanded ? "Collapse secondary details" : "Expand secondary details"
+          }
+          className="flex items-center justify-center min-w-[44px] min-h-[44px] -mr-2 text-text-muted hover:text-text-primary rounded-full hover:bg-surface-hover/80 transition-colors"
+        >
+          <ChevronDown
+            className={`w-4 h-4 transition-transform duration-200 ${
+              isExpanded ? "rotate-180" : ""
+            }`}
+          />
+        </button>
       </div>
 
-      {/* Opponent & Result Title */}
-      <div className="flex items-start justify-between gap-2 mb-2">
+      {/* Opponent & Prominent Result Stamp */}
+      <div className="flex items-center justify-between gap-2.5 mb-2">
         <h3 className="text-base sm:text-lg font-black font-heading text-text-primary tracking-tight leading-snug">
           vs {match.opponent}
         </h3>
-        {getResultBadge()}
+        {getResultStamp()}
       </div>
 
-      {/* Date, Time, Venue, and Reporting Time */}
+      {/* Date, Time & Venue (Report By text removed) */}
       <div className="space-y-1.5 text-xs text-text-secondary font-medium">
         <div className="flex items-center gap-1.5 flex-wrap">
           <div className="flex items-center gap-1 text-text-primary font-semibold">
@@ -262,14 +289,6 @@ export function PlayerMatchCard({
             <Clock className="w-3.5 h-3.5 text-scarlet shrink-0" />
             <span>{formattedTime}</span>
           </div>
-          {reportingTime && !isCompletedOrPast && (
-            <>
-              <span className="text-text-muted">•</span>
-              <span className="text-[11px] font-semibold text-deep-wine bg-scarlet/5 px-1.5 py-0.2 rounded border border-scarlet/15">
-                Report by {reportingTime}
-              </span>
-            </>
-          )}
         </div>
 
         {ground && (
@@ -286,7 +305,7 @@ export function PlayerMatchCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-scarlet hover:text-deep-wine shrink-0 min-h-[32px] px-1.5"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-scarlet hover:text-deep-wine shrink-0 min-h-[44px] px-2 -my-2.5"
                 aria-label={`Directions to ${ground.name}`}
               >
                 <span>Directions</span>
@@ -297,46 +316,51 @@ export function PlayerMatchCard({
         )}
       </div>
 
-      {/* 1-Tap Availability RSVP Actions (for Upcoming Matches) */}
-      {!isCompletedOrPast && onRsvp && (
+      {/* Progressive Disclosure: Collapsed Secondary Match Metadata */}
+      {isExpanded && (
         <div
-          className="mt-3 pt-3 border-t border-border/70 flex flex-col gap-2"
+          data-testid={`match-secondary-details-${match.id}`}
           onClick={(e) => e.stopPropagation()}
+          className="mt-2.5 pt-2.5 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-xs animate-in fade-in duration-150"
         >
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="font-bold uppercase tracking-wider text-text-muted">
-              Your Availability
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-canvas-warm border border-border text-deep-wine font-heading">
+              {match.format || "T20"} Format
             </span>
-            <div className="flex items-center gap-1">
-              {isPlaying && (
-                <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Playing</span>
-                </span>
-              )}
-              {isTentative && (
-                <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
-                  <HelpCircle className="w-3.5 h-3.5" />
-                  <span>Maybe</span>
-                </span>
-              )}
-              {isOut && (
-                <span className="inline-flex items-center gap-1 text-rose-700 font-bold">
-                  <XCircle className="w-3.5 h-3.5" />
-                  <span>Out</span>
-                </span>
-              )}
-              {isPending && (
-                <span className="inline-flex items-center gap-1 text-scarlet font-bold">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>RSVP Needed</span>
-                </span>
-              )}
-            </div>
+
+            {tournamentName && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-deep-wine bg-gold/15 border border-gold/40">
+                <Trophy className="w-2.5 h-2.5 text-gold shrink-0" />
+                <span className="truncate max-w-[130px]">{tournamentName}</span>
+              </span>
+            )}
+
+            {match.matchType && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-semibold text-text-muted bg-surface-hover border border-border/50 uppercase">
+                {match.matchType}
+              </span>
+            )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => onSelectMatch(match.id)}
+            className="inline-flex items-center gap-0.5 text-[11px] font-bold text-scarlet hover:text-deep-wine cursor-pointer min-h-[36px] py-1"
+          >
+            <span>{isCompletedOrPast ? "Full Scorecard" : "Full Match Details"}</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* 1-Tap Availability Actions for Upcoming Matches (Self-Explanatory, Clean) */}
+      {!isCompletedOrPast && onRsvp && (
+        <div
+          className="mt-3 pt-2.5 border-t border-border/70"
+          onClick={(e) => e.stopPropagation()}
+        >
           {disabledRsvp ? (
-            <div className="py-1 px-2.5 rounded-lg bg-surface-hover text-[11px] text-text-muted text-center font-medium">
+            <div className="py-2 px-2.5 rounded-xl bg-surface-hover text-[11px] text-text-muted text-center font-medium">
               {disabledRsvpReason || "Availability locked for this match"}
             </div>
           ) : (
@@ -405,8 +429,8 @@ export function PlayerMatchCard({
         </div>
       )}
 
-      {/* Card Footer: Detail view link */}
-      <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between text-xs text-text-secondary">
+      {/* Card Footer: Detail view link affordance */}
+      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-xs text-text-secondary">
         <span className="font-semibold text-[11px] text-text-muted">
           {isCompletedOrPast ? "Scorecard & Squad" : "Match details & Squad"}
         </span>
