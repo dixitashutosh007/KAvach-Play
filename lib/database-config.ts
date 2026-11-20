@@ -15,6 +15,45 @@ export const APPROVED_FIRESTORE_DATABASE_IDS = new Set<string>([
 ]);
 
 /**
+ * Resolves and validates the deployment branch across candidate environment variables.
+ *
+ * Rules:
+ * 1. Inspects every populated value among AWS_BRANCH, GIT_BRANCH, and GITHUB_REF_NAME.
+ * 2. Normalizes values by trimming whitespace.
+ * 3. If populated values disagree, fails closed by throwing an explicit Configuration Error.
+ * 4. Returns the single agreeing branch name, or empty string if none are populated.
+ */
+export function resolveDeploymentBranch(
+  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+): string {
+  const branchCandidates: Array<{ key: string; value: string }> = [];
+
+  if (env.AWS_BRANCH !== undefined && env.AWS_BRANCH.trim() !== "") {
+    branchCandidates.push({ key: "AWS_BRANCH", value: env.AWS_BRANCH.trim() });
+  }
+  if (env.GIT_BRANCH !== undefined && env.GIT_BRANCH.trim() !== "") {
+    branchCandidates.push({ key: "GIT_BRANCH", value: env.GIT_BRANCH.trim() });
+  }
+  if (env.GITHUB_REF_NAME !== undefined && env.GITHUB_REF_NAME.trim() !== "") {
+    branchCandidates.push({ key: "GITHUB_REF_NAME", value: env.GITHUB_REF_NAME.trim() });
+  }
+
+  if (branchCandidates.length === 0) {
+    return "";
+  }
+
+  const distinctBranches = Array.from(new Set(branchCandidates.map((c) => c.value)));
+  if (distinctBranches.length > 1) {
+    const details = branchCandidates.map((c) => `${c.key}='${c.value}'`).join(", ");
+    throw new Error(
+      `Configuration Error: Conflicting branch identities detected (${details}). Failing closed without fallback.`
+    );
+  }
+
+  return distinctBranches[0];
+}
+
+/**
  * Resolves the authoritative Firestore Database ID for the current environment.
  *
  * Requirements:
@@ -31,36 +70,51 @@ export const APPROVED_FIRESTORE_DATABASE_IDS = new Set<string>([
 export function resolveFirestoreDatabaseId(
   env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
 ): string {
-  const explicitDbId = (
-    env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID?.trim() ||
-    env.FIRESTORE_DATABASE_ID?.trim() ||
-    ""
-  );
+  // 1. Inspect and validate candidate explicit database ID variables independently
+  const candidates: Array<{ key: string; value: string }> = [];
 
-  // If explicit ID was provided but is whitespace-only, empty, or unapproved, fail closed immediately.
-  if (
-    (env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID !== undefined && !explicitDbId) ||
-    (env.FIRESTORE_DATABASE_ID !== undefined && !explicitDbId)
-  ) {
+  const rawNextPublic = env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID;
+  if (rawNextPublic !== undefined) {
+    const trimmed = rawNextPublic.trim();
+    if (!trimmed) {
+      throw new Error(
+        "Configuration Error: Missing Firestore database ID. NEXT_PUBLIC_FIRESTORE_DATABASE_ID is empty or whitespace-only. Failing closed."
+      );
+    }
+    if (!APPROVED_FIRESTORE_DATABASE_IDS.has(trimmed)) {
+      throw new Error(
+        `Configuration Error: Unrecognized Firestore database ID '${trimmed}'. Only approved production ('${PRODUCTION_FIRESTORE_DATABASE_ID}') and development ('${DEVELOPMENT_FIRESTORE_DATABASE_ID}') databases are permitted. Failing closed without fallback.`
+      );
+    }
+    candidates.push({ key: "NEXT_PUBLIC_FIRESTORE_DATABASE_ID", value: trimmed });
+  }
+
+  const rawServerDb = env.FIRESTORE_DATABASE_ID;
+  if (rawServerDb !== undefined) {
+    const trimmed = rawServerDb.trim();
+    if (!trimmed) {
+      throw new Error(
+        "Configuration Error: Missing Firestore database ID. FIRESTORE_DATABASE_ID is empty or whitespace-only. Failing closed."
+      );
+    }
+    if (!APPROVED_FIRESTORE_DATABASE_IDS.has(trimmed)) {
+      throw new Error(
+        `Configuration Error: Unrecognized Firestore database ID '${trimmed}'. Only approved production ('${PRODUCTION_FIRESTORE_DATABASE_ID}') and development ('${DEVELOPMENT_FIRESTORE_DATABASE_ID}') databases are permitted. Failing closed without fallback.`
+      );
+    }
+    candidates.push({ key: "FIRESTORE_DATABASE_ID", value: trimmed });
+  }
+
+  // If both are supplied, require exact agreement
+  if (candidates.length === 2 && candidates[0].value !== candidates[1].value) {
     throw new Error(
-      "Configuration Error: Missing Firestore database ID. Empty or whitespace-only database IDs are rejected. Failing closed.",
+      `Configuration Error: Conflicting database configuration detected. NEXT_PUBLIC_FIRESTORE_DATABASE_ID='${candidates[0].value}' does not match FIRESTORE_DATABASE_ID='${candidates[1].value}'. Failing closed.`
     );
   }
 
-  if (explicitDbId && !APPROVED_FIRESTORE_DATABASE_IDS.has(explicitDbId)) {
-    throw new Error(
-      `Configuration Error: Unrecognized Firestore database ID '${explicitDbId}'. Only approved production ('${PRODUCTION_FIRESTORE_DATABASE_ID}') and development ('${DEVELOPMENT_FIRESTORE_DATABASE_ID}') databases are permitted. Failing closed without fallback.`,
-    );
-  }
+  const explicitDbId = candidates.length > 0 ? candidates[0].value : "";
 
-  const branch = (
-    env.AWS_BRANCH ||
-    env.GIT_BRANCH ||
-    env.GITHUB_REF_NAME ||
-    ""
-  ).trim();
-
-  // Branch-specific resolution and conflict detection
+  const branch = resolveDeploymentBranch(env);
   if (branch === "mig-mov") {
     if (explicitDbId && explicitDbId !== DEVELOPMENT_FIRESTORE_DATABASE_ID) {
       throw new Error(
@@ -119,12 +173,12 @@ export function arePaymentOperationsEnabled(
   }
 
   // Strict branch authorization: Live payments require explicit main or master branch
-  const branch = (
-    env.AWS_BRANCH ||
-    env.GIT_BRANCH ||
-    env.GITHUB_REF_NAME ||
-    ""
-  ).trim();
+  let branch: string;
+  try {
+    branch = resolveDeploymentBranch(env);
+  } catch {
+    return false; // Conflicting branch identities fail closed (payments disabled)
+  }
 
   if (!branch || (branch !== "main" && branch !== "master")) {
     return false; // mig-mov, unknown, preview, feature, or missing branch all return false

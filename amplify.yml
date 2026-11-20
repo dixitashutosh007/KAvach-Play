@@ -13,8 +13,15 @@ frontend:
         # (for NEXT_PUBLIC_* inlining) and runtime (for server /api routes).
         - |
           set +e
+          if [ -z "$NEXT_PUBLIC_FIRESTORE_DATABASE_ID" ]; then
+            if [ "$AWS_BRANCH" = "mig-mov" ]; then
+              export NEXT_PUBLIC_FIRESTORE_DATABASE_ID="kavach-play-db-ext"
+            elif [ "$AWS_BRANCH" = "main" ] || [ "$AWS_BRANCH" = "master" ]; then
+              export NEXT_PUBLIC_FIRESTORE_DATABASE_ID="ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412"
+            fi
+          fi
           {
-            env | grep -E '^(RAZORPAY_|NEXT_PUBLIC_|RESEND_|SMTP_|WHATSAPP_|FIREBASE_|API_SECRET=|REPORT_API_SECRET=|APP_URL=)'
+            env | grep -E '^(RAZORPAY_|NEXT_PUBLIC_|RESEND_|SMTP_|WHATSAPP_|FIREBASE_|API_SECRET=|REPORT_API_SECRET=|APP_URL=|AWS_BRANCH=)'
           } > .env.production
           set -e
           echo "Wrote $(wc -l < .env.production) env vars to .env.production"
