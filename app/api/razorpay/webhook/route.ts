@@ -1,38 +1,27 @@
 import { NextRequest, NextResponse } from "next/server.js";
 import crypto from "crypto";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
 import {
   extractWebhookEventDetails,
   processWebhookIntentTransaction,
 } from "../../../../lib/razorpay-webhook.ts";
-import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
-
-function getDb() {
-  const apps = getApps();
-  let app;
-  if (!apps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-      app = initializeApp({
-        credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-      });
-    } else {
-      app = initializeApp({ projectId: firebaseConfig.projectId });
-    }
-  } else {
-    app = apps[0];
-  }
-  const dbId =
-    process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
-    (firebaseConfig as any).firestoreDatabaseId;
-  try {
-    return getFirestore(app, dbId);
-  } catch {
-    return getFirestore(app);
-  }
-}
+import {
+  getServerFirestore,
+  arePaymentOperationsEnabled,
+} from "../../../../lib/server-db.ts";
 
 export async function POST(req: NextRequest) {
+  // 1. Strict Webhook Processing Check (Development Isolation)
+  if (!arePaymentOperationsEnabled()) {
+    return NextResponse.json(
+      {
+        error:
+          "Webhook processing is disabled in this environment (development / sandbox mode). Inbound webhook events are rejected to prevent modifications to development records.",
+        code: "WEBHOOKS_DISABLED",
+      },
+      { status: 403 },
+    );
+  }
+
   try {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret) {
@@ -75,7 +64,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, message: "No intentId attached." });
       }
 
-      const db = getDb();
+      const db = getServerFirestore();
       // FIN-002: Concurrency-safe atomic transaction
       let result;
       try {

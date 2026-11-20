@@ -55,7 +55,8 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     if (!emulatorHost) return;
     process.env.NODE_ENV = "test";
     process.env.KAVACH_TEST_AUTH_BYPASS = "true";
-    process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID = "(default)";
+    process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID = "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
+    process.env.AWS_BRANCH = "main";
     process.env.RAZORPAY_KEY_ID = "rzp_test_emulator_mock";
     process.env.RAZORPAY_KEY_SECRET = "rzp_secret_emulator_mock";
 

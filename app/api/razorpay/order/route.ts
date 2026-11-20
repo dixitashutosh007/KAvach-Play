@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server.js";
 import Razorpay from "razorpay";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
 import { requireAuth } from "../../../../lib/server-auth.ts";
+import {
+  getServerFirestore,
+  arePaymentOperationsEnabled,
+} from "../../../../lib/server-db.ts";
 import {
   derivePayableAmount,
   validateCurrency,
@@ -19,33 +21,20 @@ import {
   setReservationIntentId,
   verifyAndRepairIntent,
 } from "../../../../lib/razorpay-order.ts";
-import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
-
-function getDb() {
-  const apps = getApps();
-  let app;
-  if (!apps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-      app = initializeApp({
-        credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-      });
-    } else {
-      app = initializeApp({ projectId: firebaseConfig.projectId });
-    }
-  } else {
-    app = apps[0];
-  }
-  const dbId =
-    process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
-    (firebaseConfig as any).firestoreDatabaseId;
-  try {
-    return getFirestore(app, dbId);
-  } catch {
-    return getFirestore(app);
-  }
-}
 
 export async function POST(req: Request) {
+  // 1. Strict Payment Mode Check (Development Isolation)
+  if (!arePaymentOperationsEnabled()) {
+    return NextResponse.json(
+      {
+        error:
+          "Payment order creation is disabled in this environment (development / sandbox mode). Live Razorpay orders cannot be created on non-production databases.",
+        code: "PAYMENTS_DISABLED",
+      },
+      { status: 403 },
+    );
+  }
+
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
@@ -84,7 +73,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const db = getDb();
+    const db = getServerFirestore();
     let payableAmount: number;
     let storedIntentData: any;
 

@@ -14,10 +14,22 @@
  *   and NODE_ENV="test", and are permanently disabled in production runtimes.
  */
 import { NextResponse } from "next/server.js";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
 import firebaseConfig from "../firebase-applet-config.json" with { type: "json" };
+import {
+  getServerFirestore,
+  ensureAdminApp,
+  resolveFirestoreDatabaseId,
+  arePaymentOperationsEnabled,
+  setServerDbForTesting,
+} from "./server-db.ts";
+
+export {
+  getServerFirestore,
+  ensureAdminApp,
+  resolveFirestoreDatabaseId,
+  arePaymentOperationsEnabled,
+};
 
 export type AppRole =
   | "superAdmin"
@@ -41,45 +53,16 @@ export function isTestAuthBypassAllowed(): boolean {
   );
 }
 
-export function ensureAdminApp() {
-  const apps = getApps();
-  if (apps.length) return apps[0];
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    return initializeApp({
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-    });
-  }
-  return initializeApp({ projectId: firebaseConfig.projectId });
-}
-
-function getDb(app: any) {
-  const dbId =
-    process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
-    (firebaseConfig as any).firestoreDatabaseId;
-  try {
-    return getFirestore(app, dbId);
-  } catch {
-    return getFirestore(app);
-  }
-}
-
-let testDbOverride: any = null;
-
 /**
  * In non-production environments (unit tests), allows injecting a mock database
  * to test missing user docs, disabled accounts, and database errors deterministically.
  */
 export function setAuthDbForTesting(db: any) {
-  if (process.env.NODE_ENV !== "production") {
-    testDbOverride = db;
-  }
+  setServerDbForTesting(db);
 }
 
-export function getEffectiveDb(app: any) {
-  if (testDbOverride && process.env.NODE_ENV !== "production") {
-    return testDbOverride;
-  }
-  return getDb(app);
+export function getEffectiveDb(app?: any) {
+  return getServerFirestore(app);
 }
 
 export type AuthGuardResult =

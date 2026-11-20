@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import firebaseConfig from "@/firebase-applet-config.json";
+import { getServerFirestore } from "@/lib/server-db";
 
 const SEED_MAP: Record<string, string> = {
   "K2022001": "AD",
@@ -17,17 +15,7 @@ export async function POST(req: Request) {
     const guard = await requireClubAdmin(req);
     if (!guard.ok) return guard.response;
 
-    const apps = getApps();
-    const app = apps.length
-      ? apps[0]
-      : initializeApp({ projectId: firebaseConfig.projectId });
-    const dbId = (firebaseConfig as any).firestoreDatabaseId;
-    let db;
-    try {
-      db = getFirestore(app, dbId);
-    } catch {
-      db = getFirestore(app);
-    }
+    const db = getServerFirestore();
 
     const playersSnap = await db.collection("players").get();
     const players = playersSnap.docs.map((d) => ({

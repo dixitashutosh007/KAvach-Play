@@ -16,31 +16,9 @@
  */
 
 import { NextResponse } from "next/server";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import firebaseConfig from "@/firebase-applet-config.json";
+import { FieldValue } from "firebase-admin/firestore";
 import { requireFinanceAdmin } from "@/lib/server-auth";
-
-function ensureAdminApp() {
-  const apps = getApps();
-  if (apps.length) return apps[0];
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    return initializeApp({
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-    });
-  }
-  return initializeApp({ projectId: firebaseConfig.projectId });
-}
-
-function getDb() {
-  const app = ensureAdminApp();
-  const dbId = (firebaseConfig as any).firestoreDatabaseId;
-  try {
-    return getFirestore(app, dbId);
-  } catch {
-    return getFirestore(app);
-  }
-}
+import { getServerFirestore } from "@/lib/server-db";
 
 export async function POST(req: Request) {
   const guard = await requireFinanceAdmin(req);
@@ -51,7 +29,7 @@ export async function POST(req: Request) {
     const dryRun = Boolean(body.dryRun);
     const targetMatchId = body.matchId ? String(body.matchId).trim() : null;
 
-    const db = getDb();
+    const db = getServerFirestore();
     let matchesToReconcile: { id: string; opponent?: string; date?: string; fee?: number }[] = [];
 
     if (targetMatchId) {

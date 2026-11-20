@@ -1,34 +1,11 @@
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import firebaseConfig from "../../../firebase-applet-config.json";
+import { getServerFirestore } from "../../../lib/server-db";
 import { PayClient } from "./PayClient";
 
 // Server-side player lookup. The rest of the payment flow (auth, dues,
 // Razorpay checkout, success state) lives in <PayClient>.
 async function fetchPlayer(playerId: string): Promise<{ id: string; name: string } | null> {
   try {
-    const apps = getApps();
-    let app;
-    if (!apps.length) {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-        app = initializeApp({
-          credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-        });
-      } else {
-        app = initializeApp();
-      }
-    } else {
-      app = apps[0];
-    }
-    const dbId =
-      process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID ||
-      (firebaseConfig as any).firestoreDatabaseId;
-    let db;
-    try {
-      db = getFirestore(app, dbId);
-    } catch {
-      db = getFirestore(app);
-    }
+    const db = getServerFirestore();
     const snap = await db.collection("players").doc(playerId).get();
     if (!snap.exists) return null;
     const data = snap.data() as any;

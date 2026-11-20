@@ -17,10 +17,9 @@
  */
 
 import { NextResponse } from "next/server";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import firebaseConfig from "@/firebase-applet-config.json";
+import { FieldValue } from "firebase-admin/firestore";
 import type { Match } from "@/lib/types";
+import { getServerFirestore } from "@/lib/server-db";
 import {
   upsertMatchEvent,
   deleteMatchEvent,
@@ -31,27 +30,6 @@ import {
   listAllEvents,
   type EventContext,
 } from "@/lib/google-calendar";
-
-function ensureAdminApp() {
-  const apps = getApps();
-  if (apps.length) return apps[0];
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    return initializeApp({
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-    });
-  }
-  return initializeApp({ projectId: firebaseConfig.projectId });
-}
-
-function getDb() {
-  const app = ensureAdminApp();
-  const dbId = (firebaseConfig as any).firestoreDatabaseId;
-  try {
-    return getFirestore(app, dbId);
-  } catch {
-    return getFirestore(app);
-  }
-}
 
 async function buildContext(db: FirebaseFirestore.Firestore, match: Match): Promise<EventContext> {
   const ctx: EventContext = {};
@@ -78,7 +56,7 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
-    const db = getDb();
+    const db = getServerFirestore();
 
     // Read calendar ID from appConfig so the admin can change it in Settings.
     try {

@@ -24,9 +24,8 @@
  */
 
 import { NextResponse } from "next/server.js";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import firebaseConfig from "../../../../firebase-applet-config.json" with { type: "json" };
+import { FieldValue } from "firebase-admin/firestore";
+import { getServerFirestore } from "../../../../lib/server-db.ts";
 import {
   computeKeeperPatch,
   acquireMergeLease,
@@ -44,30 +43,6 @@ import {
 } from "../../../../lib/player-merge.ts";
 import { parseStrictIndianMobile } from "../../../../lib/account-linking.ts";
 
-function ensureAdminApp() {
-  const apps = getApps();
-  if (apps.length) return apps[0];
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    return initializeApp({
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
-    });
-  }
-  return initializeApp({ projectId: firebaseConfig.projectId });
-}
-
-function getDb() {
-  const app = ensureAdminApp();
-  if (process.env.FIRESTORE_EMULATOR_HOST) {
-    return getFirestore(app);
-  }
-  const dbId = (firebaseConfig as any).firestoreDatabaseId;
-  try {
-    return getFirestore(app, dbId);
-  } catch {
-    return getFirestore(app);
-  }
-}
-
 /**
  * PUT /api/admin/merge-players
  * Lease renewal endpoint for active workers.
@@ -84,7 +59,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Missing required lease renewal parameters." }, { status: 400 });
     }
 
-    const db = getDb();
+    const db = getServerFirestore();
     const result = await renewMergeLease(db, jobId, { leaseOwner, leaseToken, fencingToken }, additionalDurationMs);
     return NextResponse.json(result);
   } catch (err: any) {
@@ -144,7 +119,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const db = getDb();
+    const db = getServerFirestore();
     const jobId = `job_${loserId}_${keeperId}`;
     activeJobId = jobId;
     const loserRef = db.collection("players").doc(loserId);
@@ -325,7 +300,7 @@ export async function POST(req: Request) {
     console.error("merge-players failed", err);
     if (activeJobId) {
       try {
-        const db = getDb();
+        const db = getServerFirestore();
         await recordMergeJobFailure(db, activeJobId, activeWorkerInfo, err, currentStage);
       } catch (recordErr) {
         console.error("Error recording merge job failure:", recordErr);
