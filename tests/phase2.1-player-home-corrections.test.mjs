@@ -274,15 +274,15 @@ describe("Phase 2.1 Corrections: Deterministic Birthday Parsing & Real-Model Mat
       assert.equal(isPlayerEligibleForMatch(activePlayer, standardMatch, payments, false), true);
     });
 
-    // Scenario 3: Active player on waitlist via MatchPayment
-    it("Scenario 3: grants eligibility when player is on assigned squad waitlist via MatchPayment", () => {
+    // Scenario 3: Active player in assigned squad with waived fee status
+    it("Scenario 3: grants eligibility when player is in assigned squad with waived fee status", () => {
       const payments = [
         {
           id: "pay-1",
           matchId: standardMatch.id,
           playerId: activePlayer.id,
           status: "Waived",
-          availability: "Waitlist",
+          availability: "Confirmed",
         },
         {
           id: "pay-2",

@@ -1077,8 +1077,8 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(navNotFound.error, "MATCH_NOT_FOUND");
     });
 
-    // ── Waitlist Eligibility & Administrative Removal Tests (Correction Pass 4) ──
-    it("19. Active administrative waitlist assignment grants eligibility when squad is assigned", () => {
+    // ── Administrative Squad Assignment & Removal Precedence Tests (Pass 4 & 5 Verification) ──
+    it("19. Assigned squad member with Waived fee status grants eligibility when squad is assigned", () => {
       const waitlistPayments = [
         ...confirmedSquadPayments,
         {
@@ -1095,7 +1095,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.allowed, true);
     });
 
-    it("20. Active waitlist player with Unpaid or Paid status grants eligibility", () => {
+    it("20. Assigned squad member with Unpaid or Paid status grants eligibility regardless of availability string", () => {
       const waitlistUnpaid = [
         ...confirmedSquadPayments,
         {
@@ -1125,7 +1125,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(validateMatchNavigation("reg-match-squad", [squadAssignedMatch], dummyPlayer, waitlistPaid, false).allowed, true);
     });
 
-    it("21. Waitlisted player removed by admin (status: 'Not Playing'): access is strictly denied", () => {
+    it("21. Player removed by admin (status: 'Not Playing'): access is strictly denied even with legacy availability 'Waitlist'", () => {
       const removedWaitlist = [
         ...confirmedSquadPayments,
         {
@@ -1143,7 +1143,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.error, "INELIGIBLE");
     });
 
-    it("22. Removed waitlisted player retains stale availability 'Waitlist': status 'Not Playing' is authoritative and denies access", () => {
+    it("22. Removed player retains stale availability 'Waitlist': status 'Not Playing' is authoritative and denies access", () => {
       const staleWaitlist = [
         ...confirmedSquadPayments,
         {
@@ -1162,7 +1162,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.error, "INELIGIBLE");
     });
 
-    it("23. Another player's active squad assignment exists: must not restore removed waitlisted player's access", () => {
+    it("23. Another player's active squad assignment exists: must not restore removed player's access", () => {
       const activeSquadWithRemovedWaitlist = [
         { id: "p-teammate-1", matchId: "reg-match-squad", playerId: "player-beta", status: "Paid", availability: "Confirmed" },
         { id: "p-teammate-2", matchId: "reg-match-squad", playerId: "player-gamma", status: "Unpaid", availability: "Confirmed" },
@@ -1185,7 +1185,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.error, "INELIGIBLE");
     });
 
-    it("24. Waitlisted player with Failed status is strictly denied", () => {
+    it("24. Player with Failed status is strictly denied", () => {
       const failedWaitlist = [
         ...confirmedSquadPayments,
         {
@@ -1203,7 +1203,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.error, "INELIGIBLE");
     });
 
-    it("25. Ordinary player RSVP cannot create waitlist squad membership on squad-assigned match", () => {
+    it("25. Ordinary player RSVP cannot create squad membership on squad-assigned match", () => {
       // Ordinary player RSVP initializes with status "Not Playing"
       const ordinaryRsvpWaitlist = [
         ...confirmedSquadPayments,
@@ -1222,7 +1222,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.error, "INELIGIBLE");
     });
 
-    it("26. Open fixture with no assigned squad remains accessible to eligible players even with waitlist RSVP", () => {
+    it("26. Open fixture with no assigned squad remains accessible to eligible players even with RSVP record", () => {
       const openFixturePayments = [
         {
           id: "p-open-waitlist",
@@ -1251,7 +1251,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(nav.allowed, true);
     });
 
-    it("28. Admin retains access across all waitlist and squad removal states", () => {
+    it("28. Admin retains access across all squad removal and availability states", () => {
       const removedWaitlist = [
         ...confirmedSquadPayments,
         {
@@ -1268,7 +1268,7 @@ describe("Phase 2.2 Player Match Center: Payment Derivation & Match Grouping", (
       assert.equal(navAdmin.allowed, true);
     });
 
-    it("29. Deep link, direct selection, and popstate navigation fail closed for removed waitlisted player", () => {
+    it("29. Deep link, direct selection, and popstate navigation fail closed for removed player", () => {
       const removedWaitlist = [
         ...confirmedSquadPayments,
         {
