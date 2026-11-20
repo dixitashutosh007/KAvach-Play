@@ -13,6 +13,7 @@ import {
   arePaymentOperationsEnabled,
   PRODUCTION_FIRESTORE_DATABASE_ID,
   DEVELOPMENT_FIRESTORE_DATABASE_ID,
+  APPROVED_FIRESTORE_DATABASE_IDS,
 } from "./database-config.ts";
 
 export {
@@ -20,6 +21,7 @@ export {
   arePaymentOperationsEnabled,
   PRODUCTION_FIRESTORE_DATABASE_ID,
   DEVELOPMENT_FIRESTORE_DATABASE_ID,
+  APPROVED_FIRESTORE_DATABASE_IDS,
 };
 
 let testDbOverride: any = null;
@@ -31,6 +33,21 @@ export function setServerDbForTesting(db: any) {
   if (process.env.NODE_ENV !== "production") {
     testDbOverride = db;
   }
+}
+
+/**
+ * Checks if the current execution is strictly a local developer emulator test run.
+ *
+ * Safety Guarantees:
+ * - Disabled in production runtimes (NODE_ENV === "production").
+ * - Disabled in deployed AWS environments (AWS_APP_ID or AWS_EXECUTION_ENV).
+ * - Only enabled when running local tests against a local FIRESTORE_EMULATOR_HOST.
+ */
+export function isLocalEmulatorEnvironment(): boolean {
+  if (typeof process === "undefined") return false;
+  if (process.env.NODE_ENV === "production") return false;
+  if (process.env.AWS_APP_ID || process.env.AWS_EXECUTION_ENV) return false;
+  return Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 }
 
 /**
@@ -51,7 +68,7 @@ export function ensureAdminApp(): App {
  * Returns the authoritative server-side Firestore instance for the configured environment.
  *
  * Strict Isolation Guarantees:
- * - Requires a valid, non-empty database ID from resolveFirestoreDatabaseId().
+ * - Requires a valid, approved database ID from resolveFirestoreDatabaseId().
  * - Calls getFirestore(app, dbId).
  * - Under NO circumstances catches errors to fall back to getFirestore(app).
  * - If database selection or connection fails, throws immediately and fails closed.
@@ -63,18 +80,11 @@ export function getServerFirestore(app?: App): Firestore {
 
   const adminApp = app || ensureAdminApp();
 
-  // In local emulator test environment, the Firestore emulator only supports the default database.
-  if (process.env.FIRESTORE_EMULATOR_HOST) {
+  // In strictly local emulator test environment, the Firestore emulator only supports the default database.
+  if (isLocalEmulatorEnvironment()) {
     return getFirestore(adminApp);
   }
 
   const dbId = resolveFirestoreDatabaseId();
-
-  if (!dbId || typeof dbId !== "string" || !dbId.trim()) {
-    throw new Error(
-      "Configuration Error: Resolved database ID is invalid or empty. Failing closed.",
-    );
-  }
-
-  return getFirestore(adminApp, dbId.trim());
+  return getFirestore(adminApp, dbId);
 }

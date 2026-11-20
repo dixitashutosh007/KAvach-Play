@@ -9,46 +9,90 @@ export const PRODUCTION_FIRESTORE_DATABASE_ID =
   "ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412";
 export const DEVELOPMENT_FIRESTORE_DATABASE_ID = "kavach-play-db-ext";
 
+export const APPROVED_FIRESTORE_DATABASE_IDS = new Set<string>([
+  PRODUCTION_FIRESTORE_DATABASE_ID,
+  DEVELOPMENT_FIRESTORE_DATABASE_ID,
+]);
+
 /**
  * Resolves the authoritative Firestore Database ID for the current environment.
  *
  * Requirements:
  * 1. Checks explicit environment variable: NEXT_PUBLIC_FIRESTORE_DATABASE_ID or FIRESTORE_DATABASE_ID.
- * 2. If environment variable is absent, resolves via deployment branch (e.g. AWS_BRANCH on Amplify):
- *    - "mig-mov" -> DEVELOPMENT_FIRESTORE_DATABASE_ID ("kavach-play-db-ext")
- *    - "main" | "master" -> PRODUCTION_FIRESTORE_DATABASE_ID ("ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412")
- * 3. If neither is available, FAILS CLOSED: throws an explicit configuration error.
- *    Under NO circumstances will it silently fall back to "(default)" or an unverified database.
+ * 2. Checks deployment branch identity (AWS_BRANCH, GIT_BRANCH, or GITHUB_REF_NAME).
+ * 3. Rejects empty, whitespace-only, malformed, or unrecognized database IDs.
+ * 4. Strictly enforces branch-to-database alignment:
+ *    - "mig-mov" requires DEVELOPMENT_FIRESTORE_DATABASE_ID ("kavach-play-db-ext").
+ *    - "main" / "master" requires PRODUCTION_FIRESTORE_DATABASE_ID ("ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412").
+ * 5. If branch identity and explicit database ID conflict, FAILS CLOSED: throws an explicit configuration error.
+ * 6. If branch is unrecognized (preview, feature, unknown), FAILS CLOSED.
+ * 7. Under NO circumstances falls back to "(default)" or an unapproved database.
  */
-export function resolveFirestoreDatabaseId(): string {
-  const explicitDbId =
-    (typeof process !== "undefined" &&
-      (process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID?.trim() ||
-        process.env.FIRESTORE_DATABASE_ID?.trim())) ||
-    "";
+export function resolveFirestoreDatabaseId(
+  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+): string {
+  const explicitDbId = (
+    env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID?.trim() ||
+    env.FIRESTORE_DATABASE_ID?.trim() ||
+    ""
+  );
 
-  if (explicitDbId) {
-    return explicitDbId;
+  // If explicit ID was provided but is whitespace-only, empty, or unapproved, fail closed immediately.
+  if (
+    (env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID !== undefined && !explicitDbId) ||
+    (env.FIRESTORE_DATABASE_ID !== undefined && !explicitDbId)
+  ) {
+    throw new Error(
+      "Configuration Error: Missing Firestore database ID. Empty or whitespace-only database IDs are rejected. Failing closed.",
+    );
+  }
+
+  if (explicitDbId && !APPROVED_FIRESTORE_DATABASE_IDS.has(explicitDbId)) {
+    throw new Error(
+      `Configuration Error: Unrecognized Firestore database ID '${explicitDbId}'. Only approved production ('${PRODUCTION_FIRESTORE_DATABASE_ID}') and development ('${DEVELOPMENT_FIRESTORE_DATABASE_ID}') databases are permitted. Failing closed without fallback.`,
+    );
   }
 
   const branch = (
-    typeof process !== "undefined"
-      ? process.env.AWS_BRANCH ||
-        process.env.GIT_BRANCH ||
-        process.env.GITHUB_REF_NAME ||
-        ""
-      : ""
+    env.AWS_BRANCH ||
+    env.GIT_BRANCH ||
+    env.GITHUB_REF_NAME ||
+    ""
   ).trim();
 
+  // Branch-specific resolution and conflict detection
   if (branch === "mig-mov") {
+    if (explicitDbId && explicitDbId !== DEVELOPMENT_FIRESTORE_DATABASE_ID) {
+      throw new Error(
+        `Configuration Error: Conflict detected. Branch 'mig-mov' requires development database '${DEVELOPMENT_FIRESTORE_DATABASE_ID}', but received '${explicitDbId}'. Failing closed.`,
+      );
+    }
     return DEVELOPMENT_FIRESTORE_DATABASE_ID;
   }
+
   if (branch === "main" || branch === "master") {
+    if (explicitDbId && explicitDbId !== PRODUCTION_FIRESTORE_DATABASE_ID) {
+      throw new Error(
+        `Configuration Error: Conflict detected. Branch '${branch}' requires production database '${PRODUCTION_FIRESTORE_DATABASE_ID}', but received '${explicitDbId}'. Failing closed.`,
+      );
+    }
     return PRODUCTION_FIRESTORE_DATABASE_ID;
   }
 
+  // If a branch is present but unrecognized, fail closed
+  if (branch) {
+    throw new Error(
+      `Configuration Error: Unrecognized or unauthorized branch '${branch}'. Failing closed.`,
+    );
+  }
+
+  // Branch is missing/empty: must have a valid approved explicitDbId
+  if (explicitDbId && APPROVED_FIRESTORE_DATABASE_IDS.has(explicitDbId)) {
+    return explicitDbId;
+  }
+
   throw new Error(
-    "Configuration Error: Missing Firestore database ID. NEXT_PUBLIC_FIRESTORE_DATABASE_ID must be explicitly set to 'ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412' (production) or 'kavach-play-db-ext' (development). Failing closed without default database fallback.",
+    `Configuration Error: Missing Firestore database ID. NEXT_PUBLIC_FIRESTORE_DATABASE_ID must be explicitly set to '${PRODUCTION_FIRESTORE_DATABASE_ID}' (production) or '${DEVELOPMENT_FIRESTORE_DATABASE_ID}' (development). Failing closed without default database fallback.`,
   );
 }
 
@@ -56,49 +100,45 @@ export function resolveFirestoreDatabaseId(): string {
  * Evaluates whether live Razorpay payment operations (order creation, webhook processing)
  * are permitted in the current runtime environment.
  *
- * Strict Development Safeguards:
- * 1. For mig-mov / development: Live payment operations are strictly disabled.
- * 2. Live payments can ONLY run against the production database on main.
- * 3. Fails closed if database resolution fails.
- * 4. Development environments cannot accidentally enable live payment operations.
+ * Strict Production Authorization Standards:
+ * 1. Live Razorpay operations are permitted ONLY when:
+ *    - Deployment branch is explicitly "main" or "master".
+ *    - Firestore database ID exactly equals the approved production database ID.
+ *    - No explicit payment-disable flag is enabled.
+ * 2. "mig-mov" must always have payments disabled.
+ * 3. Any unknown, preview, feature, or unrecognized branch must have payments disabled.
+ * 4. Missing branch identity must fail closed for live payment operations (returns false).
+ * 5. Does NOT infer production solely from NODE_ENV or database ID.
+ * 6. Preserves existing production payment functionality on "main".
  */
-export function arePaymentOperationsEnabled(): boolean {
-  if (typeof process !== "undefined" && process.env.DISABLE_PAYMENT_OPERATIONS === "true") {
+export function arePaymentOperationsEnabled(
+  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+): boolean {
+  if (env.DISABLE_PAYMENT_OPERATIONS === "true") {
     return false;
+  }
+
+  // Strict branch authorization: Live payments require explicit main or master branch
+  const branch = (
+    env.AWS_BRANCH ||
+    env.GIT_BRANCH ||
+    env.GITHUB_REF_NAME ||
+    ""
+  ).trim();
+
+  if (!branch || (branch !== "main" && branch !== "master")) {
+    return false; // mig-mov, unknown, preview, feature, or missing branch all return false
   }
 
   let dbId: string;
   try {
-    dbId = resolveFirestoreDatabaseId();
+    dbId = resolveFirestoreDatabaseId(env);
   } catch {
-    return false; // Fail closed if database ID is missing/invalid
+    return false; // Fail closed if database ID is invalid or conflicts with branch
   }
 
-  // Development database is strictly forbidden from executing live payments
-  if (dbId === DEVELOPMENT_FIRESTORE_DATABASE_ID || dbId.includes("kavach-play-db-ext")) {
-    return false;
-  }
-
-  const branch = (
-    typeof process !== "undefined"
-      ? process.env.AWS_BRANCH ||
-        process.env.GIT_BRANCH ||
-        ""
-      : ""
-  ).trim();
-
-  // mig-mov branch is strictly forbidden from executing live payments
-  if (branch === "mig-mov") {
-    return false;
-  }
-
-  // In production runtime, ONLY the authoritative production database is permitted
-  if (typeof process !== "undefined" && process.env.NODE_ENV === "production" && dbId !== PRODUCTION_FIRESTORE_DATABASE_ID) {
-    return false;
-  }
-
-  // Non-test environments must strictly target the production database
-  if (typeof process !== "undefined" && process.env.NODE_ENV !== "test" && dbId !== PRODUCTION_FIRESTORE_DATABASE_ID) {
+  // Live payments can ONLY run against the production database
+  if (dbId !== PRODUCTION_FIRESTORE_DATABASE_ID) {
     return false;
   }
 
