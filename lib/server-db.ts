@@ -24,7 +24,10 @@ export {
   APPROVED_FIRESTORE_DATABASE_IDS,
 };
 
+export type FirestoreFactory = (app: App, databaseId?: string) => Firestore;
+
 let testDbOverride: any = null;
+let firestoreFactory: FirestoreFactory = getFirestore;
 
 /**
  * In non-production environments (unit tests), allows injecting a test database.
@@ -36,6 +39,16 @@ export function setServerDbForTesting(db: any) {
 }
 
 /**
+ * In non-production environments (unit tests), allows injecting a controlled factory
+ * to verify the exact arguments passed to getFirestore without mock database overrides.
+ */
+export function setFirestoreFactoryForTesting(factory: FirestoreFactory | null) {
+  if (process.env.NODE_ENV !== "production") {
+    firestoreFactory = factory || getFirestore;
+  }
+}
+
+/**
  * Checks if the current execution is strictly a local developer emulator test run.
  *
  * Safety Guarantees:
@@ -43,11 +56,12 @@ export function setServerDbForTesting(db: any) {
  * - Disabled in deployed AWS environments (AWS_APP_ID or AWS_EXECUTION_ENV).
  * - Only enabled when running local tests against a local FIRESTORE_EMULATOR_HOST.
  */
-export function isLocalEmulatorEnvironment(): boolean {
-  if (typeof process === "undefined") return false;
-  if (process.env.NODE_ENV === "production") return false;
-  if (process.env.AWS_APP_ID || process.env.AWS_EXECUTION_ENV) return false;
-  return Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+export function isLocalEmulatorEnvironment(
+  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+): boolean {
+  if (env.NODE_ENV === "production") return false;
+  if (env.AWS_APP_ID || env.AWS_EXECUTION_ENV) return false;
+  return Boolean(env.FIRESTORE_EMULATOR_HOST);
 }
 
 /**
@@ -69,8 +83,8 @@ export function ensureAdminApp(): App {
  *
  * Strict Isolation Guarantees:
  * - Requires a valid, approved database ID from resolveFirestoreDatabaseId().
- * - Calls getFirestore(app, dbId).
- * - Under NO circumstances catches errors to fall back to getFirestore(app).
+ * - Calls firestoreFactory(app, dbId).
+ * - Under NO circumstances catches errors to fall back to firestoreFactory(app).
  * - If database selection or connection fails, throws immediately and fails closed.
  */
 export function getServerFirestore(app?: App): Firestore {
@@ -82,9 +96,9 @@ export function getServerFirestore(app?: App): Firestore {
 
   // In strictly local emulator test environment, the Firestore emulator only supports the default database.
   if (isLocalEmulatorEnvironment()) {
-    return getFirestore(adminApp);
+    return firestoreFactory(adminApp);
   }
 
   const dbId = resolveFirestoreDatabaseId();
-  return getFirestore(adminApp, dbId);
+  return firestoreFactory(adminApp, dbId);
 }
