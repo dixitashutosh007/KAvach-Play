@@ -34,6 +34,8 @@ export interface PlayerMatchCardProps {
   availability: PlayerAvailabilityStatus | "Out";
   isImmediateNext?: boolean;
   isUnsettledAlert?: boolean;
+  /** Visual variant for alternating consecutive cards in lists */
+  variant?: "default" | "alternate";
   onSelectMatch: (matchId: string) => void;
   onRsvp?: (
     matchId: string,
@@ -52,6 +54,7 @@ export function PlayerMatchCard({
   availability,
   isImmediateNext = false,
   isUnsettledAlert = false,
+  variant = "default",
   onSelectMatch,
   onRsvp,
   isUpdatingRsvp = false,
@@ -199,17 +202,20 @@ export function PlayerMatchCard({
     return null;
   };
 
+  const cardSurfaceClass = isImmediateNext
+    ? "bg-surface border-scarlet/40 ring-1 ring-scarlet/20 hover:border-scarlet/60 shadow-xs"
+    : isUnsettledAlert
+    ? "bg-surface border-amber-300 ring-1 ring-amber-200 hover:border-amber-400 shadow-xs"
+    : variant === "alternate"
+    ? "bg-warm-white/70 border-border/90 hover:border-border hover:shadow-sm"
+    : "bg-surface border-border hover:border-border/80 hover:shadow-sm";
+
   return (
     <div
       data-testid={`player-match-card-${match.id}`}
+      data-variant={variant}
       onClick={() => onSelectMatch(match.id)}
-      className={`relative bg-surface rounded-[22px] p-3.5 sm:p-4 shadow-xs transition-all duration-200 cursor-pointer border ${
-        isImmediateNext
-          ? "border-scarlet/40 ring-1 ring-scarlet/20 hover:border-scarlet/60"
-          : isUnsettledAlert
-          ? "border-amber-300 ring-1 ring-amber-200 hover:border-amber-400"
-          : "border-border hover:border-border/80 hover:shadow-sm"
-      }`}
+      className={`relative rounded-[22px] p-3.5 sm:p-4 shadow-xs transition-all duration-200 cursor-pointer border ${cardSurfaceClass}`}
     >
       {/* Immediate Next Match Banner (Without redundant 'Immediate Fixture' label) */}
       {isImmediateNext && (

@@ -554,7 +554,7 @@ export function PlayerMatchCenter({
 
           {filteredUpcoming.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {filteredUpcoming.map((match) => {
+              {filteredUpcoming.map((match, idx) => {
                 const ground = store.grounds.find((g) => g.id === match.groundId);
                 const tournamentName = match.tournamentId
                   ? tournamentMap.get(match.tournamentId)
@@ -588,6 +588,7 @@ export function PlayerMatchCenter({
                     personalPaymentStatus={personalPaymentStatus}
                     availability={availability}
                     isImmediateNext={isImmediateNext}
+                    variant={idx % 2 === 1 ? "alternate" : "default"}
                     onSelectMatch={handleOpenMatch}
                     onRsvp={handleRsvp}
                     isUpdatingRsvp={updatingMatchId === match.id}
@@ -628,7 +629,7 @@ export function PlayerMatchCenter({
 
           {filteredRecent.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {filteredRecent.map((match) => {
+              {filteredRecent.map((match, idx) => {
                 const ground = store.grounds.find((g) => g.id === match.groundId);
                 const tournamentName = match.tournamentId
                   ? tournamentMap.get(match.tournamentId)
@@ -664,6 +665,7 @@ export function PlayerMatchCenter({
                     personalPaymentStatus={personalPaymentStatus}
                     availability={availability}
                     isUnsettledAlert={isUnsettledAlert}
+                    variant={idx % 2 === 1 ? "alternate" : "default"}
                     onSelectMatch={handleOpenMatch}
                   />
                 );
@@ -701,7 +703,7 @@ export function PlayerMatchCenter({
           {filteredPrevious.length > 0 ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredPrevious.slice(0, previousPageSize).map((match) => {
+                {filteredPrevious.slice(0, previousPageSize).map((match, idx) => {
                   const ground = store.grounds.find((g) => g.id === match.groundId);
                   const tournamentName = match.tournamentId
                     ? tournamentMap.get(match.tournamentId)
@@ -733,6 +735,7 @@ export function PlayerMatchCenter({
                       myPayment={myPayment}
                       personalPaymentStatus={personalPaymentStatus}
                       availability={availability}
+                      variant={idx % 2 === 1 ? "alternate" : "default"}
                       onSelectMatch={handleOpenMatch}
                     />
                   );

@@ -75,6 +75,7 @@ const { JerseyInfographic, getJerseyDetails } = loadTsxModule(
   "components/matches/JerseyInfographic.tsx"
 );
 const { PlayerMatchCard } = loadTsxModule("components/matches/PlayerMatchCard.tsx");
+const { PlayerMatchDetailModal } = loadTsxModule("components/matches/PlayerMatchDetailModal.tsx");
 
 describe("Player Match Center UI/UX Refinement Test Suite", () => {
   const baseMatch = {
@@ -482,6 +483,120 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(html.includes('data-testid="unsettled-alert-match-test-1"'));
       assert.ok(html.includes("Unsettled Obligation"));
       assert.ok(html.includes("₹500 due for this past match"));
+    });
+  });
+
+  // ── 14. Phase 1 & 2: Detail Modal RSVP and Jersey String Elimination ────────
+  describe("14. Detail Modal RSVP & Raw Jersey Description Removal", () => {
+    it("14a. Renders self-explanatory availability actions without 'RSVP', 'RSVP Needed', or 'Your Availability'", () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchDetailModal, {
+          match: baseMatch,
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Pending",
+          onClose: () => {},
+          onRsvp: async () => {},
+        })
+      );
+
+      // Verify no RSVP wording or "Your Availability" heading exists in output
+      assert.ok(!html.includes("RSVP Needed"), "Must not display 'RSVP Needed'");
+      assert.ok(!html.includes("RSVP"), "Must not display 'RSVP' anywhere in UI");
+      assert.ok(!html.includes("Your Availability"), "Must not display 'Your Availability' heading");
+
+      // Verify self-explanatory Playing, Maybe, Out buttons are preserved
+      assert.ok(html.includes("Playing"));
+      assert.ok(html.includes("Maybe"));
+      assert.ok(html.includes("Out"));
+      assert.ok(html.includes('aria-label="Mark availability as Playing"'));
+    });
+
+    it("14b. Does not display raw 'Scarlet Red' or 'Whites' strings in detail view UI", () => {
+      const redHtml = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchDetailModal, {
+          match: { ...baseMatch, jerseyColor: "Scarlet Red" },
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Playing",
+          onClose: () => {},
+        })
+      );
+      assert.ok(!redHtml.includes("Scarlet Red"), "UI must not display 'Scarlet Red' description");
+      assert.ok(redHtml.includes('aria-label="Red jersey"'), "Must render Red jersey infographic");
+
+      const whiteHtml = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchDetailModal, {
+          match: { ...baseMatch, jerseyColor: "Whites" },
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Playing",
+          onClose: () => {},
+        })
+      );
+      assert.ok(!whiteHtml.includes("Whites"), "UI must not display 'Whites' description");
+      assert.ok(whiteHtml.includes('aria-label="White jersey"'), "Must render White jersey infographic");
+    });
+  });
+
+  // ── 15. Phase 3: Alternating Match Card Visual Treatment ────────────────────
+  describe("15. Alternating Match Card Visual Treatment", () => {
+    it("15a. Renders default surface for variant='default'", () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchCard, {
+          match: baseMatch,
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Playing",
+          variant: "default",
+          onSelectMatch: () => {},
+        })
+      );
+      assert.ok(html.includes('data-variant="default"'));
+      assert.ok(html.includes("bg-surface"));
+    });
+
+    it("15b. Renders subtle warm-tinted surface for variant='alternate'", () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchCard, {
+          match: baseMatch,
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Playing",
+          variant: "alternate",
+          onSelectMatch: () => {},
+        })
+      );
+      assert.ok(html.includes('data-variant="alternate"'));
+      assert.ok(html.includes("bg-warm-white/70"));
+      assert.ok(html.includes("border-border/90"));
+    });
+
+    it("15c. Preserves strong semantic highlight for isImmediateNext regardless of variant", () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchCard, {
+          match: baseMatch,
+          personalPaymentStatus: basePaymentStatus,
+          availability: "Playing",
+          isImmediateNext: true,
+          variant: "alternate",
+          onSelectMatch: () => {},
+        })
+      );
+      assert.ok(html.includes('data-testid="next-match-highlight"'));
+      assert.ok(html.includes("border-scarlet/40"));
+      assert.ok(html.includes("ring-scarlet/20"));
+    });
+
+    it("15d. Preserves strong semantic highlight for isUnsettledAlert regardless of variant", () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(PlayerMatchCard, {
+          match: baseMatch,
+          personalPaymentStatus: { status: "UNPAID", netPayable: 400, amountPaid: 0, isWaived: false },
+          availability: "Playing",
+          isUnsettledAlert: true,
+          variant: "alternate",
+          onSelectMatch: () => {},
+        })
+      );
+      assert.ok(html.includes('data-testid="unsettled-alert-match-test-1"'));
+      assert.ok(html.includes("border-amber-300"));
+      assert.ok(html.includes("ring-amber-200"));
     });
   });
 });

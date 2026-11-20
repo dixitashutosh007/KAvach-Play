@@ -178,13 +178,6 @@ export function resolveFirestoreDatabaseId(
     return explicitDbId;
   }
 
-  // Client-side fallback for mig-mov branch development:
-  // When running in the browser where branch environment variables are not inlined,
-  // safely target development database (never production) rather than crashing the client.
-  if (typeof window !== "undefined") {
-    return DEVELOPMENT_FIRESTORE_DATABASE_ID;
-  }
-
   throw new Error(
     `Configuration Error: Missing Firestore database ID. NEXT_PUBLIC_FIRESTORE_DATABASE_ID must be explicitly set to '${PRODUCTION_FIRESTORE_DATABASE_ID}' (production) or '${DEVELOPMENT_FIRESTORE_DATABASE_ID}' (development). Failing closed without default database fallback.`,
   );

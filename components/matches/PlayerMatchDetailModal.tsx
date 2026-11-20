@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   HelpCircle,
   XCircle,
-  AlertCircle,
   Users,
   CreditCard,
   Share2,
@@ -21,7 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { Match, MatchPayment, Ground, Player } from "@/lib/types";
-import { JerseyInfographic } from "./JerseyInfographic";
+import { JerseyInfographic, getJerseyDetails } from "./JerseyInfographic";
 import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
@@ -54,8 +53,8 @@ export function PlayerMatchDetailModal({
   match,
   ground,
   tournamentName,
-  allPlayers,
-  matchPayments,
+  allPlayers = [],
+  matchPayments = [],
   mePlayer,
   personalPaymentStatus,
   availability,
@@ -113,7 +112,11 @@ export function PlayerMatchDetailModal({
 
   // Handle Share Match
   const handleShare = () => {
-    const shareText = `🏏 *KAvach Match Announcement*\nvs ${match.opponent}\n📅 ${formattedDate} at ${formattedTime}\n📍 ${ground?.name || "Venue TBD"}\n👕 Jersey: ${match.jerseyColor || "Scarlet Red"}\n\nView details on KAvach Play: ${window.location.origin}`;
+    const jerseyDetails = getJerseyDetails(match.jerseyColor);
+    const jerseyLine = jerseyDetails
+      ? `\n👕 Kit: ${jerseyDetails.isWhite ? "White" : "Red"}`
+      : "";
+    const shareText = `🏏 *KAvach Match Announcement*\nvs ${match.opponent}\n📅 ${formattedDate} at ${formattedTime}\n📍 ${ground?.name || "Venue TBD"}${jerseyLine}\n\nView details on KAvach Play: ${window.location.origin}`;
     if (navigator.share) {
       navigator.share({
         title: `KAvach vs ${match.opponent}`,
@@ -420,35 +423,10 @@ export function PlayerMatchDetailModal({
 
           {/* Availability Actions (for upcoming fixtures) */}
           {!isCompletedOrPast && onRsvp && (
-            <div className="bg-surface border border-border rounded-2xl p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold font-heading text-text-primary">
-                  Your Availability
-                </h3>
-                <div className="flex items-center gap-1 text-xs">
-                  {isPlaying && (
-                    <span className="font-bold text-emerald-700 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Playing
-                    </span>
-                  )}
-                  {isTentative && (
-                    <span className="font-bold text-amber-700 flex items-center gap-1">
-                      <HelpCircle className="w-3.5 h-3.5" /> Maybe
-                    </span>
-                  )}
-                  {isOut && (
-                    <span className="font-bold text-rose-700 flex items-center gap-1">
-                      <XCircle className="w-3.5 h-3.5" /> Out
-                    </span>
-                  )}
-                  {isPending && (
-                    <span className="font-bold text-scarlet flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> RSVP Needed
-                    </span>
-                  )}
-                </div>
-              </div>
-
+            <div
+              data-testid="detail-availability-actions"
+              className="bg-surface border border-border rounded-2xl p-4 shadow-xs space-y-3"
+            >
               {disabledRsvp ? (
                 <div className="py-2 px-3 rounded-xl bg-surface-hover text-xs text-text-muted text-center font-medium">
                   {disabledRsvpReason || "Availability locked for this match"}
