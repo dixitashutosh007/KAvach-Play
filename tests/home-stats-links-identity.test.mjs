@@ -309,3 +309,42 @@ describe("Club Performance widget", () => {
     assert.ok(!/repeat: Infinity|animate-pulse|animate-ping/.test(w));
   });
 });
+
+describe("Profile sync popup", () => {
+  const { ProfileSyncDialog, profileSyncDismissKey } = load("components/ProfileSyncDialog.tsx");
+  it("shows the player's name with Sync and Not now", () => {
+    const html = render(React.createElement(ProfileSyncDialog, {
+      playerName: "Asha Rao", matchedBy: "google", isSyncing: false, onSync: () => {}, onDismiss: () => {},
+    }));
+    const t = text(html);
+    assert.match(t, /Welcome back, Asha Rao!/);
+    assert.match(t, /Google email/);
+    assert.ok(html.includes('data-testid="profile-sync-button"'));
+    assert.ok(html.includes('data-testid="profile-sync-dismiss"'));
+    assert.ok(html.includes('role="dialog"') && html.includes('aria-modal="true"'));
+  });
+  it("mentions the mobile number for phone matches and shows progress while syncing", () => {
+    const html = render(React.createElement(ProfileSyncDialog, {
+      playerName: "Ravi", matchedBy: "mobile", isSyncing: true, onSync: () => {}, onDismiss: () => {},
+    }));
+    assert.match(text(html), /mobile number/);
+    assert.match(text(html), /Syncing/);
+  });
+  it("opens only for unlinked logins with a verified candidate, dismissible per session", () => {
+    const page = src("app/page.tsx");
+    const i = page.indexOf("<ProfileSyncDialog");
+    const cond = page.slice(i - 400, i);
+    assert.match(cond, /!player &&/);
+    assert.match(cond, /store\.playersLoaded &&/);
+    assert.match(cond, /!profileSyncDismissed &&/);
+    assert.match(cond, /existingPlayerWithSamePhone \|\| \(isGoogleLogin && existingPlayerWithSameEmail\)/);
+    assert.match(page.slice(i, i + 500), /onSync=\{handleSyncAccount\}/);
+    assert.equal(profileSyncDismissKey("u1"), "kavach:profile-sync-dismissed:u1");
+    assert.match(page, /window\.sessionStorage\.setItem\(profileSyncDismissKey\(user\.uid\), "1"\)/);
+  });
+  it("full-screen player sync card shows the Google email for Google matches", () => {
+    const prompt = src("components/onboarding/PhoneSyncPrompt.tsx");
+    assert.match(prompt, /matchedBy === "google" \? user\.email : user\.phoneNumber/);
+    assert.match(src("app/page.tsx"), /matchedBy=\{existingPlayerWithSamePhone \? "mobile" : "google"\}/);
+  });
+});

@@ -6,13 +6,15 @@ import { Shield } from "lucide-react";
 import { Player } from "@/lib/types";
 
 /**
- * Shown when a user logs in via phone OTP and the app finds an existing
- * player record with a matching phone number but a different auth UID.
- * Offers a one-click "sync" that links the two.
+ * Shown to players who are not yet linked when the app finds their existing
+ * player record by the login's verified mobile number (phone OTP) or
+ * Google-verified email (Google sign-in). Offers a one-click, server-verified
+ * "sync" that links the two.
  */
 export function PhoneSyncPrompt({
   existingPlayer,
   user,
+  matchedBy = "mobile",
   isSubmitting,
   onSync,
   onLogOut,
@@ -22,6 +24,8 @@ export function PhoneSyncPrompt({
 }: {
   existingPlayer: Player;
   user: User;
+  /** How the record was found: verified mobile number or Google email. */
+  matchedBy?: "mobile" | "google";
   isSubmitting: boolean;
   onSync: () => Promise<void>;
   onLogOut: () => Promise<void>;
@@ -47,8 +51,10 @@ export function PhoneSyncPrompt({
         </h2>
         <p className="text-sm text-text-secondary mb-6 text-center leading-relaxed">
           We found your existing player profile for{" "}
-          <b className="font-mono text-emerald-400">{user.phoneNumber}</b>.
-          Sync your profile to log in automatically without admin approval.
+          <b className="font-mono text-emerald-700 break-all">
+            {matchedBy === "google" ? user.email : user.phoneNumber}
+          </b>
+          . Sync your profile once to log in automatically without admin approval.
         </p>
         <button
           onClick={onSync}

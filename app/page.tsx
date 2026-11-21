@@ -39,6 +39,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { HomeTab } from "@/components/HomeTab";
 import { ProfileTab } from "@/components/ProfileTab";
 import { ProfileLinkNotice } from "@/components/ProfileLinkNotice";
+import { ProfileSyncDialog, profileSyncDismissKey } from "@/components/ProfileSyncDialog";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "@/components/ui/PullToRefreshIndicator";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -252,6 +253,25 @@ export default function Home() {
       matchesError: store.matchesError,
     });
   }, [store.isLoaded, store.selfAppUserStatus, store.matches.length, store.matchesError, store.playersLoaded, store.players, user, hasAdminClaim, currentUserObj, isAdminUser]);
+
+  // Profile sync popup: dismissed for this browser session per login.
+  const [profileSyncDismissed, setProfileSyncDismissed] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    try {
+      setProfileSyncDismissed(window.sessionStorage.getItem(profileSyncDismissKey(user.uid)) === "1");
+    } catch {
+      setProfileSyncDismissed(false);
+    }
+  }, [user]);
+  const dismissProfileSync = useCallback(() => {
+    setProfileSyncDismissed(true);
+    try {
+      if (user) window.sessionStorage.setItem(profileSyncDismissKey(user.uid), "1");
+    } catch {
+      // Storage unavailable: popup stays hidden until reload.
+    }
+  }, [user]);
 
   // Mobile pull-to-refresh: refreshes data in place (no page reload).
   const handlePullRefresh = useCallback(async () => {
@@ -593,6 +613,7 @@ export default function Home() {
         <PhoneSyncPrompt
           existingPlayer={existingMatch}
           user={user}
+          matchedBy={existingPlayerWithSamePhone ? "mobile" : "google"}
           isSubmitting={isRegistering}
           onSync={handleSyncAccount}
           onLogOut={logOut}
@@ -1111,6 +1132,21 @@ export default function Home() {
                     Review <ArrowRight className="w-3.5 h-3.5 animate-pulse" />
                   </button>
                 </motion.div>
+              )}
+
+            {/* Profile sync popup: opens automatically when a verified candidate exists */}
+            {!effectiveIsAdminMode &&
+              !player &&
+              store.playersLoaded &&
+              !profileSyncDismissed &&
+              (existingPlayerWithSamePhone || (isGoogleLogin && existingPlayerWithSameEmail)) && (
+                <ProfileSyncDialog
+                  playerName={(existingPlayerWithSamePhone || existingPlayerWithSameEmail)!.name}
+                  matchedBy={existingPlayerWithSamePhone ? "mobile" : "google"}
+                  isSyncing={isRegistering}
+                  onSync={handleSyncAccount}
+                  onDismiss={dismissProfileSync}
+                />
               )}
 
             {/* Unlinked account notice (admins bypass the registration/link gate) */}
