@@ -226,7 +226,7 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
 
   // ── 6 & 7. Availability Actions & Disabled Behavior ─────────────────────────
   describe("6 & 7. 1-Tap Availability Actions & Disabled Behavior", () => {
-    it("6. Out / Tentative / Playing selector is rendered with accessible radios and routes through onRsvp", () => {
+    it("6. Playing, Maybe and Out buttons are rendered with accessible labels and route through onRsvp", () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -237,26 +237,25 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         })
       );
 
-      assert.ok(html.includes('role="radiogroup"'));
       assert.ok(html.includes('aria-label="Mark availability as Playing"'));
-      assert.ok(html.includes('aria-label="Mark availability as Tentative"'));
+      assert.ok(html.includes('aria-label="Mark availability as Maybe"'));
       assert.ok(html.includes('aria-label="Mark availability as Out"'));
-      // Order: Out → Tentative → Playing
+      // Order: Playing → Maybe → Out
       assert.ok(
-        html.indexOf("Mark availability as Out") < html.indexOf("Mark availability as Tentative") &&
-          html.indexOf("Mark availability as Tentative") < html.indexOf("Mark availability as Playing")
+        html.indexOf("Mark availability as Playing") < html.indexOf("Mark availability as Maybe") &&
+          html.indexOf("Mark availability as Maybe") < html.indexOf("Mark availability as Out")
       );
-      // Exactly one checked option (Tentative)
-      assert.equal((html.match(/aria-checked="true"/g) || []).length, 1);
-      assert.ok(html.includes('data-value="Tentative"'));
+      // aria-pressed reflects the selection (Maybe only)
+      assert.equal((html.match(/aria-pressed="true"/g) || []).length, 1);
+      assert.equal((html.match(/aria-pressed="false"/g) || []).length, 2);
 
       const cardSource = fs.readFileSync(path.resolve("components/matches/PlayerMatchCard.tsx"), "utf-8");
       assert.match(cardSource, /await onRsvp\(match\.id,\s*stored\)/);
-      const selectorSource = fs.readFileSync(path.resolve("components/matches/AvailabilitySelector.tsx"), "utf-8");
-      assert.match(selectorSource, /Out: "No"/);
-      assert.match(selectorSource, /Tentative: "Tentative"/);
-      assert.match(selectorSource, /Playing: "Confirmed"/);
-      assert.match(selectorSource, /e\.stopPropagation\(\)/);
+      const buttonsSource = fs.readFileSync(path.resolve("components/matches/AvailabilityButtons.tsx"), "utf-8");
+      assert.match(buttonsSource, /Playing: "Confirmed"/);
+      assert.match(buttonsSource, /Maybe: "Tentative"/);
+      assert.match(buttonsSource, /Out: "No"/);
+      assert.match(buttonsSource, /e\.stopPropagation\(\)/);
     });
 
     it("7. Disabled availability renders reason message and prevents action clicks", async () => {
@@ -514,12 +513,12 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(!html.includes("RSVP"), "Must not display 'RSVP' anywhere in UI");
       assert.ok(!html.includes("Your Availability"), "Must not display 'Your Availability' heading");
 
-      // Self-explanatory Out / Tentative / Playing selector, with no option pre-selected
+      // Self-explanatory Playing / Maybe / Out buttons, with nothing pre-selected
       assert.ok(html.includes("Playing"));
-      assert.ok(html.includes("Tentative"));
+      assert.ok(html.includes("Maybe"));
       assert.ok(html.includes("Out"));
       assert.ok(html.includes('aria-label="Mark availability as Playing"'));
-      assert.ok(!html.includes('aria-checked="true"'), "No response must not pre-select any option");
+      assert.ok(!html.includes('aria-pressed="true"'), "No response must not pre-select any option");
     });
 
     it("14b. Does not display raw 'Scarlet Red' or 'Whites' strings in detail view UI", () => {
@@ -563,7 +562,7 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(html.includes("bg-surface"));
     });
 
-    it("15b. Renders a distinguishable blush brand surface and accent rail for variant='alternate'", () => {
+    it("15b. Renders a distinguishable blush brand surface for variant='alternate'", () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -575,7 +574,6 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       );
       assert.ok(html.includes('data-variant="alternate"'));
       assert.ok(html.includes("bg-soft-blush"), "alternate surface must use the blush brand token");
-      assert.ok(html.includes('data-testid="alternate-accent-match-test-1"'));
       // The page canvas is warm-white (#FFF6F4); the alternate surface must not reuse it.
       assert.ok(!html.includes("bg-warm-white"), "alternate surface must differ from the page canvas");
     });
@@ -592,7 +590,6 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         })
       );
       assert.ok(!next.includes("bg-soft-blush"));
-      assert.ok(!next.includes("alternate-accent-"));
       const unsettled = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -624,8 +621,8 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         })
       );
       assert.ok(html.includes('data-testid="next-match-highlight"'));
-      assert.ok(html.includes("border-scarlet/40"));
-      assert.ok(html.includes("ring-scarlet/20"));
+      assert.ok(html.includes("border-scarlet/50"));
+      assert.ok(html.includes("ring-scarlet/15"));
     });
 
     it("15d. Preserves strong semantic highlight for isUnsettledAlert regardless of variant", () => {
@@ -641,7 +638,7 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       );
       assert.ok(html.includes('data-testid="unsettled-alert-match-test-1"'));
       assert.ok(html.includes("border-amber-300"));
-      assert.ok(html.includes("ring-amber-200"));
+      assert.ok(html.includes("ring-amber-100"));
     });
   });
 });

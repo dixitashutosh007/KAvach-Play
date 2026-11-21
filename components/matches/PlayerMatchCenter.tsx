@@ -317,7 +317,7 @@ export function PlayerMatchCenter({
           availability === "Confirmed"
             ? "Playing"
             : availability === "Tentative"
-            ? "Tentative"
+            ? "Maybe"
             : "Out"
         }`,
         "success"

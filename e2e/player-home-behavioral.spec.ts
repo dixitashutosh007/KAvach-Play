@@ -110,7 +110,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(match4.getByText(/vs Faridabad Kings/i)).toBeVisible();
 
     // 1-Tap RSVP interaction on match 2 (initially Tentative, mark as Playing)
-    const playingBtn = match2.getByRole("radio", { name: "Mark availability as Playing" });
+    const playingBtn = match2.getByRole("button", { name: "Mark availability as Playing" });
     await expect(playingBtn).toBeVisible();
     await playingBtn.click();
 
@@ -154,7 +154,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(matchOpen).toBeVisible();
     await expect(matchOpen.getByText(/vs Faridabad Kings/i)).toBeVisible();
 
-    const openPlayingBtn = matchOpen.getByRole("radio", { name: "Mark availability as Playing" });
+    const openPlayingBtn = matchOpen.getByRole("button", { name: "Mark availability as Playing" });
     await expect(openPlayingBtn).toBeVisible();
     await openPlayingBtn.click();
     await expect(page.getByText(/Availability updated: Playing/i)).toBeVisible({ timeout: 4000 });

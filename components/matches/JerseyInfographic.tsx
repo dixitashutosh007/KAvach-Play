@@ -6,7 +6,7 @@ import { Shirt } from "lucide-react";
 export interface JerseyInfographicProps {
   color?: string | null;
   className?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
 export interface JerseyDetails {
@@ -77,12 +77,14 @@ export function JerseyInfographic({
     sm: "w-3.5 h-3.5",
     md: "w-4 h-4",
     lg: "w-5 h-5",
+    xl: "w-7 h-7",
   };
 
   const containerPadding = {
     sm: "p-1 rounded-md",
     md: "p-1.5 rounded-lg",
     lg: "p-2 rounded-xl",
+    xl: "p-1.5 rounded-xl",
   };
 
   return (

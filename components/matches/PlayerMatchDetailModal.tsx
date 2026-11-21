@@ -18,7 +18,7 @@ import {
 import type { Match, MatchPayment, Ground, Player } from "@/lib/types";
 import { JerseyInfographic, getJerseyDetails } from "./JerseyInfographic";
 import { getMatchResultDisplay } from "./matchResult";
-import { AvailabilitySelector, toAvailabilityChoice } from "./AvailabilitySelector";
+import { AvailabilityButtons, toAvailabilityChoice } from "./AvailabilityButtons";
 import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
@@ -430,9 +430,8 @@ export function PlayerMatchDetailModal({
                   {disabledRsvpReason || "Availability locked for this match"}
                 </div>
               ) : (
-                <AvailabilitySelector
+                <AvailabilityButtons
                   matchId={match.id}
-                  opponentLabel={match.opponent}
                   value={toAvailabilityChoice(availability)}
                   busy={isUpdatingRsvp}
                   onSelect={(stored) => onRsvp(match.id, stored)}

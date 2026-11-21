@@ -216,7 +216,7 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
   });
 
   // ── 4. 1-Tap Inline RSVP Availability Actions ────────────────────────────────
-  test("4. Availability selector (Out, Tentative, Playing) updates state with instant feedback", async ({
+  test("4. Availability buttons (Playing, Maybe, Out) updates state with instant feedback", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -234,25 +234,25 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     const matchCard = page.locator('[data-testid="player-match-card-match-upcoming-1"]');
     await expect(matchCard).toBeVisible({ timeout: 5000 });
 
-    // Select "Tentative" on the three-position selector
-    const maybeBtn = matchCard.getByRole("radio", { name: "Mark availability as Tentative" });
+    // Click the "Maybe" availability button
+    const maybeBtn = matchCard.getByRole("button", { name: "Mark availability as Maybe" });
     await expect(maybeBtn).toBeVisible();
     await maybeBtn.click();
 
     // Verify toast notification appears
-    await expect(page.getByText(/Availability updated: Tentative/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Availability updated: Maybe/i)).toBeVisible({ timeout: 5000 });
 
     // Verify button state updates to active
-    await expect(maybeBtn).toHaveAttribute("aria-checked", "true");
+    await expect(maybeBtn).toHaveAttribute("aria-pressed", "true");
 
     // Click "Out" RSVP button
-    const outBtn = matchCard.getByRole("radio", { name: "Mark availability as Out" });
+    const outBtn = matchCard.getByRole("button", { name: "Mark availability as Out" });
     await expect(outBtn).toBeVisible();
     await outBtn.click();
 
     // Verify toast notification appears
     await expect(page.getByText(/Availability updated: Out/i)).toBeVisible({ timeout: 5000 });
-    await expect(outBtn).toHaveAttribute("aria-checked", "true");
+    await expect(outBtn).toHaveAttribute("aria-pressed", "true");
   });
 
   // ── 5. Detailed Match View & Browser History Navigation (`popstate`) ─────────

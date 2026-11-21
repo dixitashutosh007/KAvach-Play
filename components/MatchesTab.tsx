@@ -62,8 +62,8 @@ import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
 import { MatchesLoadError } from "./matches/MatchesLoadError";
-import { MatchCardHeader } from "./matches/MatchCardHeader";
-import { getMatchCardSurfaceClass, AlternateAccentRail } from "./matches/PlayerMatchCard";
+import { MatchCardHeader, MatchCardTopBar } from "./matches/MatchCardHeader";
+import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
 
 export function MatchesTab({
   store,
@@ -1124,16 +1124,14 @@ export function MatchesTab({
                     data-testid={`admin-match-card-${match.id}`}
                     data-variant={isAlternateCard ? "alternate" : "default"}
                     onClick={() => openMatch(match)}
-                    className={`relative overflow-hidden rounded-[20px] border shadow-xs transition-all duration-200 cursor-pointer ${getMatchCardSurfaceClass({ isAlternate: isAlternateCard })}`}
+                    className={`relative overflow-hidden rounded-[20px] border transition-all duration-200 cursor-pointer ${getMatchCardSurfaceClass({ isAlternate: isAlternateCard })}`}
                   >
-                    {isAlternateCard && <AlternateAccentRail matchId={match.id} />}
                     <div className="p-3 sm:p-4">
-                      <MatchCardHeader
+                      <MatchCardTopBar
                         match={match}
-                        ground={ground}
-                        trailing={
+                        end={
                           isAdmin ? (
-                          <div className="flex gap-1 items-center shrink-0 -mt-1">
+                          <div className="flex gap-1 items-center shrink-0">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1203,14 +1201,10 @@ export function MatchesTab({
                           ) : null
                         }
                       />
+                      <MatchCardHeader match={match} ground={ground} />
 
-                      {(match.matchType || tournamentForCard || match.isTentative) && (
-                        <div className="flex gap-1.5 items-center mt-2 flex-wrap">
-                          {match.matchType && (
-                            <span className="bg-surface-hover text-text-primary px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                              {match.matchType}
-                            </span>
-                          )}
+                      {(tournamentForCard || match.isTentative) && (
+                        <div className="flex gap-1.5 items-center mt-2.5 flex-wrap">
                           {tournamentForCard && (
                             <span
                               className="bg-gold/15 text-deep-wine border border-gold/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[160px]"

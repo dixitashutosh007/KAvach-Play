@@ -60,7 +60,7 @@ const src = (f) => fs.readFileSync(path.resolve(f), "utf-8");
 const { getVenueMapsLink, getSafeHttpUrl } = load("lib/venue-maps.ts");
 const { getTimeOfDayGreeting, isPlaceholderName, resolveGreetingName, getClubHour } = load("lib/greeting.ts");
 const { derivePlayerAvailability } = load("lib/personal-match-payment.ts");
-const { AvailabilitySelector, toAvailabilityChoice, CHOICE_TO_STORED } = load("components/matches/AvailabilitySelector.tsx");
+const { AvailabilityButtons, toAvailabilityChoice, CHOICE_TO_STORED } = load("components/matches/AvailabilityButtons.tsx");
 const { MatchCardHeader } = load("components/matches/MatchCardHeader.tsx");
 const { getAnnouncementDisplay } = load("components/home/announcementDisplay.ts");
 const bannerSlides = load("components/home/bannerSlides.ts");
@@ -103,16 +103,18 @@ describe("Venue → Google Maps link", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe("Shared compact match card header", () => {
+describe("Shared match card body", () => {
   const ground = { id: "g1", name: "KAvach Sports Arena", mapUrl: "https://maps.google.com/?q=Arena" };
 
-  it("puts format, jersey infographic and opponent in the same title row", () => {
+  it("identity shows format badge and jersey infographic, then 'vs' and the opponent", () => {
     const html = render(React.createElement(MatchCardHeader, { match: baseMatch, ground }));
     const rowStart = html.indexOf('data-testid="match-card-title-row-m1"');
-    const rowHtml = html.slice(rowStart, html.indexOf("</h3>", rowStart));
+    const rowHtml = html.slice(rowStart, html.indexOf("</div>", rowStart));
     assert.ok(rowHtml.includes(">T30<"));
     assert.ok(rowHtml.includes('data-testid="jersey-infographic"'));
-    assert.ok(rowHtml.includes("vs Cricmonks"));
+    const identity = html.slice(html.indexOf('data-testid="match-card-identity-m1"'), html.indexOf('data-testid="match-card-logistics-m1"'));
+    assert.ok(identity.includes(">vs<"));
+    assert.ok(identity.includes(">Cricmonks</h3>"));
     assert.ok(!text(html).includes("Scarlet Red"));
   });
 
@@ -125,16 +127,19 @@ describe("Shared compact match card header", () => {
     assert.match(src("components/matches/MatchCardHeader.tsx"), /onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
   });
 
-  it("keeps plain text when no usable venue link exists, and omits the row with no venue", () => {
+  it("omits the venue when no ground exists", () => {
     const html = render(React.createElement(MatchCardHeader, { match: baseMatch, ground: null }));
     assert.ok(!html.includes("venue-link-m1"));
     assert.ok(!html.includes("venue-text-m1"));
   });
 
-  it("shows date and start time on the second row", () => {
-    const t = text(render(React.createElement(MatchCardHeader, { match: baseMatch, ground })));
-    assert.match(t, /Dec\s*5/);
-    assert.match(t, /7:30\s*AM/);
+  it("logistics show time (no wrap) and 'DAY · D MON' date", () => {
+    const html = render(React.createElement(MatchCardHeader, { match: baseMatch, ground }));
+    const t = text(html);
+    assert.match(t, /7:30 AM/);
+    assert.match(t, /SAT · 5 DEC/);
+    const timeTag = html.slice(html.indexOf('data-testid="match-time-m1"') - 5, html.indexOf('data-testid="match-time-m1"') + 300);
+    assert.ok(timeTag.includes("whitespace-nowrap"));
   });
 });
 
@@ -167,49 +172,37 @@ describe("Availability: no response is never Out", () => {
   it("Tentative and Confirmed map to their selector positions", () => {
     const tent = derivePlayerAvailability(player, match, [{ id: "a", matchId: "m1", playerId: "p1", status: "Not Playing", availability: "Tentative" }]);
     const conf = derivePlayerAvailability(player, match, [{ id: "b", matchId: "m1", playerId: "p1", status: "Not Playing", availability: "Confirmed" }]);
-    assert.equal(toAvailabilityChoice(tent.status), "Tentative");
+    assert.equal(toAvailabilityChoice(tent.status), "Maybe");
     assert.equal(toAvailabilityChoice(conf.status), "Playing");
   });
-  it("selector choices persist with the existing stored vocabulary (no schema change)", () => {
-    assert.deepEqual(CHOICE_TO_STORED, { Out: "No", Tentative: "Tentative", Playing: "Confirmed" });
+  it("button choices persist with the existing stored vocabulary (no schema change)", () => {
+    assert.deepEqual(CHOICE_TO_STORED, { Playing: "Confirmed", Maybe: "Tentative", Out: "No" });
   });
 });
 
-describe("Three-position availability selector", () => {
-  const renderSel = (value, extra = {}) =>
-    render(React.createElement(AvailabilitySelector, { matchId: "m1", opponentLabel: "Cricmonks", value, onSelect: () => {}, ...extra }));
+describe("Availability buttons (Playing · Maybe · Out)", () => {
+  const renderBtns = (value, extra = {}) =>
+    render(React.createElement(AvailabilityButtons, { matchId: "m1", value, onSelect: () => {}, ...extra }));
 
-  it("renders Out → Tentative → Playing as radios", () => {
-    const html = renderSel("Playing");
-    assert.ok(html.includes('role="radiogroup"'));
-    assert.equal((html.match(/role="radio"/g) || []).length, 3);
-    const order = ["out", "tentative", "playing"].map((k) => html.indexOf(`availability-option-${k}-m1`));
-    assert.ok(order[0] < order[1] && order[1] < order[2]);
+  it("renders Playing, Maybe, Out in that order", () => {
+    const html = renderBtns(null);
+    const order = ["playing", "maybe", "out"].map((k) => html.indexOf(`availability-${k}-m1`));
+    assert.ok(order.every((i) => i >= 0) && order[0] < order[1] && order[1] < order[2]);
   });
-  it("no response renders a neutral state: nothing checked, no thumb", () => {
-    const html = renderSel(null);
+  it("no response: nothing pressed", () => {
+    const html = renderBtns(null);
     assert.ok(html.includes('data-value="none"'));
-    assert.ok(!html.includes('aria-checked="true"'));
-    assert.ok(!html.includes("availability-thumb-m1"));
-    // keyboard entry point exists even with no selection
-    assert.equal((html.match(/tabindex="0"/g) || []).length, 1);
+    assert.ok(!html.includes('aria-pressed="true"'));
   });
-  it("an explicit answer checks exactly one option and shows the thumb", () => {
-    const html = renderSel("Out");
-    assert.equal((html.match(/aria-checked="true"/g) || []).length, 1);
-    assert.ok(html.includes("availability-thumb-m1"));
-    assert.ok(html.includes("translateX(0%)"));
-    assert.ok(renderSel("Playing").includes("translateX(200%)"));
+  it("explicit answer: exactly one pressed, with its colour", () => {
+    const html = renderBtns("Out");
+    assert.equal((html.match(/aria-pressed="true"/g) || []).length, 1);
+    assert.ok(/availability-out-m1"[^>]*class="[^"]*bg-rose-600/.test(html) || /class="[^"]*bg-rose-600[^"]*"[^>]*availability-out-m1/.test(html));
   });
-  it("shows a spinner on the option being saved", () => {
-    const html = renderSel("Out", { busy: true, pendingChoice: "Playing" });
-    assert.ok(/availability-option-playing-m1"[^>]*aria-busy="true"/.test(html));
-  });
-  it("arrow keys only move focus; selection requires click/Enter/Space (no accidental persistence)", () => {
-    const s = src("components/matches/AvailabilitySelector.tsx");
-    const keyHandler = s.slice(s.indexOf("const onKeyDown"), s.indexOf("const tabbableIndex"));
-    assert.ok(!keyHandler.includes("choose("));
-    assert.ok(!keyHandler.includes("onSelect("));
+  it("busy disables all buttons and shows a spinner on the pending one", () => {
+    const html = renderBtns("Out", { busy: true, pendingChoice: "Playing" });
+    assert.equal((html.match(/disabled=""/g) || []).length, 3);
+    assert.ok(html.includes("animate-spin"));
   });
 });
 
@@ -421,11 +414,11 @@ describe("Banner rendering", () => {
 describe("Admin Match Center uses the shared card system without exposing admin controls to players", () => {
   const s = src("components/MatchesTab.tsx");
   it("admin card renders MatchCardHeader and shared surfaces", () => {
-    assert.match(s, /<MatchCardHeader\s+match=\{match\}\s+ground=\{ground\}/);
+    assert.match(s, /<MatchCardHeader match=\{match\} ground=\{ground\} \/>/);
     assert.match(s, /getMatchCardSurfaceClass\(\{ isAlternate: isAlternateCard \}\)/);
   });
   it("duplicate / edit / delete actions are only rendered when isAdmin", () => {
-    const start = s.indexOf("trailing={", s.indexOf("<MatchCardHeader"));
+    const start = s.indexOf("end={", s.indexOf("<MatchCardTopBar"));
     const block = s.slice(start, start + 200);
     assert.match(block, /isAdmin \? \(/);
   });

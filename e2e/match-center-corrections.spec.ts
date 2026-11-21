@@ -62,8 +62,8 @@ test.describe("Match Center corrections — real browser", () => {
     await expect(page.locator('[data-testid="player-match-detail-view"]')).toHaveCount(0);
 
     // Availability action must not open the detail view.
-    await card.getByRole("radio", { name: "Mark availability as Tentative" }).click();
-    await expect(page.getByText(/Availability updated: Tentative/i)).toBeVisible({ timeout: 5000 });
+    await card.getByRole("button", { name: "Mark availability as Maybe" }).click();
+    await expect(page.getByText(/Availability updated: Maybe/i)).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="player-match-detail-view"]')).toHaveCount(0);
 
     // Card tap (on the opponent heading) opens the detail view.
@@ -93,8 +93,8 @@ test.describe("Match Center corrections — real browser", () => {
 
     await expectNoForbiddenText(page);
     await expect(section.locator('[data-testid="jersey-infographic"]').first()).toBeVisible();
-    await expect(section.getByRole("radio", { name: "Mark availability as Playing" }).first()).toBeVisible();
-    await expect(section.getByRole("radio", { name: "Mark availability as Out" }).first()).toBeVisible();
+    await expect(section.getByRole("button", { name: "Mark availability as Playing" }).first()).toBeVisible();
+    await expect(section.getByRole("button", { name: "Mark availability as Out" }).first()).toBeVisible();
   });
 
   test("Admin access comes from appUsers permission flags", async ({ page }) => {

@@ -253,7 +253,7 @@ export function HomeTab({
           availability === "Confirmed"
             ? "Playing"
             : availability === "Tentative"
-            ? "Tentative"
+            ? "Maybe"
             : "Out"
         }`,
         "success"
