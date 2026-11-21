@@ -182,3 +182,27 @@ describe("Wiring", () => {
     assert.match(block, /allow update: if !incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(\['playerId'\]\)/);
   });
 });
+
+describe("Regression: record whose id equals the Google login uid", () => {
+  it("the client email candidate no longer excludes the login's own record id", () => {
+    const page = src("app/page.tsx");
+    const block = page.slice(page.indexOf("const existingPlayerWithSameEmail ="), page.indexOf("const existingPlayerWithSameEmail =") + 400);
+    assert.ok(!block.includes("p.id !== user?.uid"), "own-id record must be offered for Google linking");
+  });
+  it("server links such a record via the verified email without touching its authUid", async () => {
+    const db = makeDb({
+      players: { "g-uid": { name: "Asha", email: "asha@example.com", authUid: "phone-uid" } },
+      appUsers: {},
+    });
+    const r = await linkGoogleLogin(db, google());
+    assert.deepEqual(r, { ok: true, playerId: "g-uid", alreadyLinked: false });
+    assert.equal(db.store.appUsers["g-uid"].playerId, "g-uid");
+    assert.equal(db.store.players["g-uid"].authUid, "phone-uid");
+  });
+  it("without a verified matching email there is no link (remediation preserved)", async () => {
+    const db = makeDb({ players: { "g-uid": { name: "Asha", email: "different@example.com", authUid: "phone-uid" } }, appUsers: {} });
+    const r = await linkGoogleLogin(db, google());
+    assert.equal(r.ok, false);
+    assert.equal(db.writes.length, 0);
+  });
+});

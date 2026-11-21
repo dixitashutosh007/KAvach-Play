@@ -227,6 +227,12 @@ export default function Home() {
     hasLoggedAccessDiagnosticRef.current = true;
     const diagPlayerLinked = !!resolvePlayerForUser(store.players, user.uid, currentUserObj);
     const diagOtpLogin = !!user.phoneNumber;
+    const diagGoogleLogin = !!user.providerData?.some((p) => p.providerId === "google.com");
+    const diagEmailMatchCount = user.email
+      ? store.players.filter(
+          (p) => !p.disabled && !p.mergedInto && (p.email || "").trim().toLowerCase() === user.email!.trim().toLowerCase(),
+        ).length
+      : 0;
     console.info("[KAvach access diagnostic]", {
       firestoreDatabaseId,
       adminCustomClaim: !!hasAdminClaim,
@@ -240,6 +246,8 @@ export default function Home() {
       playersLoaded: store.playersLoaded,
       playerLinked: diagPlayerLinked,
       otpLogin: diagOtpLogin,
+      googleLogin: diagGoogleLogin,
+      playerRecordsMatchingLoginEmail: diagEmailMatchCount,
       matchesLoaded: store.matches.length,
       matchesError: store.matchesError,
     });
@@ -444,14 +452,16 @@ export default function Home() {
         })()
       : null;
 
+  // Email candidate for linking a Google login. Unlike production, a record
+  // whose id equals this login's uid is NOT excluded: under the remediated
+  // identity model that record no longer matches by id when its authUid points
+  // to another login (e.g. the player's mobile login), so it must be offered
+  // here. The server re-verifies the Google-verified email before linking.
   const existingPlayerWithSameEmail =
     !isMobileAuth && user?.email
       ? store.players.find((p) => {
           if (!p.email || p.disabled || p.mergedInto) return false;
-          return (
-            p.email.trim().toLowerCase() === user.email!.trim().toLowerCase() &&
-            p.id !== user?.uid
-          );
+          return p.email.trim().toLowerCase() === user.email!.trim().toLowerCase();
         })
       : null;
 
