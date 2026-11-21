@@ -12,6 +12,7 @@
 import type { AppConfig, Player, Post } from "@/lib/types";
 import { getPlayerBirthdayStatus } from "@/lib/birthday-utils";
 import { pinnedAnnouncements } from "./postKinds";
+import { firstHttpsLink, toSafeHttpsHref } from "@/lib/linkify";
 
 export type BannerKind = "notice" | "promo" | "birthday-today" | "birthday-tomorrow";
 
@@ -26,6 +27,11 @@ export interface BannerSlide {
   ctaText?: string;
   ctaDestination?: string;
   targetId?: string;
+  /**
+   * Validated HTTPS destination. When present the whole banner surface opens it
+   * (safe external navigation); otherwise the banner keeps its in-app behaviour.
+   */
+  href?: string;
   /** Stable key for dismissal; changes when the banner's "period" changes. */
   dismissKey: string;
   /**
@@ -149,6 +155,9 @@ export function buildBannerSlides({
     .forEach((post) => {
       const version = toSeconds((post as any).updatedAt) ?? toSeconds(post.createdAt) ?? "";
       const body = (post.text || "").trim();
+      // Destination: the announcement's link field, else the first HTTPS link in
+      // its text (backward compatible with announcements that only embed a URL).
+      const href = toSafeHttpsHref(post.linkUrl) || firstHttpsLink(body) || undefined;
       list.push({
         id: `post-${post.id}`,
         kind: "notice",
@@ -160,6 +169,7 @@ export function buildBannerSlides({
         ctaText: "Read Notice",
         ctaDestination: "announcements",
         targetId: post.id,
+        ...(href ? { href } : {}),
         dismissKey: `post:${post.id}:${version}`,
         dismissible: true,
       });

@@ -4,11 +4,16 @@
  * Player Home — upcoming fixtures (`components/home/UpcomingMatchesSection.tsx`).
  *
  * Renders the next fixtures with the SAME shared PlayerMatchCard used by the
- * Player Match Center (compact header, venue Maps link, availability selector),
- * so Home and the Match tab cannot drift apart visually.
+ * Player Match Center, so Home and the Match tab cannot drift apart visually.
+ *
+ * Layout (same data, same cards — no duplicate rendering):
+ *  - below `md`: horizontal swipe carousel with snap points; each card is 86%
+ *    wide so the next one peeks in; a compact "Swipe to explore" + dots hint
+ *    appears only when there is more than one match;
+ *  - `md` and up: the existing two-column grid, no carousel or hint.
  */
-import { useState } from "react";
-import { CalendarDays, ChevronRight } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { CalendarDays, ChevronRight, ArrowRight } from "lucide-react";
 import { Match, Ground, MatchPayment, Player } from "@/lib/types";
 import { PlayerMatchCard } from "@/components/matches/PlayerMatchCard";
 import {
@@ -34,9 +39,32 @@ export function UpcomingMatchesSection({
   onNavigateToAllMatches: () => void;
 }) {
   const [updatingMatchId, setUpdatingMatchId] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
 
   // Take up to next 4 matches
   const displayMatches = matches.slice(0, 4);
+
+  const isCarousel = displayMatches.length > 1;
+
+  // Track which card is in view (mobile carousel only) for the position dots.
+  const onTrackScroll = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const first = track.firstElementChild as HTMLElement | null;
+    if (!first) return;
+    const step = first.offsetWidth + parseFloat(getComputedStyle(track).columnGap || "0");
+    if (step <= 0) return;
+    setActiveIndex(Math.min(displayMatches.length - 1, Math.max(0, Math.round(track.scrollLeft / step))));
+  }, [displayMatches.length]);
+
+  const scrollToCard = (index: number) => {
+    const card = trackRef.current?.children[index] as HTMLElement | undefined;
+    if (!card) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // inline: start respects the scroll padding; block: nearest never moves the page vertically.
+    card.scrollIntoView({ behavior: reduce ? "auto" : "smooth", inline: "start", block: "nearest" });
+  };
 
   // Prevent duplicate submissions across cards while one update is in flight.
   const handleRsvp = async (matchId: string, status: "Confirmed" | "Tentative" | "No") => {
@@ -76,20 +104,70 @@ export function UpcomingMatchesSection({
       </div>
 
       {displayMatches.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {displayMatches.map((match, idx) => (
-            <PlayerMatchCard
-              key={match.id}
-              match={match}
-              ground={grounds.find((g) => g.id === match.groundId)}
-              personalPaymentStatus={getPersonalMatchPaymentStatus(player, match, payments)}
-              availability={derivePlayerAvailability(player, match, payments).status}
-              variant={idx % 2 === 1 ? "alternate" : "default"}
-              onSelectMatch={onNavigateToMatch}
-              onRsvp={handleRsvp}
-              isUpdatingRsvp={updatingMatchId !== null}
-            />
-          ))}
+        <div>
+          <div
+            ref={trackRef}
+            onScroll={isCarousel ? onTrackScroll : undefined}
+            data-testid="upcoming-matches-track"
+            data-layout={isCarousel ? "carousel" : "single"}
+            aria-roledescription={isCarousel ? "carousel" : undefined}
+            aria-label={isCarousel ? "Upcoming matches" : undefined}
+            className={
+              isCarousel
+                ? // Mobile: edge-to-edge horizontal snap carousel. md+: original grid.
+                  "flex gap-3 overflow-x-auto snap-x snap-mandatory overscroll-x-contain no-scrollbar -mx-4 px-4 scroll-px-4 sm:-mx-6 sm:px-6 sm:scroll-px-6 pb-1 md:grid md:grid-cols-2 md:overflow-visible md:snap-none md:mx-0 md:px-0 md:pb-0"
+                : "grid grid-cols-1 md:grid-cols-2 gap-3"
+            }
+          >
+            {displayMatches.map((match, idx) => (
+              <div
+                key={match.id}
+                data-testid={`upcoming-match-slide-${match.id}`}
+                aria-roledescription={isCarousel ? "slide" : undefined}
+                aria-label={isCarousel ? `${idx + 1} of ${displayMatches.length}` : undefined}
+                className={isCarousel ? "shrink-0 w-[86%] sm:w-[70%] snap-start md:w-auto" : undefined}
+              >
+                <PlayerMatchCard
+                  match={match}
+                  ground={grounds.find((g) => g.id === match.groundId)}
+                  personalPaymentStatus={getPersonalMatchPaymentStatus(player, match, payments)}
+                  availability={derivePlayerAvailability(player, match, payments).status}
+                  variant={idx % 2 === 1 ? "alternate" : "default"}
+                  onSelectMatch={onNavigateToMatch}
+                  onRsvp={handleRsvp}
+                  isUpdatingRsvp={updatingMatchId !== null}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Mobile-only swipe hint: one compact row, only when there is more to see */}
+          {isCarousel && (
+            <div className="md:hidden mt-1.5 flex items-center justify-between gap-2" data-testid="upcoming-swipe-hint">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-text-muted">
+                Swipe to explore
+                <ArrowRight className="w-3 h-3" aria-hidden="true" />
+              </span>
+              <div className="flex items-center gap-0.5" role="group" aria-label="Choose match">
+                {displayMatches.map((m, idx) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => scrollToCard(idx)}
+                    aria-label={`Show match ${idx + 1} of ${displayMatches.length}`}
+                    aria-current={idx === activeIndex ? "true" : undefined}
+                    className="p-1 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+                  >
+                    <span
+                      className={`block h-1.5 rounded-full transition-all motion-reduce:transition-none ${
+                        idx === activeIndex ? "w-4 bg-scarlet" : "w-1.5 bg-text-muted/40"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-surface border border-border rounded-2xl p-6 text-center space-y-2">

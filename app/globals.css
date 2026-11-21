@@ -139,3 +139,14 @@ nextjs-portal {
 .pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
 }
+
+/* Hide scrollbars on horizontal swipe strips (carousels, chip rows) while
+   keeping them scrollable by touch, trackpad and keyboard. Used via the
+   `no-scrollbar` class (previously referenced but never defined). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

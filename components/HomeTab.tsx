@@ -103,6 +103,7 @@ export function HomeTab({
       text: draft.text,
       ...(draft.title ? { title: draft.title } : {}),
       ...(typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
+      ...(draft.linkUrl ? { linkUrl: draft.linkUrl } : {}),
       isAnnouncement: true,
       isPinned: draft.isPinned,
       authorName:
@@ -123,6 +124,8 @@ export function HomeTab({
       text: draft.text,
       title: draft.title || undefined,
       isPinned: draft.isPinned,
+      // "" removes the link; undefined (e.g. banner pin toggle) leaves it unchanged
+      ...(draft.linkUrl !== undefined ? { linkUrl: draft.linkUrl || undefined } : {}),
       // null → remove image, string → replace, undefined → leave unchanged
       ...(draft.imageUrl === null ? { imageUrl: undefined } : typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
     });

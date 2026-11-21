@@ -28,6 +28,7 @@ import {
   Gift,
   X,
   RotateCcw,
+  ExternalLink,
 } from "lucide-react";
 import type { AppConfig, Player, Post } from "@/lib/types";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -73,6 +74,8 @@ export function CampaignHeroBanner({
   const [dismissed, setDismissed] = useState<DismissedMap>({});
   const [lastDismissed, setLastDismissed] = useState<BannerSlide | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Set when a touch gesture was a swipe, so the banner link does not open.
+  const suppressLinkClickRef = useRef(false);
 
   // Club calendar day (Asia/Kolkata) for birthdays and banner periods.
   const today = useMemo(() => {
@@ -156,6 +159,8 @@ export function CampaignHeroBanner({
     if (!start || !t) return;
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
+    const moved = Math.abs(dx) > 10 || Math.abs(dy) > 10;
+    suppressLinkClickRef.current = moved;
     if (Math.abs(dx) >= SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) {
       if (dx < 0) handleNext();
       else handlePrev();
@@ -307,7 +312,30 @@ export function CampaignHeroBanner({
         />
       )}
 
-      <div className="relative z-10 p-4 sm:p-5 flex flex-col gap-2 min-h-[176px] sm:min-h-[196px]">
+      {/* Whole-banner link (stretched link): sits under the content; text lets taps
+          through, while dismiss / navigation controls sit above it. */}
+      {activeSlide.href && (
+        <a
+          href={activeSlide.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="banner-link"
+          aria-label={`Open link: ${activeSlide.title} (opens in a new tab)`}
+          onClick={(e) => {
+            if (suppressLinkClickRef.current) {
+              e.preventDefault();
+              suppressLinkClickRef.current = false;
+            }
+          }}
+          className="absolute inset-0 z-[5] rounded-2xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80"
+        />
+      )}
+
+      <div
+        className={`relative z-10 p-4 sm:p-5 flex flex-col gap-2 min-h-[176px] sm:min-h-[196px] ${
+          activeSlide.href ? "pointer-events-none" : ""
+        }`}
+      >
         {/* Top row: badge · indicator · dismiss */}
         <div className="flex items-center justify-between gap-2">
           <div
@@ -333,6 +361,7 @@ export function CampaignHeroBanner({
               <button
                 type="button"
                 data-testid="banner-dismiss"
+                style={{ pointerEvents: "auto" }}
                 onClick={(e) => dismiss(activeSlide, e)}
                 aria-label={`Dismiss: ${activeSlide.title}`}
                 className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-white/85 hover:text-white hover:bg-black/25 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
@@ -378,7 +407,16 @@ export function CampaignHeroBanner({
 
         {/* Bottom row: CTA · navigation */}
         <div className="flex items-center justify-between gap-2 min-h-[44px]">
-          {activeSlide.ctaText && activeSlide.ctaDestination ? (
+          {activeSlide.href ? (
+            <span
+              data-testid="banner-link-hint"
+              aria-hidden="true"
+              className="min-h-[36px] px-3 py-1.5 rounded-xl border border-white/40 bg-white/10 text-xs font-black uppercase tracking-wider text-white inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              Open link
+              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+            </span>
+          ) : activeSlide.ctaText && activeSlide.ctaDestination ? (
             <button
               type="button"
               data-testid="hero-campaign-cta"
@@ -393,7 +431,7 @@ export function CampaignHeroBanner({
           )}
 
           {slideCount > 1 && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1" style={{ pointerEvents: "auto" }}>
               <button
                 type="button"
                 onClick={handlePrev}

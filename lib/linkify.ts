@@ -42,3 +42,18 @@ export function splitTextWithLinks(text: string | null | undefined): TextSegment
   if (last < input.length) segments.push({ type: "text", value: input.slice(last) });
   return segments.length > 0 ? segments : [{ type: "text", value: input }];
 }
+
+/** Like toSafeHref but only HTTPS destinations are allowed (banner navigation). */
+export function toSafeHttpsHref(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const href = toSafeHref(raw.trim());
+  return href && href.startsWith("https://") ? href : null;
+}
+
+/** First HTTPS link found in plain text, or null. */
+export function firstHttpsLink(text: string | null | undefined): string | null {
+  for (const seg of splitTextWithLinks(text)) {
+    if (seg.type === "link" && seg.href.startsWith("https://")) return seg.href;
+  }
+  return null;
+}

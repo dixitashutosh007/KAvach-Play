@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { X, Megaphone, Loader2 } from "lucide-react";
 import { AnnouncementImagePicker, exportCroppedImage, type PickedImage } from "./AnnouncementImagePicker";
 import { isSafeImageSrc } from "@/lib/announcement-image";
+import { toSafeHttpsHref } from "@/lib/linkify";
 
 export const ANNOUNCEMENT_TITLE_MAX = 100;
 export const ANNOUNCEMENT_TEXT_MAX = 2000;
@@ -24,10 +25,16 @@ export interface AnnouncementDraft {
    * `undefined` to leave the image unchanged.
    */
   imageUrl?: string | null;
+  /** Optional HTTPS destination opened from the Home banner ("" = none). */
+  linkUrl?: string;
 }
 
 /** Returns an error message, or null when the draft can be published. */
 export function validateAnnouncementDraft(d: AnnouncementDraft): string | null {
+  const link = (d.linkUrl || "").trim();
+  if (link && !toSafeHttpsHref(link)) {
+    return "Link must be a full https:// web address (e.g. https://example.com/page).";
+  }
   const title = d.title.trim();
   const text = d.text.trim();
   if (!text) return "Please write the announcement message.";
@@ -45,13 +52,14 @@ export function AnnouncementComposer({
   /** Resolves true when the announcement was saved. */
   onPublish: (draft: AnnouncementDraft) => Promise<boolean>;
   /** Present when editing an existing announcement. */
-  initial?: { title?: string; text: string; isPinned?: boolean; imageUrl?: string };
+  initial?: { title?: string; text: string; isPinned?: boolean; imageUrl?: string; linkUrl?: string };
 }) {
   const isEdit = Boolean(initial);
   const [draft, setDraft] = useState<AnnouncementDraft>({
     title: initial?.title || "",
     text: initial?.text || "",
     isPinned: initial?.isPinned === true,
+    linkUrl: initial?.linkUrl || "",
   });
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [existingImage, setExistingImage] = useState<string | null>(
@@ -94,6 +102,7 @@ export function AnnouncementComposer({
         title: draft.title.trim(),
         text: draft.text.trim(),
         isPinned: draft.isPinned,
+        linkUrl: toSafeHttpsHref(draft.linkUrl) || "",
         imageUrl,
       });
       if (ok) onClose();
@@ -158,6 +167,20 @@ export function AnnouncementComposer({
           <span className="self-end text-[10px] text-text-muted tabular-nums">
             {draft.text.length}/{ANNOUNCEMENT_TEXT_MAX}
           </span>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Link (optional)</span>
+          <input
+            type="url"
+            inputMode="url"
+            value={draft.linkUrl || ""}
+            onChange={(e) => setDraft({ ...draft, linkUrl: e.target.value })}
+            placeholder="https://…"
+            data-testid="announcement-link-input"
+            className="w-full bg-surface border border-border rounded-xl px-3 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-scarlet/30 focus:border-scarlet"
+          />
+          <span className="text-[10px] text-text-muted">Members who tap this announcement in the Home banner open this page.</span>
         </label>
 
         <AnnouncementImagePicker

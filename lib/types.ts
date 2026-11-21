@@ -387,6 +387,8 @@ export type Post = {
   isPinned?: boolean;
   /** Optional announcement headline. */
   title?: string;
+  /** Optional HTTPS destination; the Home banner opens it when tapped. */
+  linkUrl?: string;
   createdAt?: any;
   updatedAt?: any;
 };

@@ -8,7 +8,7 @@
  * Club Feed. Admins with publishing rights see a "New" button.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Pin, ChevronRight, ChevronDown, X, Calendar, User, Plus } from "lucide-react";
+import { Bell, Pin, ChevronRight, ChevronDown, X, Calendar, User, Plus, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { Post } from "@/lib/types";
 import { getAnnouncementDisplay } from "./announcementDisplay";
@@ -16,6 +16,7 @@ import { announcementPosts } from "./postKinds";
 import { AnnouncementComposer, type AnnouncementDraft } from "./AnnouncementComposer";
 import { LinkifiedText } from "@/components/ui/LinkifiedText";
 import { isSafeImageSrc } from "@/lib/announcement-image";
+import { toSafeHttpsHref } from "@/lib/linkify";
 
 const COLLAPSED_COUNT = 3;
 
@@ -206,6 +207,7 @@ export function ClubAnnouncementsSection({
             text: editing.text,
             isPinned: editing.isPinned,
             imageUrl: editing.imageUrl,
+            linkUrl: editing.linkUrl,
           }}
           onClose={() => setEditing(null)}
           onPublish={(draft) => onUpdate(editing.id, draft)}
@@ -259,6 +261,19 @@ export function ClubAnnouncementsSection({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={selectedAnnouncement.imageUrl} alt="" className="w-full h-full object-cover" />
               </div>
+            )}
+
+            {toSafeHttpsHref(selectedAnnouncement.linkUrl) && (
+              <a
+                href={toSafeHttpsHref(selectedAnnouncement.linkUrl) as string}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="announcement-open-link"
+                className="self-start inline-flex items-center gap-1.5 min-h-[40px] px-4 rounded-xl bg-scarlet text-white text-xs font-bold hover:bg-deep-wine focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+              >
+                Open link
+                <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+              </a>
             )}
 
             <div
