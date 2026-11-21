@@ -381,6 +381,12 @@ export type Post = {
   authorId?: string;
   comments: PostComment[];
   isSystem?: boolean; // For birthday automated posts
+  /** Club announcement published by an admin (shown under Club Announcements, not the Feed). */
+  isAnnouncement?: boolean;
+  /** Pinned announcements are also highlighted in the Home top banner. */
+  isPinned?: boolean;
+  /** Optional announcement headline. */
+  title?: string;
   createdAt?: any;
   updatedAt?: any;
 };

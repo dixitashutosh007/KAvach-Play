@@ -2,16 +2,18 @@
  * Home top-banner slide model (`components/home/bannerSlides.ts`).
  *
  * Pure helpers (no React / Firebase) for:
- *  - building banner slides from EXISTING data sources (tournaments, pinned posts,
- *    feature promos, player birthdays) — no new announcement system;
+ *  - building banner slides from EXISTING data sources (pinned club
+ *    announcements, feature promos, player birthdays). Match / fixture content
+ *    is deliberately excluded (owner decision 2026-11-21);
  *  - today / tomorrow birthday highlights in the club timezone;
  *  - per-user dismissal bookkeeping keyed by a "period" so a dismissed banner does
  *    not reappear during the same banner period, but does when the content changes.
  */
-import type { AppConfig, Player, Post, Tournament } from "@/lib/types";
+import type { AppConfig, Player, Post } from "@/lib/types";
 import { getPlayerBirthdayStatus } from "@/lib/birthday-utils";
+import { pinnedAnnouncements } from "./postKinds";
 
-export type BannerKind = "tournament" | "notice" | "promo" | "season" | "birthday-today" | "birthday-tomorrow";
+export type BannerKind = "notice" | "promo" | "birthday-today" | "birthday-tomorrow";
 
 export interface BannerSlide {
   id: string;
@@ -102,8 +104,6 @@ export function buildBirthdaySlides(players: Player[] = [], today: ClubDay): Ban
         todayNames.length > 1
           ? "The whole club wishes our teammates a fantastic day on and off the field."
           : "The whole club wishes our teammate a fantastic day on and off the field.",
-      ctaText: "Send Wishes",
-      ctaDestination: "feed",
       dismissKey: `birthday-today:${today.dateString}`,
       dismissible: true,
     });
@@ -126,7 +126,6 @@ export function buildBirthdaySlides(players: Player[] = [], today: ClubDay): Ban
 }
 
 export interface BuildBannerSlidesInput {
-  tournaments?: Tournament[];
   announcements?: Post[];
   players?: Player[];
   appConfig?: AppConfig | null;
@@ -136,59 +135,37 @@ export interface BuildBannerSlidesInput {
 
 /** All candidate slides (before dismissal filtering). Birthdays first. */
 export function buildBannerSlides({
-  tournaments = [],
   announcements = [],
   players = [],
-  appConfig,
   isFeatureEnabled,
   today,
 }: BuildBannerSlidesInput): BannerSlide[] {
   const list: BannerSlide[] = [...buildBirthdaySlides(players, today)];
   const monthKey = today.dateString.slice(0, 7);
 
-  // 1. Tournament announcements
-  tournaments
-    .filter((t) => t.status === "Ongoing" || t.status === "Upcoming" || !t.status)
+  // 1. Pinned club announcements (admin chose "Show in top banner"); newest first, max 2
+  pinnedAnnouncements(announcements)
     .slice(0, 2)
-    .forEach((t) => {
+    .forEach((post) => {
+      const version = toSeconds((post as any).updatedAt) ?? toSeconds(post.createdAt) ?? "";
+      const body = (post.text || "").trim();
       list.push({
-        id: `tournament-${t.id}`,
-        kind: "tournament",
-        title: t.name || "KAvach Club Tournament",
-        subtitle: t.format ? `${t.format} Format` : "Official Club Championship",
-        description: (t as any).notes || "Compete with top players across teams and track stats live on the leaderboard.",
-        badge: t.status === "Ongoing" ? "Live Tournament" : "Upcoming Championship",
-        badgeColor: "gold",
-        ctaText: "View Fixtures",
-        ctaDestination: "matches",
-        targetId: t.id,
-        dismissKey: `tournament:${t.id}:${t.status || "active"}`,
+        id: `post-${post.id}`,
+        kind: "notice",
+        title: post.title?.trim() || "Club Announcement",
+        subtitle: post.authorName ? `By ${post.authorName}` : undefined,
+        description: body.slice(0, 110) + (body.length > 110 ? "..." : ""),
+        badge: "Club Notice",
+        badgeColor: "scarlet",
+        ctaText: "Read Notice",
+        ctaDestination: "announcements",
+        targetId: post.id,
+        dismissKey: `post:${post.id}:${version}`,
         dismissible: true,
       });
     });
 
-  // 2. Important club announcement (pinned / flagged post)
-  const pinned = announcements.filter((p) => (p as any).isPinned || (p as any).isAnnouncement);
-  if (pinned.length > 0) {
-    const top = pinned[0];
-    const version = toSeconds((top as any).updatedAt) ?? toSeconds(top.createdAt) ?? "";
-    list.push({
-      id: `post-${top.id}`,
-      kind: "notice",
-      title: (top as any).title || "Club Announcement",
-      subtitle: top.authorName ? `By ${top.authorName}` : undefined,
-      description: (top.text || "").slice(0, 110) + ((top.text || "").length > 110 ? "..." : ""),
-      badge: "Club Notice",
-      badgeColor: "scarlet",
-      ctaText: (top as any).matchId ? "View Match" : "Read Notice",
-      ctaDestination: (top as any).matchId ? "matches" : "announcements",
-      targetId: (top as any).matchId || top.id,
-      dismissKey: `post:${top.id}:${version}`,
-      dismissible: true,
-    });
-  }
-
-  // 3. Promotions (monthly period)
+  // 2. Promotions (monthly period)
   if (isFeatureEnabled("studio")) {
     list.push({
       id: "campaign-studio",
@@ -220,24 +197,15 @@ export function buildBannerSlides({
     });
   }
 
-  // 4. Fallback season card only when there is genuinely nothing else to show.
-  if (list.length === 0) {
-    list.push({
-      id: "campaign-general",
-      kind: "season",
-      title: `${appConfig?.clubName || "KAvach Cricket Club"} ${today.year} Season`,
-      subtitle: "Weekend League & Friendly Match Schedule",
-      description: "Confirm your availability for upcoming fixtures, stay in good standing, and follow club results.",
-      badge: "Active Season",
-      badgeColor: "scarlet",
-      ctaText: "Explore Matches",
-      ctaDestination: "matches",
-      dismissKey: `campaign-general:${today.year}`,
-      dismissible: true,
-    });
-  }
-
+  // No match / fixture slides and no fallback: an empty list hides the banner.
   return list;
+}
+
+/** Removes the given dismissal keys (used by "Undo" and "Show club highlights"). */
+export function restoreDismissed(map: DismissedMap, keys: string[]): DismissedMap {
+  const out: DismissedMap = { ...map };
+  for (const k of keys) delete out[k];
+  return out;
 }
 
 // ── Dismissal bookkeeping ────────────────────────────────────────────────────

@@ -313,6 +313,10 @@ describe("Banner: birthdays in the club timezone", () => {
     assert.ok(!today.title.includes("Off") && !today.title.includes("Merged"));
     assert.ok(!/1995|age/i.test(today.title + today.description));
   });
+  it("birthday slides have no call-to-action pointing at a missing screen", () => {
+    const [today] = buildBirthdaySlides(players, clubDayFromParts(2026, 11, 31));
+    assert.equal(today.ctaDestination, undefined);
+  });
   it("no birthdays → no birthday slides", () => {
     assert.equal(buildBirthdaySlides(players, clubDayFromParts(2026, 5, 15)).length, 0);
   });
@@ -320,20 +324,65 @@ describe("Banner: birthdays in the club timezone", () => {
     assert.equal(formatBirthdayNames(["A", "B", "C", "D"]), "A, B & 2 more");
     assert.equal(formatBirthdayNames(["A", "B"]), "A & B");
   });
-  it("birthday slides come first; season fallback only when nothing else exists", () => {
+  it("birthday slides come first; nothing to show → empty list (no fallback slide)", () => {
     const slides = buildBannerSlides({ players, isFeatureEnabled: () => false, today: clubDayFromParts(2026, 11, 31) });
     assert.deepEqual(slides.map((s) => s.kind), ["birthday-today", "birthday-tomorrow"]);
     const empty = buildBannerSlides({ isFeatureEnabled: () => false, today: clubDayFromParts(2026, 5, 15) });
-    assert.deepEqual(empty.map((s) => s.kind), ["season"]);
+    assert.deepEqual(empty, []);
   });
 });
 
-describe("Banner: per-user dismissal", () => {
-  const { buildBannerSlides, visibleSlides, pruneDismissed, parseDismissed, dismissStorageKey, clubDayFromParts, DISMISS_RETENTION_MS } = bannerSlides;
+describe("Banner: no match / fixture content", () => {
+  const { buildBannerSlides, clubDayFromParts } = bannerSlides;
+  const today = clubDayFromParts(2026, 10, 21);
+  it("tournaments and fixture links never produce slides", () => {
+    const slides = buildBannerSlides({
+      tournaments: [{ id: "t1", name: "Winter Cup", status: "Ongoing" }],
+      announcements: [{ id: "n1", text: "Match on Sunday", isAnnouncement: true, isPinned: true, matchId: "m1" }],
+      isFeatureEnabled: () => false,
+      today,
+    });
+    assert.ok(slides.every((s) => s.kind !== "tournament" && s.kind !== "season"));
+    assert.ok(slides.every((s) => s.ctaDestination !== "matches"));
+    assert.ok(!slides.some((s) => /fixture|view match/i.test(`${s.ctaText} ${s.title}`)));
+  });
+  it("banner source contains no tournament or season slide builders", () => {
+    const b = src("components/home/bannerSlides.ts");
+    assert.ok(!b.includes('kind: "tournament"'));
+    assert.ok(!b.includes('kind: "season"'));
+    assert.ok(!b.includes("View Fixtures"));
+    assert.ok(!b.includes("Explore Matches"));
+  });
+  it("Home no longer subscribes to tournaments for the banner", () => {
+    assert.match(src("app/page.tsx"), /const TOURNAMENT_TABS = new Set\(\["matches"\]\);/);
+  });
+});
+
+describe("Banner: pinned announcements only", () => {
+  const { buildBannerSlides, clubDayFromParts } = bannerSlides;
+  const today = clubDayFromParts(2026, 10, 21);
+  it("only announcements flagged for the banner appear (max 2)", () => {
+    const slides = buildBannerSlides({
+      announcements: [
+        { id: "p1", text: "AGM", isAnnouncement: true, isPinned: true },
+        { id: "p2", text: "Kit day", isAnnouncement: true, isPinned: false },
+        { id: "p3", text: "Pinned but not an announcement", isPinned: true },
+        { id: "p4", text: "Nets", isAnnouncement: true, isPinned: true },
+        { id: "p5", text: "Third pinned", isAnnouncement: true, isPinned: true },
+      ],
+      isFeatureEnabled: () => false,
+      today,
+    });
+    assert.deepEqual(slides.map((s) => s.id), ["post-p1", "post-p4"]);
+    assert.ok(slides.every((s) => s.ctaDestination === "announcements"));
+  });
+});
+
+describe("Banner: per-user dismissal, undo and restore", () => {
+  const { buildBannerSlides, visibleSlides, pruneDismissed, parseDismissed, dismissStorageKey, restoreDismissed, clubDayFromParts, DISMISS_RETENTION_MS } = bannerSlides;
   const today = clubDayFromParts(2026, 10, 20);
   const slides = buildBannerSlides({
-    announcements: [{ id: "n1", text: "AGM", isPinned: true, createdAt: { seconds: 100 } }],
-    tournaments: [{ id: "t1", name: "Winter Cup", status: "Upcoming" }],
+    announcements: [{ id: "n1", text: "AGM", isAnnouncement: true, isPinned: true, createdAt: { seconds: 100 } }],
     isFeatureEnabled: () => true,
     today,
   });
@@ -344,22 +393,25 @@ describe("Banner: per-user dismissal", () => {
     assert.equal(visible.length, slides.length - 1);
     assert.ok(!visible.includes(notice));
   });
-  it("an edited announcement or changed tournament status is a new period and reappears", () => {
+  it("undo / restore brings dismissed slides back", () => {
+    const all = Object.fromEntries(slides.map((s) => [s.dismissKey, 1]));
+    assert.equal(visibleSlides(slides, all).length, 0);
+    const restored = restoreDismissed(all, slides.map((s) => s.dismissKey));
+    assert.equal(visibleSlides(slides, restored).length, slides.length);
+    const undoOne = restoreDismissed(all, [slides[0].dismissKey]);
+    assert.equal(visibleSlides(slides, undoOne).length, 1);
+  });
+  it("an edited announcement is a new period and reappears", () => {
     const old = slides.find((s) => s.kind === "notice").dismissKey;
     const edited = buildBannerSlides({
-      announcements: [{ id: "n1", text: "AGM moved", isPinned: true, createdAt: { seconds: 100 }, updatedAt: { seconds: 200 } }],
+      announcements: [{ id: "n1", text: "AGM moved", isAnnouncement: true, isPinned: true, createdAt: { seconds: 100 }, updatedAt: { seconds: 200 } }],
       isFeatureEnabled: () => false,
       today,
     }).find((s) => s.kind === "notice").dismissKey;
     assert.notEqual(old, edited);
-    const t1 = slides.find((s) => s.kind === "tournament").dismissKey;
-    const t2 = buildBannerSlides({ tournaments: [{ id: "t1", name: "Winter Cup", status: "Ongoing" }], isFeatureEnabled: () => false, today })
-      .find((s) => s.kind === "tournament").dismissKey;
-    assert.notEqual(t1, t2);
   });
   it("promotions are dismissed per calendar month", () => {
-    const studio = slides.find((s) => s.id === "campaign-studio");
-    assert.equal(studio.dismissKey, "campaign-studio:2026-11");
+    assert.equal(slides.find((s) => s.id === "campaign-studio").dismissKey, "campaign-studio:2026-11");
   });
   it("storage is per user, tolerant of bad data, and pruned after the retention window", () => {
     assert.notEqual(dismissStorageKey("u1"), dismissStorageKey("u2"));
@@ -375,7 +427,6 @@ describe("Banner: per-user dismissal", () => {
 
 describe("Banner rendering", () => {
   const props = (overrides = {}) => ({
-    tournaments: [],
     announcements: [],
     players: [],
     currentUserId: "u1",
@@ -384,33 +435,43 @@ describe("Banner rendering", () => {
     ...overrides,
   });
 
+  it("nothing to show → renders nothing", () => {
+    assert.equal(render(React.createElement(CampaignHeroBanner, props())), "");
+  });
   it("a single slide shows no carousel controls but keeps the dismiss button", () => {
-    const html = render(React.createElement(CampaignHeroBanner, props()));
+    const html = render(React.createElement(CampaignHeroBanner, props({ isFeatureEnabled: (k) => k === "studio" })));
     assert.ok(html.includes('data-testid="banner-dismiss"'));
     assert.ok(!html.includes("banner-slide-indicator"));
     assert.ok(!html.includes("Next highlight"));
   });
   it("multiple slides show a one-line indicator, dots and desktop arrows", () => {
     const html = render(React.createElement(CampaignHeroBanner, props({ isFeatureEnabled: () => true })));
-    const ind = html.slice(html.indexOf('data-testid="banner-slide-indicator"') - 200, html.indexOf('data-testid="banner-slide-indicator"') + 200);
-    assert.ok(ind.includes("whitespace-nowrap"));
+    const i = html.indexOf('data-testid="banner-slide-indicator"');
+    assert.ok(html.slice(i - 200, i + 200).includes("whitespace-nowrap"));
     assert.match(text(html), /1\/2/);
     assert.ok(html.includes('aria-label="Next highlight"'));
     assert.equal((html.match(/aria-label="Show highlight \d of 2"/g) || []).length, 2);
   });
-  it("dismiss never triggers the slide's navigation", () => {
+  it("dismiss never triggers navigation; undo and restore exist", () => {
     const s = src("components/home/CampaignHeroBanner.tsx");
-    const fn = s.slice(s.indexOf("const dismiss ="), s.indexOf("if (!activeSlide) return null;"));
+    const fn = s.slice(s.indexOf("const dismiss ="), s.indexOf("const undoDismiss"));
     assert.ok(fn.includes("e.stopPropagation()"));
     assert.ok(!fn.includes("onNavigate"));
+    assert.ok(s.includes('data-testid="banner-undo"'));
+    assert.ok(s.includes('data-testid="banner-restore"'));
+    assert.match(s, /Show club highlights \(\{allSlides\.length\}\)/);
   });
   it("auto-rotation pauses for hover, focus, touch, hidden tab and reduced motion", () => {
     const s = src("components/home/CampaignHeroBanner.tsx");
     assert.match(s, /isHovered \|\| isFocusWithin \|\| isDocumentHidden \|\| prefersReducedMotion === true \|\| now < touchPausedUntil/);
   });
+  it("banner is not hidden on any screen size", () => {
+    const home = src("components/HomeTab.tsx");
+    const i = home.indexOf("<CampaignHeroBanner");
+    assert.ok(!/hidden (sm|md|lg):/.test(home.slice(i - 200, i)));
+  });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
 describe("Admin Match Center uses the shared card system without exposing admin controls to players", () => {
   const s = src("components/MatchesTab.tsx");
   it("admin card renders MatchCardHeader and shared surfaces", () => {

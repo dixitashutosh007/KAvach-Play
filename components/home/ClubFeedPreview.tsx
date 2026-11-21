@@ -1,18 +1,24 @@
 "use client";
 
-import { MessageSquare, ChevronRight, User } from "lucide-react";
+/**
+ * Club Feed preview (`components/home/ClubFeedPreview.tsx`).
+ *
+ * Ad-hoc club posts (admin and automatic posts such as badge awards). Club
+ * announcements are excluded — they live only under Club Announcements.
+ */
+import { useMemo, useState } from "react";
+import { MessageSquare, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import { Post } from "@/lib/types";
+import { feedPosts } from "./postKinds";
 
-export function ClubFeedPreview({
-  posts = [],
-  onNavigateToFeed,
-}: {
-  posts: Post[];
-  onNavigateToFeed: () => void;
-}) {
-  // Show 2-3 recent community posts
-  const recentPosts = posts.slice(0, 3);
+const COLLAPSED_COUNT = 3;
+const EXPANDED_COUNT = 20;
+
+export function ClubFeedPreview({ posts = [] }: { posts: Post[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const feed = useMemo(() => feedPosts(posts), [posts]);
+  const recentPosts = feed.slice(0, expanded ? EXPANDED_COUNT : COLLAPSED_COUNT);
 
   const getPostDateString = (post: Post) => {
     try {
@@ -28,6 +34,7 @@ export function ClubFeedPreview({
 
   return (
     <section
+      id="club-feed"
       data-testid="club-feed-preview-section"
       aria-label="Club Community Feed"
       className="w-full flex flex-col gap-3.5"
@@ -42,14 +49,18 @@ export function ClubFeedPreview({
           </h2>
         </div>
 
-        <button
-          type="button"
-          onClick={onNavigateToFeed}
-          className="min-h-[44px] inline-flex items-center gap-1 text-xs font-bold text-scarlet hover:text-deep-wine transition px-1 cursor-pointer"
-        >
-          <span>All Posts ({posts.length})</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        {feed.length > COLLAPSED_COUNT && (
+          <button
+            type="button"
+            data-testid="feed-toggle"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="min-h-[44px] inline-flex items-center gap-1 text-xs font-bold text-scarlet hover:text-deep-wine transition px-1 cursor-pointer"
+          >
+            <span>{expanded ? "Show fewer" : `All Posts (${feed.length})`}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {recentPosts.length > 0 ? (
@@ -115,7 +126,7 @@ export function ClubFeedPreview({
         </div>
       ) : (
         <div className="bg-surface border border-border rounded-xl p-4 text-center text-xs text-text-muted">
-          No club posts shared yet. Be the first to share an update!
+          No club posts yet.
         </div>
       )}
     </section>

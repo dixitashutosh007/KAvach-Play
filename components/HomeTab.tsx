@@ -36,6 +36,7 @@ import {
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/components/AuthProvider";
 
 // Modular Phase 2.1 Subcomponents
 import { PlayerHomeHeader } from "./home/PlayerHomeHeader";
@@ -86,6 +87,32 @@ export function HomeTab({
     [players, currentUserId, appUser]
   );
   const mePlayer = myPlayers[0] || null;
+
+  // Club announcements: publishing is offered to super admins (verified claim)
+  // and Club Admins. Firestore rules independently restrict post creation to admins.
+  const { hasAdminClaim } = useAuth();
+  const canPublishAnnouncements = Boolean(hasAdminClaim || appUser?.isClubAdmin);
+  const [announcementToOpen, setAnnouncementToOpen] = useState<string | null>(null);
+  const clearAnnouncementToOpen = useCallback(() => setAnnouncementToOpen(null), []);
+  const handlePublishAnnouncement = async (draft: { title: string; text: string; isPinned: boolean }) => {
+    if (!canPublishAnnouncements || !store.addPost) return false;
+    const id = await store.addPost({
+      text: draft.text,
+      ...(draft.title ? { title: draft.title } : {}),
+      isAnnouncement: true,
+      isPinned: draft.isPinned,
+      authorName:
+        resolveGreetingName(mePlayer?.name, appUser?.name, currentUserName) ||
+        appConfig?.clubName ||
+        "Club Management",
+      authorId: currentUserId,
+    });
+    if (id) {
+      toast("Announcement published", "success");
+      return true;
+    }
+    return false;
+  };
 
   // Feature gate helper
   const isFeatureEnabled = (key: any) => {
@@ -194,6 +221,16 @@ export function HomeTab({
 
   // Generic navigation dispatcher
   const handleNavigate = (tab: string, targetId?: string) => {
+    // Announcements and the club feed live on Home itself (there is no separate tab).
+    if (tab === "announcements") {
+      if (targetId) setAnnouncementToOpen(targetId);
+      else document.getElementById("club-announcements")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (tab === "feed") {
+      document.getElementById("club-feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (tab === "finance") {
       onNavigateToPayments?.();
     } else if (tab === "matches") {
@@ -395,7 +432,8 @@ export function HomeTab({
                     key={p.id}
                     onClick={() => {
                       setSearchQuery("");
-                      handleNavigate("feed");
+                      if (p.isAnnouncement === true) handleNavigate("announcements", p.id);
+                      else handleNavigate("feed");
                     }}
                     className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between cursor-pointer transition"
                   >
@@ -533,7 +571,6 @@ export function HomeTab({
 
           {/* 5. Campaign-Led Hero Banner (Section 4.B) */}
           <CampaignHeroBanner
-            tournaments={store.tournaments}
             announcements={posts}
             players={players}
             currentUserId={currentUserId}
@@ -565,17 +602,17 @@ export function HomeTab({
           {/* 9. Club Announcements (Section 4.D) */}
           <ClubAnnouncementsSection
             posts={posts}
-            onNavigateToFeed={() => handleNavigate("feed")}
+            canPublish={canPublishAnnouncements}
+            onPublish={handlePublishAnnouncement}
+            openAnnouncementId={announcementToOpen}
+            onOpenHandled={clearAnnouncementToOpen}
           />
 
           {/* 10. Team Birthdays Carousel (Section 4.E) */}
           <BirthdaysCarousel players={players} referenceDate={clubToday} />
 
           {/* 11. Club Community Feed Preview (Section 4.H) */}
-          <ClubFeedPreview
-            posts={posts}
-            onNavigateToFeed={() => handleNavigate("feed")}
-          />
+          <ClubFeedPreview posts={posts} />
         </>
       )}
 

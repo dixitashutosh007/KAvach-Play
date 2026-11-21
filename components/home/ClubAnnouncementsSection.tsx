@@ -1,40 +1,57 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Pin, ChevronRight, X, Calendar, User } from "lucide-react";
+/**
+ * Club Announcements (`components/home/ClubAnnouncementsSection.tsx`).
+ *
+ * Shows ONLY posts an admin published as a club announcement
+ * (`isAnnouncement === true`), newest first. Everything else belongs to the
+ * Club Feed. Admins with publishing rights see a "New" button.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bell, Pin, ChevronRight, ChevronDown, X, Calendar, User, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { Post } from "@/lib/types";
 import { getAnnouncementDisplay } from "./announcementDisplay";
+import { announcementPosts } from "./postKinds";
+import { AnnouncementComposer, type AnnouncementDraft } from "./AnnouncementComposer";
+
+const COLLAPSED_COUNT = 3;
 
 export function ClubAnnouncementsSection({
   posts = [],
-  onNavigateToFeed,
+  canPublish = false,
+  onPublish,
+  openAnnouncementId,
+  onOpenHandled,
 }: {
   posts: Post[];
-  onNavigateToFeed: () => void;
+  /** Show the admin composer (UI only; Firestore rules enforce admin-only creation). */
+  canPublish?: boolean;
+  onPublish?: (draft: AnnouncementDraft) => Promise<boolean>;
+  /** When set (e.g. from the top banner), scroll here and open that announcement. */
+  openAnnouncementId?: string | null;
+  onOpenHandled?: () => void;
 }) {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
 
-  // Filter posts that qualify as announcements or important notices
-  const announcements = posts
-    .filter(
-      (p) =>
-        (p as any).isAnnouncement ||
-        (p as any).isPinned ||
-        (p as any).title?.toLowerCase().includes("announcement") ||
-        (p as any).title?.toLowerCase().includes("notice") ||
-        p.text.toLowerCase().includes("announcement") ||
-        p.text.toLowerCase().includes("notice")
-    )
-    .slice(0, 3);
+  const announcements = useMemo(() => announcementPosts(posts), [posts]);
+  const displayItems = showAll ? announcements : announcements.slice(0, COLLAPSED_COUNT);
 
-  // If no explicit announcements found, take the top 2 recent posts
-  const displayItems = announcements.length > 0 ? announcements : posts.slice(0, 2);
+  useEffect(() => {
+    if (!openAnnouncementId) return;
+    const target = announcements.find((p) => p.id === openAnnouncementId);
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target) setSelectedAnnouncement(target);
+    onOpenHandled?.();
+  }, [openAnnouncementId, announcements, onOpenHandled]);
 
   const getPostDateString = (post: Post) => {
     try {
       const raw =
-        typeof post.createdAt === "object" && "seconds" in post.createdAt
+        typeof post.createdAt === "object" && post.createdAt && "seconds" in post.createdAt
           ? (post.createdAt as any).seconds * 1000
           : post.createdAt;
       return format(new Date(raw), "MMM d, yyyy");
@@ -45,35 +62,40 @@ export function ClubAnnouncementsSection({
 
   return (
     <section
+      ref={sectionRef}
+      id="club-announcements"
       data-testid="club-announcements-section"
       aria-label="Club Announcements"
-      className="w-full flex flex-col gap-3.5"
+      className="w-full flex flex-col gap-3 scroll-mt-24"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-soft-blush flex items-center justify-center">
-            <Bell className="w-3.5 h-3.5 text-scarlet" />
+            <Bell className="w-3.5 h-3.5 text-scarlet" aria-hidden="true" />
           </div>
           <h2 className="text-xs sm:text-sm font-bold text-text-primary uppercase tracking-wider font-heading">
             Club Announcements
           </h2>
         </div>
 
-        <button
-          type="button"
-          onClick={onNavigateToFeed}
-          className="min-h-[44px] inline-flex items-center gap-1 text-xs font-bold text-scarlet hover:text-deep-wine transition px-1 cursor-pointer"
-        >
-          <span>All Notices</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        {canPublish && onPublish && (
+          <button
+            type="button"
+            data-testid="new-announcement-button"
+            onClick={() => setComposerOpen(true)}
+            className="min-h-[40px] inline-flex items-center gap-1 px-3 rounded-xl bg-scarlet text-white text-xs font-bold hover:bg-deep-wine transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+          >
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>New</span>
+          </button>
+        )}
       </div>
 
       {displayItems.length > 0 ? (
         <div className="flex flex-col gap-2.5">
           {displayItems.map((post) => {
             const display = getAnnouncementDisplay(post as any);
-            const isImportant = display.category === "Important";
+            const isPinned = post.isPinned === true;
 
             return (
               <button
@@ -83,28 +105,26 @@ export function ClubAnnouncementsSection({
                 onClick={() => setSelectedAnnouncement(post)}
                 aria-label={`Read notice: ${display.headline || display.summary?.slice(0, 60) || "Club notice"}`}
                 className={`w-full text-left bg-surface border rounded-xl p-3 sm:p-3.5 transition cursor-pointer flex items-start gap-3 shadow-xs hover:border-scarlet/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50 ${
-                  isImportant ? "border-scarlet/30" : "border-border hover:bg-canvas-warm/40"
+                  isPinned ? "border-scarlet/30" : "border-border hover:bg-canvas-warm/40"
                 }`}
               >
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                    isImportant ? "bg-scarlet/15 text-scarlet" : "bg-surface-hover text-text-muted"
+                    isPinned ? "bg-scarlet/15 text-scarlet" : "bg-surface-hover text-text-muted"
                   }`}
                   aria-hidden="true"
                 >
-                  {isImportant ? <Pin className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                  {isPinned ? <Pin className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {isImportant && (
+                    {isPinned && (
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-scarlet text-white">
                         Important
                       </span>
                     )}
-                    <span className="text-[10px] font-bold text-text-muted">
-                      {getPostDateString(post)}
-                    </span>
+                    <span className="text-[10px] font-bold text-text-muted">{getPostDateString(post)}</span>
                   </div>
 
                   {display.headline && (
@@ -131,14 +151,30 @@ export function ClubAnnouncementsSection({
               </button>
             );
           })}
+
+          {announcements.length > COLLAPSED_COUNT && (
+            <button
+              type="button"
+              data-testid="announcements-toggle"
+              onClick={() => setShowAll((v) => !v)}
+              aria-expanded={showAll}
+              className="self-center inline-flex items-center gap-1 min-h-[40px] px-3 text-xs font-bold text-scarlet hover:text-deep-wine cursor-pointer"
+            >
+              <span>{showAll ? "Show fewer" : `Show all (${announcements.length})`}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAll ? "rotate-180" : ""}`} aria-hidden="true" />
+            </button>
+          )}
         </div>
       ) : (
-        <div className="bg-surface border border-border rounded-xl p-4 text-center text-xs text-text-muted">
-          No announcements published at this time.
+        <div data-testid="announcements-empty" className="bg-surface border border-border rounded-xl p-4 text-center text-xs text-text-muted">
+          No club announcements right now.
         </div>
       )}
 
-      {/* Full Announcement Modal */}
+      {composerOpen && onPublish && (
+        <AnnouncementComposer onClose={() => setComposerOpen(false)} onPublish={onPublish} />
+      )}
+
       {selectedAnnouncement && (
         <div
           role="dialog"
@@ -146,29 +182,26 @@ export function ClubAnnouncementsSection({
           aria-labelledby="announcement-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="bg-surface border border-border rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface border border-border rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl flex flex-col gap-4">
             <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  {(selectedAnnouncement as any).isPinned && (
+                  {selectedAnnouncement.isPinned && (
                     <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-scarlet text-white">
                       Important Notice
                     </span>
                   )}
                   <span className="text-xs text-text-muted font-bold flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-scarlet" />
+                    <Calendar className="w-3 h-3 text-scarlet" aria-hidden="true" />
                     {getPostDateString(selectedAnnouncement)}
                   </span>
                 </div>
-                <h3
-                  id="announcement-modal-title"
-                  className="text-base sm:text-lg font-black font-heading text-text-primary"
-                >
+                <h3 id="announcement-modal-title" className="text-base sm:text-lg font-black font-heading text-text-primary">
                   {getAnnouncementDisplay(selectedAnnouncement as any).headline || "Club Notice"}
                 </h3>
                 {selectedAnnouncement.authorName && (
                   <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
-                    <User className="w-3 h-3 text-text-muted" />
+                    <User className="w-3 h-3 text-text-muted" aria-hidden="true" />
                     <span>Posted by {selectedAnnouncement.authorName}</span>
                   </p>
                 )}
@@ -180,7 +213,7 @@ export function ClubAnnouncementsSection({
                 aria-label="Close announcement"
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-surface-hover text-text-muted hover:text-text-primary transition cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 

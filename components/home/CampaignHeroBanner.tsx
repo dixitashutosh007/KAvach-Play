@@ -3,20 +3,21 @@
 /**
  * Player Home top banner (`components/home/CampaignHeroBanner.tsx`).
  *
- * Shows important club notices, tournaments, promotions and today's / tomorrow's
- * birthdays from existing data. Behaviour:
+ * Shows pinned club announcements, promotions and today's / tomorrow's birthdays.
+ * Match / fixture content is intentionally not shown here. Behaviour:
  *  - auto-rotates (paused on hover, keyboard focus, touch, hidden tab, or when the
  *    user prefers reduced motion);
  *  - swipe on touch screens, arrow buttons on wider screens, dots everywhere,
  *    ←/→ keys while focused;
  *  - every slide can be dismissed individually; dismissal is stored per user in
- *    this browser and keyed to the slide's period (see bannerSlides.ts);
+ *    this browser and keyed to the slide's period (see bannerSlides.ts). A
+ *    dismissal can be undone for a few seconds, and when every highlight is
+ *    hidden a "Show club highlights" link restores them;
  *  - a single slide shows no carousel controls; no slides renders nothing.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  Trophy,
   ChevronLeft,
   ChevronRight,
   ArrowRight,
@@ -26,8 +27,9 @@ import {
   Cake,
   Gift,
   X,
+  RotateCcw,
 } from "lucide-react";
-import type { AppConfig, Player, Post, Tournament } from "@/lib/types";
+import type { AppConfig, Player, Post } from "@/lib/types";
 import { getClubCalendarDate } from "@/lib/utils";
 import {
   buildBannerSlides,
@@ -35,6 +37,7 @@ import {
   dismissStorageKey,
   parseDismissed,
   pruneDismissed,
+  restoreDismissed,
   visibleSlides,
   type BannerSlide,
   type DismissedMap,
@@ -43,9 +46,9 @@ import {
 const AUTO_ROTATE_MS = 6000;
 const RESUME_AFTER_TOUCH_MS = 8000;
 const SWIPE_THRESHOLD_PX = 40;
+const UNDO_WINDOW_MS = 6000;
 
 export function CampaignHeroBanner({
-  tournaments = [],
   announcements = [],
   players = [],
   currentUserId = "",
@@ -53,7 +56,6 @@ export function CampaignHeroBanner({
   isFeatureEnabled,
   onNavigate,
 }: {
-  tournaments?: Tournament[];
   announcements?: Post[];
   players?: Player[];
   currentUserId?: string;
@@ -69,6 +71,7 @@ export function CampaignHeroBanner({
   const [touchPausedUntil, setTouchPausedUntil] = useState(0);
   const [isDocumentHidden, setIsDocumentHidden] = useState(false);
   const [dismissed, setDismissed] = useState<DismissedMap>({});
+  const [lastDismissed, setLastDismissed] = useState<BannerSlide | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   // Club calendar day (Asia/Kolkata) for birthdays and banner periods.
@@ -96,8 +99,8 @@ export function CampaignHeroBanner({
   }, []);
 
   const allSlides = useMemo(
-    () => buildBannerSlides({ tournaments, announcements, players, appConfig, isFeatureEnabled, today }),
-    [tournaments, announcements, players, appConfig, isFeatureEnabled, today],
+    () => buildBannerSlides({ announcements, players, appConfig, isFeatureEnabled, today }),
+    [announcements, players, appConfig, isFeatureEnabled, today],
   );
   const slides = useMemo(() => visibleSlides(allSlides, dismissed), [allSlides, dismissed]);
   const slideCount = slides.length;
@@ -171,11 +174,7 @@ export function CampaignHeroBanner({
     }
   };
 
-  const dismiss = (slide: BannerSlide, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!slide.dismissible) return;
-    const next: DismissedMap = { ...dismissed, [slide.dismissKey]: Date.now() };
+  const persistDismissed = (next: DismissedMap) => {
     setDismissed(next);
     try {
       window.localStorage.setItem(dismissStorageKey(currentUserId), JSON.stringify(next));
@@ -184,7 +183,71 @@ export function CampaignHeroBanner({
     }
   };
 
-  if (!activeSlide) return null;
+  const dismiss = (slide: BannerSlide, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!slide.dismissible) return;
+    persistDismissed({ ...dismissed, [slide.dismissKey]: Date.now() });
+    setLastDismissed(slide);
+  };
+
+  const undoDismiss = () => {
+    if (!lastDismissed) return;
+    persistDismissed(restoreDismissed(dismissed, [lastDismissed.dismissKey]));
+    setLastDismissed(null);
+  };
+
+  const restoreAll = () => {
+    persistDismissed(restoreDismissed(dismissed, allSlides.map((s) => s.dismissKey)));
+    setLastDismissed(null);
+    setCurrentIndex(0);
+  };
+
+  // The undo offer expires after a few seconds.
+  useEffect(() => {
+    if (!lastDismissed) return;
+    const t = setTimeout(() => setLastDismissed(null), UNDO_WINDOW_MS);
+    return () => clearTimeout(t);
+  }, [lastDismissed]);
+
+  const undoBar = lastDismissed ? (
+    <div
+      role="status"
+      data-testid="banner-undo"
+      className="w-full flex items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs font-medium text-text-secondary shadow-xs"
+    >
+      <span className="truncate">Highlight hidden</span>
+      <button
+        type="button"
+        onClick={undoDismiss}
+        className="inline-flex items-center gap-1 min-h-[36px] px-2 rounded-lg font-bold text-scarlet hover:bg-scarlet/10 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+      >
+        <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+        Undo
+      </button>
+    </div>
+  ) : null;
+
+  if (!activeSlide) {
+    // Nothing to show at all → render nothing. Everything dismissed → offer a way back.
+    if (allSlides.length === 0) return null;
+    return (
+      <div className="w-full flex flex-col gap-2">
+        {undoBar}
+        {!lastDismissed && (
+          <button
+            type="button"
+            data-testid="banner-restore"
+            onClick={restoreAll}
+            className="self-start inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-full border border-border bg-surface text-xs font-bold text-scarlet hover:border-scarlet/40 shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+          >
+            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            Show club highlights ({allSlides.length})
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const isBirthday = activeSlide.kind === "birthday-today" || activeSlide.kind === "birthday-tomorrow";
   const isBirthdayToday = activeSlide.kind === "birthday-today";
@@ -206,7 +269,6 @@ export function CampaignHeroBanner({
   const renderBadgeIcon = (slide: BannerSlide) => {
     if (slide.kind === "birthday-today") return <Cake className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
     if (slide.kind === "birthday-tomorrow") return <Gift className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
-    if (slide.kind === "tournament") return <Trophy className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
     if (slide.badge.includes("Store")) return <ShoppingBag className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
     if (slide.badge.includes("Training")) return <Video className="w-3.5 h-3.5 text-white" aria-hidden="true" />;
     return <Sparkles className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
@@ -217,6 +279,8 @@ export function CampaignHeroBanner({
     : "bg-gradient-to-br from-deep-wine via-[#8B1A2C] to-scarlet";
 
   return (
+    <div className="w-full flex flex-col gap-2">
+    {undoBar}
     <section
       data-testid="campaign-hero-banner"
       data-slide-kind={activeSlide.kind}
@@ -369,5 +433,6 @@ export function CampaignHeroBanner({
         </div>
       </div>
     </section>
+    </div>
   );
 }

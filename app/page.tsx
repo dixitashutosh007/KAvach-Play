@@ -307,7 +307,7 @@ export default function Home() {
   const MERCH_TABS = new Set(["club"]);
   const POLL_TABS = new Set(["club"]);
   const BADGE_TABS = new Set(["club", "home", "profile"]);
-  const TOURNAMENT_TABS = new Set(["matches", "home"]); // Home banner shows tournament campaigns
+  const TOURNAMENT_TABS = new Set(["matches"]);
   const SUB_PLAN_TABS = new Set(["studio", "club"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
   const FEE_PLAN_TABS = new Set(["matches", "finance", "club"]);
