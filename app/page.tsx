@@ -10,7 +10,7 @@
 "use client";
 
 import { useStore } from "@/hooks/useStore";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -191,6 +191,11 @@ export default function Home() {
       ? store.appUsers.find((u) => u.id === user.uid)
       : null;
   const isSuperAdminUser = !!hasAdminClaim;
+  // Stable resolved player id for scoping player-only subscriptions.
+  const scopedPlayerId = useMemo(
+    () => resolvePlayerForUser(store.players, user?.uid, currentUserObj)?.id || null,
+    [store.players, user?.uid, currentUserObj],
+  );
   const isAdminUser =
     store.isLoaded &&
     user &&
@@ -349,7 +354,9 @@ export default function Home() {
       store.detachDomain?.("badgeTypeDefs");
     }
 
-    const playerScope = isAdminUser ? undefined : user?.uid;
+    // Players load only their own payment records. Records are keyed by the PLAYER
+    // id, which differs from the login uid for most linked players (Google or phone).
+    const playerScope = isAdminUser ? undefined : scopedPlayerId || user?.uid;
     if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.(playerScope);
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
     if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
@@ -371,7 +378,7 @@ export default function Home() {
       // ARCH-001: Teardown on unmount / navigation
       store.detachAllLazy?.();
     };
-  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain, store.refreshNonce]);
+  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain, store.refreshNonce, scopedPlayerId]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
@@ -402,6 +409,7 @@ export default function Home() {
 
 
   const isMobileAuth = !!user?.phoneNumber;
+  const isGoogleLogin = !!user?.providerData?.some((p) => p.providerId === "google.com");
   const currentPlayerObj = resolvePlayerForUser(
     store.players,
     user?.uid,
@@ -497,16 +505,25 @@ export default function Home() {
     setIsRegistering(true);
     try {
       const idToken = await user.getIdToken();
-      const res = await fetch("/api/player/link-account", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          playerId: existingMatch.id,
-        }),
-      });
+      // Phone logins link through the verified phone number; Google logins
+      // through the Google-verified email. Identity always comes from the
+      // verified ID token on the server — never from client-side writes.
+      const viaGoogle = !existingPlayerWithSamePhone && isGoogleLogin;
+      const res = viaGoogle
+        ? await fetch("/api/player/link-google", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` },
+          })
+        : await fetch("/api/player/link-account", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              playerId: existingMatch.id,
+            }),
+          });
 
       const data = await res.json();
       if (!res.ok) {
@@ -1090,10 +1107,13 @@ export default function Home() {
             {!effectiveIsAdminMode && !player && store.playersLoaded && (
               <ProfileLinkNotice
                 signedInWithPhone={isMobileAuth}
+                signedInWithGoogle={!isMobileAuth && isGoogleLogin}
                 candidate={
                   existingPlayerWithSamePhone
                     ? { id: existingPlayerWithSamePhone.id, name: existingPlayerWithSamePhone.name }
-                    : null
+                    : isGoogleLogin && existingPlayerWithSameEmail
+                      ? { id: existingPlayerWithSameEmail.id, name: existingPlayerWithSameEmail.name }
+                      : null
                 }
                 isLinking={isRegistering}
                 onLink={handleSyncAccount}

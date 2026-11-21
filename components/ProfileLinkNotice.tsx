@@ -9,8 +9,10 @@
  * is not linked to their player record previously had no way to link and saw
  * "Please complete or link your player profile" on every availability tap.
  *
- * This notice never links automatically. "Link" calls the existing server
- * endpoint, which verifies the phone number inside the Firebase ID token.
+ * This notice never links automatically. "Link" calls a server endpoint that
+ * verifies identity from the Firebase ID token: the verified phone number
+ * (/api/player/link-account) or the Google-verified email
+ * (/api/player/link-google).
  */
 import { Link2, Loader2, UserX } from "lucide-react";
 
@@ -18,23 +20,26 @@ export type ProfileLinkCandidate = { id: string; name: string } | null;
 
 export function ProfileLinkNotice({
   signedInWithPhone,
+  signedInWithGoogle = false,
   candidate,
   isLinking,
   onLink,
 }: {
   signedInWithPhone: boolean;
-  /** Player record whose mobile matches the VERIFIED login phone number. */
+  signedInWithGoogle?: boolean;
+  /** Player record matching the login's verified mobile number or Google email. */
   candidate: ProfileLinkCandidate;
   isLinking: boolean;
   onLink: () => void;
 }) {
   let body: React.ReactNode;
-  if (signedInWithPhone && candidate) {
+  if ((signedInWithPhone || signedInWithGoogle) && candidate) {
     body = (
       <>
         <p>
-          We found the player record <strong className="text-text-primary">{candidate.name}</strong> with the same
-          mobile number as this login. Link it to mark availability and see your fees.
+          We found the player record <strong className="text-text-primary">{candidate.name}</strong> with the same{" "}
+          {signedInWithPhone ? "mobile number" : "Google email"} as this login. Link it to mark availability and see
+          your fees.
         </p>
         <button
           type="button"
@@ -48,11 +53,18 @@ export function ProfileLinkNotice({
         </button>
       </>
     );
+  } else if (signedInWithGoogle) {
+    body = (
+      <p>
+        No player record has the email of this Google account. Ask a Club Admin to add this email to your player
+        record, or sign in with the mobile number on your player record (OTP).
+      </p>
+    );
   } else if (!signedInWithPhone) {
     body = (
       <p>
-        Player records are linked using a verified mobile number, and this login uses email. Sign out and sign in with
-        the mobile number on your player record (OTP), or ask a Club Admin to check your player record.
+        Player records are linked using a verified mobile number or a Google account. Sign in with Google or with the
+        mobile number on your player record (OTP), or ask a Club Admin to check your player record.
       </p>
     );
   } else {

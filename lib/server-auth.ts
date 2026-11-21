@@ -70,6 +70,10 @@ export type AuthGuardResult =
       ok: true;
       uid: string;
       email?: string;
+      /** True only when the identity provider verified `email` (from the verified ID token). */
+      emailVerified?: boolean;
+      /** Firebase sign-in provider of this token, e.g. "google.com" or "phone". */
+      signInProvider?: string;
       phoneNumber?: string;
       playerId?: string;
       status?: string;
@@ -200,6 +204,8 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
       ok: true,
       uid: req.headers.get("x-test-uid")!,
       email: req.headers.get("x-test-email") || "test@kavachcricket.com",
+      emailVerified: req.headers.get("x-test-email-verified") === "true",
+      signInProvider: req.headers.get("x-test-sign-in-provider") || undefined,
       phoneNumber: req.headers.get("x-test-phone") || undefined,
       playerId: req.headers.get("x-test-player-id") || undefined,
       status: testStatus,
@@ -267,6 +273,8 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
     ok: true,
     uid: decoded.uid,
     email: decoded.email,
+    emailVerified: decoded.email_verified === true,
+    signInProvider: typeof decoded.firebase?.sign_in_provider === "string" ? decoded.firebase.sign_in_provider : undefined,
     phoneNumber: decoded.phone_number,
     playerId: accountResult.playerId,
     status: accountResult.status,

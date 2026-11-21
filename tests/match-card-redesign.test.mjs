@@ -226,38 +226,25 @@ describe("Admin Match Center card", () => {
   });
 });
 
-describe("Club Match category (no ribbon, practice-fee default)", () => {
-  it("is offered alongside Practice and Tournament", () => {
-    assert.deepEqual(MATCH_TYPES, ["Practice", "Tournament", "Club Match"]);
-  });
-  it("renders no category ribbon and still shows the format badge", () => {
-    const html = render(React.createElement(PlayerMatchCard, {
-      match: mk({ matchType: "Club Match", format: "T20" }), ground, personalPaymentStatus: paid,
-      availability: "Pending", onSelectMatch: () => {}, onRsvp: async () => {},
-    }));
-    assert.ok(!html.includes("category-ribbon-m1"));
-    assert.ok(html.includes('data-format-tone="t20"'));
-  });
-  it("auto-fills the practice fee for Practice and Club Match, tournament fee for Tournament", () => {
-    const g = { practiceFee: 6000, tournamentFee: 9000 };
-    assert.equal(groundFeeForMatchType(g, "Practice"), 6000);
-    assert.equal(groundFeeForMatchType(g, "Club Match"), 6000);
-    assert.equal(groundFeeForMatchType(g, "Tournament"), 9000);
-    assert.equal(groundFeeForMatchType(null, "Tournament"), 0);
-    assert.equal(groundFeeForMatchType({}, "Club Match"), 0);
-  });
-  it("type, Firestore rules, admin form and sheet editor all accept the new category", () => {
-    assert.match(src("lib/types.ts"), /matchType: "Practice" \| "Tournament" \| "Club Match";/);
-    assert.match(src("firestore.rules"), /data\.matchType in \['Practice', 'Tournament', 'Club Match'\]/);
+describe("Match categories: Practice and Tournament only", () => {
+  it("add/edit match offer exactly Practice and Tournament", () => {
+    assert.deepEqual(MATCH_TYPES, ["Practice", "Tournament"]);
     assert.match(src("components/MatchesTab.tsx"), /\{MATCH_TYPES\.map\(\(type\) => \(/);
     assert.match(src("components/MatchSheetView.tsx"), /\{MATCH_TYPES\.map\(\(t\) => \(/);
   });
-  it("fee selection is shared, not duplicated per screen", () => {
-    for (const f of ["components/MatchesTab.tsx", "components/MatchSheetView.tsx"]) {
-      const s2 = src(f);
-      assert.ok(s2.includes("groundFeeForMatchType("), f);
-      assert.ok(!/=== "Practice" \? \(ground\.practiceFee/.test(s2), f);
+  it("no 'Club Match' option anywhere in the type, rules or screens", () => {
+    for (const f of ["lib/types.ts", "firestore.rules", "lib/match-category.ts", "components/MatchesTab.tsx", "components/MatchSheetView.tsx"]) {
+      const code = src(f).replace(/\/\*[\s\S]*?\*\//g, "");
+      assert.ok(!code.includes("Club Match"), f);
     }
+    assert.match(src("lib/types.ts"), /matchType: "Practice" \| "Tournament";/);
+    assert.match(src("firestore.rules"), /data\.matchType in \['Practice', 'Tournament'\]/);
+  });
+  it("fee auto-fill: practice fee for Practice, tournament fee for Tournament", () => {
+    const g = { practiceFee: 6000, tournamentFee: 9000 };
+    assert.equal(groundFeeForMatchType(g, "Practice"), 6000);
+    assert.equal(groundFeeForMatchType(g, "Tournament"), 9000);
+    assert.equal(groundFeeForMatchType(null, "Tournament"), 0);
   });
   it("only Tournament matches keep a tournament link in the sheet editor", () => {
     assert.match(src("components/MatchSheetView.tsx"), /if \(newType !== "Tournament"\) setField\(match\.id, "tournamentId", ""\);/);

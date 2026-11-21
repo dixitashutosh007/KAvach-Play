@@ -231,7 +231,7 @@ describe("Pull-to-refresh", () => {
     const store = src("hooks/useStore.ts");
     assert.match(store, /if \(refreshInFlightRef\.current\) return refreshInFlightRef\.current;/);
     assert.match(store, /refreshAppConfig\(\), refreshGrounds\(\)/);
-    assert.match(src("app/page.tsx"), /store\.detachDomain, store\.refreshNonce\]\);/);
+    assert.match(src("app/page.tsx"), /store\.detachDomain, store\.refreshNonce[,\]]/);
   });
   it("disables the browser's own reload-on-overscroll while active", () => {
     assert.match(hook, /overscrollBehaviorY = "contain"/);

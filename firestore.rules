@@ -198,7 +198,7 @@ service cloud.firestore {
         && data.format in ['T20', 'T30', 'Other']
         && data.jerseyColor in ['Scarlet Red', 'Whites']
         && data.opponent is string && data.opponent.size() <= 100
-        && data.matchType in ['Practice', 'Tournament', 'Club Match']
+        && data.matchType in ['Practice', 'Tournament']
         && (data.fee is int || data.fee is float)
         && data.date is string && data.date.size() <= 50
         && data.time is string && data.time.size() <= 10
