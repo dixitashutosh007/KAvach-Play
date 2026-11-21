@@ -155,12 +155,18 @@ describe("Logistics: time, cricket-ball divider, date, venue", () => {
 
 describe("Responsive composition", () => {
   const s = () => src("components/matches/MatchCardHeader.tsx");
-  it("two columns with a vertical divider from a 24rem card width; stacked below", () => {
+  it("always two columns (identity | divider | logistics), on mobile as on desktop", () => {
     assert.match(s(), /className="@container"/);
-    assert.match(s(), /@sm:grid-cols-\[minmax\(0,1fr\)_1px_minmax\(0,auto\)\]/);
-    assert.match(s(), /hidden @sm:block w-px self-stretch bg-border/);
-    // narrow: logistics separated by a horizontal rule, never forced side-by-side with identity
-    assert.match(s(), /border-t border-border\/70 pt-3 @sm:flex @sm:flex-col/);
+    assert.match(s(), /className="grid grid-cols-\[minmax\(0,1fr\)_1px_minmax\(0,auto\)\] items-center/);
+    assert.match(s(), /<span className="w-px self-stretch bg-border" aria-hidden="true" \/>/);
+    // no stacked fallback
+    assert.ok(!s().includes("border-t border-border/70 pt-3"));
+    assert.ok(!s().includes("@sm:grid-cols-"));
+  });
+  it("narrow cards step type down and cap the logistics column instead of stacking", () => {
+    assert.match(s(), /max-w-\[9\.5rem\] @sm:max-w-none/);
+    assert.match(s(), /text-xl @sm:text-3xl/);
+    assert.match(s(), /text-lg @sm:text-2xl/);
   });
   it("long opponent names wrap and clamp instead of overflowing", () => {
     assert.match(s(), /break-words line-clamp-2/);

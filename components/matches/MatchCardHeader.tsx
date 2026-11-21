@@ -14,8 +14,8 @@
  *   │ [result] [payment]        │ │ │   📍 Venue ↗          │
  *   └───────────────────────────┘ │ └──────────────────────┘
  *
- * The layout responds to the CARD width (container query, two columns from 24rem), not the viewport:
- * narrow cards stack identity above logistics instead of shrinking text.
+ * Always two columns (identity | logistics), matching desktop. On narrow cards
+ * (below a 24rem card width) type sizes step down and the venue truncates.
  */
 import React from "react";
 import { Calendar, MapPin, ExternalLink, Trophy } from "lucide-react";
@@ -160,7 +160,7 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false }: Mat
 
   return (
     <div className="@container" data-testid={`match-card-header-${match.id}`}>
-      <div className="grid gap-3 @sm:grid-cols-[minmax(0,1fr)_1px_minmax(0,auto)] @sm:gap-4 @sm:items-center">
+      <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,auto)] items-center gap-3 @sm:gap-4">
         {/* Identity */}
         <div className="min-w-0 flex flex-col gap-1.5" data-testid={`match-card-identity-${match.id}`}>
           <div className="flex items-center gap-2" data-testid={`match-card-title-row-${match.id}`}>
@@ -169,7 +169,7 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false }: Mat
           </div>
           <div className="min-w-0">
             <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>{" "}
-            <h3 className="mt-0.5 text-xl @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
+            <h3 className="mt-0.5 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
               {match.opponent}
             </h3>
           </div>
@@ -182,36 +182,34 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false }: Mat
         </div>
 
         {/* Vertical divider (two-column layout only) */}
-        <span className="hidden @sm:block w-px self-stretch bg-border" aria-hidden="true" />
+        <span className="w-px self-stretch bg-border" aria-hidden="true" />
 
         {/* Logistics */}
         <div
-          className="grid grid-cols-[auto_1px_minmax(0,1fr)] items-center gap-3 border-t border-border/70 pt-3 @sm:flex @sm:flex-col @sm:items-center @sm:gap-1.5 @sm:border-0 @sm:pt-0 @sm:text-center"
+          className="min-w-0 max-w-[9.5rem] @sm:max-w-none flex flex-col items-center gap-1 @sm:gap-1.5 text-center"
           data-testid={`match-card-logistics-${match.id}`}
         >
-          <div className="flex flex-col items-start @sm:items-center gap-1">
+          <div className="flex flex-col items-center gap-1">
             <span
               data-testid={`match-time-${match.id}`}
-              className="text-2xl @sm:text-3xl font-black font-heading text-scarlet leading-none tracking-tight whitespace-nowrap tabular-nums"
+              className="text-xl @sm:text-3xl font-black font-heading text-scarlet leading-none tracking-tight whitespace-nowrap tabular-nums"
             >
               {formatMatchDisplayTime(match.time)}
             </span>
-            <CricketBallDivider className="min-w-[5.5rem]" />
+            <CricketBallDivider className="min-w-[5rem]" />
           </div>
 
-          <span className="w-px self-stretch bg-border @sm:hidden" aria-hidden="true" />
-
-          <div className="min-w-0 flex flex-col gap-1 @sm:items-center">
+          <div className="min-w-0 max-w-full flex flex-col items-center gap-0.5 @sm:gap-1">
             <span
               data-testid={`match-date-${match.id}`}
-              className="inline-flex items-center gap-1.5 text-sm font-bold text-text-primary tracking-wide whitespace-nowrap"
+              className="inline-flex items-center gap-1 @sm:gap-1.5 text-xs @sm:text-sm font-bold text-text-primary tracking-wide whitespace-nowrap"
             >
-              <Calendar className="w-4 h-4 text-scarlet shrink-0" aria-hidden="true" />
+              <Calendar className="w-3.5 h-3.5 @sm:w-4 @sm:h-4 text-scarlet shrink-0" aria-hidden="true" />
               {formatMatchCardDate(match.date)}
             </span>
             {venueName && (
-              <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full text-sm">
-                <MapPin className="w-4 h-4 text-scarlet shrink-0" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1 @sm:gap-1.5 min-w-0 max-w-full text-xs @sm:text-sm">
+                <MapPin className="w-3.5 h-3.5 @sm:w-4 @sm:h-4 text-scarlet shrink-0" aria-hidden="true" />
                 {venueLink ? (
                   <a
                     href={venueLink.href}
