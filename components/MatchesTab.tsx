@@ -64,6 +64,7 @@ import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
 import { MatchesLoadError } from "./matches/MatchesLoadError";
 import { MatchCardHeader, MatchCardTopBar } from "./matches/MatchCardHeader";
 import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
+import { MATCH_TYPES, groundFeeForMatchType } from "@/lib/match-category";
 
 export function MatchesTab({
   store,
@@ -430,7 +431,7 @@ export function MatchesTab({
                   const ground = store.grounds.find(g => g.id === newGroundId);
                   let newFee = formData.fee;
                   if (ground) {
-                    const groundFee = formData.matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+                    const groundFee = groundFeeForMatchType(ground, formData.matchType);
                     if (groundFee > 0) {
                       newFee = Math.round((groundFee / 12) * 1.05);
                     }
@@ -604,7 +605,7 @@ export function MatchesTab({
                 Type <span className="text-red-400">*</span>
               </label>
               <div className="flex gap-2">
-                {["Practice", "Tournament"].map((type) => (
+                {MATCH_TYPES.map((type) => (
                   <label
                     key={type}
                     className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.matchType === type ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
@@ -620,7 +621,7 @@ export function MatchesTab({
                         const ground = store.grounds.find(g => g.id === formData.groundId);
                         let newFee = formData.fee;
                         if (ground) {
-                          const groundFee = newMatchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+                          const groundFee = groundFeeForMatchType(ground, newMatchType);
                           if (groundFee > 0) {
                             newFee = Math.round((groundFee / 12) * 1.05);
                           }

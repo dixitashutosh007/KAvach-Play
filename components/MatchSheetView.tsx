@@ -6,6 +6,7 @@ import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
 import { Match } from "@/lib/types";
 import { dbToInputDate, inputToDbDate } from "@/lib/utils";
+import { MATCH_TYPES, groundFeeForMatchType } from "@/lib/match-category";
 
 type SheetFilter = "past_3m" | "past_all" | "next_1m" | "next_3m" | "next_6m" | "next_all";
 
@@ -200,7 +201,7 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
   const autoCalcFee = (matchId: string, groundId: string, matchType: string) => {
     const ground = store.grounds.find(g => g.id === groundId);
     if (!ground) return;
-    const groundFee = matchType === "Practice" ? (ground.practiceFee || 0) : (ground.tournamentFee || 0);
+    const groundFee = groundFeeForMatchType(ground, matchType);
     if (groundFee > 0) {
       setField(matchId, "fee", Math.round((groundFee / 12) * 1.05));
     }
@@ -322,13 +323,15 @@ export function MatchSheetView({ store }: { store: ReturnType<typeof useStore> }
                         onChange={e => {
                           const newType = e.target.value as Match["matchType"];
                           setField(match.id, "matchType", newType);
-                          if (newType === "Practice") setField(match.id, "tournamentId", "");
+                          // Only Tournament matches keep a tournament link.
+                          if (newType !== "Tournament") setField(match.id, "tournamentId", "");
                           autoCalcFee(match.id, currentGroundId, newType);
                         }}
                         className={selectClass}
                       >
-                        <option value="Practice">Practice</option>
-                        <option value="Tournament">Tournament</option>
+                        {MATCH_TYPES.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
                       </select>
                     </td>
                     <td className="bg-transparent px-0">

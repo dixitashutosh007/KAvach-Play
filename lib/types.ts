@@ -169,7 +169,7 @@ export type Match = {
   format: "T20" | "T30" | "Other";
   jerseyColor: "Scarlet Red" | "Whites";
   opponent: string;
-  matchType: "Practice" | "Tournament";
+  matchType: "Practice" | "Tournament" | "Club Match";
   fee: number;
   date: string;
   time: string;

@@ -198,6 +198,49 @@ describe(
       await assertSucceeds(matchAdmin.collection("matches").doc("match_102").set(newMatchData));
     });
 
+    it("accepts the 'Club Match' category for Match Admins and still rejects unknown categories", async () => {
+      const { assertFails, assertSucceeds } = await import("@firebase/rules-unit-testing");
+      const { serverTimestamp } = await import("firebase/firestore");
+      const matchAdmin = testEnv.authenticatedContext("admin_match_uid").firestore();
+      const player = testEnv.authenticatedContext("player_uid_1").firestore();
+
+      const base = {
+        groundId: "ground_noida_62",
+        format: "T30",
+        jerseyColor: "Scarlet Red",
+        opponent: "Weekend Warriors",
+        fee: 550,
+        date: "2026-11-29",
+        time: "07:00",
+        maxSquadSize: 12,
+        matchUrl: "",
+        streamingUrl: "",
+        result: "Pending",
+        resultMarginType: "runs",
+        resultMarginAmount: 0,
+        playerOfTheMatch: "",
+        potmId: "",
+        bestBatsman: "",
+        bestBowler: "",
+        tentativelyBlockedBy: "",
+        tournamentId: "",
+        googleEventId: "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await assertSucceeds(
+        matchAdmin.collection("matches").doc("match_club_1").set({ ...base, matchType: "Club Match" }),
+      );
+      await assertFails(
+        matchAdmin.collection("matches").doc("match_club_2").set({ ...base, matchType: "Friendly" }),
+      );
+      // Players still cannot create matches of any category
+      await assertFails(
+        player.collection("matches").doc("match_club_3").set({ ...base, matchType: "Club Match" }),
+      );
+    });
+
     // ── 3. Player Match Availability & RSVP Updates (MOD-02B) ──
     it("allows a player to update their own availability and tacticalNote", async () => {
       const { assertSucceeds } = await import("@firebase/rules-unit-testing");

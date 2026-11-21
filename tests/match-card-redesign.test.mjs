@@ -49,6 +49,7 @@ const src = (f) => fs.readFileSync(path.resolve(f), "utf-8");
 const { getMatchFormatBadge, getMatchCategory, formatMatchCardDate } = load("lib/match-card-format.ts");
 const { MatchCardHeader, MatchCardTopBar, MatchFormatBadge, MatchCategoryRibbon } = load("components/matches/MatchCardHeader.tsx");
 const { PlayerMatchCard } = load("components/matches/PlayerMatchCard.tsx");
+const { MATCH_TYPES, groundFeeForMatchType } = load("lib/match-category.ts");
 
 const paid = { status: "PAID", netPayable: 0, amountPaid: 650, isWaived: false };
 const ground = { id: "g1", name: "MSD Sports Arena", mapUrl: "" };
@@ -216,5 +217,43 @@ describe("Admin Match Center card", () => {
   });
   it("does not introduce player availability buttons into the admin card", () => {
     assert.ok(!s.includes("AvailabilityButtons"));
+  });
+});
+
+describe("Club Match category (no ribbon, practice-fee default)", () => {
+  it("is offered alongside Practice and Tournament", () => {
+    assert.deepEqual(MATCH_TYPES, ["Practice", "Tournament", "Club Match"]);
+  });
+  it("renders no category ribbon and still shows the format badge", () => {
+    const html = render(React.createElement(PlayerMatchCard, {
+      match: mk({ matchType: "Club Match", format: "T20" }), ground, personalPaymentStatus: paid,
+      availability: "Pending", onSelectMatch: () => {}, onRsvp: async () => {},
+    }));
+    assert.ok(!html.includes("category-ribbon-m1"));
+    assert.ok(html.includes('data-format-tone="t20"'));
+  });
+  it("auto-fills the practice fee for Practice and Club Match, tournament fee for Tournament", () => {
+    const g = { practiceFee: 6000, tournamentFee: 9000 };
+    assert.equal(groundFeeForMatchType(g, "Practice"), 6000);
+    assert.equal(groundFeeForMatchType(g, "Club Match"), 6000);
+    assert.equal(groundFeeForMatchType(g, "Tournament"), 9000);
+    assert.equal(groundFeeForMatchType(null, "Tournament"), 0);
+    assert.equal(groundFeeForMatchType({}, "Club Match"), 0);
+  });
+  it("type, Firestore rules, admin form and sheet editor all accept the new category", () => {
+    assert.match(src("lib/types.ts"), /matchType: "Practice" \| "Tournament" \| "Club Match";/);
+    assert.match(src("firestore.rules"), /data\.matchType in \['Practice', 'Tournament', 'Club Match'\]/);
+    assert.match(src("components/MatchesTab.tsx"), /\{MATCH_TYPES\.map\(\(type\) => \(/);
+    assert.match(src("components/MatchSheetView.tsx"), /\{MATCH_TYPES\.map\(\(t\) => \(/);
+  });
+  it("fee selection is shared, not duplicated per screen", () => {
+    for (const f of ["components/MatchesTab.tsx", "components/MatchSheetView.tsx"]) {
+      const s2 = src(f);
+      assert.ok(s2.includes("groundFeeForMatchType("), f);
+      assert.ok(!/=== "Practice" \? \(ground\.practiceFee/.test(s2), f);
+    }
+  });
+  it("only Tournament matches keep a tournament link in the sheet editor", () => {
+    assert.match(src("components/MatchSheetView.tsx"), /if \(newType !== "Tournament"\) setField\(match\.id, "tournamentId", ""\);/);
   });
 });
