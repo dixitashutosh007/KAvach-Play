@@ -14,6 +14,8 @@ import { Post } from "@/lib/types";
 import { getAnnouncementDisplay } from "./announcementDisplay";
 import { announcementPosts } from "./postKinds";
 import { AnnouncementComposer, type AnnouncementDraft } from "./AnnouncementComposer";
+import { LinkifiedText } from "@/components/ui/LinkifiedText";
+import { isSafeImageSrc } from "@/lib/announcement-image";
 
 const COLLAPSED_COUNT = 3;
 
@@ -21,6 +23,8 @@ export function ClubAnnouncementsSection({
   posts = [],
   canPublish = false,
   onPublish,
+  onUpdate,
+  onDelete,
   openAnnouncementId,
   onOpenHandled,
 }: {
@@ -28,6 +32,10 @@ export function ClubAnnouncementsSection({
   /** Show the admin composer (UI only; Firestore rules enforce admin-only creation). */
   canPublish?: boolean;
   onPublish?: (draft: AnnouncementDraft) => Promise<boolean>;
+  /** Admin edit / pin toggle. Resolves true when saved. */
+  onUpdate?: (postId: string, draft: AnnouncementDraft) => Promise<boolean>;
+  /** Admin delete. Resolves true when deleted. */
+  onDelete?: (postId: string) => Promise<boolean>;
   /** When set (e.g. from the top banner), scroll here and open that announcement. */
   openAnnouncementId?: string | null;
   onOpenHandled?: () => void;
@@ -35,6 +43,14 @@ export function ClubAnnouncementsSection({
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [editing, setEditing] = useState<Post | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const canManage = canPublish && Boolean(onUpdate && onDelete);
+  const closeDetail = () => {
+    setSelectedAnnouncement(null);
+    setConfirmDelete(false);
+  };
   const sectionRef = useRef<HTMLElement>(null);
 
   const announcements = useMemo(() => announcementPosts(posts), [posts]);
@@ -104,10 +120,17 @@ export function ClubAnnouncementsSection({
                 data-testid={`announcement-item-${post.id}`}
                 onClick={() => setSelectedAnnouncement(post)}
                 aria-label={`Read notice: ${display.headline || display.summary?.slice(0, 60) || "Club notice"}`}
-                className={`w-full text-left bg-surface border rounded-xl p-3 sm:p-3.5 transition cursor-pointer flex items-start gap-3 shadow-xs hover:border-scarlet/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50 ${
+                className={`w-full text-left bg-surface border rounded-xl overflow-hidden transition cursor-pointer flex flex-col shadow-xs hover:border-scarlet/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50 ${
                   isPinned ? "border-scarlet/30" : "border-border hover:bg-canvas-warm/40"
                 }`}
               >
+                {isSafeImageSrc(post.imageUrl) && (
+                  <span className="block w-full aspect-video bg-surface-hover" data-testid={`announcement-image-${post.id}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={post.imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  </span>
+                )}
+                <span className="flex items-start gap-3 p-3 sm:p-3.5">
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                     isPinned ? "bg-scarlet/15 text-scarlet" : "bg-surface-hover text-text-muted"
@@ -148,6 +171,7 @@ export function ClubAnnouncementsSection({
                     <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                   </span>
                 </div>
+                </span>
               </button>
             );
           })}
@@ -175,6 +199,19 @@ export function ClubAnnouncementsSection({
         <AnnouncementComposer onClose={() => setComposerOpen(false)} onPublish={onPublish} />
       )}
 
+      {editing && onUpdate && (
+        <AnnouncementComposer
+          initial={{
+            title: editing.title,
+            text: editing.text,
+            isPinned: editing.isPinned,
+            imageUrl: editing.imageUrl,
+          }}
+          onClose={() => setEditing(null)}
+          onPublish={(draft) => onUpdate(editing.id, draft)}
+        />
+      )}
+
       {selectedAnnouncement && (
         <div
           role="dialog"
@@ -182,7 +219,7 @@ export function ClubAnnouncementsSection({
           aria-labelledby="announcement-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="bg-surface border border-border rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl flex flex-col gap-4">
+          <div className="bg-surface border border-border rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-xl flex flex-col gap-4">
             <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -209,7 +246,7 @@ export function ClubAnnouncementsSection({
 
               <button
                 type="button"
-                onClick={() => setSelectedAnnouncement(null)}
+                onClick={closeDetail}
                 aria-label="Close announcement"
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-surface-hover text-text-muted hover:text-text-primary transition cursor-pointer"
               >
@@ -217,14 +254,81 @@ export function ClubAnnouncementsSection({
               </button>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto text-xs sm:text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
-              {selectedAnnouncement.text}
+            {isSafeImageSrc(selectedAnnouncement.imageUrl) && (
+              <div className="w-full aspect-video overflow-hidden rounded-xl bg-surface-hover shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={selectedAnnouncement.imageUrl} alt="" className="w-full h-full object-cover" />
+              </div>
+            )}
+
+            <div
+              data-testid="announcement-modal-body"
+              className="max-h-[60vh] overflow-y-auto text-xs sm:text-sm text-text-primary leading-relaxed whitespace-pre-wrap break-words"
+            >
+              <LinkifiedText text={selectedAnnouncement.text} />
             </div>
 
-            <div className="pt-2 border-t border-border flex justify-end">
+            <div className="pt-2 border-t border-border flex flex-wrap items-center justify-end gap-2">
+              {canManage && (
+                <div className="mr-auto flex flex-wrap items-center gap-2" data-testid="announcement-admin-actions">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditing(selectedAnnouncement);
+                      closeDetail();
+                    }}
+                    className="min-h-[40px] px-3 rounded-xl border border-border text-xs font-bold text-text-secondary hover:text-text-primary cursor-pointer"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      const next = !(selectedAnnouncement.isPinned === true);
+                      const ok = await onUpdate!(selectedAnnouncement.id, {
+                        title: selectedAnnouncement.title || "",
+                        text: selectedAnnouncement.text,
+                        isPinned: next,
+                      });
+                      setBusy(false);
+                      if (ok) setSelectedAnnouncement({ ...selectedAnnouncement, isPinned: next });
+                    }}
+                    className="min-h-[40px] px-3 rounded-xl border border-border text-xs font-bold text-text-secondary hover:text-text-primary cursor-pointer"
+                  >
+                    {selectedAnnouncement.isPinned ? "Remove from banner" : "Show in banner"}
+                  </button>
+                  {confirmDelete ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        const ok = await onDelete!(selectedAnnouncement.id);
+                        setBusy(false);
+                        if (ok) closeDetail();
+                      }}
+                      className="min-h-[40px] px-3 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 cursor-pointer"
+                    >
+                      Confirm delete
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setConfirmDelete(true)}
+                      className="min-h-[40px] px-3 rounded-xl border border-rose-200 text-xs font-bold text-rose-700 hover:bg-rose-50 cursor-pointer"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              )}
               <button
                 type="button"
-                onClick={() => setSelectedAnnouncement(null)}
+                onClick={closeDetail}
                 className="min-h-[44px] px-5 py-2 bg-deep-wine text-white font-bold text-xs uppercase tracking-wider rounded-xl transition hover:bg-scarlet cursor-pointer"
               >
                 Close

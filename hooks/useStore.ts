@@ -147,6 +147,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   // previously only logged to the console, so a permission or database failure
   // looked identical to "there are no matches" in the UI.
   const [matchesError, setMatchesError] = useState<string | null>(null);
+  // True once the players collection has delivered its first snapshot (or
+  // failed). Identity resolution must not report "not linked" before this.
+  const [playersLoaded, setPlayersLoaded] = useState(false);
+  // Incremented by refreshData(); app/page.tsx includes it in its lazy-subscription
+  // effect so per-tab listeners are restarted exactly once per refresh.
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
   // "loading" until the first snapshot; "missing" when appUsers/{uid} does not
   // exist in the resolved database (e.g. after a database refresh).
   const [selfAppUserStatus, setSelfAppUserStatus] = useState<
@@ -197,6 +204,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (ts.tournaments) setTournaments(ts.tournaments);
       if (ts.matches) setMatches(ts.matches);
       if (ts.players) setPlayers(ts.players);
+      setPlayersLoaded(true);
       if (ts.payments) setPayments(ts.payments);
       if (ts.playerStats) setPlayerStats(ts.playerStats);
       if (ts.posts) setPosts(ts.posts);
@@ -473,8 +481,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
               return !nameLower.includes("demo") && !emailLower.includes("demo");
             }),
         );
+        setPlayersLoaded(true);
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, "players"),
+      (err) => {
+        handleFirestoreError(err, OperationType.LIST, "players");
+        setPlayersLoaded(true);
+      },
     );
 
     // playerStats and posts — now lazy, see ensurePlayerStats() / ensurePosts()
@@ -915,6 +927,26 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       handleFirestoreError(err, OperationType.LIST, "grounds");
     }
   }, []);
+
+  /**
+   * Pull-to-refresh entry point. Core collections (players, matches, own account,
+   * notifications) are realtime listeners and already current; this re-reads the
+   * one-shot data and restarts per-tab listeners once. Concurrent calls share the
+   * same in-flight refresh (no duplicate requests or subscriptions).
+   */
+  const refreshData = useCallback((): Promise<void> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const run = (async () => {
+      try {
+        await Promise.all([refreshAppConfig(), refreshGrounds()]);
+        setRefreshNonce((n) => n + 1);
+      } finally {
+        refreshInFlightRef.current = null;
+      }
+    })();
+    refreshInFlightRef.current = run;
+    return run;
+  }, [refreshAppConfig, refreshGrounds]);
 
   const refreshTournaments = useCallback(async () => {
     try {
@@ -2447,6 +2479,52 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  /**
+   * Updates announcement-specific fields. Returns true on success so the UI can
+   * report failures honestly (Firestore rules restrict post writes to admins).
+   */
+  const updateAnnouncement = async (
+    postId: string,
+    fields: Partial<Pick<Post, "text" | "title" | "isPinned" | "imageUrl">>,
+  ): Promise<boolean> => {
+    try {
+      const oldPost = posts.find((p) => p.id === postId);
+      const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+      for (const [k, v] of Object.entries(fields)) payload[k] = v === undefined ? deleteField() : v;
+      await updateDoc(doc(db, "posts", postId), payload);
+      logAudit({
+        ...getActor(),
+        action: "updated",
+        entity: "post",
+        entityId: postId,
+        entityLabel: (fields.text ?? oldPost?.text ?? "").slice(0, 40),
+        changes: Object.keys(fields).map((field) => ({
+          field,
+          oldValue: field === "imageUrl" ? (oldPost?.imageUrl ? "[image]" : "") : String((oldPost as any)?.[field] ?? "").slice(0, 60),
+          newValue: field === "imageUrl" ? ((fields as any)[field] ? "[image]" : "") : String((fields as any)[field] ?? "").slice(0, 60),
+        })),
+        summary: `Updated announcement`,
+      });
+      return true;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `posts/${postId}`);
+      return false;
+    }
+  };
+
+  /** Deletes a post and reports success (rules restrict deletes to admins). */
+  const deleteAnnouncement = async (postId: string): Promise<boolean> => {
+    const oldPost = posts.find((p) => p.id === postId);
+    try {
+      await deleteDoc(doc(db, "posts", postId));
+      logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted announcement` });
+      return true;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+      return false;
+    }
+  };
+
   const deletePost = async (postId: string) => {
     const oldPost = posts.find(p => p.id === postId);
     try {
@@ -2826,6 +2904,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     mergePlayer,
     posts,
     addPost,
+    updateAnnouncement,
+    deleteAnnouncement,
     updatePost,
     deletePost,
     addComment,
@@ -2923,5 +3003,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     isLoaded,
     matchesError,
     selfAppUserStatus,
+    playersLoaded,
+    refreshData,
+    refreshNonce,
   };
 }

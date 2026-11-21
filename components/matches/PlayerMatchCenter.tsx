@@ -16,6 +16,7 @@ import { useStore } from "@/hooks/useStore";
 import { useAuth } from "@/components/AuthProvider";
 import { resolvePlayerForUser } from "@/lib/player-identity";
 import { useToast } from "@/components/ui/Toast";
+import { availabilityBlockMessage, PROFILE_LINK_MESSAGES } from "@/lib/profile-link";
 import {
   isPlayerEligibleForMatch,
   validateMatchNavigation,
@@ -281,8 +282,12 @@ export function PlayerMatchCenter({
     matchId: string,
     availability: "Confirmed" | "Tentative" | "No"
   ) => {
-    if (!mePlayer) {
-      toast("Please complete or link your player profile to mark availability.", "error");
+    const blocked = availabilityBlockMessage({
+      playersLoaded: store.playersLoaded !== false,
+      hasPlayer: Boolean(mePlayer),
+    });
+    if (blocked || !mePlayer) {
+      toast(blocked || PROFILE_LINK_MESSAGES.unlinked, "error");
       return;
     }
 

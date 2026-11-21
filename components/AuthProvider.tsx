@@ -20,6 +20,8 @@ interface AuthContextType {
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   linkGoogleAccount: () => Promise<void>;
   logOut: () => Promise<void>;
+  /** Force-refreshes the ID token so newly granted / revoked claims apply. */
+  refreshAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -31,6 +33,7 @@ const AuthContext = createContext<AuthContextType>({
   signInWithEmail: async () => {},
   linkGoogleAccount: async () => {},
   logOut: async () => {},
+  refreshAuth: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -122,6 +125,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     return unsubscribe;
   }, []);
+
+  const refreshAuth = async () => {
+    const current = auth.currentUser;
+    if (!current || current.isAnonymous) return;
+    try {
+      const tokenResult = await current.getIdTokenResult(true);
+      setHasAdminClaim(tokenResult.claims?.admin === true);
+    } catch {
+      // Keep the existing state if the token cannot be refreshed (offline).
+    }
+  };
 
   const signIn = async () => {
     try {
@@ -247,7 +261,7 @@ Error Details:
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, hasAdminClaim, signIn, signInDemo, signInWithEmail, linkGoogleAccount, logOut }}
+      value={{ user, loading, hasAdminClaim, signIn, signInDemo, signInWithEmail, linkGoogleAccount, logOut, refreshAuth }}
     >
       {children}
     </AuthContext.Provider>

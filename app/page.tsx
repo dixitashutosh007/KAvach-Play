@@ -38,6 +38,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { HomeTab } from "@/components/HomeTab";
 import { ProfileTab } from "@/components/ProfileTab";
+import { ProfileLinkNotice } from "@/components/ProfileLinkNotice";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
+import { PullToRefreshIndicator } from "@/components/ui/PullToRefreshIndicator";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { motion, AnimatePresence } from "motion/react";
 import { Bell, PieChart } from "lucide-react";
@@ -90,6 +93,7 @@ export default function Home() {
   const {
     user,
     hasAdminClaim,
+    refreshAuth,
     signIn,
     signInDemo,
     signInWithEmail,
@@ -216,6 +220,8 @@ export default function Home() {
     if (store.selfAppUserStatus === "loading") return;
     if (firestoreDatabaseId !== DEVELOPMENT_FIRESTORE_DATABASE_ID) return;
     hasLoggedAccessDiagnosticRef.current = true;
+    const diagPlayerLinked = !!resolvePlayerForUser(store.players, user.uid, currentUserObj);
+    const diagOtpLogin = !!user.phoneNumber;
     console.info("[KAvach access diagnostic]", {
       firestoreDatabaseId,
       adminCustomClaim: !!hasAdminClaim,
@@ -226,10 +232,22 @@ export default function Home() {
       isStudioAdmin: !!currentUserObj?.isStudioAdmin,
       isDesigner: !!currentUserObj?.isDesigner,
       resolvedAsAdmin: !!isAdminUser,
+      playersLoaded: store.playersLoaded,
+      playerLinked: diagPlayerLinked,
+      otpLogin: diagOtpLogin,
       matchesLoaded: store.matches.length,
       matchesError: store.matchesError,
     });
-  }, [store.isLoaded, store.selfAppUserStatus, store.matches.length, store.matchesError, user, hasAdminClaim, currentUserObj, isAdminUser]);
+  }, [store.isLoaded, store.selfAppUserStatus, store.matches.length, store.matchesError, store.playersLoaded, store.players, user, hasAdminClaim, currentUserObj, isAdminUser]);
+
+  // Mobile pull-to-refresh: refreshes data in place (no page reload).
+  const handlePullRefresh = useCallback(async () => {
+    await Promise.all([store.refreshData?.(), refreshAuth?.()]);
+  }, [store.refreshData, refreshAuth]);
+  const pullToRefresh = usePullToRefresh({
+    enabled: Boolean(user && !user.isAnonymous && store.isLoaded),
+    onRefresh: handlePullRefresh,
+  });
 
   // Guard: if persona is set to admin but the user lacks authoritative administrative privileges,
   // revert strictly to player view to prevent client-side state or URL tampering.
@@ -353,7 +371,7 @@ export default function Home() {
       // ARCH-001: Teardown on unmount / navigation
       store.detachAllLazy?.();
     };
-  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain]);
+  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain, store.refreshNonce]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
@@ -700,6 +718,8 @@ export default function Home() {
       className="min-h-screen pb-20 md:pb-8 font-sans transition-all duration-500"
       style={themeStyles}
     >
+      <PullToRefreshIndicator status={pullToRefresh.status} distance={pullToRefresh.distance} />
+
       {/* Dynamic Header */}
       <AppHeader
         clubName={clubName}
@@ -1065,6 +1085,20 @@ export default function Home() {
                   </button>
                 </motion.div>
               )}
+
+            {/* Unlinked account notice (admins bypass the registration/link gate) */}
+            {!effectiveIsAdminMode && !player && store.playersLoaded && (
+              <ProfileLinkNotice
+                signedInWithPhone={isMobileAuth}
+                candidate={
+                  existingPlayerWithSamePhone
+                    ? { id: existingPlayerWithSamePhone.id, name: existingPlayerWithSamePhone.name }
+                    : null
+                }
+                isLinking={isRegistering}
+                onLink={handleSyncAccount}
+              />
+            )}
 
             {/* Active Tab Screen Area */}
             {hasMissingMandatory ? (

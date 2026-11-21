@@ -81,27 +81,26 @@ export function resolveMyPlayers(
   if (!uid || !players || players.length === 0) return [];
 
   const matched = new Map<string, Player>();
+  const add = (p: Player | null | undefined) => {
+    // Follow merges to the surviving (keeper) record, exactly like
+    // resolvePlayerForUser, so every screen resolves the same player.
+    const canonical = resolveCanonicalPlayer(p, players);
+    if (canonical && !canonical.disabled && !canonical.mergedInto) {
+      matched.set(canonical.id, canonical);
+    }
+  };
+
+  // The primary player always comes first, so `resolveMyPlayers(...)[0]` and
+  // `resolvePlayerForUser(...)` can never disagree.
+  add(resolvePlayerForUser(players, uid, appUser));
 
   for (const p of players) {
-    if (p.disabled || p.mergedInto) continue;
-
-    // Direct verified binding
-    if (p.authUid === uid) {
-      matched.set(p.id, p);
-      continue;
-    }
-
-    // AppUser pointer binding
-    if (appUser?.playerId && p.id === appUser.playerId) {
-      matched.set(p.id, p);
-      continue;
-    }
-
-    // Legacy doc where id matches UID, provided it is not bound to a different authUid
-    if (p.id === uid && (!p.authUid || p.authUid === uid)) {
-      matched.set(p.id, p);
-      continue;
-    }
+    if (p.disabled) continue;
+    const isVerifiedLink =
+      p.authUid === uid || // direct verified binding
+      (Boolean(appUser?.playerId) && p.id === appUser?.playerId) || // appUser pointer binding
+      (p.id === uid && (!p.authUid || p.authUid === uid)); // legacy, not bound to another authUid
+    if (isVerifiedLink) add(p);
   }
 
   return Array.from(matched.values());

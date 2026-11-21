@@ -36,7 +36,9 @@ import {
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
 import { useToast } from "@/components/ui/Toast";
+import { availabilityBlockMessage, PROFILE_LINK_MESSAGES } from "@/lib/profile-link";
 import { useAuth } from "@/components/AuthProvider";
+import type { AnnouncementDraft } from "./home/AnnouncementComposer";
 
 // Modular Phase 2.1 Subcomponents
 import { PlayerHomeHeader } from "./home/PlayerHomeHeader";
@@ -47,6 +49,7 @@ import { JerseyInfographic } from "./matches/JerseyInfographic";
 import { ClubAnnouncementsSection } from "./home/ClubAnnouncementsSection";
 import { BirthdaysCarousel } from "./home/BirthdaysCarousel";
 import { ClubFeedPreview } from "./home/ClubFeedPreview";
+import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
 import { HomeQuickActions } from "./home/HomeQuickActions";
 import { resolveGreetingName } from "@/lib/greeting";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -94,11 +97,12 @@ export function HomeTab({
   const canPublishAnnouncements = Boolean(hasAdminClaim || appUser?.isClubAdmin);
   const [announcementToOpen, setAnnouncementToOpen] = useState<string | null>(null);
   const clearAnnouncementToOpen = useCallback(() => setAnnouncementToOpen(null), []);
-  const handlePublishAnnouncement = async (draft: { title: string; text: string; isPinned: boolean }) => {
+  const handlePublishAnnouncement = async (draft: AnnouncementDraft) => {
     if (!canPublishAnnouncements || !store.addPost) return false;
     const id = await store.addPost({
       text: draft.text,
       ...(draft.title ? { title: draft.title } : {}),
+      ...(typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
       isAnnouncement: true,
       isPinned: draft.isPinned,
       authorName:
@@ -112,6 +116,24 @@ export function HomeTab({
       return true;
     }
     return false;
+  };
+  const handleUpdateAnnouncement = async (postId: string, draft: AnnouncementDraft) => {
+    if (!canPublishAnnouncements || !store.updateAnnouncement) return false;
+    const ok = await store.updateAnnouncement(postId, {
+      text: draft.text,
+      title: draft.title || undefined,
+      isPinned: draft.isPinned,
+      // null → remove image, string → replace, undefined → leave unchanged
+      ...(draft.imageUrl === null ? { imageUrl: undefined } : typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
+    });
+    toast(ok ? "Announcement updated" : "The announcement could not be updated.", ok ? "success" : "error");
+    return ok;
+  };
+  const handleDeleteAnnouncement = async (postId: string) => {
+    if (!canPublishAnnouncements || !store.deleteAnnouncement) return false;
+    const ok = await store.deleteAnnouncement(postId);
+    toast(ok ? "Announcement deleted" : "The announcement could not be deleted.", ok ? "success" : "error");
+    return ok;
   };
 
   // Feature gate helper
@@ -269,8 +291,12 @@ export function HomeTab({
     matchId: string,
     availability: "Confirmed" | "Tentative" | "No"
   ) => {
-    if (!mePlayer) {
-      toast("Please complete or link your player profile to mark availability.", "error");
+    const blocked = availabilityBlockMessage({
+      playersLoaded: store.playersLoaded !== false,
+      hasPlayer: Boolean(mePlayer),
+    });
+    if (blocked || !mePlayer) {
+      toast(blocked || PROFILE_LINK_MESSAGES.unlinked, "error");
       return;
     }
     const targetMatch = matches.find((m) => m.id === matchId);
@@ -599,11 +625,16 @@ export function HomeTab({
             onNavigateToAllMatches={() => handleNavigate("matches")}
           />
 
+          {/* Club performance totals (admin-maintained; hidden until set) */}
+          <ClubPerformanceWidget />
+
           {/* 9. Club Announcements (Section 4.D) */}
           <ClubAnnouncementsSection
             posts={posts}
             canPublish={canPublishAnnouncements}
             onPublish={handlePublishAnnouncement}
+            onUpdate={handleUpdateAnnouncement}
+            onDelete={handleDeleteAnnouncement}
             openAnnouncementId={announcementToOpen}
             onOpenHandled={clearAnnouncementToOpen}
           />

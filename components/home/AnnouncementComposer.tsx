@@ -9,6 +9,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { X, Megaphone, Loader2 } from "lucide-react";
+import { AnnouncementImagePicker, exportCroppedImage, type PickedImage } from "./AnnouncementImagePicker";
+import { isSafeImageSrc } from "@/lib/announcement-image";
 
 export const ANNOUNCEMENT_TITLE_MAX = 100;
 export const ANNOUNCEMENT_TEXT_MAX = 2000;
@@ -17,6 +19,11 @@ export interface AnnouncementDraft {
   title: string;
   text: string;
   isPinned: boolean;
+  /**
+   * New image as a JPEG data URL, `null` to remove the existing image, or
+   * `undefined` to leave the image unchanged.
+   */
+  imageUrl?: string | null;
 }
 
 /** Returns an error message, or null when the draft can be published. */
@@ -32,12 +39,24 @@ export function validateAnnouncementDraft(d: AnnouncementDraft): string | null {
 export function AnnouncementComposer({
   onClose,
   onPublish,
+  initial,
 }: {
   onClose: () => void;
   /** Resolves true when the announcement was saved. */
   onPublish: (draft: AnnouncementDraft) => Promise<boolean>;
+  /** Present when editing an existing announcement. */
+  initial?: { title?: string; text: string; isPinned?: boolean; imageUrl?: string };
 }) {
-  const [draft, setDraft] = useState<AnnouncementDraft>({ title: "", text: "", isPinned: false });
+  const isEdit = Boolean(initial);
+  const [draft, setDraft] = useState<AnnouncementDraft>({
+    title: initial?.title || "",
+    text: initial?.text || "",
+    isPinned: initial?.isPinned === true,
+  });
+  const [picked, setPicked] = useState<PickedImage | null>(null);
+  const [existingImage, setExistingImage] = useState<string | null>(
+    initial?.imageUrl && isSafeImageSrc(initial.imageUrl) ? initial.imageUrl : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -59,10 +78,24 @@ export function AnnouncementComposer({
       setError(problem);
       return;
     }
+    let imageUrl: string | null | undefined;
+    try {
+      if (picked) imageUrl = exportCroppedImage(picked);
+      else if (isEdit && initial?.imageUrl && !existingImage) imageUrl = null; // removed
+      else imageUrl = undefined; // unchanged / none
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The image could not be processed.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      const ok = await onPublish({ title: draft.title.trim(), text: draft.text.trim(), isPinned: draft.isPinned });
+      const ok = await onPublish({
+        title: draft.title.trim(),
+        text: draft.text.trim(),
+        isPinned: draft.isPinned,
+        imageUrl,
+      });
       if (ok) onClose();
       else setError("The announcement could not be published. Please check your connection and try again.");
     } finally {
@@ -80,12 +113,12 @@ export function AnnouncementComposer({
       <form
         onSubmit={submit}
         data-testid="announcement-composer"
-        className="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl flex flex-col gap-4"
+        className="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-xl flex flex-col gap-4"
       >
         <div className="flex items-center justify-between gap-3">
           <h2 id="announcement-composer-title" className="flex items-center gap-2 text-base font-black font-heading text-text-primary">
             <Megaphone className="w-4 h-4 text-scarlet" aria-hidden="true" />
-            New club announcement
+            {isEdit ? "Edit announcement" : "New club announcement"}
           </h2>
           <button
             type="button"
@@ -127,6 +160,13 @@ export function AnnouncementComposer({
           </span>
         </label>
 
+        <AnnouncementImagePicker
+          value={picked}
+          existingUrl={existingImage}
+          onChange={setPicked}
+          onRemoveExisting={() => setExistingImage(null)}
+        />
+
         <label className="flex items-start gap-2.5 cursor-pointer">
           <input
             type="checkbox"
@@ -162,7 +202,7 @@ export function AnnouncementComposer({
             className="min-h-[44px] px-5 rounded-xl bg-scarlet text-white text-xs font-bold uppercase tracking-wider hover:bg-deep-wine disabled:opacity-70 cursor-pointer inline-flex items-center gap-2"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
-            Publish
+            {isEdit ? "Save" : "Publish"}
           </button>
         </div>
       </form>

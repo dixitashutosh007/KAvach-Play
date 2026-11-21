@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award, ScrollText, User, Video } from "lucide-react";
+import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award, ScrollText, User, Video, BarChart3 } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ default: m.PlayersTab })), { ssr: false });
@@ -13,6 +13,7 @@ const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ de
 const AuditLogTab = dynamic(() => import("@/components/AuditLogTab").then(m => ({ default: m.AuditLogTab })), { ssr: false });
 const ProfileTab = dynamic(() => import("@/components/ProfileTab").then(m => ({ default: m.ProfileTab })), { ssr: false });
 const StudioTab = dynamic(() => import("@/components/StudioTab").then(m => ({ default: m.StudioTab })), { ssr: false });
+const ClubStatisticsAdmin = dynamic(() => import("@/components/ClubStatisticsAdmin").then(m => ({ default: m.ClubStatisticsAdmin })), { ssr: false });
 
 type ClubSubTab =
   | "profile"
@@ -24,7 +25,8 @@ type ClubSubTab =
   | "design"
   | "leaderboard"
   | "reminders"
-  | "activity";
+  | "activity"
+  | "stats";
 
 export function ClubTab({
   store,
@@ -81,6 +83,7 @@ export function ClubTab({
     { key: "leaderboard", label: "Leaderboard", icon: Trophy, visible: true },
     { key: "reminders", label: "Reminders", icon: Bell, visible: true },
     { key: "activity", label: "Activity", icon: ScrollText, visible: isSuperAdmin },
+    { key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin || isSuperAdmin },
   ];
 
   const activeTabs = isPlayer ? playerTabs : adminTabs;
@@ -135,6 +138,7 @@ export function ClubTab({
         />
       )}
       {subTab === "design" && canDesign && <DesignTab store={store} />}
+      {subTab === "stats" && !isPlayer && (isClubAdmin || isSuperAdmin) && <ClubStatisticsAdmin />}
       {subTab === "leaderboard" && (
         <LeaderboardTab store={store} persona={persona} />
       )}

@@ -11,6 +11,7 @@ import { MessageSquare, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import { Post } from "@/lib/types";
 import { feedPosts } from "./postKinds";
+import { LinkifiedText } from "@/components/ui/LinkifiedText";
 
 const COLLAPSED_COUNT = 3;
 const EXPANDED_COUNT = 20;
@@ -106,8 +107,8 @@ export function ClubFeedPreview({ posts = [] }: { posts: Post[] }) {
                     {(post as any).title}
                   </h4>
                 )}
-                <p className="text-xs sm:text-sm text-text-secondary leading-relaxed line-clamp-3">
-                  {post.text}
+                <p className="text-xs sm:text-sm text-text-secondary leading-relaxed line-clamp-3 break-words">
+                  <LinkifiedText text={post.text} />
                 </p>
 
                 {/* Media Image if present */}
