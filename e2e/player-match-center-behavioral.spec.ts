@@ -109,11 +109,10 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     await expect(unsettledCard).toBeVisible();
     await expect(unsettledCard.getByText(/vs Old Unsettled Warriors/i)).toBeVisible();
 
-    // Verify the prominent unsettled obligation banner is displayed
-    const alertCallout = page.locator('[data-testid="unsettled-alert-match-older-unsettled"]');
-    await expect(alertCallout).toBeVisible();
-    await expect(alertCallout.getByText(/Unsettled Obligation/i)).toBeVisible();
-    await expect(alertCallout.getByText(/₹500 due/i)).toBeVisible();
+    // Player cards no longer show unsettled-obligation alerts or amounts
+    // (dues are shown on the Payments page only).
+    await expect(page.locator('[data-testid="unsettled-alert-match-older-unsettled"]')).toHaveCount(0);
+    await expect(unsettledCard.getByText(/₹500/)).toHaveCount(0);
   });
 
   // ── 3. Personal Payment Status Badges & Option A Abandoned Matches ────────────
@@ -198,21 +197,14 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     const playerNav = page.locator("nav");
     await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
 
-    // 1. Verify PAID badge
-    const paidBadge = page.locator('[data-testid="payment-status-match-paid"]');
-    await expect(paidBadge).toBeVisible();
-    await expect(paidBadge).toHaveText(/PAID/);
-
-    // 2. Verify PARTIALLY PAID badge with balance due
-    const partialBadge = page.locator('[data-testid="payment-status-match-partial"]');
-    await expect(partialBadge).toBeVisible();
-    await expect(partialBadge).toHaveText(/PARTIALLY PAID • ₹350 due/i);
-
-    // 3. Verify Option A Policy on Abandoned Match: Status is WAIVED (never UNPAID!)
-    const waivedBadge = page.locator('[data-testid="payment-status-match-abandoned-option-a"]');
-    await expect(waivedBadge).toBeVisible();
-    await expect(waivedBadge).toHaveText(/WAIVED/);
-    await expect(waivedBadge).not.toHaveText(/UNPAID/);
+    // Player match cards no longer show payment status badges or amounts
+    // (owner decision: dues live on the Payments page). The status derivation
+    // itself stays covered by the personal-match-payment unit tests.
+    for (const id of ["match-paid", "match-partial", "match-abandoned-option-a"]) {
+      await expect(page.locator(`[data-testid="player-match-card-${id}"]`)).toBeVisible();
+      await expect(page.locator(`[data-testid="payment-status-${id}"]`)).toHaveCount(0);
+      await expect(page.locator(`[data-testid="player-match-card-${id}"]`).getByText(/UNPAID|₹/)).toHaveCount(0);
+    }
   });
 
   // ── 4. 1-Tap Inline RSVP Availability Actions ────────────────────────────────
@@ -459,10 +451,9 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     const playerNav = page.locator("nav");
     await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
 
-    // Verify payment badge aggregates to PAID
-    const statusBadge = page.locator('[data-testid="payment-status-match-multi-col"]');
-    await expect(statusBadge).toBeVisible({ timeout: 5000 });
-    await expect(statusBadge).toHaveText(/PAID/);
+    // Card renders without any payment badge (player cards show no payment status)
+    await expect(page.locator('[data-testid="player-match-card-match-multi-col"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="payment-status-match-multi-col"]')).toHaveCount(0);
   });
 
   // ── 9. Abandoned Match Presentation: Preserves Historical Paid (P1) ──────────
@@ -508,11 +499,9 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     const playerNav = page.locator("nav");
     await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
 
-    // 1. Verify card badge displays WAIVED • ₹300 collected (never PARTIALLY PAID or ₹0 due!)
-    const waivedBadge = page.locator('[data-testid="payment-status-match-ab-partial"]');
-    await expect(waivedBadge).toBeVisible({ timeout: 5000 });
-    await expect(waivedBadge).toHaveText(/WAIVED • ₹300 collected/);
-    await expect(waivedBadge).not.toHaveText(/PARTIALLY PAID/);
+    // 1. The card itself shows no payment badge or amounts
+    await expect(page.locator('[data-testid="player-match-card-match-ab-partial"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="payment-status-match-ab-partial"]')).toHaveCount(0);
 
     // 2. Open detail view and verify financial breakdown
     await page.locator('[data-testid="player-match-card-match-ab-partial"]').click();

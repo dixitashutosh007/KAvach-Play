@@ -31,6 +31,7 @@ import {
 import { PlayerMatchCard } from "./PlayerMatchCard";
 import { MatchesLoadError } from "./MatchesLoadError";
 import { PlayerMatchDetailModal } from "./PlayerMatchDetailModal";
+import { MatchDateSelector } from "./AdminMatchDateList";
 
 export interface PlayerMatchCenterProps {
   store: ReturnType<typeof useStore>;
@@ -422,6 +423,32 @@ export function PlayerMatchCenter({
     return derivePlayerAvailability(mePlayer, selectedMatch, store.payments).status;
   }, [mePlayer, selectedMatch, store.payments, optimisticAvailability]);
 
+  // Shared player card renderer for every list and the calendar's date panel.
+  // Player-facing: no payment status, unpaid amounts or admin controls.
+  const upcomingIds = useMemo(() => new Set(grouped.upcoming.map((m) => m.id)), [grouped.upcoming]);
+  const renderPlayerCard = (
+    match: Match,
+    idx: number,
+    opts: { canRsvp?: boolean; isImmediateNext?: boolean } = {},
+  ) => (
+    <PlayerMatchCard
+      key={match.id}
+      match={match}
+      ground={store.grounds.find((g) => g.id === match.groundId)}
+      tournamentName={match.tournamentId ? tournamentMap.get(match.tournamentId) : undefined}
+      availability={
+        optimisticAvailability[match.id] ||
+        derivePlayerAvailability(mePlayer, match, store.payments).status
+      }
+      isImmediateNext={opts.isImmediateNext}
+      variant={idx % 2 === 1 ? "alternate" : "default"}
+      onSelectMatch={handleOpenMatch}
+      {...(opts.canRsvp
+        ? { onRsvp: handleRsvp, isUpdatingRsvp: updatingMatchId === match.id }
+        : {})}
+    />
+  );
+
   // If a match is selected, render the cohesive player match detail view
   if (selectedMatch) {
     return (
@@ -541,6 +568,18 @@ export function PlayerMatchCenter({
         </div>
       </div>
 
+      {/* Monthly date selector (shared with Admin Match Centre). Fed only with the
+          matches this player is eligible to see, so no admin-only fixtures,
+          tentative blocks or notes appear; selecting a date adds a panel above
+          the regular lists, which stay visible. */}
+      <MatchDateSelector
+        variant="player"
+        storageKeyPrefix="playerMatches"
+        matches={grouped.allEligible}
+        loaded={store.isLoaded !== false}
+        renderMatchCard={(match, idx) => renderPlayerCard(match, idx, { canRsvp: upcomingIds.has(match.id) })}
+      />
+
       {/* ========================================================================= */}
       {/* 1. UPCOMING MATCHES SECTION (Section 3.A)                                 */}
       {/* ========================================================================= */}
@@ -566,45 +605,7 @@ export function PlayerMatchCenter({
           {filteredUpcoming.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {filteredUpcoming.map((match, idx) => {
-                const ground = store.grounds.find((g) => g.id === match.groundId);
-                const tournamentName = match.tournamentId
-                  ? tournamentMap.get(match.tournamentId)
-                  : undefined;
-                const myPayment = mePlayer
-                  ? store.payments.find(
-                      (p) => p.matchId === match.id && p.playerId === mePlayer.id
-                    )
-                  : null;
-                const personalPaymentStatus = getPersonalMatchPaymentStatus(
-                  mePlayer,
-                  match,
-                  store.payments
-                );
-                const availability =
-                  optimisticAvailability[match.id] ||
-                  derivePlayerAvailability(
-                    mePlayer,
-                    match,
-                    store.payments
-                  ).status;
-                const isImmediateNext = grouped.nextMatch?.id === match.id;
-
-                return (
-                  <PlayerMatchCard
-                    key={match.id}
-                    match={match}
-                    ground={ground}
-                    tournamentName={tournamentName}
-                    myPayment={myPayment}
-                    personalPaymentStatus={personalPaymentStatus}
-                    availability={availability}
-                    isImmediateNext={isImmediateNext}
-                    variant={idx % 2 === 1 ? "alternate" : "default"}
-                    onSelectMatch={handleOpenMatch}
-                    onRsvp={handleRsvp}
-                    isUpdatingRsvp={updatingMatchId === match.id}
-                  />
-                );
+                return renderPlayerCard(match, idx, { canRsvp: true, isImmediateNext: grouped.nextMatch?.id === match.id });
               })}
             </div>
           ) : (
@@ -631,55 +632,12 @@ export function PlayerMatchCenter({
             <h2 className="text-sm sm:text-base font-black font-heading uppercase tracking-wide text-text-primary">
               Recent Matches ({filteredRecent.length})
             </h2>
-            {grouped.unsettledOlder.length > 0 && (
-              <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                {grouped.unsettledOlder.length} Unsettled
-              </span>
-            )}
           </div>
 
           {filteredRecent.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {filteredRecent.map((match, idx) => {
-                const ground = store.grounds.find((g) => g.id === match.groundId);
-                const tournamentName = match.tournamentId
-                  ? tournamentMap.get(match.tournamentId)
-                  : undefined;
-                const myPayment = mePlayer
-                  ? store.payments.find(
-                      (p) => p.matchId === match.id && p.playerId === mePlayer.id
-                    )
-                  : null;
-                const personalPaymentStatus = getPersonalMatchPaymentStatus(
-                  mePlayer,
-                  match,
-                  store.payments
-                );
-                const availability =
-                  optimisticAvailability[match.id] ||
-                  derivePlayerAvailability(
-                    mePlayer,
-                    match,
-                    store.payments
-                  ).status;
-                const isUnsettledAlert = grouped.unsettledOlder.some(
-                  (m) => m.id === match.id
-                );
-
-                return (
-                  <PlayerMatchCard
-                    key={match.id}
-                    match={match}
-                    ground={ground}
-                    tournamentName={tournamentName}
-                    myPayment={myPayment}
-                    personalPaymentStatus={personalPaymentStatus}
-                    availability={availability}
-                    isUnsettledAlert={isUnsettledAlert}
-                    variant={idx % 2 === 1 ? "alternate" : "default"}
-                    onSelectMatch={handleOpenMatch}
-                  />
-                );
+                return renderPlayerCard(match, idx);
               })}
             </div>
           ) : (
@@ -715,41 +673,7 @@ export function PlayerMatchCenter({
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {filteredPrevious.slice(0, previousPageSize).map((match, idx) => {
-                  const ground = store.grounds.find((g) => g.id === match.groundId);
-                  const tournamentName = match.tournamentId
-                    ? tournamentMap.get(match.tournamentId)
-                    : undefined;
-                  const myPayment = mePlayer
-                    ? store.payments.find(
-                        (p) => p.matchId === match.id && p.playerId === mePlayer.id
-                      )
-                    : null;
-                  const personalPaymentStatus = getPersonalMatchPaymentStatus(
-                    mePlayer,
-                    match,
-                    store.payments
-                  );
-                  const availability =
-                  optimisticAvailability[match.id] ||
-                  derivePlayerAvailability(
-                    mePlayer,
-                    match,
-                    store.payments
-                  ).status;
-
-                  return (
-                    <PlayerMatchCard
-                      key={match.id}
-                      match={match}
-                      ground={ground}
-                      tournamentName={tournamentName}
-                      myPayment={myPayment}
-                      personalPaymentStatus={personalPaymentStatus}
-                      availability={availability}
-                      variant={idx % 2 === 1 ? "alternate" : "default"}
-                      onSelectMatch={handleOpenMatch}
-                    />
-                  );
+                  return renderPlayerCard(match, idx);
                 })}
               </div>
 

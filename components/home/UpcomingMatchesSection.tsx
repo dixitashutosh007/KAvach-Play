@@ -18,7 +18,6 @@ import { Match, Ground, MatchPayment, Player } from "@/lib/types";
 import { PlayerMatchCard } from "@/components/matches/PlayerMatchCard";
 import {
   derivePlayerAvailability,
-  getPersonalMatchPaymentStatus,
 } from "@/lib/personal-match-payment";
 
 export function UpcomingMatchesSection({
@@ -132,7 +131,6 @@ export function UpcomingMatchesSection({
                 <PlayerMatchCard
                   match={match}
                   ground={grounds.find((g) => g.id === match.groundId)}
-                  personalPaymentStatus={getPersonalMatchPaymentStatus(player, match, payments)}
                   availability={derivePlayerAvailability(player, match, payments).status}
                   variant={idx % 2 === 1 ? "alternate" : "default"}
                   layout="home"

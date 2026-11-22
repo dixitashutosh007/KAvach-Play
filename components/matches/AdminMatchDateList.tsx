@@ -63,6 +63,14 @@ export interface AdminMatchDateListProps {
   todayKey?: string;
   /** Test hook: initial explicit selection (normally none). */
   defaultSelectedKey?: string | null;
+  /**
+   * "admin" (default): booking statuses incl. Tentatively Blocked and the
+   * "available for booking" hint. "player": no admin wording; the legend omits
+   * Tentatively Blocked (players never receive tentative fixtures).
+   */
+  variant?: "admin" | "player";
+  /** Session-storage namespace so Admin and Player selections stay separate. */
+  storageKeyPrefix?: string;
 }
 
 export function AdminMatchDateList({
@@ -72,18 +80,21 @@ export function AdminMatchDateList({
   onAddMatch,
   todayKey: todayKeyProp,
   defaultSelectedKey = null,
+  variant = "admin",
+  storageKeyPrefix = "matches:dateList",
 }: AdminMatchDateListProps) {
+  const isPlayer = variant === "player";
   const today = getClubCalendarDate();
   const todayKey = todayKeyProp || today.dateString;
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
 
   // Survive opening a match and coming back (same tab session).
-  const [view, setView] = useSessionState<{ year: number; month: number }>("matches:dateList:month", {
+  const [view, setView] = useSessionState<{ year: number; month: number }>(`${storageKeyPrefix}:month`, {
     year: todayYear,
     month: todayMonth - 1,
   });
   // Explicit selection only (null = no date selected → no panel).
-  const [picked, setPicked] = useSessionState<string | null>("matches:dateList:selected", defaultSelectedKey);
+  const [picked, setPicked] = useSessionState<string | null>(`${storageKeyPrefix}:selected`, defaultSelectedKey);
 
   const strip = useMemo(() => buildMonthDateStrip(view.year, view.month, matches), [view.year, view.month, matches]);
   const selectedKey = picked !== null && strip.some((d) => d.key === picked) ? picked : null;
@@ -215,7 +226,7 @@ export function AdminMatchDateList({
 
         {/* Legend */}
         <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-medium text-text-muted" data-testid="date-legend">
-          {(["booked", "available", "tentative"] as DateStatus[]).map((s) => (
+          {((isPlayer ? ["booked", "available"] : ["booked", "available", "tentative"]) as DateStatus[]).map((s) => (
             <li key={s} className="inline-flex items-center gap-1.5">
               <span
                 className={`inline-block w-2.5 h-2.5 rounded-full ${STATUS_MARKER[s]}`}
@@ -266,7 +277,7 @@ export function AdminMatchDateList({
           ) : (
             <div className="py-4 px-3 text-center bg-surface border border-dashed border-border rounded-xl" data-testid="date-empty-state">
               <p className="text-sm font-bold text-text-primary">No matches scheduled for this date.</p>
-              {selected?.status === "available" && (
+              {!isPlayer && selected?.status === "available" && (
                 <p className="mt-1 text-xs text-text-secondary">This weekend date is available for booking.</p>
               )}
               {onAddMatch && (
@@ -340,3 +351,6 @@ export function DateCard({
     </button>
   );
 }
+
+/** Generic name for the shared monthly date selector (Admin and Player Match Centre). */
+export const MatchDateSelector = AdminMatchDateList;

@@ -220,7 +220,7 @@ describe("Admin Match Center card", () => {
   it("uses the shared top bar (ribbon + admin actions) and shared body", () => {
     assert.match(s, /<MatchCardTopBar\s+match=\{match\}[\s\S]{0,400}?end=\{\s*isAdmin \? \(/);
     // desktop keeps the shared header; mobile uses the shared stacked body
-    assert.match(s, /<div className="hidden md:block">\s*<MatchCardHeader match=\{match\} ground=\{ground\} \/>/);
+    assert.match(s, /<div className="hidden md:block">\s*<MatchCardHeader match=\{match\} ground=\{ground\} resultPlacement="inline" \/>/);
     assert.match(s, /<div className="md:hidden">\s*<MatchCardStackedBody match=\{match\} ground=\{ground\}/);
   });
   it("does not introduce player availability buttons into the admin card", () => {

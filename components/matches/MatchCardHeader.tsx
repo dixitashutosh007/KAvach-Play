@@ -33,11 +33,43 @@ import { getMatchResultDisplay, MATCH_RESULT_STAMP_CLASSES } from "./matchResult
 
 // ── Small presentational pieces ─────────────────────────────────────────────
 
-export function MatchResultStamp({ match }: { match: Match }) {
+/** Restrained colours for the compact, inline result stamp. */
+const COMPACT_RESULT_CLASSES = {
+  won: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  lost: "bg-rose-50 text-rose-700 border-rose-200",
+  tied: "bg-amber-50 text-amber-800 border-amber-200",
+  abandoned: "bg-slate-100 text-slate-600 border-slate-200",
+  noResult: "bg-slate-100 text-slate-600 border-slate-200",
+} as const;
+
+export function MatchResultStamp({
+  match,
+  compact = false,
+  className = "",
+}: {
+  match: Match;
+  /** Small inline stamp (label only; margin in the tooltip) for the opponent line. */
+  compact?: boolean;
+  className?: string;
+}) {
   const display = getMatchResultDisplay(match.result);
   if (!display) return null;
   const showMargin =
     (display.tone === "won" || display.tone === "lost") && Boolean(match.resultMarginAmount);
+  if (compact) {
+    const margin = showMargin ? ` by ${match.resultMarginAmount} ${match.resultMarginType || "runs"}` : "";
+    return (
+      <span
+        data-testid={`result-stamp-${match.id}`}
+        data-result-tone={display.tone}
+        data-compact="true"
+        title={`${display.label}${margin}`}
+        className={`inline-flex items-center px-1.5 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-wider leading-none font-heading whitespace-nowrap shrink-0 ${COMPACT_RESULT_CLASSES[display.tone]} ${className}`}
+      >
+        {display.label}
+      </span>
+    );
+  }
   return (
     <span
       data-testid={`result-stamp-${match.id}`}
@@ -213,13 +245,20 @@ export interface MatchCardHeaderProps {
   meta?: React.ReactNode;
   /** Hide the result stamp (e.g. when a caller renders its own). */
   hideResult?: boolean;
+  /**
+   * "row" (default): result stamp in the meta row under the opponent.
+   * "inline": compact stamp right-aligned on the opponent line (no extra row).
+   */
+  resultPlacement?: "row" | "inline";
 }
 
-export function MatchCardHeader({ match, ground, meta, hideResult = false }: MatchCardHeaderProps) {
+export function MatchCardHeader({ match, ground, meta, hideResult = false, resultPlacement = "row" }: MatchCardHeaderProps) {
   const venueLink = getVenueMapsLink(ground);
   const venueName = ground?.name?.trim() || "";
   const hasResult = !hideResult && getMatchResultDisplay(match.result) !== null;
-  const hasMetaRow = hasResult || Boolean(meta);
+  const inlineResult = hasResult && resultPlacement === "inline";
+  const rowResult = hasResult && !inlineResult;
+  const hasMetaRow = rowResult || Boolean(meta);
 
   return (
     <div className="@container" data-testid={`match-card-header-${match.id}`}>
@@ -232,13 +271,16 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false }: Mat
           </div>
           <div className="min-w-0">
             <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>{" "}
-            <h3 className="mt-0.5 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
-              {match.opponent}
-            </h3>
+            <div className="mt-0.5 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
+              <h3 className="min-w-0 flex-1 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
+                {match.opponent}
+              </h3>
+              {inlineResult && <MatchResultStamp match={match} compact className="mt-1 @sm:mt-1.5" />}
+            </div>
           </div>
           {hasMetaRow && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              {hasResult && <MatchResultStamp match={match} />}
+              {rowResult && <MatchResultStamp match={match} />}
               {meta}
             </div>
           )}
@@ -405,9 +447,8 @@ export function MatchCardCompactBody({ match, ground, hideResult = false }: Matc
  * Mobile (below md) body for Admin Match Centre cards. Single column, no fixed
  * desktop widths:
  *
- *   [result]                       (persisted result only; nothing inferred)
  *   VS
- *   Opponent (≤ 2 lines)
+ *   Opponent (≤ 2 lines)                     [WON]   (persisted result only)
  *   🏆 Tournament name (truncates)
  *   ┌ 7:00 AM │ 📅 SAT · 28 NOV ┐
  *   │         │ 📍 Venue… ↗      │
@@ -432,18 +473,17 @@ export function MatchCardStackedBody({
   return (
     <div className="flex flex-col gap-3 min-w-0" data-testid={`match-card-stacked-${match.id}`}>
       <div className="min-w-0">
-        {hasResult && (
-          <div className="mb-1.5 flex">
-            <MatchResultStamp match={match} />
-          </div>
-        )}
         <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
-        <h3
-          className="mt-1 text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
-          title={opponent}
-        >
-          {opponent}
-        </h3>
+        {/* Opponent left, result right on the same line: no extra row. */}
+        <div className="mt-1 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
+          <h3
+            className="min-w-0 flex-1 text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
+            title={opponent}
+          >
+            {opponent}
+          </h3>
+          {hasResult && <MatchResultStamp match={match} compact className="mt-1" />}
+        </div>
         {tournamentName && (
           <p
             className="mt-1 flex items-center gap-1 min-w-0 text-[11px] font-bold text-deep-wine"

@@ -171,9 +171,10 @@ describe("Player Home card (layout=home)", () => {
 });
 
 describe("Scope protection", () => {
-  it("Player Match Center card (default layout) still shows the payment badge and standard header", () => {
+  it("Player Match Center card (default layout): standard header, no payment badge", () => {
     const html = card();
-    assert.ok(html.includes("payment-status-m1"));
+    assert.ok(!html.includes("payment-status-m1"));
+    assert.ok(!/UNPAID|₹698/.test(text(html)));
     assert.ok(!html.includes("match-card-compact-m1"));
     assert.ok(!html.includes("match-card-chips-m1"));
     assert.ok(!html.includes('data-layout="home"'));

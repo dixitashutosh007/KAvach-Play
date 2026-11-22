@@ -433,52 +433,29 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
 
   // ── 13. Payment Status & Privacy Behavior Intact ────────────────────────────
   describe("13. Payment Status & Privacy Integrity", () => {
-    it("13. Renders PAID, UNPAID, PARTIALLY PAID and Option A WAIVED badges correctly", () => {
-      const paidHtml = ReactDOMServer.renderToStaticMarkup(
-        React.createElement(PlayerMatchCard, {
-          match: baseMatch,
-          personalPaymentStatus: { status: "PAID", netPayable: 0, amountPaid: 650, isWaived: false },
-          availability: "Playing",
-          onSelectMatch: () => {},
-        })
-      );
-      assert.ok(paidHtml.includes('data-testid="payment-status-match-test-1"'));
-      assert.ok(paidHtml.includes("PAID"));
-
-      const unpaidHtml = ReactDOMServer.renderToStaticMarkup(
-        React.createElement(PlayerMatchCard, {
-          match: baseMatch,
-          personalPaymentStatus: { status: "UNPAID", netPayable: 650, amountPaid: 0, isWaived: false },
-          availability: "Playing",
-          onSelectMatch: () => {},
-        })
-      );
-      assert.ok(unpaidHtml.includes("UNPAID • ₹650"));
-
-      const partialHtml = ReactDOMServer.renderToStaticMarkup(
-        React.createElement(PlayerMatchCard, {
-          match: baseMatch,
-          personalPaymentStatus: { status: "PARTIALLY PAID", netPayable: 350, amountPaid: 300, isWaived: false },
-          availability: "Playing",
-          onSelectMatch: () => {},
-        })
-      );
-      assert.ok(partialHtml.includes("PARTIALLY PAID • ₹350 due"));
-
-      // Option A Policy on Abandoned match
-      const waivedHtml = ReactDOMServer.renderToStaticMarkup(
-        React.createElement(PlayerMatchCard, {
-          match: { ...baseMatch, result: "Abandoned" },
-          personalPaymentStatus: { status: "WAIVED", netPayable: 0, amountPaid: 200, isWaived: true },
-          availability: "Playing",
-          onSelectMatch: () => {},
-        })
-      );
-      assert.ok(waivedHtml.includes("WAIVED • ₹200 collected"));
-      assert.ok(!waivedHtml.includes("UNPAID"));
+    it("13. Player match cards never show payment status or amounts (any status)", () => {
+      // Payment presentation was removed from player-facing cards; dues live on
+      // the Payments page. Extra (legacy) props must not bring it back.
+      for (const status of [
+        { status: "PAID", netPayable: 0, amountPaid: 650, isWaived: false },
+        { status: "UNPAID", netPayable: 650, amountPaid: 0, isWaived: false },
+        { status: "PARTIALLY PAID", netPayable: 350, amountPaid: 300, isWaived: false },
+        { status: "WAIVED", netPayable: 0, amountPaid: 200, isWaived: true },
+      ]) {
+        const html = ReactDOMServer.renderToStaticMarkup(
+          React.createElement(PlayerMatchCard, {
+            match: status.status === "WAIVED" ? { ...baseMatch, result: "Abandoned" } : baseMatch,
+            personalPaymentStatus: status,
+            availability: "Playing",
+            onSelectMatch: () => {},
+          })
+        );
+        assert.ok(!html.includes('data-testid="payment-status-match-test-1"'), status.status);
+        assert.ok(!/UNPAID|PARTIALLY PAID|₹/.test(html), status.status);
+      }
     });
 
-    it("13b. Displays unsettled alert callout for older unsettled matches", () => {
+    it("13b. No unsettled-obligation alert or amount on player cards", () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -488,10 +465,15 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
           onSelectMatch: () => {},
         })
       );
-
-      assert.ok(html.includes('data-testid="unsettled-alert-match-test-1"'));
-      assert.ok(html.includes("Unsettled Obligation"));
-      assert.ok(html.includes("₹500 due for this past match"));
+      assert.ok(!html.includes("unsettled-alert-match-test-1"));
+      assert.ok(!html.includes("Unsettled Obligation"));
+      assert.ok(!html.includes("₹"));
+      const src = fs.readFileSync(path.resolve("components/matches/PlayerMatchCard.tsx"), "utf-8");
+      const cardFn = src.slice(src.indexOf("export function PlayerMatchCard("));
+      assert.ok(!/personalPaymentStatus|netPayable|isUnsettledAlert/.test(cardFn), "card has no payment inputs");
+      const center = fs.readFileSync(path.resolve("components/matches/PlayerMatchCenter.tsx"), "utf-8");
+      assert.ok(!center.includes("Unsettled\n"), "no unsettled debt chip in the Recent header");
+      assert.ok(!/\{grouped\.unsettledOlder\.length\} Unsettled/.test(center));
     });
   });
 
@@ -578,7 +560,7 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(!html.includes("bg-warm-white"), "alternate surface must differ from the page canvas");
     });
 
-    it("15e. Alternate surface never overrides Next Match or unsettled highlights", () => {
+    it("15e. Alternate surface never overrides the Next Match highlight", () => {
       const next = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -590,23 +572,13 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
         })
       );
       assert.ok(!next.includes("bg-soft-blush"));
-      const unsettled = ReactDOMServer.renderToStaticMarkup(
-        React.createElement(PlayerMatchCard, {
-          match: baseMatch,
-          personalPaymentStatus: { status: "UNPAID", netPayable: 400, amountPaid: 0, isWaived: false },
-          availability: "Playing",
-          isUnsettledAlert: true,
-          variant: "alternate",
-          onSelectMatch: () => {},
-        })
-      );
-      assert.ok(!unsettled.includes("bg-soft-blush"));
     });
 
     it("15f. Alternation is deterministic by rendered index in every Match Center list", () => {
       const src = fs.readFileSync(path.resolve("components/matches/PlayerMatchCenter.tsx"), "utf-8");
-      const occurrences = src.match(/variant=\{idx % 2 === 1 \? "alternate" : "default"\}/g) || [];
-      assert.equal(occurrences.length, 3, "upcoming, recent and previous lists must all alternate");
+      // One shared renderer applies the alternation; all three lists use it with their index.
+      assert.equal((src.match(/variant=\{idx % 2 === 1 \? "alternate" : "default"\}/g) || []).length, 1);
+      assert.equal((src.match(/return renderPlayerCard\(match, idx/g) || []).length, 3, "upcoming, recent and previous lists");
     });
 
     it("15c. Preserves strong semantic highlight for isImmediateNext regardless of variant", () => {
@@ -625,7 +597,7 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       assert.ok(html.includes("ring-scarlet/15"));
     });
 
-    it("15d. Preserves strong semantic highlight for isUnsettledAlert regardless of variant", () => {
+    it("15d. No debt highlight on player cards (legacy isUnsettledAlert prop is ignored)", () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(PlayerMatchCard, {
           match: baseMatch,
@@ -636,9 +608,9 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
           onSelectMatch: () => {},
         })
       );
-      assert.ok(html.includes('data-testid="unsettled-alert-match-test-1"'));
-      assert.ok(html.includes("border-amber-300"));
-      assert.ok(html.includes("ring-amber-100"));
+      assert.ok(!html.includes('data-testid="unsettled-alert-match-test-1"'));
+      assert.ok(!html.includes("border-amber-300"));
+      assert.ok(html.includes('data-variant="alternate"'), "normal alternation applies");
     });
   });
 });

@@ -475,7 +475,7 @@ describe("Banner rendering", () => {
 describe("Admin Match Center uses the shared card system without exposing admin controls to players", () => {
   const s = src("components/MatchesTab.tsx");
   it("admin card renders MatchCardHeader and shared surfaces", () => {
-    assert.match(s, /<MatchCardHeader match=\{match\} ground=\{ground\} \/>/);
+    assert.match(s, /<MatchCardHeader match=\{match\} ground=\{ground\} resultPlacement="inline" \/>/);
     assert.match(s, /getMatchCardSurfaceClass\(\{ isAlternate: isAlternateCard \}\)/);
   });
   it("duplicate / edit / delete actions are only rendered when isAdmin", () => {

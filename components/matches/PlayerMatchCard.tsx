@@ -6,14 +6,15 @@
  * Shared by the Player Match Center and the Player Home upcoming fixtures, built
  * on the shared presentation in MatchCardHeader (ribbon, identity, logistics)
  * with the Playing · Maybe · Out availability buttons at the bottom.
+ *
+ * Player-facing only (Admin Match Centre renders its own cards): it shows NO
+ * personal payment status, unpaid amount or unsettled-obligation alert. Dues
+ * live on the Player Payments page; Admin financial views are unaffected.
  */
 import React, { useState } from "react";
-import { Sparkles, AlertCircle, Trophy, ChevronDown, ChevronRight } from "lucide-react";
-import type { Match, MatchPayment, Ground } from "@/lib/types";
-import {
-  PersonalPaymentStatusResult,
-  PlayerAvailabilityStatus,
-} from "@/lib/personal-match-payment";
+import { Sparkles, Trophy, ChevronDown, ChevronRight } from "lucide-react";
+import type { Match, Ground } from "@/lib/types";
+import type { PlayerAvailabilityStatus } from "@/lib/personal-match-payment";
 import { MatchCardCompactBody, MatchCardHeader, MatchCardTopBar, MatchCornerTab } from "./MatchCardHeader";
 import {
   AvailabilityButtons,
@@ -26,17 +27,12 @@ export interface PlayerMatchCardProps {
   match: Match;
   ground?: Ground;
   tournamentName?: string;
-  myPayment?: MatchPayment | null;
-  personalPaymentStatus: PersonalPaymentStatusResult;
   availability: PlayerAvailabilityStatus | "Out";
   isImmediateNext?: boolean;
-  isUnsettledAlert?: boolean;
   /** Visual variant for alternating consecutive cards in lists */
   variant?: "default" | "alternate";
   /**
    * "home": Player Home upcoming-match card.
-   *  - Personal payment badge is not shown (Home is about availability; dues
-   *    live in Payments and the Match Center).
    *  - Below md: fixed-geometry mobile body (MatchCardCompactBody), format and
    *    jersey chips in the header row, card fills its carousel slide with the
    *    availability row anchored at the bottom.
@@ -88,10 +84,8 @@ export function PlayerMatchCard({
   match,
   ground,
   tournamentName,
-  personalPaymentStatus,
   availability,
   isImmediateNext = false,
-  isUnsettledAlert = false,
   variant = "default",
   layout = "default",
   onSelectMatch,
@@ -115,47 +109,7 @@ export function PlayerMatchCard({
     }
   };
 
-  const renderPaymentBadge = () => {
-    const { status, netPayable, isWaived } = personalPaymentStatus;
-    const base =
-      "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border whitespace-nowrap";
-    if (status === "PAID") {
-      return (
-        <span data-testid={`payment-status-${match.id}`} className={`${base} bg-emerald-50 text-emerald-800 border-emerald-200`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-          <span>PAID</span>
-        </span>
-      );
-    }
-    if (status === "PARTIALLY PAID") {
-      return (
-        <span data-testid={`payment-status-${match.id}`} className={`${base} bg-amber-50 text-amber-800 border-amber-200`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          <span>PARTIALLY PAID • ₹{netPayable} due</span>
-        </span>
-      );
-    }
-    if (status === "UNPAID") {
-      return (
-        <span data-testid={`payment-status-${match.id}`} className={`${base} bg-rose-50 text-rose-800 border-rose-200`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-          <span>UNPAID • ₹{netPayable}</span>
-        </span>
-      );
-    }
-    if (status === "WAIVED" || isWaived) {
-      const historicalCollected =
-        personalPaymentStatus.amountPaid > 0 ? ` • ₹${personalPaymentStatus.amountPaid} collected` : "";
-      return (
-        <span data-testid={`payment-status-${match.id}`} className={`${base} bg-blue-50 text-blue-800 border-blue-200`}>
-          <span>WAIVED{historicalCollected}</span>
-        </span>
-      );
-    }
-    return null;
-  };
-
-  const isAlternate = variant === "alternate" && !isImmediateNext && !isUnsettledAlert;
+  const isAlternate = variant === "alternate" && !isImmediateNext;
   const isHome = layout === "home";
 
   const topBarEnd = (
@@ -213,7 +167,6 @@ export function PlayerMatchCard({
       onClick={() => onSelectMatch(match.id)}
       className={`${MATCH_CARD_BASE_CLASS} cursor-pointer ${isHome ? `${MATCH_CARD_FILL_CLASS} ` : ""}${getMatchCardSurfaceClass({
         isImmediateNext,
-        isUnsettledAlert,
         isAlternate,
       })}`}
     >
@@ -222,18 +175,6 @@ export function PlayerMatchCard({
         end={topBarEnd}
         corner={isHome ? <MatchCornerTab match={match} className="md:hidden" /> : undefined}
       />
-
-      {isUnsettledAlert && (
-        <div
-          data-testid={`unsettled-alert-${match.id}`}
-          className="mb-2.5 px-3 py-1.5 rounded-xl flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium"
-        >
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
-          <span>
-            <strong>Unsettled Obligation:</strong> ₹{personalPaymentStatus.netPayable} due for this past match.
-          </span>
-        </div>
-      )}
 
       {isHome ? (
         <>
@@ -245,7 +186,7 @@ export function PlayerMatchCard({
           </div>
         </>
       ) : (
-        <MatchCardHeader match={match} ground={ground} meta={renderPaymentBadge()} />
+        <MatchCardHeader match={match} ground={ground} />
       )}
 
       {isExpanded && tournamentName && (

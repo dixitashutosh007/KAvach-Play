@@ -1218,7 +1218,7 @@ export function MatchesTab({
                         <MatchCardStackedBody match={match} ground={ground} tournamentName={tournamentForCard?.name} />
                       </div>
                       <div className="hidden md:block">
-                        <MatchCardHeader match={match} ground={ground} />
+                        <MatchCardHeader match={match} ground={ground} resultPlacement="inline" />
                       </div>
 
                       {(tournamentForCard || match.isTentative) && (
@@ -1277,12 +1277,15 @@ export function MatchesTab({
                         </div>
                       )}
 
+                      {/* Performer highlights (won matches). The "Share Result on WhatsApp"
+                          button was removed from Admin Match Centre cards; the block now
+                          renders only when there is something to show. */}
                       {match.result && match.result !== "Pending" && (
+                        match.result === "KAvach Won" &&
+                        (match.potmId || match.playerOfTheMatch || match.bestBatsman || match.bestBowler || (match.topPerformerIds && match.topPerformerIds.length > 0))
+                      ) && (
                         <div className="mt-3 pt-3 border-t border-border">
-                          {match.result === "KAvach Won" &&
-                            (match.potmId || match.playerOfTheMatch ||
-                              match.bestBatsman ||
-                              match.bestBowler || (match.topPerformerIds && match.topPerformerIds.length > 0)) && (
+                          {(
                               <div className="grid grid-cols-2 gap-2 text-xs mt-2 relative z-10">
                                 {(match.potmId || match.playerOfTheMatch) && (
                                   <div>
@@ -1331,35 +1334,6 @@ export function MatchesTab({
                               </div>
                             )}
 
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const groundName = store.grounds.find((g) => g.id === match.groundId)?.name || 'Unknown Ground';
-                                let text = `*Match Result*\n${formatDate(match.date)} | ${match.matchType} | ${groundName}\n\nKAvach vs ${match.opponent}\n*Result:* ${match.result}`;
-                                if (match.result === "KAvach Won" || match.result === "KAvach Lost") {
-                                  if (match.resultMarginAmount) {
-                                    text += ` by ${match.resultMarginAmount} ${match.resultMarginType === "wickets" ? "wickets" : "runs"}\n`;
-                                  } else {
-                                    text += `\n`;
-                                  }
-                                } else {
-                                  text += `\n`;
-                                }
-                                const potmStr = match.potmId ? store.players.find(p => p.id === match.potmId)?.name : match.playerOfTheMatch;
-                                if (potmStr) text += `*MVP:* ${potmStr}\n`;
-                                if (match.bestBatsman) text += `*Best Batsman:* ${match.bestBatsman}\n`;
-                                if (match.bestBowler) text += `*Best Bowler:* ${match.bestBowler}\n`;
-                                if (match.topPerformerIds && match.topPerformerIds.length > 0) {
-                                  const tpStr = match.topPerformerIds.map(id => store.players.find(p => p.id === id)?.name).filter(Boolean).join(", ");
-                                  if (tpStr) text += `*Top Performers:* ${tpStr}\n`;
-                                }
-                                navigator.clipboard.writeText(text);
-                                toast("WhatsApp Report Copied to Clipboard!", "success");
-                              }}
-                              className="mt-3 w-full flex justify-center items-center gap-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition border border-emerald-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg"
-                            >
-                              Share Result on WhatsApp
-                            </button>
 
                         </div>
                       )}

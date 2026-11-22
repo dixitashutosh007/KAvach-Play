@@ -150,17 +150,18 @@ test("UX-P1-01: Admin experience eliminates dual mobile navigation bars and prov
     "Top duplicate mobile pill buttons must be eliminated",
   );
 
-  // Verify admin hub context banner is rendered
-  assert.ok(
+  // The redundant "Admin Console · <hub>" banner is removed from every admin page
+  assert.equal(
     pageCode.includes("data-testid=\"admin-hub-context-banner\""),
-    "Admin hub context banner must be present",
+    false,
+    "Admin hub context banner must not be rendered",
   );
 
-  // Verify Return to Player View action is available
-  assert.ok(
-    pageCode.includes("title=\"Return to Player View\""),
-    "Context banner must provide Return to Player View button",
-  );
+  // Player View switching stays available: header persona toggle (all widths)
+  // and the desktop sidebar's Return to Player View.
+  const headerCode = fs.readFileSync(path.resolve("components/layout/AppHeader.tsx"), "utf-8");
+  assert.ok(headerCode.includes('data-testid="header-persona-toggle"'), "Header must keep the persona toggle");
+  assert.ok(pageCode.includes("onTogglePersona={() => {"), "Page must wire the header persona toggle");
   assert.ok(
     pageCode.includes("Return to Player View"),
     "Desktop sidebar must provide Return to Player View button",
