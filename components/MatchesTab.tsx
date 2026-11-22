@@ -68,6 +68,7 @@ import { MatchCardHeader, MatchCardTopBar } from "./matches/MatchCardHeader";
 import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
 import { MATCH_TYPES, groundFeeForMatchType } from "@/lib/match-category";
 import { AdminMatchDateList } from "./matches/AdminMatchDateList";
+import { MatchPaymentPanel } from "./matches/MatchPaymentPanel";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
@@ -97,6 +98,14 @@ export function MatchesTab({
     defaultAction === "assign" ? "assign" : "matches"
   );
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
+  const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useSessionState(
+    "matches:isLaterScheduledCollapsed",
+    true,
+  );
+  const [isPastListCollapsed, setIsPastListCollapsed] = useSessionState(
+    "matches:isPastListCollapsed",
+    true,
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -318,6 +327,21 @@ export function MatchesTab({
   // Table View (sheet) stays Super Admin only, as before; a remembered "sheet"
   // choice falls back to the List View for other admins.
   const activeView: MatchViewMode = viewMode === "sheet" && !isSuperAdmin ? "list" : viewMode;
+
+  // Admin Match Centre loads payments on demand (the page no longer preloads
+  // every payment for this tab). Calendar View and the Assign sub-tab show
+  // figures for many matches, so they attach the existing all-payments
+  // listener; the edit form needs only the match being edited. The List View's
+  // per-match "Payment Details" panels load their own match when expanded.
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (subTab === "assign" || (subTab === "matches" && activeView === "calendar")) store.ensurePayments?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, subTab, activeView, store.ensurePayments, store.refreshNonce]);
+  useEffect(() => {
+    if (isAdmin && editingId) store.ensureMatchPayments?.(editingId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, editingId, store.ensureMatchPayments, store.refreshNonce]);
 
   useEffect(() => {
     if (!isAdmin && subTab !== "matches") {
@@ -1102,21 +1126,6 @@ export function MatchesTab({
                 const ground = store.grounds.find(
                   (g) => g.id === match.groundId,
                 );
-                const paymentsForMatch = store.payments.filter(
-                  (p) => p.matchId === match.id,
-                );
-                const paidCount = paymentsForMatch.filter(
-                  (p) => p.status === "Paid",
-                ).length;
-                const unpaidCount = paymentsForMatch.filter(
-                  (p) => p.status === "Unpaid",
-                ).length;
-                const cardPaidTotal = paymentsForMatch
-                  .filter((p) => p.status === "Paid")
-                  .reduce((s, p) => s + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
-                const cardUnpaidTotal = paymentsForMatch
-                  .filter((p) => p.status === "Unpaid")
-                  .reduce((s, p) => s + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
                 const isAlternateCard = cardIndex % 2 === 1;
                 const tournamentForCard = match.tournamentId
                   ? store.tournaments.find((tt) => tt.id === match.tournamentId)
@@ -1211,22 +1220,13 @@ export function MatchesTab({
                         </div>
                       )}
 
-                      {isAdmin && (
-                        <div className="mt-2">
-                          <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                            {match.isGroundFeePaid && (
-                               <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
-                                   Ground Fee Paid (₹{match.groundFeePaidAmount})
-                               </div>
-                            )}
-                            <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold flex items-center gap-1">
-                              <span>{paidCount} Paid</span>
-                              <span className="opacity-70 font-mono text-[11px]">(₹{cardPaidTotal})</span>
-                            </div>
-                            <div className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1">
-                              <span>{unpaidCount} Unpaid</span>
-                              <span className="opacity-70 font-mono text-[11px]">(₹{cardUnpaidTotal})</span>
-                            </div>
+                      {/* Ground fee comes from the match document itself (no payment
+                          query). Player payment balances live in the lazily
+                          loaded "Payment Details" panel below. */}
+                      {isAdmin && match.isGroundFeePaid && (
+                        <div className="mt-2 flex items-center gap-1.5 text-xs flex-wrap">
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
+                            Ground Fee Paid (₹{match.groundFeePaidAmount})
                           </div>
                         </div>
                       )}
@@ -1345,32 +1345,119 @@ export function MatchesTab({
                         </div>
                       )}
                     </div>
-                    <div className="bg-surface-hover px-4 py-3 border-t border-border flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                          Paid: {paidCount}
-                        </div>
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-red-500/30 bg-red-500/10 text-[10px] font-bold uppercase tracking-wider text-red-500">
-                          Pending: {unpaidCount}
-                        </div>
-                      </div>
-                    </div>
+                    {isAdmin && (
+                      <MatchPaymentPanel
+                        match={match}
+                        players={store.players}
+                        payments={store.payments}
+                        status={store.matchPaymentsStatus?.[match.id]}
+                        ensureMatchPayments={store.ensureMatchPayments}
+                        refreshNonce={store.refreshNonce}
+                      />
+                    )}
                   </div>
                 );
               };
 
               if (isAdmin) {
+                // Regular admin listing (unchanged ordering: next 14 days, then
+                // "Scheduled Later" and "Past Matches"). Always visible; the date
+                // selector above only adds an optional selected-date panel.
+                const now = new Date();
+                const fourteenDaysFromNow = new Date(now);
+                fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14);
+                // Admins still need to edit recent results (result, POTM, stats,
+                // fee assignments) for a while after the match. Keep the last
+                // 10 days out of "Past Matches" so those cards stay right at
+                // the top of the list.
+                const pastCutoff = new Date(now);
+                pastCutoff.setDate(pastCutoff.getDate() - 10);
+
+                const pastMatches = allMatches.filter(m => getMatchDate(m) < pastCutoff).sort((a,b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());
+                const upcomingMatches = allMatches.filter(m => getMatchDate(m) >= pastCutoff).sort((a,b) => getMatchDate(a).getTime() - getMatchDate(b).getTime());
+
+                const upcomingNear = upcomingMatches.filter(m => {
+                   const date = getMatchDate(m);
+                   return date <= fourteenDaysFromNow;
+                });
+               
+                const upcomingLater = upcomingMatches.filter(m => {
+                   const date = getMatchDate(m);
+                   return date > fourteenDaysFromNow;
+                });
+
+                const regularList =
+                  allMatches.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-text-muted bg-surface border-dashed rounded-xl">
+                      No matches found.
+                    </div>
+                  ) : (
+                       <div className="space-y-4">
+                         {upcomingNear.length > 0 ? upcomingNear.map(renderMatchCard) : (
+                           <div className="py-12 text-center text-sm text-text-muted bg-surface border-dashed rounded-xl">
+                             No matches in the next 14 days.
+                           </div>
+                         )}
+               
+                         {upcomingLater.length > 0 && (
+                            <div className="bg-surface p-4 rounded-xl mt-8">
+                              <button
+                                onClick={() => setIsLaterScheduledCollapsed(!isLaterScheduledCollapsed)}
+                                className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
+                              >
+                                <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                                  Scheduled Later ({upcomingLater.length})
+                                </h2>
+                                {isLaterScheduledCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                              </button>
+                              {!isLaterScheduledCollapsed && (
+                                <div className="mt-4 space-y-4">
+                                  {upcomingLater.map(renderMatchCard)}
+                                </div>
+                              )}
+                            </div>
+                         )}
+
+                         {pastMatches.length > 0 && (
+                            <div className="bg-surface p-4 rounded-xl mt-8">
+                              <button
+                                onClick={() => setIsPastListCollapsed(!isPastListCollapsed)}
+                                className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
+                              >
+                                <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                                  <Calendar className="w-4 h-4" /> Past Matches ({pastMatches.length})
+                                </h2>
+                                {isPastListCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                              </button>
+                              {!isPastListCollapsed && (
+                                <div className="mt-4 space-y-4">
+                                  {pastMatches.map(renderMatchCard)}
+                                </div>
+                              )}
+                            </div>
+                         )}
+                       </div>
+                  );
+
                 return (
-                  <AdminMatchDateList
-                    matches={allMatches}
-                    loaded={store.isLoaded}
-                    renderMatchCard={renderMatchCard}
-                    onAddMatch={(dateKey: string) => {
-                      setFormData((prev) => ({ ...prev, date: dbToInputDate(dateKey) }));
-                      setEditingId(null);
-                      setIsAdding(true);
-                    }}
-                  />
+                  <div className="space-y-6">
+                    <AdminMatchDateList
+                      matches={allMatches}
+                      loaded={store.isLoaded}
+                      renderMatchCard={renderMatchCard}
+                      onAddMatch={(dateKey: string) => {
+                        setFormData((prev) => ({ ...prev, date: dbToInputDate(dateKey) }));
+                        setEditingId(null);
+                        setIsAdding(true);
+                      }}
+                    />
+                    <section aria-labelledby="all-matches-heading" data-testid="regular-match-list">
+                      <h3 id="all-matches-heading" className="mb-3 text-sm font-bold uppercase tracking-wider text-text-primary font-heading">
+                        All Matches
+                      </h3>
+                      {regularList}
+                    </section>
+                  </div>
                 );
               }
 
@@ -1530,6 +1617,11 @@ export function MatchPayments({
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
+  // Load this match's payments (the store skips it if this match's listener is already attached).
+  useEffect(() => {
+    store.ensureMatchPayments?.(match.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.id, store.ensureMatchPayments, store.refreshNonce]);
   const matchPayments = store.payments.filter(
     (p) =>
       p.matchId === match.id &&

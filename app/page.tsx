@@ -366,8 +366,13 @@ export default function Home() {
   const OUT_OF_PLAY_TABS = new Set(["profile", "studio", "club"]);
   useEffect(() => {
     if (!store.isLoaded) return;
+    // Admin Match Centre loads payments on demand (a match's Payment Details
+    // panel, match detail, edit form via ensureMatchPayments; Calendar and
+    // Assign views via ensurePayments) instead of the whole collection up front.
+    const wantsAllPayments =
+      PAYMENT_TABS.has(activeTab) && !(activeTab === "matches" && persona === "admin");
     // ARCH-001: Detach listeners when domain tab is no longer active
-    if (!PAYMENT_TABS.has(activeTab)) store.detachDomain?.("allPayments");
+    if (!wantsAllPayments) store.detachDomain?.("allPayments");
     if (!OTHER_FEE_TABS.has(activeTab)) store.detachDomain?.("allOtherFees");
     if (!POSTS_TABS.has(activeTab)) store.detachDomain?.("posts");
     if (!STATS_TABS.has(activeTab)) store.detachDomain?.("playerStats");
@@ -385,7 +390,7 @@ export default function Home() {
     // Players load only their own payment records. Records are keyed by the PLAYER
     // id, which differs from the login uid for most linked players (Google or phone).
     const playerScope = isAdminUser ? undefined : scopedPlayerId || user?.uid;
-    if (PAYMENT_TABS.has(activeTab)) store.ensurePayments?.(playerScope);
+    if (wantsAllPayments) store.ensurePayments?.(playerScope);
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
     if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
     if (STATS_TABS.has(activeTab)) store.ensurePlayerStats?.();
@@ -406,7 +411,7 @@ export default function Home() {
       // ARCH-001: Teardown on unmount / navigation
       store.detachAllLazy?.();
     };
-  }, [activeTab, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain, store.refreshNonce, scopedPlayerId]);
+  }, [activeTab, persona, store.isLoaded, isAdminUser, user, store.ensurePayments, store.ensureOtherFees, store.ensurePosts, store.ensurePlayerStats, store.ensureMerchOrders, store.ensurePolls, store.ensurePollResponses, store.ensureTournaments, store.ensureSubscriptionPlans, store.ensureFeeTemplates, store.ensureFeePlans, store.ensureMerchandises, store.ensureOutOfPlays, store.ensureBadges, store.ensureBadgeTypeDefs, store.detachDomain, store.refreshNonce, scopedPlayerId]);
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.

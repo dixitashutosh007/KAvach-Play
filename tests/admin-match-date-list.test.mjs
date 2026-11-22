@@ -186,7 +186,7 @@ describe("Tall vertical date cards", () => {
   });
 });
 
-describe("Date-first list rendering", () => {
+describe("Date selector + selected-date panel", () => {
   const renderList = (props = {}) =>
     render(React.createElement(AdminMatchDateList, {
       matches: NOV,
@@ -195,20 +195,28 @@ describe("Date-first list rendering", () => {
       onAddMatch: () => {},
       ...props,
     }));
+  const headingText = (html) => {
+    const i = html.indexOf('data-testid="selected-date-heading"');
+    return text(html.slice(i, html.indexOf("</h3>", i)));
+  };
 
-  it("header shows the selected date and month navigation", () => {
+  it("no date selected by default: no panel, a prompt in the header, month navigation present", () => {
     const html = renderList();
-    assert.match(text(tagOf(html, "selected-date-heading") + html.slice(html.indexOf('data-testid="selected-date-heading"'), html.indexOf("</h3>", html.indexOf('data-testid="selected-date-heading"')))), /Sunday, 22 November 2026/);
+    assert.ok(!html.includes('data-testid="date-matches"'), "no empty selected-date panel");
+    assert.ok(!html.includes('aria-selected="true"'));
+    assert.match(headingText(html), /Select a date to preview its matches/);
     assert.ok(html.includes('aria-label="Previous month"') && html.includes('aria-label="Next month"'));
     assert.match(text(html), /November 2026/);
   });
 
-  it("today's date is selected and all its matches are listed in time order", () => {
-    const html = renderList();
+  it("explicit selection: heading, panel with all matches in time order, clear control", () => {
+    const html = renderList({ defaultSelectedKey: "2026-11-22" });
+    assert.match(headingText(html), /Sunday, 22 November 2026/);
     assert.ok(tagOf(html, "date-card-2026-11-22").includes('aria-selected="true"'));
-    assert.match(text(html), /Matches — Sunday, 22 November/);
+    assert.match(text(html), /Matches — Sunday, 22 November 2026/);
     assert.ok(html.indexOf('data-testid="card-b"') < html.indexOf('data-testid="card-a"'));
     assert.ok(!html.includes('data-testid="card-h"'));
+    assert.ok(html.includes('data-testid="date-clear"'));
   });
 
   it("legend lists the three statuses", () => {
@@ -216,23 +224,20 @@ describe("Date-first list rendering", () => {
     assert.match(legend, /Booked.*Available.*Tentatively Blocked/);
   });
 
-  it("an available weekend with no matches explains itself and offers Add Match", () => {
-    const html = renderList({ todayKey: "2026-11-21" });
+  it("selected available weekend: compact empty state with Add Match", () => {
+    const html = renderList({ defaultSelectedKey: "2026-11-21" });
     assert.match(text(html), /No matches scheduled for this date\./);
     assert.match(text(html), /available for booking/);
     assert.ok(html.includes('data-testid="date-add-match"'));
   });
 
-  it("no date today or later in the month: nothing guessed, a prompt to pick a date", () => {
-    // 31 Dec 2026 is a Thursday; the last December strip date is Sunday 27th.
-    const html = renderList({ todayKey: "2026-12-31" });
-    assert.ok(!html.includes('aria-selected="true"'));
-    assert.match(text(html), /Select a date/);
-    assert.match(text(html), /Choose a date above to see its matches for December 2026/);
+  it("a stale selection (date no longer in the strip) shows no panel", () => {
+    const html = renderList({ defaultSelectedKey: "2026-11-24" });
+    assert.ok(!html.includes('data-testid="date-matches"'));
   });
 
-  it("loading state", () => {
-    assert.match(text(renderList({ loaded: false })), /Loading matches/);
+  it("loading state is shown inside the panel", () => {
+    assert.match(text(renderList({ loaded: false, defaultSelectedKey: "2026-11-22" })), /Loading matches/);
   });
 
   it("swipe navigation only from the header or a strip already at its edge; taps after a swipe are ignored", () => {
@@ -244,10 +249,10 @@ describe("Date-first list rendering", () => {
     assert.match(s, /if \(suppressClickRef\.current\) \{/);
   });
 
-  it("month change resets to automatic selection; selection survives returning from a match", () => {
+  it("month change clears the selection; tapping the selected date toggles it off", () => {
     const s = src("components/matches/AdminMatchDateList.tsx");
     assert.match(s, /setView\(\(v\) => shiftMonth\(v\.year, v\.month, delta\)\);\s*setPicked\(null\);/);
-    assert.match(s, /useSessionState<string \| null>\("matches:dateList:selected", null\)/);
+    assert.match(s, /setPicked\(\(prev\) => \(prev === key \? null : key\)\)/);
   });
 });
 
@@ -288,9 +293,10 @@ describe("Match Centre integration", () => {
     assert.match(del, /await store\.deleteMatch\(match\.id\)/);
   });
 
-  it("admin cards keep match-wise paid/unpaid balances", () => {
-    assert.match(tab, /<span>\{unpaidCount\} Unpaid<\/span>/);
-    assert.match(tab, /\(₹\{cardUnpaidTotal\}\)/);
+  it("admin cards carry the lazily loaded Payment Details panel (balances live there)", () => {
+    assert.match(tab, /<MatchPaymentPanel\s+match=\{match\}/);
+    assert.match(tab, /status=\{store\.matchPaymentsStatus\?\.\[match\.id\]\}/);
+    assert.match(tab, /ensureMatchPayments=\{store\.ensureMatchPayments\}/);
   });
 
   it("no new Firestore subscription for the date list", () => {

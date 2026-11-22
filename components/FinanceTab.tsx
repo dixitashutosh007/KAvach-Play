@@ -8,6 +8,7 @@
  */
 import { authedFetch } from "@/lib/authed-fetch";
 import { isMatchBillable } from "@/lib/matchBillable";
+import { summarizeMatchFinance } from "@/lib/match-finance";
 import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Match, MatchPayment, Player, SubscriptionPlan } from "@/lib/types";
@@ -1123,148 +1124,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           });
         }
 
-        const playingCount = paymentsForMatch.length;
-        const paidCount = paymentsForMatch.filter(
-          (p) => p.status === "Paid",
-        ).length;
-        const unpaidCount = paymentsForMatch.filter(
-          (p) => p.status === "Unpaid" && (p.feeOverride !== undefined ? p.feeOverride : match.fee) > 0,
-        ).length;
-        const razorpayPaidCount = paymentsForMatch.filter(
-          (p) => p.status === "Paid" && p.paymentMethod !== "manual"
-        ).length;
-        const manualPaidCount = paymentsForMatch.filter(
-          (p) => p.status === "Paid" && p.paymentMethod === "manual"
-        ).length;
-
-        const getFee = (p: any) => p.feeOverride !== undefined ? p.feeOverride : match.fee;
-
-        const matchFeeTotal = match.matchFeeBudget !== undefined ? match.matchFeeBudget : (match.fee || 0) * 12;
-
-        let feeCollected = 0;
-        let feeCollectedCount = 0;
-        let feeOffset = 0;
-        let feeOffsetCount = 0;
-        const sponsoredDetails: { playerName: string; amount: number; reason: string }[] = [];
-        const paidPlayers: string[] = [];
-        const unpaidPlayers: string[] = [];
-        const paidPlayerDetails: { name: string; amount: number; method: string }[] = [];
-        const unpaidPlayerDetails: { name: string; due: number; planTag?: string }[] = [];
-
-        for (const p of paymentsForMatch) {
-          const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-          const player = store.players.find((x) => x.id === p.playerId);
-          const playerName = p.guestName ? `${p.guestName} (Guest)` : (player?.name || "Player");
-
-          if (p.status === "Paid") {
-            paidPlayers.push(playerName);
-            const methodLabel =
-              p.paymentMethod === "razorpay"
-                ? "Razorpay"
-                : p.manualMethod === "club_sponsored"
-                  ? "Sponsored"
-                  : p.manualMethod === "part_of_plan"
-                    ? "Subscription"
-                    : "Cash";
-            paidPlayerDetails.push({
-              name: playerName,
-              amount: p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee,
-              method: methodLabel,
-            });
-          } else {
-            unpaidPlayers.push(playerName);
-            unpaidPlayerDetails.push({
-              name: playerName,
-              due: effectiveFee,
-              planTag: p.planTag,
-            });
-          }
-
-          // Calculate real money collected (Razorpay + Cash collected + Monthly subscription allocation)
-          if (p.status === "Paid") {
-            if (p.manualMethod === "club_sponsored") {
-              // Entirely sponsored by club; 0 direct money collected
-            } else if (p.manualMethod === "part_of_plan") {
-              // Monthly flat fee subscription allocation
-              const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : (match.fee - (p.feeOffsetAmount || 0));
-              feeCollected += collected;
-              feeCollectedCount++;
-            } else {
-              // Razorpay, cash, direct deposit, or standard manual
-              const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
-              feeCollected += collected;
-              feeCollectedCount++;
-            }
-          }
-
-          // Calculate Club Sponsored offset and breakdown for hover tooltip
-          if (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) {
-            feeOffset += p.feeOffsetAmount;
-            feeOffsetCount++;
-            sponsoredDetails.push({
-              playerName,
-              amount: p.feeOffsetAmount,
-              reason: p.planTag || (p.manualMethod === "club_sponsored" ? "Club Sponsored" : "Plan Offset"),
-            });
-          } else if (p.manualMethod === "club_sponsored") {
-            const sponsoredAmt = p.feeOverride !== undefined && p.feeOverride > 0 ? p.feeOverride : match.fee;
-            feeOffset += sponsoredAmt;
-            feeOffsetCount++;
-            sponsoredDetails.push({
-              playerName,
-              amount: sponsoredAmt,
-              reason: p.planTag || "Club Sponsored",
-            });
-          } else if (p.sponsoredBy) {
-            const sponsor = store.players.find((x) => x.id === p.sponsoredBy);
-            feeOffset += match.fee;
-            feeOffsetCount++;
-            sponsoredDetails.push({
-              playerName,
-              amount: match.fee,
-              reason: `Sponsored by ${sponsor?.name || "Member"}`,
-            });
-          } else if ((p.status === "Paid" || p.feeOverride !== undefined) && p.manualMethod !== "part_of_plan" && match.fee > effectiveFee) {
-            const discount = match.fee - effectiveFee;
-            if (discount > 0) {
-              feeOffset += discount;
-              feeOffsetCount++;
-              sponsoredDetails.push({
-                playerName,
-                amount: discount,
-                reason: p.planTag || "Fixed Discount",
-              });
-            }
-          }
-        }
-
-        const percentRecovered = matchFeeTotal > 0 ? Math.round((feeCollected * 100) / matchFeeTotal) : null;
-
-        return {
-          match,
-          payments: paymentsForMatch,
-          playingCount,
-          paidCount,
-          unpaidCount,
-          paidPlayers,
-          unpaidPlayers,
-          paidPlayerDetails,
-          unpaidPlayerDetails,
-          razorpayPaidCount,
-          manualPaidCount,
-          totalCollected: paymentsForMatch.filter(p => p.status === "Paid").reduce((s, p) => s + getFee(p), 0),
-          razorpayCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod !== "manual").reduce((s, p) => s + getFee(p), 0),
-          manualCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod === "manual").reduce((s, p) => s + getFee(p), 0),
-          totalDue: paymentsForMatch.filter(p => p.status === "Unpaid").reduce((s, p) => s + getFee(p), 0),
-          feeCollected,
-          feeCollectedCount,
-          feeOffset,
-          feeOffsetCount,
-          sponsoredDetails,
-          matchFeeTotal,
-          percentRecovered,
-          hasResults: playingCount > 0,
-        };
+        return summarizeMatchFinance(match, paymentsForMatch, store.players);
       })
       .filter((d) => !searchPlayer || d.hasResults); // If searching, hide matches with no matches
   }, [filteredMatches, store.payments, store.players, searchPlayer]);

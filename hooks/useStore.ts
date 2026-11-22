@@ -167,6 +167,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const paymentsPerMatchRef = useRef<Map<string, MatchPayment[]>>(new Map());
   const allPaymentsSnapshotRef = useRef<MatchPayment[]>([]);
   const loadedOneShotsRef = useRef<Set<string>>(new Set());
+  // Load state of each match-scoped payments listener (ensureMatchPayments).
+  // "ready" persists across a detach so cached rows stay usable until the
+  // listener is re-attached and delivers fresh data.
+  const [matchPaymentsStatus, setMatchPaymentsStatus] = useState<
+    Record<string, "loading" | "ready" | "error">
+  >({});
 
   const recomputePayments = useCallback(() => {
     const dedupedMap = new Map<string, MatchPayment>();
@@ -582,6 +588,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       lazySubsRef.current.clear();
       paymentsPerMatchRef.current.clear();
       allPaymentsSnapshotRef.current = [];
+      setMatchPaymentsStatus({});
       loadedOneShotsRef.current.clear();
     };
   }, [user]);
@@ -650,10 +657,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         typeof window !== "undefined" &&
         (window as any).__KAVACH_TEST_STORE__
       ) {
+        // Test store: payments are injected directly.
+        setMatchPaymentsStatus((prev) => (prev[matchId] === "ready" ? prev : { ...prev, [matchId]: "ready" }));
         return;
       }
       const key = `match-payments:${matchId}`;
       if (lazySubsRef.current.has(key)) return;
+      setMatchPaymentsStatus((prev) =>
+        prev[matchId] === "ready" ? prev : { ...prev, [matchId]: "loading" },
+      );
       const unsub = onSnapshot(
         collection(db, "matches", matchId, "payments"),
         (snapshot) => {
@@ -664,13 +676,21 @@ export function useStore(user: User | null, readOnly: boolean = false) {
             ),
           );
           recomputePayments();
+          setMatchPaymentsStatus((prev) =>
+            prev[matchId] === "ready" ? prev : { ...prev, [matchId]: "ready" },
+          );
         },
-        (err) =>
+        (err) => {
           handleFirestoreError(
             err,
             OperationType.LIST,
             `matches/${matchId}/payments`,
-          ),
+          );
+          // Drop the dead listener so a retry can subscribe again.
+          lazySubsRef.current.get(key)?.();
+          lazySubsRef.current.delete(key);
+          setMatchPaymentsStatus((prev) => ({ ...prev, [matchId]: "error" }));
+        },
       );
       lazySubsRef.current.set(key, unsub);
     },
@@ -2917,6 +2937,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     payments: filteredPayments,
     ensurePayments,
     ensureMatchPayments,
+    matchPaymentsStatus,
     updatePaymentStatus,
     addPaymentStatus,
     notifyPlayerPayment,

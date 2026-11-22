@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Search, RefreshCw, ExternalLink, Download, Trash2 } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { authedFetch } from "@/lib/authed-fetch";
 import { formatDate } from "@/lib/utils";
 
@@ -18,7 +19,7 @@ type SyncProgress = {
 export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) {
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [purging, setPurging] = useState(false);
-  const [purgeConfirm, setPurgeConfirm] = useState(false);
+  const { confirm: confirmAction } = useConfirm();
   const [syncStatus, setSyncStatus] = useState<{
     checked: boolean;
     inSync: boolean;
@@ -218,77 +219,79 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
       setSyncMsg(`Purge failed: ${err?.message || String(err)}`);
     } finally {
       setPurging(false);
-      setPurgeConfirm(false);
     }
+  };
+
+  const requestPurge = async () => {
+    const ok = await confirmAction({
+      title: "Reset Google Calendar?",
+      message:
+        "Delete all KAvach match events from the club Google Calendar and clear their match links? Use \"Sync to Calendar\" afterwards to push fresh events.",
+      confirmLabel: "Yes, Reset",
+      destructive: true,
+    });
+    if (ok) await handlePurge();
   };
 
   const busy = !!progress && progress.phase !== "done";
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={handleCheckSync}
-          disabled={busy || statusLoading}
-          className="flex items-center gap-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-text-primary transition disabled:opacity-50"
-        >
-          <Search className="w-3.5 h-3.5" />
-          {statusLoading ? "Checking…" : "Check Sync"}
-        </button>
-        <button
-          onClick={handleResync}
-          disabled={busy}
-          className="flex items-center gap-1.5 rounded-lg bg-accent/90 hover:bg-accent px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-black transition disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
-          {busy ? "Syncing…" : "Sync to Calendar"}
-        </button>
-        {calendarUrl && (
-          <a
-            href={calendarUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-text-primary transition"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            View Calendar
-          </a>
-        )}
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-1.5 rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-text-primary transition"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Export Schedule
-        </button>
-        {!purgeConfirm ? (
+      {/* Workflow order (same on every width):
+          Calendar sync: 1 Sync to Calendar (primary) · 2 Check Sync · 3 View Calendar
+          Schedule tools: 4 Export Schedule · 5 Reset Calendar (destructive, last) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" data-testid="calendar-sync-toolbar">
+        <div role="group" aria-label="Calendar sync" className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
           <button
-            onClick={() => setPurgeConfirm(true)}
-            disabled={busy || purging}
-            className="flex items-center gap-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-300 transition disabled:opacity-50"
+            onClick={handleResync}
+            disabled={busy}
+            data-testid="cal-sync"
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer col-span-2 bg-accent/90 hover:bg-accent text-black"
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            Reset Calendar
+            <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden="true" />
+            {busy ? "Syncing…" : "Sync to Calendar"}
           </button>
-        ) : (
-          <span className="flex items-center gap-1.5">
-            <span className="text-[11px] text-red-300">Delete all calendar events?</span>
-            <button
-              onClick={handlePurge}
-              disabled={purging}
-              className="rounded-lg bg-red-500 hover:bg-red-600 px-3 py-1.5 text-[11px] font-bold uppercase text-text-primary transition disabled:opacity-50"
+          <button
+            onClick={handleCheckSync}
+            disabled={busy || statusLoading}
+            data-testid="cal-check"
+            className={`inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary ${calendarUrl ? "" : "col-span-2"}`}
+          >
+            <Search className="w-3.5 h-3.5" aria-hidden="true" />
+            {statusLoading ? "Checking…" : "Check Sync"}
+          </button>
+          {calendarUrl && (
+            <a
+              href={calendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="cal-view"
+              className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary"
             >
-              {purging ? "Deleting…" : "Yes, Reset"}
-            </button>
-            <button
-              onClick={() => setPurgeConfirm(false)}
-              disabled={purging}
-              className="rounded-lg bg-surface-hover hover:bg-surface-hover px-3 py-1.5 text-[11px] font-bold uppercase text-text-primary transition"
-            >
-              Cancel
-            </button>
-          </span>
-        )}
+              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+              View Calendar
+            </a>
+          )}
+        </div>
+        <div role="group" aria-label="Schedule tools" className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <button
+            onClick={handleExport}
+            data-testid="cal-export"
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary"
+          >
+            <Download className="w-3.5 h-3.5" aria-hidden="true" />
+            Export Schedule
+          </button>
+          <button
+            onClick={requestPurge}
+            disabled={busy || purging}
+            data-testid="cal-reset"
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-red-200 bg-red-50 hover:bg-red-100 text-red-700"
+          >
+            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+            {purging ? "Resetting…" : "Reset Calendar"}
+          </button>
+        </div>
       </div>
 
       {syncStatus && (

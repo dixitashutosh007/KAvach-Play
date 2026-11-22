@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Admin Match Centre — date-first List View (`components/matches/AdminMatchDateList.tsx`).
+ * Admin Match Centre — monthly date selector (`components/matches/AdminMatchDateList.tsx`).
  *
  *  ┌ Sunday, 22 November 2026 ─────────────── ‹ November 2026 › ┐
  *  │ [NOV] [NOV] [NOV] [NOV] …   tall rounded date cards (scroll) │
@@ -9,8 +9,11 @@
  *  │ [SAT] [SUN] [WED] [SAT]                                       │
  *  │ ● Booked  ● Available  ● Tentatively Blocked                  │
  *  └──────────────────────────────────────────────────────────────┘
- *  Matches — Sunday, 22 November
- *  [existing admin match cards, with Edit / Delete]
+ *  Selected-date panel (ONLY after the admin picks a date; clearable):
+ *  Matches — Sunday, 22 November 2026   [existing admin cards, Edit / Delete]
+ *
+ * The regular match listing is rendered by the caller BELOW this component and
+ * is never replaced or filtered by the selection.
  *
  * Data comes from the store's existing live `matches` subscription (no extra
  * Firestore query); edits and deletes made through the existing workflows flow
@@ -18,14 +21,13 @@
  * automatically.
  */
 import React, { useEffect, useMemo, useRef } from "react";
-import { CalendarPlus, ChevronLeft, ChevronRight, CalendarX2 } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { Match } from "@/lib/types";
 import { getClubCalendarDate } from "@/lib/utils";
 import { useSessionState } from "@/hooks/useSessionState";
 import {
   DATE_STATUS_LABEL,
   buildMonthDateStrip,
-  formatDayMonth,
   formatLongDate,
   matchesOnDate,
   monthShort,
@@ -59,6 +61,8 @@ export interface AdminMatchDateListProps {
   onAddMatch?: (dateKey: string) => void;
   /** Injectable for tests; defaults to today in the club timezone. */
   todayKey?: string;
+  /** Test hook: initial explicit selection (normally none). */
+  defaultSelectedKey?: string | null;
 }
 
 export function AdminMatchDateList({
@@ -67,6 +71,7 @@ export function AdminMatchDateList({
   renderMatchCard,
   onAddMatch,
   todayKey: todayKeyProp,
+  defaultSelectedKey = null,
 }: AdminMatchDateListProps) {
   const today = getClubCalendarDate();
   const todayKey = todayKeyProp || today.dateString;
@@ -77,12 +82,13 @@ export function AdminMatchDateList({
     year: todayYear,
     month: todayMonth - 1,
   });
-  // null = automatic (today, else nearest upcoming date in the month).
-  const [picked, setPicked] = useSessionState<string | null>("matches:dateList:selected", null);
+  // Explicit selection only (null = no date selected → no panel).
+  const [picked, setPicked] = useSessionState<string | null>("matches:dateList:selected", defaultSelectedKey);
 
   const strip = useMemo(() => buildMonthDateStrip(view.year, view.month, matches), [view.year, view.month, matches]);
-  const pickedIsValid = picked !== null && strip.some((d) => d.key === picked);
-  const selectedKey = pickedIsValid ? picked : pickDefaultDateKey(strip, todayKey);
+  const selectedKey = picked !== null && strip.some((d) => d.key === picked) ? picked : null;
+  // Where the strip starts scrolled to when nothing is selected (not a selection).
+  const anchorKey = selectedKey || pickDefaultDateKey(strip, todayKey);
   const selected = strip.find((d) => d.key === selectedKey) || null;
   const dayMatches = useMemo(() => (selectedKey ? matchesOnDate(matches, selectedKey) : []), [matches, selectedKey]);
 
@@ -95,13 +101,13 @@ export function AdminMatchDateList({
   const trackRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const track = trackRef.current;
-    if (!track || !selectedKey) return;
-    const el = track.querySelector<HTMLElement>(`[data-date-key="${selectedKey}"]`);
+    if (!track || !anchorKey) return;
+    const el = track.querySelector<HTMLElement>(`[data-date-key="${anchorKey}"]`);
     if (!el) return;
     const left = el.offsetLeft - track.clientWidth / 2 + el.clientWidth / 2;
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     track.scrollTo?.({ left: Math.max(0, left), behavior: reduce ? "auto" : "smooth" });
-  }, [selectedKey, view.year, view.month]);
+  }, [anchorKey, view.year, view.month]);
 
   // ── Swipe = month navigation (mobile) ──────────────────────────────────────
   // Header: any clear horizontal swipe. Date strip: only when the swipe starts
@@ -138,7 +144,8 @@ export function AdminMatchDateList({
       suppressClickRef.current = false;
       return;
     }
-    setPicked(key);
+    // Tapping the selected date again clears the selection.
+    setPicked((prev) => (prev === key ? null : key));
   };
 
   const monthLabel = monthYearLabel(view.year, view.month);
@@ -156,8 +163,12 @@ export function AdminMatchDateList({
           onTouchEnd={onTouchEnd}
           data-testid="date-list-header"
         >
-          <h3 className="text-base sm:text-lg font-black font-heading text-text-primary tracking-tight" aria-live="polite" data-testid="selected-date-heading">
-            {selectedKey ? formatLongDate(selectedKey) : monthLabel}
+          <h3
+            className={`tracking-tight font-heading ${selectedKey ? "text-base sm:text-lg font-black text-text-primary" : "text-sm font-bold text-text-secondary"}`}
+            aria-live="polite"
+            data-testid="selected-date-heading"
+          >
+            {selectedKey ? formatLongDate(selectedKey) : "Select a date to preview its matches"}
           </h3>
           <div className="flex items-center gap-1" role="group" aria-label="Change month">
             <button
@@ -215,45 +226,48 @@ export function AdminMatchDateList({
         </ul>
       </section>
 
-      {/* Matches for the selected date */}
-      <section aria-labelledby="date-matches-heading" data-testid="date-matches">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h3 id="date-matches-heading" className="text-sm font-bold uppercase tracking-wider text-text-primary font-heading">
-            {selectedKey ? `Matches — ${formatDayMonth(selectedKey)}` : "Matches"}
-          </h3>
-          {selected && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-text-secondary" data-testid="selected-date-status">
-              <span className={`w-2 h-2 rounded-full ${STATUS_MARKER[selected.status]}`} aria-hidden="true" />
-              {DATE_STATUS_LABEL[selected.status]}
-            </span>
-          )}
-        </div>
-
-        {!loaded ? (
-          <div className="py-10 text-center text-sm text-text-muted bg-surface border border-border rounded-2xl" aria-busy="true">
-            Loading matches…
+      {/* Selected-date panel: only after an explicit selection */}
+      {selectedKey && (
+        <section
+          aria-labelledby="date-matches-heading"
+          data-testid="date-matches"
+          className="rounded-2xl border border-brand/20 bg-brand-surface/40 p-3 sm:p-4"
+        >
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+              <h3 id="date-matches-heading" className="text-sm font-bold uppercase tracking-wider text-text-primary font-heading">
+                Matches — {formatLongDate(selectedKey)}
+              </h3>
+              {selected && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-text-secondary" data-testid="selected-date-status">
+                  <span className={`w-2 h-2 rounded-full ${STATUS_MARKER[selected.status]}`} aria-hidden="true" />
+                  {DATE_STATUS_LABEL[selected.status]}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPicked(null)}
+              data-testid="date-clear"
+              aria-label="Clear selected date"
+              className="shrink-0 inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-surface cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
+              Clear
+            </button>
           </div>
-        ) : !selectedKey ? (
-          <EmptyState
-            title={strip.length ? "Select a date" : "No dates to show"}
-            body={
-              strip.length
-                ? `Choose a date above to see its matches for ${monthLabel}.`
-                : `There are no weekend dates or scheduled matches in ${monthLabel}.`
-            }
-          />
-        ) : dayMatches.length > 0 ? (
-          <div className="space-y-4">{dayMatches.map((m, i) => renderMatchCard(m, i))}</div>
-        ) : (
-          <EmptyState
-            title="No matches scheduled for this date."
-            body={
-              selected?.status === "available"
-                ? "This weekend date is available for booking."
-                : undefined
-            }
-            action={
-              onAddMatch ? (
+
+          {!loaded ? (
+            <p className="py-4 text-center text-sm text-text-muted" aria-busy="true">Loading matches…</p>
+          ) : dayMatches.length > 0 ? (
+            <div className="space-y-4">{dayMatches.map((m, i) => renderMatchCard(m, i))}</div>
+          ) : (
+            <div className="py-4 px-3 text-center bg-surface border border-dashed border-border rounded-xl" data-testid="date-empty-state">
+              <p className="text-sm font-bold text-text-primary">No matches scheduled for this date.</p>
+              {selected?.status === "available" && (
+                <p className="mt-1 text-xs text-text-secondary">This weekend date is available for booking.</p>
+              )}
+              {onAddMatch && (
                 <button
                   type="button"
                   onClick={() => onAddMatch(selectedKey)}
@@ -263,22 +277,11 @@ export function AdminMatchDateList({
                   <CalendarPlus className="w-4 h-4" aria-hidden="true" />
                   Add match on this date
                 </button>
-              ) : null
-            }
-          />
-        )}
-      </section>
-    </div>
-  );
-}
-
-function EmptyState({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
-  return (
-    <div className="py-8 px-4 text-center bg-surface border border-dashed border-border rounded-2xl" data-testid="date-empty-state">
-      <CalendarX2 className="w-7 h-7 text-text-muted mx-auto" aria-hidden="true" />
-      <p className="mt-2 text-sm font-bold text-text-primary">{title}</p>
-      {body && <p className="mt-1 text-xs text-text-secondary">{body}</p>}
-      {action}
+              )}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
