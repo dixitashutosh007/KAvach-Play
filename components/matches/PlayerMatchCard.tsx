@@ -14,8 +14,7 @@ import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
 } from "@/lib/personal-match-payment";
-import { MatchCardCompactBody, MatchCardHeader, MatchCardTopBar, MatchFormatBadge } from "./MatchCardHeader";
-import { JerseyInfographic } from "./JerseyInfographic";
+import { MatchCardCompactBody, MatchCardHeader, MatchCardTopBar, MatchCornerTab } from "./MatchCardHeader";
 import {
   AvailabilityButtons,
   toAvailabilityChoice,
@@ -161,13 +160,6 @@ export function PlayerMatchCard({
 
   const topBarEnd = (
     <>
-      {isHome && (match.format || match.jerseyColor) && (
-        // Mobile Home: format + jersey live top-right, beside the chevron.
-        <span className="md:hidden inline-flex items-center gap-1.5" data-testid={`match-card-chips-${match.id}`}>
-          <MatchFormatBadge format={match.format} matchId={match.id} compact />
-          {match.jerseyColor && <JerseyInfographic color={match.jerseyColor} size="md" />}
-        </span>
-      )}
       {isImmediateNext && (
         <span
           data-testid="next-match-highlight"
@@ -204,7 +196,9 @@ export function PlayerMatchCard({
         }}
         aria-label={`View details for match vs ${match.opponent}`}
         title={isCompletedOrPast ? "Scorecard & squad" : "Match details & squad"}
-        className="flex items-center justify-center w-8 h-8 text-scarlet hover:text-deep-wine rounded-full hover:bg-scarlet/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+        // Mobile Home: no visible chevron (the whole card opens details); it stays
+        // available to keyboard / screen-reader users and appears when focused.
+        className={`${isHome ? "max-md:sr-only max-md:focus-visible:not-sr-only " : ""}flex items-center justify-center w-8 h-8 text-scarlet hover:text-deep-wine rounded-full hover:bg-scarlet/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50`}
       >
         <ChevronRight className="w-4 h-4" aria-hidden="true" />
       </button>
@@ -223,7 +217,11 @@ export function PlayerMatchCard({
         isAlternate,
       })}`}
     >
-      <MatchCardTopBar match={match} end={topBarEnd} />
+      <MatchCardTopBar
+        match={match}
+        end={topBarEnd}
+        corner={isHome ? <MatchCornerTab match={match} className="md:hidden" /> : undefined}
+      />
 
       {isUnsettledAlert && (
         <div

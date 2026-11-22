@@ -124,11 +124,29 @@ describe("Player Home card (layout=home)", () => {
     assert.ok(!/UNPAID|₹698/.test(text(html)));
   });
 
-  it("format + jersey chips sit in the header row (mobile only), before the chevron", () => {
+  it("format + jersey sit in a top-right corner tab mirroring the category ribbon (mobile only)", () => {
     const chips = html.indexOf('data-testid="match-card-chips-m1"');
-    assert.ok(chips > html.indexOf("category-ribbon-m1") && chips < html.indexOf("view-details-m1"));
-    assert.match(tagOf(html, "match-card-chips-m1"), /md:hidden/);
+    assert.ok(chips > html.indexOf("category-ribbon-m1"), "after the ribbon, on the right");
+    const tab = tagOf(html, "match-card-chips-m1");
+    for (const c of ["md:hidden", "self-stretch", "bg-muted-gold", "clip-path:polygon(16px_0,100%_0,100%_100%,0_100%)"]) assert.ok(tab.includes(c), c);
+    // the tab's wrapper is flush with the card's top-right edge and stretches to the ribbon height
+    const wrap = html.slice(html.lastIndexOf("<div", chips), chips);
+    assert.match(wrap, /class="flex self-stretch -mr-3 sm:-mr-4"/);
     assert.ok(html.includes('data-testid="format-badge-compact-m1"'));
+    assert.match(text(html.slice(chips, html.indexOf("</span></span>", chips))), /T30/);
+  });
+
+  it("no visible chevron on mobile Home; it stays keyboard/screen-reader reachable and shows on desktop", () => {
+    const chevron = tagOf(html, "view-details-m1");
+    assert.ok(chevron.includes("max-md:sr-only") && chevron.includes("max-md:focus-visible:not-sr-only"));
+    assert.ok(!tagOf(card(), "view-details-m1").includes("sr-only"), "Match Center chevron unchanged");
+  });
+
+  it("top bar: corner tab is a sibling of the ribbon in the same row (shared top edge)", () => {
+    const s = src("components/matches/MatchCardHeader.tsx");
+    const fn = s.slice(s.indexOf("export function MatchCardTopBar"), s.indexOf("const CORNER_CLIP"));
+    assert.match(fn, /flex items-start justify-between gap-2 -mt-3 -ml-3 sm:-mt-4 sm:-ml-4 mb-1/);
+    assert.match(fn, /\{corner \? <div className="flex self-stretch -mr-3 sm:-mr-4">\{corner\}<\/div> : null\}/);
   });
 
   it("mobile body vs desktop header are switched at md", () => {
@@ -159,6 +177,7 @@ describe("Scope protection", () => {
     assert.ok(!html.includes("match-card-compact-m1"));
     assert.ok(!html.includes("match-card-chips-m1"));
     assert.ok(!html.includes('data-layout="home"'));
+    assert.ok(html.includes('data-testid="format-badge-m1"'), "standard format badge kept");
   });
 
   it("Admin Match Center keeps its own payment/balance rendering (file not using the Home layout)", () => {

@@ -143,14 +143,64 @@ export function CricketBallDivider({ className = "" }: { className?: string }) {
  * corner, plus an optional slot on the right (Next Match chip, expand toggle,
  * admin actions). Must be the first child of a card with `p-3 sm:p-4`.
  */
-export function MatchCardTopBar({ match, end }: { match: Match; end?: React.ReactNode }) {
+export function MatchCardTopBar({
+  match,
+  end,
+  corner,
+}: {
+  match: Match;
+  end?: React.ReactNode;
+  /**
+   * Optional tab flush with the card's top-RIGHT corner. It stretches to the
+   * row height, i.e. the category ribbon's height, so both sit on the same top
+   * edge with the same height.
+   */
+  corner?: React.ReactNode;
+}) {
   const category = getMatchCategory(match.matchType);
-  if (!category && !end) return null;
+  if (!category && !end && !corner) return null;
   return (
     <div className="flex items-start justify-between gap-2 -mt-3 -ml-3 sm:-mt-4 sm:-ml-4 mb-1">
       {category ? <MatchCategoryRibbon category={category} matchId={match.id} /> : <span />}
-      {end ? <div className="flex items-center gap-1.5 shrink-0 mt-2 sm:mt-3">{end}</div> : null}
+      {(end || corner) && (
+        <div className="flex items-start self-stretch shrink-0 gap-1.5">
+          {end ? <div className="flex items-center gap-1.5 mt-2 sm:mt-3">{end}</div> : null}
+          {corner ? <div className="flex self-stretch -mr-3 sm:-mr-4">{corner}</div> : null}
+        </div>
+      )}
     </div>
+  );
+}
+
+const CORNER_CLIP = "[clip-path:polygon(16px_0,100%_0,100%_100%,0_100%)]";
+
+/**
+ * Mirror of the category ribbon for the top-right corner: match format (T30 /
+ * T20) and jersey. Same height and top edge as the ribbon (it stretches to the
+ * top-bar row); a gold left edge echoes the ribbon's gold right edge.
+ */
+export function MatchCornerTab({ match, className = "" }: { match: Match; className?: string }) {
+  const badge = getMatchFormatBadge(match.format);
+  if (!badge && !match.jerseyColor) return null;
+  return (
+    <span
+      data-testid={`match-card-chips-${match.id}`}
+      className={`inline-flex self-stretch min-h-7 bg-muted-gold pl-[3px] ${CORNER_CLIP} ${className}`}
+    >
+      <span className={`inline-flex items-center gap-2 pl-6 pr-4 bg-soft-blush ${CORNER_CLIP}`}>
+        {badge && (
+          <span
+            data-testid={`format-badge-compact-${match.id}`}
+            data-format-tone={badge.tone}
+            className="text-[11px] font-black uppercase tracking-[0.08em] font-heading leading-none text-scarlet"
+          >
+            {badge.label}
+          </span>
+        )}
+        {badge && match.jerseyColor && <span className="w-px h-3.5 bg-scarlet/25" aria-hidden="true" />}
+        {match.jerseyColor && <JerseyInfographic color={match.jerseyColor} size="sm" />}
+      </span>
+    </span>
   );
 }
 
