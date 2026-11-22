@@ -28,6 +28,13 @@ import {
   getPersonalMatchPaymentStatus,
   derivePlayerAvailability,
 } from "@/lib/personal-match-payment";
+import {
+  MATCH_FILTER_LABEL,
+  PAST_PAGE_SIZE,
+  mergePastMatches,
+  type MatchListFilter,
+} from "@/lib/player-match-filters";
+import { MatchFilterSelect } from "./MatchFilterSelect";
 import { PlayerMatchCard } from "./PlayerMatchCard";
 import { MatchesLoadError } from "./MatchesLoadError";
 import { PlayerMatchDetailModal } from "./PlayerMatchDetailModal";
@@ -91,7 +98,9 @@ export function PlayerMatchCenter({
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [activeTab, setActiveTab] = useState<"all" | "upcoming" | "recent" | "previous">("all");
+  // Regular-listing filter: exactly All / Upcoming / Past. Plain component
+  // state (defaults to All on each visit); independent of the calendar.
+  const [matchFilter, setMatchFilter] = useState<MatchListFilter>("all");
   const [updatingMatchId, setUpdatingMatchId] = useState<string | null>(null);
   const [optimisticAvailability, setOptimisticAvailability] = useState<
     Record<string, "Playing" | "Maybe" | "Out">
@@ -104,7 +113,7 @@ export function PlayerMatchCenter({
   const [ineligibleAccessAlert, setIneligibleAccessAlert] = useState<string | null>(null);
 
   // Pagination for previous matches
-  const [previousPageSize, setPreviousPageSize] = useState<number>(6);
+  const [pastPageSize, setPastPageSize] = useState<number>(PAST_PAGE_SIZE);
 
   // Scroll restoration ref
   const scrollPositionRef = useRef<number>(0);
@@ -363,14 +372,11 @@ export function PlayerMatchCenter({
     [grouped.upcoming, matchesSearch]
   );
 
-  const filteredRecent = useMemo(
-    () => grouped.recent.filter(matchesSearch),
-    [grouped.recent, matchesSearch]
-  );
-
-  const filteredPrevious = useMemo(
-    () => grouped.previous.filter(matchesSearch),
-    [grouped.previous, matchesSearch]
+  // Past = every accessible completed/past match (the old Recent + Previous
+  // groups), de-duplicated by id and sorted newest first.
+  const filteredPast = useMemo(
+    () => mergePastMatches(grouped.recent, grouped.previous).filter(matchesSearch),
+    [grouped.recent, grouped.previous, matchesSearch]
   );
 
   // Selected match object with authoritative pre-flight validation (Fail Closed)
@@ -501,77 +507,47 @@ export function PlayerMatchCenter({
         </div>
       )}
 
-      {/* Header & Title */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl sm:text-2xl font-black font-heading tracking-tight text-text-primary">
-          Match Schedule
-        </h1>
-        <p className="text-xs sm:text-sm text-text-secondary">
-          Track upcoming club fixtures, mark availability, and manage match obligations.
-        </p>
+      {/* Header & match filter */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex flex-col gap-1">
+          <h1 className="text-xl sm:text-2xl font-black font-heading tracking-tight text-text-primary">
+            Match Schedule
+          </h1>
+          <p className="text-xs sm:text-sm text-text-secondary">
+            Track club fixtures and mark your availability.
+          </p>
+        </div>
+        <MatchFilterSelect value={matchFilter} onChange={setMatchFilter} />
       </div>
 
       <MatchesLoadError message={store.matchesError} />
 
-      {/* Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-2.5">
-        {/* Search Input */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-          <input
-            type="text"
-            data-testid="match-search-input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search opponent, ground, tournament..."
-            aria-label="Search matches by opponent or venue"
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface border border-border text-xs sm:text-sm placeholder:text-text-muted focus:outline-hidden focus:ring-1 focus:ring-scarlet min-h-[44px]"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-text-muted hover:text-text-primary p-1"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-
-        {/* Tab Selector Pills */}
-        <div className="flex bg-surface p-1 rounded-xl border border-border overflow-x-auto min-h-[44px] shrink-0">
-          {(
-            [
-              { id: "all", label: "All" },
-              { id: "upcoming", label: `Upcoming (${grouped.upcoming.length})` },
-              { id: "recent", label: `Recent (${grouped.recent.length})` },
-              { id: "previous", label: "Previous" },
-            ] as const
-          ).map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                data-testid={`filter-tab-${tab.id}`}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 min-w-[70px] py-1.5 px-3 rounded-lg text-xs font-bold transition cursor-pointer text-center ${
-                  isActive
-                    ? "bg-scarlet text-white shadow-xs font-black"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+        <input
+          type="text"
+          data-testid="match-search-input"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search opponent, ground, tournament..."
+          aria-label="Search matches by opponent or venue"
+          className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface border border-border text-xs sm:text-sm placeholder:text-text-muted focus:outline-hidden focus:ring-1 focus:ring-scarlet min-h-[44px]"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-text-muted hover:text-text-primary p-1"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
-      {/* Monthly date selector (shared with Admin Match Centre). Fed only with the
-          matches this player is eligible to see, so no admin-only fixtures,
-          tentative blocks or notes appear; selecting a date adds a panel above
-          the regular lists, which stay visible. */}
+      {/* Monthly date selector + selected-date panel (a contextual preview of
+          one date). Fed only with the matches this player may see. It never
+          changes the regular listing below, and the filter never clears it. */}
       <MatchDateSelector
         variant="player"
         storageKeyPrefix="playerMatches"
@@ -580,125 +556,82 @@ export function PlayerMatchCenter({
         renderMatchCard={(match, idx) => renderPlayerCard(match, idx, { canRsvp: upcomingIds.has(match.id) })}
       />
 
-      {/* ========================================================================= */}
-      {/* 1. UPCOMING MATCHES SECTION (Section 3.A)                                 */}
-      {/* ========================================================================= */}
-      {(activeTab === "all" || activeTab === "upcoming") && (
-        <section
-          data-testid="upcoming-matches-section"
-          className="space-y-3"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <h2 className="text-sm sm:text-base font-black font-heading uppercase tracking-wide text-text-primary">
-                Upcoming Fixtures ({filteredUpcoming.length})
-              </h2>
-            </div>
-            {filteredUpcoming.length > 0 && (
-              <span className="text-[11px] font-semibold text-text-muted">
-                Sorted by nearest first
-              </span>
+      {/* Divider between the date preview and the regular listing */}
+      <div className="flex items-center gap-3 pt-1" role="separator" aria-hidden="true" data-testid="listing-divider">
+        <span className="h-px flex-1 bg-border" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">Match list</span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
+      {/* Regular listing (driven only by the filter and search) */}
+      <section aria-labelledby="regular-listing-heading" data-testid="regular-match-listing" data-filter={matchFilter} className="space-y-4">
+        <h2 id="regular-listing-heading" className="text-base sm:text-lg font-black font-heading tracking-tight text-text-primary">
+          {MATCH_FILTER_LABEL[matchFilter]}
+        </h2>
+
+        {(matchFilter === "all" || matchFilter === "upcoming") && (
+          <section data-testid="upcoming-matches-section" className="space-y-3">
+            {matchFilter === "all" && (
+              <h3 className="flex items-center gap-2 text-xs sm:text-sm font-black font-heading uppercase tracking-wide text-text-primary">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                Upcoming ({filteredUpcoming.length})
+              </h3>
             )}
-          </div>
-
-          {filteredUpcoming.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {filteredUpcoming.map((match, idx) => {
-                return renderPlayerCard(match, idx, { canRsvp: true, isImmediateNext: grouped.nextMatch?.id === match.id });
-              })}
-            </div>
-          ) : (
-            <div className="bg-surface border border-border rounded-2xl p-6 text-center text-text-muted text-xs sm:text-sm">
-              <Calendar className="w-8 h-8 mx-auto mb-2 text-text-muted/60" />
-              <p className="font-semibold">No upcoming fixtures scheduled</p>
-              <p className="text-xs text-text-muted mt-1">
-                New matches will appear here when scheduled by the club administrators.
-              </p>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 2. RECENT MATCHES SECTION (Section 3.B & 3.C Unsettled Alert)             */}
-      {/* ========================================================================= */}
-      {(activeTab === "all" || activeTab === "recent") && (
-        <section
-          data-testid="recent-matches-section"
-          className="space-y-3 pt-2"
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm sm:text-base font-black font-heading uppercase tracking-wide text-text-primary">
-              Recent Matches ({filteredRecent.length})
-            </h2>
-          </div>
-
-          {filteredRecent.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {filteredRecent.map((match, idx) => {
-                return renderPlayerCard(match, idx);
-              })}
-            </div>
-          ) : (
-            <div className="bg-surface border border-border rounded-2xl p-6 text-center text-text-muted text-xs sm:text-sm">
-              <History className="w-8 h-8 mx-auto mb-2 text-text-muted/60" />
-              <p className="font-semibold">No recent matches</p>
-              <p className="text-xs text-text-muted mt-1">
-                Completed matches from the last 30 days will appear here.
-              </p>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. PREVIOUS MATCHES SECTION (Section 3.C Progressive Disclosure)          */}
-      {/* ========================================================================= */}
-      {(activeTab === "all" || activeTab === "previous") && (
-        <section
-          data-testid="previous-matches-section"
-          className="space-y-3 pt-2"
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm sm:text-base font-black font-heading uppercase tracking-wide text-text-primary">
-              Previous Matches & History ({filteredPrevious.length})
-            </h2>
-            <span className="text-[11px] font-semibold text-text-muted">
-              Settled club archive
-            </span>
-          </div>
-
-          {filteredPrevious.length > 0 ? (
-            <>
+            {filteredUpcoming.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredPrevious.slice(0, previousPageSize).map((match, idx) => {
-                  return renderPlayerCard(match, idx);
-                })}
+                {filteredUpcoming.map((match, idx) =>
+                  renderPlayerCard(match, idx, { canRsvp: true, isImmediateNext: grouped.nextMatch?.id === match.id })
+                )}
               </div>
+            ) : (
+              <div className="bg-surface border border-border rounded-2xl p-6 text-center text-text-muted text-xs sm:text-sm">
+                <Calendar className="w-8 h-8 mx-auto mb-2 text-text-muted/60" />
+                <p className="font-semibold">No upcoming fixtures scheduled</p>
+                <p className="text-xs text-text-muted mt-1">
+                  New matches will appear here when scheduled by the club administrators.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
 
-              {filteredPrevious.length > previousPageSize && (
-                <div className="pt-2 text-center">
-                  <button
-                    type="button"
-                    data-testid="load-more-previous-matches"
-                    onClick={() => setPreviousPageSize((prev) => prev + 6)}
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-surface border border-border text-xs font-bold text-text-primary hover:bg-surface-hover hover:border-scarlet/40 transition cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
-                  >
-                    <span>Load More Previous Matches</span>
-                    <ChevronDown className="w-4 h-4 text-scarlet" />
-                  </button>
+        {(matchFilter === "all" || matchFilter === "past") && (
+          <section data-testid="past-matches-section" className={`space-y-3 ${matchFilter === "all" ? "pt-2" : ""}`}>
+            {matchFilter === "all" && (
+              <h3 className="flex items-center gap-2 text-xs sm:text-sm font-black font-heading uppercase tracking-wide text-text-primary">
+                <History className="w-4 h-4 text-text-muted" aria-hidden="true" />
+                Past ({filteredPast.length})
+              </h3>
+            )}
+            {filteredPast.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {filteredPast.slice(0, pastPageSize).map((match, idx) => renderPlayerCard(match, idx))}
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="bg-surface border border-border rounded-2xl p-6 text-center text-text-muted text-xs sm:text-sm">
-              <History className="w-8 h-8 mx-auto mb-2 text-text-muted/60" />
-              <p className="font-semibold">No previous matches in archive</p>
-            </div>
-          )}
-        </section>
-      )}
+                {filteredPast.length > pastPageSize && (
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      data-testid="load-more-past-matches"
+                      onClick={() => setPastPageSize((prev) => prev + PAST_PAGE_SIZE)}
+                      className="min-h-[44px] px-4 py-2 rounded-xl bg-surface border border-border text-xs font-bold text-text-primary hover:bg-surface-hover hover:border-scarlet/40 transition cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                    >
+                      <span>Show more past matches ({filteredPast.length - pastPageSize})</span>
+                      <ChevronDown className="w-4 h-4 text-scarlet" />
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="bg-surface border border-border rounded-2xl p-6 text-center text-text-muted text-xs sm:text-sm">
+                <History className="w-8 h-8 mx-auto mb-2 text-text-muted/60" />
+                <p className="font-semibold">No past matches</p>
+              </div>
+            )}
+          </section>
+        )}
+      </section>
     </div>
   );
 }
+

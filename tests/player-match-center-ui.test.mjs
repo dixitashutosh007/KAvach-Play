@@ -578,7 +578,8 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
       const src = fs.readFileSync(path.resolve("components/matches/PlayerMatchCenter.tsx"), "utf-8");
       // One shared renderer applies the alternation; all three lists use it with their index.
       assert.equal((src.match(/variant=\{idx % 2 === 1 \? "alternate" : "default"\}/g) || []).length, 1);
-      assert.equal((src.match(/return renderPlayerCard\(match, idx/g) || []).length, 3, "upcoming, recent and previous lists");
+      // upcoming list, past list and the calendar's date panel all use it
+      assert.equal((src.match(/renderPlayerCard\(match, idx/g) || []).length, 3, "upcoming, past and date-panel renderers");
     });
 
     it("15c. Preserves strong semantic highlight for isImmediateNext regardless of variant", () => {

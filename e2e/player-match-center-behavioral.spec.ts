@@ -100,9 +100,9 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     const playerNav = page.locator("nav");
     await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
 
-    // Verify recent section is visible
-    const recentSection = page.locator('[data-testid="recent-matches-section"]');
-    await expect(recentSection).toBeVisible({ timeout: 5000 });
+    // Verify the past section is visible (Recent + Previous merged into "Past")
+    const pastSection = page.locator('[data-testid="past-matches-section"]');
+    await expect(pastSection).toBeVisible({ timeout: 5000 });
 
     // Verify the older unsettled match is retained in the active view
     const unsettledCard = page.locator('[data-testid="player-match-card-match-older-unsettled"]');
@@ -331,17 +331,16 @@ test.describe("Phase 2.2: Player Match Center — Real Browser Behavioural Verif
     await page.getByRole("button", { name: "Clear" }).click();
     await expect(page.locator('[data-testid="player-match-card-match-upcoming-2"]')).toBeVisible();
 
-    // Filter tab: "Recent"
-    const recentTab = page.locator('[data-testid="filter-tab-recent"]');
-    await recentTab.click();
-    await expect(page.locator('[data-testid="recent-matches-section"]')).toBeVisible();
+    // Match filter: "Past Matches"
+    const filter = page.locator('[data-testid="match-filter"]');
+    await filter.selectOption("past");
+    await expect(page.locator('[data-testid="past-matches-section"]')).toBeVisible();
     await expect(page.locator('[data-testid="upcoming-matches-section"]')).toHaveCount(0);
 
-    // Filter tab: "Upcoming"
-    const upcomingTab = page.locator('[data-testid="filter-tab-upcoming"]');
-    await upcomingTab.click();
+    // Match filter: "Upcoming Matches"
+    await filter.selectOption("upcoming");
     await expect(page.locator('[data-testid="upcoming-matches-section"]')).toBeVisible();
-    await expect(page.locator('[data-testid="recent-matches-section"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="past-matches-section"]')).toHaveCount(0);
   });
 
   // ── 7. Deep-link & Entry-Point Eligibility Guard (P0) ────────────────────────

@@ -37,6 +37,7 @@ import {
   weekdayShort,
   type DateStatus,
   type StripDate,
+  formatDayMonth,
 } from "@/lib/match-date-strip";
 
 const SWIPE_MIN_PX = 60;
@@ -249,9 +250,17 @@ export function AdminMatchDateList({
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="min-w-0 flex items-center gap-2 flex-wrap">
               <h3 id="date-matches-heading" className="text-sm font-bold uppercase tracking-wider text-text-primary font-heading">
-                Matches — {formatLongDate(selectedKey)}
+                {isPlayer ? `Matches on ${formatDayMonth(selectedKey)}` : `Matches — ${formatLongDate(selectedKey)}`}
               </h3>
-              {selected && (
+              {isPlayer && loaded && (
+                <span
+                  className="inline-flex items-center rounded-full bg-scarlet/10 px-2 py-0.5 text-[11px] font-bold text-scarlet tabular-nums"
+                  data-testid="date-match-count"
+                >
+                  {dayMatches.length} {dayMatches.length === 1 ? "match" : "matches"}
+                </span>
+              )}
+              {!isPlayer && selected && (
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-text-secondary" data-testid="selected-date-status">
                   <span className={`w-2 h-2 rounded-full ${STATUS_MARKER[selected.status]}`} aria-hidden="true" />
                   {DATE_STATUS_LABEL[selected.status]}
@@ -269,6 +278,11 @@ export function AdminMatchDateList({
               Clear
             </button>
           </div>
+          {isPlayer && (
+            <p className="-mt-1.5 mb-3 text-[11px] text-text-secondary" data-testid="date-preview-note">
+              A preview of this date. The full match list continues below.
+            </p>
+          )}
 
           {!loaded ? (
             <p className="py-4 text-center text-sm text-text-muted" aria-busy="true">Loading matches…</p>
