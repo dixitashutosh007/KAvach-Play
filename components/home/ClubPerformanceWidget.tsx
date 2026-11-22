@@ -4,8 +4,8 @@
  * Player Home — Club Performance widget (`components/home/ClubPerformanceWidget.tsx`).
  *
  * Shows ONLY the admin-maintained exact totals (appConfig/clubStats): Matches
- * Played, Matches Won and the calculated Win Rate. Renders nothing until totals
- * exist, so no placeholder or sample numbers are ever shown.
+ * Played, Matches Won and the calculated Win Rate. Until totals are published
+ * it shows a loading / "not published yet" / error state — never sample numbers.
  *
  * Motion: counters count up and the ring fills ONCE when the card first enters
  * view (once per browser session). prefers-reduced-motion shows final values
@@ -46,10 +46,64 @@ function shouldAnimate(): boolean {
   return !alreadyAnimatedThisSession();
 }
 
-export function ClubPerformanceWidget() {
-  const { stats } = useClubStats();
-  if (!stats) return null;
-  return <ClubPerformanceCard played={stats.matchesPlayed} won={stats.matchesWon} />;
+export function ClubPerformanceWidget({ canManage = false }: { canManage?: boolean }) {
+  const { stats, loading, error } = useClubStats();
+  if (stats) return <ClubPerformanceCard played={stats.matchesPlayed} won={stats.matchesWon} />;
+  return <ClubPerformanceStatus state={loading ? "loading" : error ? "error" : "empty"} canManage={canManage} />;
+}
+
+/**
+ * Loading / unconfigured / error presentation. Never shows invented numbers;
+ * keeps the section visible so members (and admins) understand its state.
+ */
+export function ClubPerformanceStatus({
+  state,
+  canManage = false,
+}: {
+  state: "loading" | "empty" | "error";
+  canManage?: boolean;
+}) {
+  return (
+    <section
+      data-testid="club-performance-widget"
+      data-state={state}
+      aria-label="Club performance"
+      aria-busy={state === "loading" || undefined}
+      className="w-full rounded-2xl border border-white/10 bg-[#1F1D21] text-white p-5 sm:p-6 shadow-sm"
+    >
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-dusty-red">Club Performance</p>
+      <h2 className="mt-0.5 text-lg sm:text-xl font-black font-heading tracking-tight text-white">Our journey so far</h2>
+
+      {state === "loading" ? (
+        <div className="mt-4 grid grid-cols-2 gap-3" aria-hidden="true">
+          {[0, 1].map((i) => (
+            <div key={i} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
+              <div className="h-3 w-24 rounded bg-white/10" />
+              <div className="mt-2 h-8 w-16 rounded bg-white/10" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 flex items-start gap-3">
+          <Trophy className="w-5 h-5 text-muted-gold shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="text-sm text-white/75 leading-relaxed" data-testid="club-performance-message">
+            {state === "error" ? (
+              <p>Club statistics couldn&apos;t be loaded right now. Pull down to refresh or try again later.</p>
+            ) : (
+              <>
+                <p>Club statistics haven&apos;t been published yet.</p>
+                {canManage && (
+                  <p className="mt-1 text-xs text-white/60">
+                    Add the totals in Admin Console → Player Roster → Club Statistics.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function ClubPerformanceCard({ played, won }: { played: number; won: number }) {

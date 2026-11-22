@@ -389,6 +389,8 @@ export type Post = {
   title?: string;
   /** Optional HTTPS destination; the Home banner opens it when tapped. */
   linkUrl?: string;
+  /** Seconds this announcement stays in the Home top banner before rotating (default 6). */
+  displayDurationSec?: number;
   createdAt?: any;
   updatedAt?: any;
 };

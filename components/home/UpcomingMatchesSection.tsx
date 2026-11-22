@@ -125,7 +125,9 @@ export function UpcomingMatchesSection({
                 data-testid={`upcoming-match-slide-${match.id}`}
                 aria-roledescription={isCarousel ? "slide" : undefined}
                 aria-label={isCarousel ? `${idx + 1} of ${displayMatches.length}` : undefined}
-                className={isCarousel ? "shrink-0 w-[86%] sm:w-[70%] snap-start md:w-auto" : undefined}
+                // Fixed slide width; the flex track stretches every slide to the
+                // tallest card so all carousel cards share one height.
+                className={isCarousel ? "shrink-0 w-[86%] sm:w-[70%] snap-start md:w-auto min-w-0" : undefined}
               >
                 <PlayerMatchCard
                   match={match}
@@ -133,6 +135,7 @@ export function UpcomingMatchesSection({
                   personalPaymentStatus={getPersonalMatchPaymentStatus(player, match, payments)}
                   availability={derivePlayerAvailability(player, match, payments).status}
                   variant={idx % 2 === 1 ? "alternate" : "default"}
+                  fillHeight={isCarousel}
                   onSelectMatch={onNavigateToMatch}
                   onRsvp={handleRsvp}
                   isUpdatingRsvp={updatingMatchId !== null}

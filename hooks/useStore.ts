@@ -2485,7 +2485,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
    */
   const updateAnnouncement = async (
     postId: string,
-    fields: Partial<Pick<Post, "text" | "title" | "isPinned" | "imageUrl" | "linkUrl">>,
+    fields: Partial<Pick<Post, "text" | "title" | "isPinned" | "imageUrl" | "linkUrl" | "displayDurationSec">>,
   ): Promise<boolean> => {
     try {
       const oldPost = posts.find((p) => p.id === postId);

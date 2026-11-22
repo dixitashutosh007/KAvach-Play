@@ -76,6 +76,8 @@ export function ClubTab({
 
   const adminTabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
     { key: "players", label: "Players", icon: Users, visible: true },
+    // Second position so it is visible without scrolling the tab row on phones.
+    { key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin || isSuperAdmin },
     { key: "badges", label: "Badges", icon: Award, visible: isFeatureEnabled("badges") },
     { key: "shop", label: "Shop", icon: ShoppingBag, visible: isFeatureEnabled("shop") },
     { key: "pulse", label: "Pulse", icon: PieChart, visible: isFeatureEnabled("opinion") },
@@ -83,7 +85,6 @@ export function ClubTab({
     { key: "leaderboard", label: "Leaderboard", icon: Trophy, visible: true },
     { key: "reminders", label: "Reminders", icon: Bell, visible: true },
     { key: "activity", label: "Activity", icon: ScrollText, visible: isSuperAdmin },
-    { key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin || isSuperAdmin },
   ];
 
   const activeTabs = isPlayer ? playerTabs : adminTabs;

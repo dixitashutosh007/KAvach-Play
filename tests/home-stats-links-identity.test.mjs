@@ -21,8 +21,10 @@ const withExt = (b) => {
   for (const e of [".tsx", ".ts", ".js"]) if (fs.existsSync(b + e)) return b + e;
   return b;
 };
+let clubStatsState = { stats: null, updatedAt: null, loading: false, error: false };
 const STUBS = {
-  "@/hooks/useClubStats": { useClubStats: () => ({ stats: null, updatedAt: null, loading: false, error: false }) },
+  // Mutable so tests can drive the loading / empty / error states.
+  "@/hooks/useClubStats": { useClubStats: () => clubStatsState },
 };
 function load(f) {
   const abs = path.resolve(f);
@@ -296,10 +298,48 @@ describe("Club Performance widget", () => {
     assert.ok(html.includes('data-testid="club-stats-ring"'));
     assert.ok(html.includes("stroke-dasharray"));
   });
-  it("renders nothing when no totals are saved (no sample values)", () => {
-    assert.equal(render(React.createElement(ClubPerformanceWidget)), "");
+  const widget = (state, props = {}) => {
+    clubStatsState = { stats: null, updatedAt: null, loading: false, error: false, ...state };
+    try {
+      return render(React.createElement(ClubPerformanceWidget, props));
+    } finally {
+      clubStatsState = { stats: null, updatedAt: null, loading: false, error: false };
+    }
+  };
+  it("never hides silently: no totals saved shows an empty state without sample values", () => {
+    const html = widget({});
+    assert.ok(html.includes('data-testid="club-performance-widget"'));
+    assert.ok(html.includes('data-state="empty"'));
+    assert.match(text(html), /Club statistics haven('|&#x27;)t been published yet/);
+    assert.ok(!/\d/.test(text(html).replace(/&#x?[0-9a-f]+;/gi, "")), "no numbers in the empty state");
+    assert.ok(!/Admin Console/.test(text(html)), "management hint is admin-only");
     const w = src("components/home/ClubPerformanceWidget.tsx");
     assert.ok(!/350|246/.test(w), "no hardcoded example statistics");
+  });
+  it("admins see where to publish the totals", () => {
+    assert.match(text(widget({}, { canManage: true })), /Admin Console → Player Roster → Club Statistics/);
+  });
+  it("loading state is a skeleton, error state is explained", () => {
+    const loading = widget({ loading: true });
+    assert.ok(loading.includes('data-state="loading"') && loading.includes('aria-busy="true"'));
+    assert.ok(!/\d/.test(text(loading).replace(/&#x?[0-9a-f]+;/gi, "")));
+    const error = widget({ error: true });
+    assert.ok(error.includes('data-state="error"'));
+    assert.match(text(error), /couldn('|&#x27;)t be loaded/);
+  });
+  it("saved totals render the exact values", () => {
+    const html = widget({ stats: { matchesPlayed: 120, matchesWon: 77 } });
+    assert.ok(!html.includes("data-state="));
+    assert.match(html, /<span class="sr-only">120<\/span>/);
+    assert.match(html, /<span class="sr-only">77<\/span>/);
+  });
+  it("Home passes admin capability; Club Statistics tab is easy to find", () => {
+    assert.match(src("components/HomeTab.tsx"), /<ClubPerformanceWidget canManage=\{canPublishAnnouncements\} \/>/);
+    const club = src("components/ClubTab.tsx");
+    const admin = club.slice(club.indexOf("const adminTabs"), club.indexOf("const activeTabs"));
+    const keys = [...admin.matchAll(/key: "(\w+)"/g)].map((m) => m[1]);
+    assert.deepEqual(keys.slice(0, 2), ["players", "stats"], "Club Statistics is the second admin tab");
+    assert.match(admin, /key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin \|\| isSuperAdmin/);
   });
   it("animation runs once, respects reduced motion, no looping effects", () => {
     const w = src("components/home/ClubPerformanceWidget.tsx");

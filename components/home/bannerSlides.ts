@@ -13,6 +13,9 @@ import type { AppConfig, Player, Post } from "@/lib/types";
 import { getPlayerBirthdayStatus } from "@/lib/birthday-utils";
 import { pinnedAnnouncements } from "./postKinds";
 import { firstHttpsLink, toSafeHttpsHref } from "@/lib/linkify";
+import { BANNER_DURATION_DEFAULT_SEC, resolveDisplayDurationMs } from "@/lib/banner-duration";
+
+const DEFAULT_DURATION_MS = BANNER_DURATION_DEFAULT_SEC * 1000;
 
 export type BannerKind = "notice" | "promo" | "birthday-today" | "birthday-tomorrow";
 
@@ -32,6 +35,8 @@ export interface BannerSlide {
    * (safe external navigation); otherwise the banner keeps its in-app behaviour.
    */
   href?: string;
+  /** How long this slide stays visible before auto-rotating (ms). */
+  durationMs: number;
   /** Stable key for dismissal; changes when the banner's "period" changes. */
   dismissKey: string;
   /**
@@ -110,6 +115,7 @@ export function buildBirthdaySlides(players: Player[] = [], today: ClubDay): Ban
         todayNames.length > 1
           ? "The whole club wishes our teammates a fantastic day on and off the field."
           : "The whole club wishes our teammate a fantastic day on and off the field.",
+      durationMs: DEFAULT_DURATION_MS,
       dismissKey: `birthday-today:${today.dateString}`,
       dismissible: true,
     });
@@ -123,6 +129,7 @@ export function buildBirthdaySlides(players: Player[] = [], today: ClubDay): Ban
       badgeColor: "gold",
       title: `${formatBirthdayNames(tomorrowNames)} ${tomorrowNames.length > 1 ? "celebrate" : "celebrates"} tomorrow`,
       description: "Get your wishes ready for tomorrow's celebration.",
+      durationMs: DEFAULT_DURATION_MS,
       dismissKey: `birthday-tomorrow:${today.dateString}`,
       dismissible: true,
     });
@@ -170,6 +177,7 @@ export function buildBannerSlides({
         ctaDestination: "announcements",
         targetId: post.id,
         ...(href ? { href } : {}),
+        durationMs: resolveDisplayDurationMs(post.displayDurationSec),
         dismissKey: `post:${post.id}:${version}`,
         dismissible: true,
       });
@@ -187,6 +195,7 @@ export function buildBannerSlides({
       badgeColor: "wine",
       ctaText: "Book a Session",
       ctaDestination: "studio",
+      durationMs: DEFAULT_DURATION_MS,
       dismissKey: `campaign-studio:${monthKey}`,
       dismissible: true,
     });
@@ -202,6 +211,7 @@ export function buildBannerSlides({
       badgeColor: "gold",
       ctaText: "Visit Club Shop",
       ctaDestination: "shop",
+      durationMs: DEFAULT_DURATION_MS,
       dismissKey: `campaign-shop:${monthKey}`,
       dismissible: true,
     });

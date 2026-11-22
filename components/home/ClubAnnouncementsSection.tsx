@@ -208,6 +208,7 @@ export function ClubAnnouncementsSection({
             isPinned: editing.isPinned,
             imageUrl: editing.imageUrl,
             linkUrl: editing.linkUrl,
+            displayDurationSec: editing.displayDurationSec,
           }}
           onClose={() => setEditing(null)}
           onPublish={(draft) => onUpdate(editing.id, draft)}

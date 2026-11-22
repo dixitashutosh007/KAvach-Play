@@ -44,6 +44,7 @@ import {
   type DismissedMap,
 } from "./bannerSlides";
 
+// Fallback only; each slide carries its own durationMs (see bannerSlides.ts).
 const AUTO_ROTATE_MS = 6000;
 const RESUME_AFTER_TOUCH_MS = 8000;
 const SWIPE_THRESHOLD_PX = 40;
@@ -131,7 +132,7 @@ export function CampaignHeroBanner({
     isHovered || isFocusWithin || isDocumentHidden || prefersReducedMotion === true || now < touchPausedUntil;
   useEffect(() => {
     if (slideCount <= 1 || isPaused) return;
-    const t = setTimeout(handleNext, AUTO_ROTATE_MS);
+    const t = setTimeout(handleNext, activeSlide?.durationMs || AUTO_ROTATE_MS);
     return () => clearTimeout(t);
   }, [slideCount, isPaused, handleNext, safeIndex]);
   // Re-evaluate the touch pause once it expires.

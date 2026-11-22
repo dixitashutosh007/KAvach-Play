@@ -50,7 +50,6 @@ import { ClubAnnouncementsSection } from "./home/ClubAnnouncementsSection";
 import { BirthdaysCarousel } from "./home/BirthdaysCarousel";
 import { ClubFeedPreview } from "./home/ClubFeedPreview";
 import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
-import { HomeQuickActions } from "./home/HomeQuickActions";
 import { resolveGreetingName } from "@/lib/greeting";
 import { getClubCalendarDate } from "@/lib/utils";
 
@@ -104,6 +103,7 @@ export function HomeTab({
       ...(draft.title ? { title: draft.title } : {}),
       ...(typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
       ...(draft.linkUrl ? { linkUrl: draft.linkUrl } : {}),
+      ...(draft.displayDurationSec !== undefined ? { displayDurationSec: draft.displayDurationSec } : {}),
       isAnnouncement: true,
       isPinned: draft.isPinned,
       authorName:
@@ -126,6 +126,8 @@ export function HomeTab({
       isPinned: draft.isPinned,
       // "" removes the link; undefined (e.g. banner pin toggle) leaves it unchanged
       ...(draft.linkUrl !== undefined ? { linkUrl: draft.linkUrl || undefined } : {}),
+      // undefined (e.g. banner pin toggle) leaves the stored duration unchanged
+      ...(draft.displayDurationSec !== undefined ? { displayDurationSec: draft.displayDurationSec } : {}),
       // null → remove image, string → replace, undefined → leave unchanged
       ...(draft.imageUrl === null ? { imageUrl: undefined } : typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
     });
@@ -522,12 +524,9 @@ export function HomeTab({
         </div>
       ) : (
         <>
-          {/* 3. Contextual Quick Actions (Section 5) */}
-          <HomeQuickActions
-            hasDues={duesSummary.hasDues}
-            isFeatureEnabled={isFeatureEnabled}
-            onNavigate={handleNavigate}
-          />
+          {/* Quick-action shortcuts are intentionally not rendered on Home: every
+              destination (incl. Shop) is in the primary navigation, and a lone
+              "Club Shop" chip read as a stray label at the top of Home. */}
 
           {/* 4. Match Day High Priority Alert (if confirmed and starts within 18h) */}
           {activeMatchAlerts.length > 0 && (
@@ -629,7 +628,7 @@ export function HomeTab({
           />
 
           {/* Club performance totals (admin-maintained; hidden until set) */}
-          <ClubPerformanceWidget />
+          <ClubPerformanceWidget canManage={canPublishAnnouncements} />
 
           {/* 9. Club Announcements (Section 4.D) */}
           <ClubAnnouncementsSection

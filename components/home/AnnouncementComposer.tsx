@@ -12,6 +12,12 @@ import { X, Megaphone, Loader2 } from "lucide-react";
 import { AnnouncementImagePicker, exportCroppedImage, type PickedImage } from "./AnnouncementImagePicker";
 import { isSafeImageSrc } from "@/lib/announcement-image";
 import { toSafeHttpsHref } from "@/lib/linkify";
+import {
+  BANNER_DURATION_DEFAULT_SEC,
+  BANNER_DURATION_MAX_SEC,
+  BANNER_DURATION_MIN_SEC,
+  validateDisplayDuration,
+} from "@/lib/banner-duration";
 
 export const ANNOUNCEMENT_TITLE_MAX = 100;
 export const ANNOUNCEMENT_TEXT_MAX = 2000;
@@ -27,10 +33,16 @@ export interface AnnouncementDraft {
   imageUrl?: string | null;
   /** Optional HTTPS destination opened from the Home banner ("" = none). */
   linkUrl?: string;
+  /** Seconds shown in the Home top banner before rotating (whole number, 3–60). */
+  displayDurationSec?: number;
 }
 
 /** Returns an error message, or null when the draft can be published. */
 export function validateAnnouncementDraft(d: AnnouncementDraft): string | null {
+  if (d.displayDurationSec !== undefined) {
+    const dur = validateDisplayDuration(d.displayDurationSec);
+    if (!dur.ok) return dur.error;
+  }
   const link = (d.linkUrl || "").trim();
   if (link && !toSafeHttpsHref(link)) {
     return "Link must be a full https:// web address (e.g. https://example.com/page).";
@@ -52,7 +64,14 @@ export function AnnouncementComposer({
   /** Resolves true when the announcement was saved. */
   onPublish: (draft: AnnouncementDraft) => Promise<boolean>;
   /** Present when editing an existing announcement. */
-  initial?: { title?: string; text: string; isPinned?: boolean; imageUrl?: string; linkUrl?: string };
+  initial?: {
+    title?: string;
+    text: string;
+    isPinned?: boolean;
+    imageUrl?: string;
+    linkUrl?: string;
+    displayDurationSec?: number;
+  };
 }) {
   const isEdit = Boolean(initial);
   const [draft, setDraft] = useState<AnnouncementDraft>({
@@ -60,6 +79,12 @@ export function AnnouncementComposer({
     text: initial?.text || "",
     isPinned: initial?.isPinned === true,
     linkUrl: initial?.linkUrl || "",
+  });
+  // Kept as text so the admin can clear and retype; validated on submit.
+  // Older announcements without a stored value show the default.
+  const [durationText, setDurationText] = useState<string>(() => {
+    const stored = validateDisplayDuration(initial?.displayDurationSec);
+    return String(stored.ok ? stored.value : BANNER_DURATION_DEFAULT_SEC);
   });
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [existingImage, setExistingImage] = useState<string | null>(
@@ -81,7 +106,12 @@ export function AnnouncementComposer({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
-    const problem = validateAnnouncementDraft(draft);
+    const duration = validateDisplayDuration(durationText);
+    if (!duration.ok) {
+      setError(duration.error);
+      return;
+    }
+    const problem = validateAnnouncementDraft({ ...draft, displayDurationSec: duration.value });
     if (problem) {
       setError(problem);
       return;
@@ -103,6 +133,7 @@ export function AnnouncementComposer({
         text: draft.text.trim(),
         isPinned: draft.isPinned,
         linkUrl: toSafeHttpsHref(draft.linkUrl) || "",
+        displayDurationSec: duration.value,
         imageUrl,
       });
       if (ok) onClose();
@@ -201,6 +232,25 @@ export function AnnouncementComposer({
             <span className="font-bold text-text-primary">Show in the Home top banner</span>
             <br />
             Use for important notices only.
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Display Duration (seconds)</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={BANNER_DURATION_MIN_SEC}
+            max={BANNER_DURATION_MAX_SEC}
+            step={1}
+            value={durationText}
+            onChange={(e) => setDurationText(e.target.value)}
+            data-testid="announcement-duration-input"
+            className="w-32 bg-surface border border-border rounded-xl px-3 py-2.5 text-sm text-text-primary tabular-nums focus:outline-none focus:ring-2 focus:ring-scarlet/30 focus:border-scarlet"
+          />
+          <span className="text-[10px] text-text-muted">
+            How long this announcement stays in the Home top banner before the next one appears
+            ({BANNER_DURATION_MIN_SEC}–{BANNER_DURATION_MAX_SEC} seconds, default {BANNER_DURATION_DEFAULT_SEC}). Not a start or end date.
           </span>
         </label>
 

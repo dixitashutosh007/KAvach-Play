@@ -33,6 +33,12 @@ export interface PlayerMatchCardProps {
   isUnsettledAlert?: boolean;
   /** Visual variant for alternating consecutive cards in lists */
   variant?: "default" | "alternate";
+  /**
+   * Mobile carousel only (below md): the card fills its slide's height and the
+   * availability row sits on the bottom edge, so every card in the carousel has
+   * the same dimensions. md+ (desktop grid) keeps the natural block layout.
+   */
+  fillHeight?: boolean;
   onSelectMatch: (matchId: string) => void;
   onRsvp?: (matchId: string, availability: StoredAvailability) => Promise<void>;
   isUpdatingRsvp?: boolean;
@@ -70,6 +76,9 @@ export function getMatchCardSurfaceClass({
 export const MATCH_CARD_BASE_CLASS =
   "relative overflow-hidden rounded-[20px] p-3 sm:p-4 transition-all duration-200 border";
 
+/** Equal-height carousel card (mobile only); desktop reverts to block flow. */
+export const MATCH_CARD_FILL_CLASS = "h-full flex flex-col md:block md:h-auto";
+
 export function PlayerMatchCard({
   match,
   ground,
@@ -79,6 +88,7 @@ export function PlayerMatchCard({
   isImmediateNext = false,
   isUnsettledAlert = false,
   variant = "default",
+  fillHeight = false,
   onSelectMatch,
   onRsvp,
   isUpdatingRsvp = false,
@@ -191,8 +201,9 @@ export function PlayerMatchCard({
     <div
       data-testid={`player-match-card-${match.id}`}
       data-variant={isAlternate ? "alternate" : "default"}
+      data-fill-height={fillHeight || undefined}
       onClick={() => onSelectMatch(match.id)}
-      className={`${MATCH_CARD_BASE_CLASS} cursor-pointer ${getMatchCardSurfaceClass({
+      className={`${MATCH_CARD_BASE_CLASS} cursor-pointer ${fillHeight ? `${MATCH_CARD_FILL_CLASS} ` : ""}${getMatchCardSurfaceClass({
         isImmediateNext,
         isUnsettledAlert,
         isAlternate,
@@ -226,6 +237,9 @@ export function PlayerMatchCard({
           </span>
         </div>
       )}
+
+      {/* Absorbs spare height so the availability row aligns across carousel cards. */}
+      {fillHeight && <div aria-hidden="true" className="grow md:hidden" data-testid={`match-card-spacer-${match.id}`} />}
 
       {!isCompletedOrPast && onRsvp && (
         <div className="mt-3 pt-3 border-t border-border/80" onClick={(e) => e.stopPropagation()}>
