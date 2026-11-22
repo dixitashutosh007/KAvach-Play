@@ -153,3 +153,28 @@ describe("Selected-date preview (player)", () => {
     assert.ok(!admin.includes("date-preview-note"));
   });
 });
+
+describe("Desktop parity: one shared selector, responsive presentation", () => {
+  const sel = src("components/matches/AdminMatchDateList.tsx");
+  it("Player Match Centre renders the selector unconditionally (no breakpoint gating, no second calendar)", () => {
+    const tag = center.slice(center.indexOf("<MatchDateSelector") - 300, center.indexOf("<MatchDateSelector") + 400);
+    assert.ok(!/md:hidden|hidden md:|lg:hidden|isDesktop|isMobile|matchMedia/.test(tag));
+    assert.equal((center.match(/<MatchDateSelector/g) || []).length, 1);
+    assert.ok(!/useMediaQuery|innerWidth/.test(center));
+  });
+  it("date cards: fixed 64px fallback, strip-relative width where container units exist, same 3:5 shape", () => {
+    assert.match(sel, /shrink-0 w-16 supports-\[width:1cqw\]:w-\[calc\(\(100cqw-2\.5rem\)\/5\.4\)\] min-w-\[3\.5rem\] max-w-\[4\.25rem\] aspect-\[3\/5\]/);
+  });
+  it("desktop-only scroll arrows for the player strip, shown only when it overflows", () => {
+    assert.match(sel, /\{isPlayer &&\s*\(\[/);
+    assert.match(sel, /className=\{`hidden md:flex absolute/);
+    assert.match(sel, /const right = t\.scrollLeft \+ t\.clientWidth < t\.scrollWidth - 2;/);
+    assert.match(sel, /onScroll=\{isPlayer \? measureOverflow : undefined\}/);
+  });
+  it("arrows don't render server-side before measuring (no flash), and never for admins", () => {
+    const player = render(React.createElement(MatchDateSelector, { variant: "player", matches: [], todayKey: "2026-11-20", renderMatchCard: () => null }));
+    const admin = render(React.createElement(MatchDateSelector, { matches: [], todayKey: "2026-11-20", renderMatchCard: () => null }));
+    assert.ok(!player.includes("date-strip-scroll-"));
+    assert.ok(!admin.includes("date-strip-scroll-"));
+  });
+});

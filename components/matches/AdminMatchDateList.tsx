@@ -20,7 +20,7 @@
  * back through that subscription, so the strip and the selected date refresh
  * automatically.
  */
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPlus, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { Match } from "@/lib/types";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -111,6 +111,32 @@ export function AdminMatchDateList({
 
   // ── Keep the selected card in view (horizontal only; never scrolls the page) ──
   const trackRef = useRef<HTMLDivElement>(null);
+
+  // Desktop (player): arrow buttons when the strip overflows, since a mouse
+  // can't swipe. Same strip, same state — only an extra way to scroll it.
+  const [overflow, setOverflow] = useState({ left: false, right: false });
+  const measureOverflow = useCallback(() => {
+    const t = trackRef.current;
+    if (!t) return;
+    const left = t.scrollLeft > 2;
+    const right = t.scrollLeft + t.clientWidth < t.scrollWidth - 2;
+    setOverflow((o) => (o.left === left && o.right === right ? o : { left, right }));
+  }, []);
+  useEffect(() => {
+    if (!isPlayer) return;
+    measureOverflow();
+    const t = trackRef.current;
+    if (!t || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measureOverflow);
+    ro.observe(t);
+    return () => ro.disconnect();
+  }, [isPlayer, measureOverflow, view.year, view.month, matches]);
+  const scrollStrip = (dir: -1 | 1) => {
+    const t = trackRef.current;
+    if (!t) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    t.scrollBy?.({ left: dir * Math.max(160, t.clientWidth * 0.8), behavior: reduce ? "auto" : "smooth" });
+  };
   useEffect(() => {
     const track = trackRef.current;
     if (!track || !anchorKey) return;
@@ -208,6 +234,7 @@ export function AdminMatchDateList({
         </div>
 
         {/* Date strip */}
+        <div className="relative">
         <div
           ref={trackRef}
           role="listbox"
@@ -216,6 +243,7 @@ export function AdminMatchDateList({
           data-testid="date-strip"
           onTouchStart={onTouchStart(true)}
           onTouchEnd={onTouchEnd}
+          onScroll={isPlayer ? measureOverflow : undefined}
           // @container: cards size from the strip's own width (≈5.4 visible, so
           // the next card peeks); pb-3 leaves room for the selected card's shadow.
           className="@container relative mt-3 -mx-3 px-3 sm:-mx-4 sm:px-4 flex items-start gap-2 overflow-x-auto overscroll-x-contain no-scrollbar pt-1 pb-3"
@@ -223,6 +251,25 @@ export function AdminMatchDateList({
           {strip.map((d) => (
             <DateCard key={d.key} date={d} selected={d.key === selectedKey} isToday={d.key === todayKey} onSelect={selectDate} />
           ))}
+        </div>
+        {isPlayer &&
+          ([
+            [-1, overflow.left, "left-0", "Scroll dates left", ChevronLeft],
+            [1, overflow.right, "right-0", "Scroll dates right", ChevronRight],
+          ] as const).map(([dir, show, side, label, Icon]) =>
+            show ? (
+              <button
+                key={dir}
+                type="button"
+                onClick={() => scrollStrip(dir)}
+                aria-label={label}
+                data-testid={dir < 0 ? "date-strip-scroll-left" : "date-strip-scroll-right"}
+                className={`hidden md:flex absolute top-1/2 -translate-y-[60%] ${side} w-9 h-9 items-center justify-center rounded-full border border-border bg-surface/95 text-text-secondary hover:text-brand shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40`}
+              >
+                <Icon className="w-4 h-4" aria-hidden="true" />
+              </button>
+            ) : null,
+          )}
         </div>
 
         {/* Legend */}
@@ -344,7 +391,9 @@ export function DateCard({
       data-testid={`date-card-${date.key}`}
       onClick={() => onSelect(date.key)}
       style={isTentative ? { backgroundImage: selected ? HATCH_SELECTED : HATCH_LIGHT } : undefined}
-      className={`shrink-0 w-[calc((100cqw-2.5rem)/5.4)] min-w-[3.5rem] max-w-[4.25rem] aspect-[3/5] rounded-[18px] border flex flex-col items-center justify-center cursor-pointer select-none transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand/50 ${
+      // Fixed 64px width, upgraded to the strip-relative width where container
+      // units are supported (identical result there; a safe fallback elsewhere).
+      className={`shrink-0 w-16 supports-[width:1cqw]:w-[calc((100cqw-2.5rem)/5.4)] min-w-[3.5rem] max-w-[4.25rem] aspect-[3/5] rounded-[18px] border flex flex-col items-center justify-center cursor-pointer select-none transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand/50 ${
         selected
           ? "bg-brand border-brand text-white shadow-[0_6px_16px_-8px_rgba(163,15,45,0.7)]"
           : `bg-surface text-text-primary hover:border-brand/40 ${isToday ? "border-brand/50" : "border-border"}`
