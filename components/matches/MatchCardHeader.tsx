@@ -61,14 +61,27 @@ const FORMAT_BADGE_CLASSES = {
   other: "bg-surface-hover text-text-primary border-border",
 } as const;
 
-export function MatchFormatBadge({ format, matchId }: { format?: string | null; matchId: string }) {
+export function MatchFormatBadge({
+  format,
+  matchId,
+  compact = false,
+}: {
+  format?: string | null;
+  matchId: string;
+  /** Small chip for the mobile Home card header row. */
+  compact?: boolean;
+}) {
   const badge = getMatchFormatBadge(format);
   if (!badge) return null;
   return (
     <span
-      data-testid={`format-badge-${matchId}`}
+      data-testid={compact ? `format-badge-compact-${matchId}` : `format-badge-${matchId}`}
       data-format-tone={badge.tone}
-      className={`inline-flex items-center justify-center min-w-[3rem] px-2.5 py-1 rounded-lg border-2 text-sm font-black tracking-wide font-heading leading-none shrink-0 ${FORMAT_BADGE_CLASSES[badge.tone]}`}
+      className={`inline-flex items-center justify-center font-black tracking-wide font-heading leading-none shrink-0 ${
+        compact
+          ? "h-7 min-w-[2.5rem] px-2 rounded-md border text-xs"
+          : "min-w-[3rem] px-2.5 py-1 rounded-lg border-2 text-sm"
+      } ${FORMAT_BADGE_CLASSES[badge.tone]}`}
     >
       {badge.label}
     </span>
@@ -232,6 +245,105 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false }: Mat
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Player Home body ─────────────────────────────────────────────────
+
+/**
+ * Fixed-geometry match body for the mobile Player Home carousel.
+ *
+ *   ┌ left (1fr) ─────────┐ │ ┌ right (1fr) ─────────┐
+ *   │ VS                  │ │ │       7:00 AM         │
+ *   │ Opponent (≤2 lines) │ │ │   ───── ● ─────       │
+ *   │ [result]            │ │ │   📅 SAT · 28 NOV     │
+ *   └─────────────────────┘ │ │   📍 Venue… ↗         │
+ *                           │ └──────────────────────┘
+ *
+ * Two EQUAL grid tracks with a 1px track between them, so the divider always
+ * sits at the card's centre regardless of content. Both columns clip their own
+ * overflow (min-w-0 + overflow-hidden), so nothing can cross the divider. The
+ * right column always renders four rows (a "Venue TBC" placeholder when the
+ * venue is missing), so it sets a constant body height; the left column is
+ * shorter than it even with a two-line opponent name.
+ *
+ * The format badge and jersey are NOT rendered here; the card places them in
+ * its header row (top-right) to free the opponent column.
+ */
+export function MatchCardCompactBody({ match, ground, hideResult = false }: MatchCardHeaderProps) {
+  const venueLink = getVenueMapsLink(ground);
+  const venueName = ground?.name?.trim() || "";
+  const opponent = match.opponent?.trim() || "Opponent TBC";
+  const hasResult = !hideResult && getMatchResultDisplay(match.result) !== null;
+
+  return (
+    <div
+      data-testid={`match-card-compact-${match.id}`}
+      className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-stretch gap-x-3"
+    >
+      {/* Left: opponent */}
+      <div className="min-w-0 overflow-hidden flex flex-col justify-center gap-1" data-testid={`match-card-compact-left-${match.id}`}>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
+        <h3
+          className="text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
+          title={opponent}
+        >
+          {opponent}
+        </h3>
+        {hasResult && (
+          <div className="flex">
+            <MatchResultStamp match={match} />
+          </div>
+        )}
+      </div>
+
+      {/* Fixed divider track */}
+      <span className="w-px bg-border" aria-hidden="true" data-testid={`match-card-compact-divider-${match.id}`} />
+
+      {/* Right: time, date, venue */}
+      <div
+        className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-1.5 text-center"
+        data-testid={`match-card-compact-right-${match.id}`}
+      >
+        <span
+          data-testid={`match-time-compact-${match.id}`}
+          className="max-w-full text-2xl font-black font-heading text-scarlet leading-none tracking-tight whitespace-nowrap tabular-nums"
+        >
+          {formatMatchDisplayTime(match.time)}
+        </span>
+        <CricketBallDivider className="max-w-[7rem]" />
+        <span className="max-w-full inline-flex items-center gap-1 text-sm font-bold text-text-primary tracking-wide whitespace-nowrap leading-5">
+          <Calendar className="w-4 h-4 text-scarlet shrink-0" aria-hidden="true" />
+          <span className="truncate">{formatMatchCardDate(match.date)}</span>
+        </span>
+        <span className="w-full min-w-0 inline-flex items-center justify-center gap-1 text-sm leading-5">
+          <MapPin className="w-4 h-4 text-scarlet shrink-0" aria-hidden="true" />
+          {venueName && venueLink ? (
+            <a
+              href={venueLink.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`venue-link-compact-${match.id}`}
+              aria-label={`Open ${venueName} in Google Maps (opens in a new tab)`}
+              title={venueName}
+              className="inline-flex items-center gap-1 min-w-0 font-bold text-scarlet hover:text-deep-wine underline decoration-scarlet/40 underline-offset-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-scarlet/50"
+            >
+              <span className="truncate">{venueName}</span>
+              <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            </a>
+          ) : (
+            <span
+              className={`truncate ${venueName ? "font-semibold text-text-primary" : "font-medium text-text-muted"}`}
+              data-testid={`venue-text-compact-${match.id}`}
+              title={venueName || undefined}
+            >
+              {venueName || "Venue TBC"}
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );

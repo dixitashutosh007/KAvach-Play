@@ -151,7 +151,7 @@ describe("Fix 1: equal-dimension cards in the mobile carousel", () => {
     for (const id of ["a", "b", "c"]) {
       const start = html.indexOf(`data-testid="player-match-card-${id}"`);
       const tag = html.slice(html.lastIndexOf("<div", start), html.indexOf(">", start));
-      assert.ok(tag.includes('data-fill-height="true"'), id);
+      assert.ok(tag.includes('data-layout="home"'), id);
       assert.ok(tag.includes(MATCH_CARD_FILL_CLASS), id);
       const spacer = html.indexOf(`match-card-spacer-${id}`);
       assert.ok(spacer > start && spacer < html.indexOf(`availability-buttons-${id}`), "spacer sits above availability");
@@ -169,9 +169,8 @@ describe("Fix 1: equal-dimension cards in the mobile carousel", () => {
     assert.match(header, /break-words line-clamp-2/);
     assert.match(header, /<span className="truncate">\{venueName\}<\/span>/);
   });
-  it("single match and other card usages keep the natural layout", () => {
+  it("Home card layout applies to single and carousel layouts alike", () => {
     const html = renderSection([mk("a", "XI")]);
-    assert.ok(!html.includes("data-fill-height"));
-    assert.ok(!html.includes("match-card-spacer-"));
+    assert.ok(html.includes('data-layout="home"'));
   });
 });

@@ -14,7 +14,8 @@ import {
   PersonalPaymentStatusResult,
   PlayerAvailabilityStatus,
 } from "@/lib/personal-match-payment";
-import { MatchCardHeader, MatchCardTopBar } from "./MatchCardHeader";
+import { MatchCardCompactBody, MatchCardHeader, MatchCardTopBar, MatchFormatBadge } from "./MatchCardHeader";
+import { JerseyInfographic } from "./JerseyInfographic";
 import {
   AvailabilityButtons,
   toAvailabilityChoice,
@@ -34,11 +35,16 @@ export interface PlayerMatchCardProps {
   /** Visual variant for alternating consecutive cards in lists */
   variant?: "default" | "alternate";
   /**
-   * Mobile carousel only (below md): the card fills its slide's height and the
-   * availability row sits on the bottom edge, so every card in the carousel has
-   * the same dimensions. md+ (desktop grid) keeps the natural block layout.
+   * "home": Player Home upcoming-match card.
+   *  - Personal payment badge is not shown (Home is about availability; dues
+   *    live in Payments and the Match Center).
+   *  - Below md: fixed-geometry mobile body (MatchCardCompactBody), format and
+   *    jersey chips in the header row, card fills its carousel slide with the
+   *    availability row anchored at the bottom.
+   *  - md+: the standard shared header, unchanged.
+   * "default": Player Match Center card (unchanged).
    */
-  fillHeight?: boolean;
+  layout?: "default" | "home";
   onSelectMatch: (matchId: string) => void;
   onRsvp?: (matchId: string, availability: StoredAvailability) => Promise<void>;
   isUpdatingRsvp?: boolean;
@@ -88,7 +94,7 @@ export function PlayerMatchCard({
   isImmediateNext = false,
   isUnsettledAlert = false,
   variant = "default",
-  fillHeight = false,
+  layout = "default",
   onSelectMatch,
   onRsvp,
   isUpdatingRsvp = false,
@@ -151,9 +157,17 @@ export function PlayerMatchCard({
   };
 
   const isAlternate = variant === "alternate" && !isImmediateNext && !isUnsettledAlert;
+  const isHome = layout === "home";
 
   const topBarEnd = (
     <>
+      {isHome && (match.format || match.jerseyColor) && (
+        // Mobile Home: format + jersey live top-right, beside the chevron.
+        <span className="md:hidden inline-flex items-center gap-1.5" data-testid={`match-card-chips-${match.id}`}>
+          <MatchFormatBadge format={match.format} matchId={match.id} compact />
+          {match.jerseyColor && <JerseyInfographic color={match.jerseyColor} size="md" />}
+        </span>
+      )}
       {isImmediateNext && (
         <span
           data-testid="next-match-highlight"
@@ -201,9 +215,9 @@ export function PlayerMatchCard({
     <div
       data-testid={`player-match-card-${match.id}`}
       data-variant={isAlternate ? "alternate" : "default"}
-      data-fill-height={fillHeight || undefined}
+      data-layout={isHome ? "home" : undefined}
       onClick={() => onSelectMatch(match.id)}
-      className={`${MATCH_CARD_BASE_CLASS} cursor-pointer ${fillHeight ? `${MATCH_CARD_FILL_CLASS} ` : ""}${getMatchCardSurfaceClass({
+      className={`${MATCH_CARD_BASE_CLASS} cursor-pointer ${isHome ? `${MATCH_CARD_FILL_CLASS} ` : ""}${getMatchCardSurfaceClass({
         isImmediateNext,
         isUnsettledAlert,
         isAlternate,
@@ -223,7 +237,18 @@ export function PlayerMatchCard({
         </div>
       )}
 
-      <MatchCardHeader match={match} ground={ground} meta={renderPaymentBadge()} />
+      {isHome ? (
+        <>
+          <div className="md:hidden">
+            <MatchCardCompactBody match={match} ground={ground} />
+          </div>
+          <div className="hidden md:block">
+            <MatchCardHeader match={match} ground={ground} />
+          </div>
+        </>
+      ) : (
+        <MatchCardHeader match={match} ground={ground} meta={renderPaymentBadge()} />
+      )}
 
       {isExpanded && tournamentName && (
         <div
@@ -239,7 +264,7 @@ export function PlayerMatchCard({
       )}
 
       {/* Absorbs spare height so the availability row aligns across carousel cards. */}
-      {fillHeight && <div aria-hidden="true" className="grow md:hidden" data-testid={`match-card-spacer-${match.id}`} />}
+      {isHome && <div aria-hidden="true" className="grow md:hidden" data-testid={`match-card-spacer-${match.id}`} />}
 
       {!isCompletedOrPast && onRsvp && (
         <div className="mt-3 pt-3 border-t border-border/80" onClick={(e) => e.stopPropagation()}>

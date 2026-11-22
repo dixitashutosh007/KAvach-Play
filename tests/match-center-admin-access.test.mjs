@@ -188,7 +188,10 @@ describe("B. Player Home upcoming match cards", () => {
   it("renders jerseys as the infographic, never as colour text", () => {
     assert.ok(!text.includes("Scarlet Red"));
     assert.ok(!/\bWhites\b/.test(text));
-    assert.equal((html.match(/data-testid="jersey-infographic"/g) || []).length, 3);
+    // Home cards render the jersey in the mobile header chips (md:hidden) and in
+    // the desktop header (hidden md:block): exactly one is visible per width.
+    assert.equal((html.match(/data-testid="jersey-infographic"/g) || []).length, 6);
+    assert.equal((html.match(/data-testid="match-card-chips-/g) || []).length, 3);
     assert.ok(html.includes('aria-label="Red jersey"'));
     assert.ok(html.includes('aria-label="White jersey"'));
   });

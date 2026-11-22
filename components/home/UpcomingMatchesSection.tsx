@@ -135,7 +135,7 @@ export function UpcomingMatchesSection({
                   personalPaymentStatus={getPersonalMatchPaymentStatus(player, match, payments)}
                   availability={derivePlayerAvailability(player, match, payments).status}
                   variant={idx % 2 === 1 ? "alternate" : "default"}
-                  fillHeight={isCarousel}
+                  layout="home"
                   onSelectMatch={onNavigateToMatch}
                   onRsvp={handleRsvp}
                   isUpdatingRsvp={updatingMatchId !== null}
