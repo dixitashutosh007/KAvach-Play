@@ -64,7 +64,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
 import { MatchesLoadError } from "./matches/MatchesLoadError";
-import { MatchCardHeader, MatchCardTopBar } from "./matches/MatchCardHeader";
+import { MatchCardHeader, MatchCardTopBar, MatchCardStackedBody, MatchCornerTab } from "./matches/MatchCardHeader";
 import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
 import { MATCH_TYPES, groundFeeForMatchType } from "@/lib/match-category";
 import { AdminMatchDateList } from "./matches/AdminMatchDateList";
@@ -993,7 +993,9 @@ export function MatchesTab({
   return (
     <div className="space-y-4">
       {isAdmin && (
-        <div className="flex gap-2 mb-4 bg-surface-hover p-1.5 rounded-2xl border border-border">
+        // Mobile: the four sub-tabs scroll horizontally instead of forcing the
+        // page wider than the viewport ("TOURNAMENTS" cannot shrink to 1/4 width).
+        <div className="flex gap-1.5 sm:gap-2 mb-4 bg-surface-hover p-1.5 rounded-2xl border border-border overflow-x-auto no-scrollbar" data-testid="match-subtabs">
           {["matches", "tournaments", "grounds", "assign"].map((tab) => {
             const active = subTab === tab;
             const labels: Record<string, string> = {
@@ -1006,7 +1008,7 @@ export function MatchesTab({
               <button
                 key={tab}
                 onClick={() => setSubTab(tab as any)}
-                className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 text-center cursor-pointer ${
+                className={`shrink-0 sm:shrink sm:flex-1 min-h-[40px] py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all duration-200 text-center cursor-pointer ${
                   active
                     ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
                     : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
@@ -1028,57 +1030,59 @@ export function MatchesTab({
       {subTab === "matches" && (
         <>
           <div className="flex flex-col gap-3 mb-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold tracking-tight text-text-primary">
-                Match Schedule
+            {/* One compact row: title left; view dropdown + Add Match right. */}
+            <div className="flex items-center justify-between gap-2" data-testid="match-centre-header">
+              <h2 className="min-w-0 truncate text-lg sm:text-xl font-bold tracking-tight text-text-primary font-heading">
+                Match Centre
               </h2>
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    if (isAdding) {
-                      setIsAdding(false);
-                      setEditingId(null);
-                      resetForm();
-                    } else {
-                      setIsAdding(true);
-                      resetForm();
-                    }
-                  }}
-                  className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-sm font-bold text-black shadow hover:bg-accent/90 transition"
-                >
-                  <Plus className="h-4 w-4" />
-                  {isAdding ? "Cancel" : "Add Match"}
-                </button>
-              )}
-            </div>
-
-            {!isAdding && (
-              <div className="flex items-center justify-end">
-                <label className="relative inline-flex items-center" data-testid="match-view-select-wrap">
-                  <span className="sr-only">Match Centre view</span>
-                  {activeView === "calendar" ? (
-                    <Calendar className="pointer-events-none absolute left-3 w-4 h-4 text-brand" aria-hidden="true" />
-                  ) : activeView === "sheet" ? (
-                    <Table2 className="pointer-events-none absolute left-3 w-4 h-4 text-brand" aria-hidden="true" />
-                  ) : (
-                    <LayoutList className="pointer-events-none absolute left-3 w-4 h-4 text-brand" aria-hidden="true" />
-                  )}
-                  <select
-                    value={activeView}
-                    onChange={(e) => setViewMode(e.target.value as MatchViewMode)}
-                    data-testid="match-view-select"
-                    className="appearance-none min-h-[40px] pl-9 pr-9 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary shadow-xs cursor-pointer hover:border-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              <div className="flex items-center gap-2 shrink-0">
+                {!isAdding && (
+                  <label className="relative inline-flex items-center" data-testid="match-view-select-wrap">
+                    <span className="sr-only">Match Centre view</span>
+                    {activeView === "calendar" ? (
+                      <Calendar className="pointer-events-none absolute left-2.5 w-4 h-4 text-brand" aria-hidden="true" />
+                    ) : activeView === "sheet" ? (
+                      <Table2 className="pointer-events-none absolute left-2.5 w-4 h-4 text-brand" aria-hidden="true" />
+                    ) : (
+                      <LayoutList className="pointer-events-none absolute left-2.5 w-4 h-4 text-brand" aria-hidden="true" />
+                    )}
+                    <select
+                      value={activeView}
+                      onChange={(e) => setViewMode(e.target.value as MatchViewMode)}
+                      data-testid="match-view-select"
+                      className="appearance-none h-10 pl-8 pr-7 sm:pl-9 sm:pr-9 rounded-xl border border-border bg-surface text-[13px] sm:text-sm font-bold text-text-primary shadow-xs cursor-pointer hover:border-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    >
+                      {MATCH_VIEW_OPTIONS.filter((o) => o.value !== "sheet" || isSuperAdmin).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2 sm:right-3 w-4 h-4 text-text-muted" aria-hidden="true" />
+                  </label>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      if (isAdding) {
+                        setIsAdding(false);
+                        setEditingId(null);
+                        resetForm();
+                      } else {
+                        setIsAdding(true);
+                        resetForm();
+                      }
+                    }}
+                    aria-label={isAdding ? "Cancel" : "Add Match"}
+                    data-testid="add-match-button"
+                    className="inline-flex items-center justify-center gap-1 h-10 min-w-10 rounded-xl sm:rounded-full bg-accent px-2.5 sm:px-3 text-sm font-bold text-black shadow hover:bg-accent/90 transition"
                   >
-                    {MATCH_VIEW_OPTIONS.filter((o) => o.value !== "sheet" || isSuperAdmin).map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 w-4 h-4 text-text-muted" aria-hidden="true" />
-                </label>
+                    {isAdding ? <X className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                    <span className={isAdding ? "" : "hidden sm:inline"}>{isAdding ? "Cancel" : "Add Match"}</span>
+                  </button>
+                )}
               </div>
-            )}
+            </div>
 
             <MatchesLoadError message={store.matchesError} />
 
@@ -1130,6 +1134,30 @@ export function MatchesTab({
                 const tournamentForCard = match.tournamentId
                   ? store.tournaments.find((tt) => tt.id === match.tournamentId)
                   : undefined;
+                // Existing delete workflow (explicit confirmation naming the
+                // match, then store.deleteMatch); shared by the desktop icon
+                // and the mobile action row.
+                const deleteThisMatch = async () => {
+                  const when = [formatDate(match.date), match.time ? formatMatchDisplayTime(match.time) : ""]
+                    .filter(Boolean)
+                    .join(" at ");
+                  const ok = await confirmAction({
+                    title: "Delete match?",
+                    message: `Delete the ${match.isTentative ? "tentative block" : "match"} vs ${match.opponent || "TBC"}${
+                      when ? ` on ${when}` : ""
+                    }? This cannot be undone.`,
+                    confirmLabel: "Delete match",
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    await store.deleteMatch(match.id);
+                    toast("Match deleted", "success");
+                  } catch (err) {
+                    console.error(err);
+                    toast("The match could not be deleted.", "error");
+                  }
+                };
                 return (
                   <div
                     key={match.id}
@@ -1141,9 +1169,12 @@ export function MatchesTab({
                     <div className="p-3 sm:p-4">
                       <MatchCardTopBar
                         match={match}
+                        // Mobile: format + jersey in the top-right corner tab
+                        // (actions move to a labelled row at the card's foot).
+                        corner={<MatchCornerTab match={match} className="md:hidden" />}
                         end={
                           isAdmin ? (
-                          <div className="flex gap-1 items-center shrink-0">
+                          <div className="hidden md:flex gap-1 items-center shrink-0" data-testid={`admin-card-icon-actions-${match.id}`}>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1167,27 +1198,9 @@ export function MatchesTab({
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={async (e) => {
+                              onClick={(e) => {
                                 e.stopPropagation();
-                                const when = [formatDate(match.date), match.time ? formatMatchDisplayTime(match.time) : ""]
-                                  .filter(Boolean)
-                                  .join(" at ");
-                                const ok = await confirmAction({
-                                  title: "Delete match?",
-                                  message: `Delete the ${match.isTentative ? "tentative block" : "match"} vs ${match.opponent || "TBC"}${
-                                    when ? ` on ${when}` : ""
-                                  }? This cannot be undone.`,
-                                  confirmLabel: "Delete match",
-                                  destructive: true,
-                                });
-                                if (!ok) return;
-                                try {
-                                  await store.deleteMatch(match.id);
-                                  toast("Match deleted", "success");
-                                } catch (err) {
-                                  console.error(err);
-                                  toast("The match could not be deleted.", "error");
-                                }
+                                deleteThisMatch();
                               }}
                               title="Delete Match"
                               aria-label={`Delete match vs ${match.opponent}`}
@@ -1200,13 +1213,19 @@ export function MatchesTab({
                           ) : null
                         }
                       />
-                      <MatchCardHeader match={match} ground={ground} />
+                      {/* Mobile: stacked single-column body. Desktop: shared header (unchanged). */}
+                      <div className="md:hidden">
+                        <MatchCardStackedBody match={match} ground={ground} tournamentName={tournamentForCard?.name} />
+                      </div>
+                      <div className="hidden md:block">
+                        <MatchCardHeader match={match} ground={ground} />
+                      </div>
 
                       {(tournamentForCard || match.isTentative) && (
-                        <div className="flex gap-1.5 items-center mt-2.5 flex-wrap">
+                        <div className={`flex gap-1.5 items-center mt-2.5 flex-wrap ${match.isTentative ? "" : "max-md:hidden"}`}>
                           {tournamentForCard && (
                             <span
-                              className="bg-gold/15 text-deep-wine border border-gold/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[160px]"
+                              className="hidden md:inline-block bg-gold/15 text-deep-wine border border-gold/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[160px]"
                               title={tournamentForCard.name}
                             >
                               🏆 {tournamentForCard.name}
@@ -1354,6 +1373,42 @@ export function MatchesTab({
                         ensureMatchPayments={store.ensureMatchPayments}
                         refreshNonce={store.refreshNonce}
                       />
+                    )}
+                    {isAdmin && (
+                      <div
+                        className="md:hidden grid grid-cols-3 gap-2 px-3 py-3 border-t border-border bg-surface"
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`admin-card-actions-${match.id}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => startEdit(match)}
+                          aria-label={`Edit match vs ${match.opponent}`}
+                          className="inline-flex items-center justify-center gap-1.5 min-w-0 h-11 rounded-xl border border-border bg-surface text-xs font-bold text-text-primary hover:bg-surface-hover cursor-pointer"
+                        >
+                          <Edit2 className="w-4 h-4 shrink-0 text-brand" aria-hidden="true" />
+                          <span className="truncate">Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startDuplicate(match)}
+                          aria-label={`Duplicate match vs ${match.opponent}`}
+                          className="inline-flex items-center justify-center gap-1.5 min-w-0 h-11 rounded-xl border border-border bg-surface text-xs font-bold text-text-primary hover:bg-surface-hover cursor-pointer"
+                        >
+                          <Copy className="w-4 h-4 shrink-0 text-brand" aria-hidden="true" />
+                          <span className="truncate">Duplicate</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteThisMatch()}
+                          aria-label={`Delete match vs ${match.opponent}`}
+                          data-testid={`admin-delete-match-mobile-${match.id}`}
+                          className="inline-flex items-center justify-center gap-1.5 min-w-0 h-11 rounded-xl border border-red-200 bg-red-50 text-xs font-bold text-red-700 hover:bg-red-100 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+                          <span className="truncate">Delete</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 );

@@ -398,3 +398,104 @@ export function MatchCardCompactBody({ match, ground, hideResult = false }: Matc
     </div>
   );
 }
+
+// ── Admin Match Centre: stacked mobile body ─────────────────────────────────
+
+/**
+ * Mobile (below md) body for Admin Match Centre cards. Single column, no fixed
+ * desktop widths:
+ *
+ *   [result]                       (persisted result only; nothing inferred)
+ *   VS
+ *   Opponent (≤ 2 lines)
+ *   🏆 Tournament name (truncates)
+ *   ┌ 7:00 AM │ 📅 SAT · 28 NOV ┐
+ *   │         │ 📍 Venue… ↗      │
+ *   └──────────────────────────┘
+ *
+ * The format badge and jersey sit in the card's top-right corner tab
+ * (MatchCornerTab); the desktop card keeps MatchCardHeader.
+ */
+export function MatchCardStackedBody({
+  match,
+  ground,
+  tournamentName,
+}: {
+  match: Match;
+  ground?: Ground | null;
+  tournamentName?: string;
+}) {
+  const venueLink = getVenueMapsLink(ground);
+  const venueName = ground?.name?.trim() || "";
+  const opponent = match.opponent?.trim() || "Opponent TBC";
+  const hasResult = getMatchResultDisplay(match.result) !== null;
+  return (
+    <div className="flex flex-col gap-3 min-w-0" data-testid={`match-card-stacked-${match.id}`}>
+      <div className="min-w-0">
+        {hasResult && (
+          <div className="mb-1.5 flex">
+            <MatchResultStamp match={match} />
+          </div>
+        )}
+        <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
+        <h3
+          className="mt-1 text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
+          title={opponent}
+        >
+          {opponent}
+        </h3>
+        {tournamentName && (
+          <p
+            className="mt-1 flex items-center gap-1 min-w-0 text-[11px] font-bold text-deep-wine"
+            data-testid={`match-card-tournament-${match.id}`}
+            title={tournamentName}
+          >
+            <Trophy className="w-3.5 h-3.5 text-muted-gold shrink-0" aria-hidden="true" />
+            <span className="truncate">{tournamentName}</span>
+          </p>
+        )}
+      </div>
+
+      <div
+        className="grid grid-cols-[auto_1px_minmax(0,1fr)] items-center gap-3 rounded-xl border border-border/70 bg-surface-hover/50 px-3 py-2.5"
+        data-testid={`match-card-schedule-${match.id}`}
+      >
+        <span
+          data-testid={`match-time-stacked-${match.id}`}
+          className="text-2xl font-black font-heading text-scarlet leading-none tracking-tight whitespace-nowrap tabular-nums"
+        >
+          {formatMatchDisplayTime(match.time)}
+        </span>
+        <span className="w-px self-stretch bg-border" aria-hidden="true" />
+        <div className="min-w-0 flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 min-w-0 text-sm font-bold text-text-primary leading-5">
+            <Calendar className="w-4 h-4 text-scarlet shrink-0" aria-hidden="true" />
+            <span className="truncate">{formatMatchCardDate(match.date)}</span>
+          </span>
+          <span className="flex items-center gap-1.5 min-w-0 text-sm leading-5">
+            <MapPin className="w-4 h-4 text-scarlet shrink-0" aria-hidden="true" />
+            {venueName && venueLink ? (
+              <a
+                href={venueLink.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                data-testid={`venue-link-stacked-${match.id}`}
+                aria-label={`Open ${venueName} in Google Maps (opens in a new tab)`}
+                title={venueName}
+                className="inline-flex items-center gap-1 min-w-0 font-bold text-scarlet hover:text-deep-wine underline decoration-scarlet/40 underline-offset-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-scarlet/50"
+              >
+                <span className="truncate">{venueName}</span>
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              </a>
+            ) : (
+              <span className={`truncate ${venueName ? "font-semibold text-text-primary" : "font-medium text-text-muted"}`} title={venueName || undefined}>
+                {venueName || "Venue TBC"}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

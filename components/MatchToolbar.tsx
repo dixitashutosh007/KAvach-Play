@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, RefreshCw, ExternalLink, Download, Trash2 } from "lucide-react";
+import { CalendarCheck, RefreshCw, ExternalLink, Download, Trash2 } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { authedFetch } from "@/lib/authed-fetch";
@@ -237,61 +237,60 @@ export function MatchToolbar({ store }: { store: ReturnType<typeof useStore> }) 
 
   return (
     <div className="space-y-2">
-      {/* Workflow order (same on every width):
-          Calendar sync: 1 Sync to Calendar (primary) · 2 Check Sync · 3 View Calendar
-          Schedule tools: 4 Export Schedule · 5 Reset Calendar (destructive, last) */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" data-testid="calendar-sync-toolbar">
-        <div role="group" aria-label="Calendar sync" className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-          <button
-            onClick={handleResync}
-            disabled={busy}
-            data-testid="cal-sync"
-            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer col-span-2 bg-accent/90 hover:bg-accent text-black"
+      {/* Mobile (grid, 2 columns):
+            [        Sync to Calendar (primary)        ]
+            [ Check Sync      ] [ Reset Calendar       ]
+            [ View Calendar   ] [ Export Schedule      ]
+          Desktop (one row, DOM order): Sync · Check · View | Export · Reset.
+          Labels truncate inside min-w-0 cells so no label can widen the page. */}
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center" data-testid="calendar-sync-toolbar">
+        <button
+          onClick={handleResync}
+          disabled={busy}
+          data-testid="cal-sync"
+          className="inline-flex items-center justify-center gap-1.5 h-11 sm:h-9 min-w-0 rounded-xl sm:rounded-lg px-3 text-xs sm:text-[11px] font-bold sm:uppercase sm:tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer col-span-2 order-1 sm:order-none bg-brand hover:opacity-90 text-white shadow-xs"
+        >
+          <CalendarCheck className={`w-4 h-4 shrink-0 ${busy ? "animate-pulse" : ""}`} aria-hidden="true" />
+          <span className="truncate">{busy ? "Syncing…" : "Sync to Calendar"}</span>
+        </button>
+        <button
+          onClick={handleCheckSync}
+          disabled={busy || statusLoading}
+          data-testid="cal-check"
+          className="inline-flex items-center justify-center gap-1.5 h-11 sm:h-9 min-w-0 rounded-xl sm:rounded-lg px-3 text-xs sm:text-[11px] font-bold sm:uppercase sm:tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer order-2 sm:order-none border border-brand/40 bg-surface hover:bg-brand-surface text-brand"
+        >
+          <RefreshCw className={`w-4 h-4 shrink-0 ${statusLoading ? "animate-spin" : ""}`} aria-hidden="true" />
+          <span className="truncate">{statusLoading ? "Checking…" : "Check Sync"}</span>
+        </button>
+        {calendarUrl && (
+          <a
+            href={calendarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="cal-view"
+            className="inline-flex items-center justify-center gap-1.5 h-11 sm:h-9 min-w-0 rounded-xl sm:rounded-lg px-3 text-xs sm:text-[11px] font-bold sm:uppercase sm:tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer order-4 sm:order-none border border-border bg-surface hover:bg-surface-hover text-text-primary"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden="true" />
-            {busy ? "Syncing…" : "Sync to Calendar"}
-          </button>
-          <button
-            onClick={handleCheckSync}
-            disabled={busy || statusLoading}
-            data-testid="cal-check"
-            className={`inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary ${calendarUrl ? "" : "col-span-2"}`}
-          >
-            <Search className="w-3.5 h-3.5" aria-hidden="true" />
-            {statusLoading ? "Checking…" : "Check Sync"}
-          </button>
-          {calendarUrl && (
-            <a
-              href={calendarUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="cal-view"
-              className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary"
-            >
-              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-              View Calendar
-            </a>
-          )}
-        </div>
-        <div role="group" aria-label="Schedule tools" className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-          <button
-            onClick={handleExport}
-            data-testid="cal-export"
-            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary"
-          >
-            <Download className="w-3.5 h-3.5" aria-hidden="true" />
-            Export Schedule
-          </button>
-          <button
-            onClick={requestPurge}
-            disabled={busy || purging}
-            data-testid="cal-reset"
-            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer border border-red-200 bg-red-50 hover:bg-red-100 text-red-700"
-          >
-            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-            {purging ? "Resetting…" : "Reset Calendar"}
-          </button>
-        </div>
+            <ExternalLink className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">View Calendar</span>
+          </a>
+        )}
+        <button
+          onClick={handleExport}
+          data-testid="cal-export"
+          className={`inline-flex items-center justify-center gap-1.5 h-11 sm:h-9 min-w-0 rounded-xl sm:rounded-lg px-3 text-xs sm:text-[11px] font-bold sm:uppercase sm:tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer order-5 sm:order-none sm:ml-auto border border-border bg-surface hover:bg-surface-hover text-text-primary ${calendarUrl ? "" : "col-span-2"}`}
+        >
+          <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">Export Schedule</span>
+        </button>
+        <button
+          onClick={requestPurge}
+          disabled={busy || purging}
+          data-testid="cal-reset"
+          className="inline-flex items-center justify-center gap-1.5 h-11 sm:h-9 min-w-0 rounded-xl sm:rounded-lg px-3 text-xs sm:text-[11px] font-bold sm:uppercase sm:tracking-wider whitespace-nowrap transition disabled:opacity-50 cursor-pointer order-3 sm:order-none border border-red-200 bg-surface hover:bg-red-50 text-red-700"
+        >
+          <Trash2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{purging ? "Resetting…" : "Reset Calendar"}</span>
+        </button>
       </div>
 
       {syncStatus && (

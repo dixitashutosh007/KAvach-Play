@@ -154,10 +154,15 @@ describe("Tall vertical date cards", () => {
     const t = text(html).trim();
     assert.match(t, /^NOV 22 SUN$/);
     const tag = tagOf(html, "date-card-2026-11-22");
-    assert.ok(tag.includes("w-[3.75rem] h-[6.25rem]"), "60×100px on mobile (0.6)");
-    assert.ok(tag.includes("sm:w-16 sm:h-[6.75rem]"), "64×108px from sm (≈0.59)");
+    // width from the strip (≈5.4 visible so the next card peeks), clamped 56–68px;
+    // height always 5/3 of the width (0.6 ratio)
+    assert.ok(tag.includes("w-[calc((100cqw-2.5rem)/5.4)]"));
+    assert.ok(tag.includes("min-w-[3.5rem]") && tag.includes("max-w-[4.25rem]"));
+    assert.ok(tag.includes("aspect-[3/5]"), "0.6 width:height");
     assert.ok(tag.includes("shrink-0") && tag.includes("rounded-[18px]") && tag.includes("flex-col"));
-    assert.ok(60 / 100 >= 0.55 && 60 / 100 <= 0.65 && 64 / 108 >= 0.55 && 64 / 108 <= 0.65);
+    assert.ok(!/\bh-\[/.test(tag), "no fixed height that could break the ratio");
+    const strip = src("components/matches/AdminMatchDateList.tsx");
+    assert.match(strip, /className="@container relative mt-3[^"]*overflow-x-auto[^"]*pt-1 pb-3"/);
   });
 
   it("selected: filled brand red with white type; unselected: light with subtle border", () => {
@@ -285,7 +290,7 @@ describe("Match Centre integration", () => {
 
   it("Edit uses the existing modal; Delete asks for explicit confirmation naming the match", () => {
     assert.match(tab, /startEdit\(match\);/);
-    const del = tab.slice(tab.indexOf('data-testid={`admin-delete-match-${match.id}`}') - 1600, tab.indexOf('data-testid={`admin-delete-match-${match.id}`}'));
+    const del = tab.slice(tab.indexOf("const deleteThisMatch = async () => {"), tab.indexOf("const deleteThisMatch = async () => {") + 1200);
     assert.match(del, /await confirmAction\(\{/);
     assert.match(del, /vs \$\{match\.opponent \|\| "TBC"\}/);
     assert.match(del, /destructive: true/);

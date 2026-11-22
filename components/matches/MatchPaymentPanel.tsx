@@ -178,7 +178,9 @@ function PaymentBody({
   const { summary } = view;
   return (
     <div className="flex flex-col gap-4" data-testid="payment-loaded">
-      <div className="grid grid-cols-3 gap-2" data-testid="payment-summary">
+      {/* Mobile: 2 columns (Collected | Sponsored, Pending full width).
+          sm+: three columns when there is room. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" data-testid="payment-summary">
         <Metric label="Collected" value={formatINR(summary.feeCollected)} tone="text-[#15803D]" testId="payment-collected" />
         <Metric label="KAvach Sponsored" value={formatINR(summary.feeOffset)} tone="text-[#B7791F]" testId="payment-sponsored" />
         <Metric
@@ -187,6 +189,7 @@ function PaymentBody({
           tone="text-[#DC2626]"
           testId="payment-pending"
           note={view.billable ? undefined : "Not billable"}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
 
@@ -199,17 +202,36 @@ function PaymentBody({
   );
 }
 
-function Metric({ label, value, tone, testId, note }: { label: string; value: string; tone: string; testId: string; note?: string }) {
+function Metric({
+  label,
+  value,
+  tone,
+  testId,
+  note,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  tone: string;
+  testId: string;
+  note?: string;
+  className?: string;
+}) {
   return (
-    <div className="rounded-xl border border-border bg-surface px-2.5 py-2 min-w-0" data-testid={testId}>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">{label}</p>
-      <p className={`mt-0.5 text-base sm:text-lg font-black font-heading tabular-nums leading-tight truncate ${tone}`}>{value}</p>
+    <div className={`rounded-xl border border-border bg-surface px-3 py-2 min-w-0 ${className}`} data-testid={testId}>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted whitespace-nowrap truncate">{label}</p>
+      <p className={`mt-0.5 text-lg font-black font-heading tabular-nums leading-tight truncate ${tone}`}>{value}</p>
       {note && <p className="text-[10px] text-text-muted truncate">{note}</p>}
     </div>
   );
 }
 
-const TONE_RING = { paid: "ring-[#15803D]/40", unpaid: "ring-[#DC2626]/40", waived: "ring-border" } as const;
+/**
+ * Status colour around each avatar. Drawn as a padded background INSIDE the
+ * chip's own box (not a box-shadow ring that spills 2px outside it), so the
+ * horizontally scrolling list — which clips vertically — cannot cut it off.
+ */
+const TONE_RING = { paid: "bg-[#15803D]", unpaid: "bg-[#DC2626]", waived: "bg-border" } as const;
 
 function PeopleRow({
   title,
@@ -234,7 +256,7 @@ function PeopleRow({
       {people.length === 0 ? (
         <p className="text-xs text-text-muted">{empty}</p>
       ) : (
-        <ul className="-mx-4 px-4 flex gap-2 overflow-x-auto overscroll-x-contain no-scrollbar pb-1" data-testid={`${testId}-list`}>
+        <ul className="-mx-4 px-4 py-1 flex gap-2 overflow-x-auto overscroll-x-contain no-scrollbar" data-testid={`${testId}-list`}>
           {people.map((p) => (
             <li key={p.key} className="shrink-0 w-[5.5rem] flex flex-col items-center text-center">
               <Avatar name={p.name} photoURL={p.photoURL} ring={TONE_RING[tone]} />
@@ -255,12 +277,20 @@ function PeopleRow({
 function Avatar({ name, photoURL, ring }: { name: string; photoURL?: string; ring: string }) {
   const safe = typeof photoURL === "string" && /^https:\/\//i.test(photoURL) ? photoURL : null;
   const initial = (name || "?").trim().charAt(0).toUpperCase() || "?";
-  return safe ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={safe} alt="" loading="lazy" referrerPolicy="no-referrer" className={`w-11 h-11 rounded-full object-cover ring-2 ${ring}`} />
-  ) : (
-    <span aria-hidden="true" className={`w-11 h-11 rounded-full flex items-center justify-center bg-deep-wine/10 text-deep-wine font-heading font-black text-sm ring-2 ${ring}`}>
-      {initial}
+  // 48×48 outer circle = 2px status colour + 2px white gap + 40px avatar, all
+  // within the element's own layout box.
+  return (
+    <span className={`inline-flex shrink-0 w-12 h-12 rounded-full p-0.5 ${ring}`} data-testid="payment-avatar">
+      <span className="flex w-full h-full rounded-full bg-surface p-0.5">
+        {safe ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={safe} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-full h-full rounded-full object-cover" />
+        ) : (
+          <span aria-hidden="true" className="flex w-full h-full items-center justify-center rounded-full bg-deep-wine/10 text-deep-wine font-heading font-black text-sm">
+            {initial}
+          </span>
+        )}
+      </span>
     </span>
   );
 }

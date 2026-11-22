@@ -223,18 +223,33 @@ describe("List View: regular listing always visible", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe("Calendar Sync toolbar order", () => {
+describe("Calendar Sync toolbar (mobile grid, desktop row)", () => {
   const tb = src("components/MatchToolbar.tsx");
-  it("Sync → Check → View | Export → Reset, same order at every width", () => {
+  const tag = (id) => tb.slice(tb.lastIndexOf("<", tb.indexOf(`data-testid="${id}"`)), tb.indexOf(">", tb.indexOf(`data-testid="${id}"`) + 40));
+  it("desktop (DOM) order: Sync → Check → View | Export → Reset", () => {
     const order = ["cal-sync", "cal-check", "cal-view", "cal-export", "cal-reset"].map((id) => tb.indexOf(`data-testid="${id}"`));
     assert.ok(order.every((i) => i > 0));
     assert.deepEqual([...order].sort((a, b) => a - b), order);
-    assert.ok(!/order-\d|flex-row-reverse|sm:order/.test(tb), "no responsive reordering");
+    assert.match(tb, /grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center/);
+  });
+  it("mobile order: Sync full width, then Check | Reset, then View | Export", () => {
+    assert.match(tag("cal-sync"), /col-span-2 order-1 sm:order-none/);
+    assert.match(tag("cal-check"), /order-2 sm:order-none/);
+    assert.match(tag("cal-reset"), /order-3 sm:order-none/);
+    assert.match(tag("cal-view"), /order-4 sm:order-none/);
+    assert.match(tag("cal-export"), /order-5 sm:order-none/);
+  });
+  it("hierarchy: filled scarlet primary, outlined scarlet Check, restrained red Reset; labels truncate", () => {
+    assert.match(tag("cal-sync"), /bg-brand[^"]*text-white/);
+    assert.match(tag("cal-check"), /border-brand\/40[^"]*text-brand/);
+    assert.match(tag("cal-reset"), /border-red-200[^"]*text-red-700/);
+    assert.match(tb, /h-11 sm:h-9 min-w-0/);
+    assert.ok((tb.match(/<span className="truncate">/g) || []).length >= 5);
   });
   it("labels, icons and handlers stay paired", () => {
     const btn = (id) => tb.slice(tb.lastIndexOf("<", tb.indexOf(`data-testid="${id}"`)), tb.indexOf("</", tb.indexOf(`data-testid="${id}"`) + 200) + 12);
-    assert.match(btn("cal-sync"), /onClick=\{handleResync\}[\s\S]*RefreshCw[\s\S]*Sync to Calendar/);
-    assert.match(btn("cal-check"), /onClick=\{handleCheckSync\}[\s\S]*Search[\s\S]*Check Sync/);
+    assert.match(btn("cal-sync"), /onClick=\{handleResync\}[\s\S]*CalendarCheck[\s\S]*Sync to Calendar/);
+    assert.match(btn("cal-check"), /onClick=\{handleCheckSync\}[\s\S]*RefreshCw[\s\S]*Check Sync/);
     assert.match(btn("cal-view"), /href=\{calendarUrl\}[\s\S]*ExternalLink[\s\S]*View Calendar/);
     assert.match(btn("cal-export"), /onClick=\{handleExport\}[\s\S]*Download[\s\S]*Export Schedule/);
     assert.match(btn("cal-reset"), /onClick=\{requestPurge\}[\s\S]*Trash2[\s\S]*Reset Calendar/);

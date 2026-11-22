@@ -204,7 +204,9 @@ export function AdminMatchDateList({
           data-testid="date-strip"
           onTouchStart={onTouchStart(true)}
           onTouchEnd={onTouchEnd}
-          className="relative mt-3 -mx-3 px-3 sm:-mx-4 sm:px-4 flex gap-2 sm:gap-2.5 overflow-x-auto overscroll-x-contain no-scrollbar py-1"
+          // @container: cards size from the strip's own width (≈5.4 visible, so
+          // the next card peeks); pb-3 leaves room for the selected card's shadow.
+          className="@container relative mt-3 -mx-3 px-3 sm:-mx-4 sm:px-4 flex items-start gap-2 overflow-x-auto overscroll-x-contain no-scrollbar pt-1 pb-3"
         >
           {strip.map((d) => (
             <DateCard key={d.key} date={d} selected={d.key === selectedKey} isToday={d.key === todayKey} onSelect={selectDate} />
@@ -212,7 +214,7 @@ export function AdminMatchDateList({
         </div>
 
         {/* Legend */}
-        <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-medium text-text-muted" data-testid="date-legend">
+        <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-medium text-text-muted" data-testid="date-legend">
           {(["booked", "available", "tentative"] as DateStatus[]).map((s) => (
             <li key={s} className="inline-flex items-center gap-1.5">
               <span
@@ -317,7 +319,7 @@ export function DateCard({
       data-testid={`date-card-${date.key}`}
       onClick={() => onSelect(date.key)}
       style={isTentative ? { backgroundImage: selected ? HATCH_SELECTED : HATCH_LIGHT } : undefined}
-      className={`shrink-0 w-[3.75rem] h-[6.25rem] sm:w-16 sm:h-[6.75rem] rounded-[18px] border flex flex-col items-center justify-center cursor-pointer select-none transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand/50 ${
+      className={`shrink-0 w-[calc((100cqw-2.5rem)/5.4)] min-w-[3.5rem] max-w-[4.25rem] aspect-[3/5] rounded-[18px] border flex flex-col items-center justify-center cursor-pointer select-none transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand/50 ${
         selected
           ? "bg-brand border-brand text-white shadow-[0_6px_16px_-8px_rgba(163,15,45,0.7)]"
           : `bg-surface text-text-primary hover:border-brand/40 ${isToday ? "border-brand/50" : "border-border"}`
