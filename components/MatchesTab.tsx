@@ -33,6 +33,8 @@ import {
   AlertCircle,
   Shield,
   Info,
+  LayoutList,
+  Table2,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
@@ -65,6 +67,16 @@ import { MatchesLoadError } from "./matches/MatchesLoadError";
 import { MatchCardHeader, MatchCardTopBar } from "./matches/MatchCardHeader";
 import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
 import { MATCH_TYPES, groundFeeForMatchType } from "@/lib/match-category";
+import { AdminMatchDateList } from "./matches/AdminMatchDateList";
+import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
+
+/** Admin Match Centre views, chosen from a dropdown (not tabs). */
+export const MATCH_VIEW_OPTIONS = [
+  { value: "list", label: "List View" },
+  { value: "sheet", label: "Table View" },
+  { value: "calendar", label: "Calendar View" },
+] as const;
+export type MatchViewMode = (typeof MATCH_VIEW_OPTIONS)[number]["value"];
 
 export function MatchesTab({
   store,
@@ -85,22 +97,22 @@ export function MatchesTab({
     defaultAction === "assign" ? "assign" : "matches"
   );
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
-  const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useSessionState(
-    "matches:isLaterScheduledCollapsed",
-    true,
-  );
-  const [isPastListCollapsed, setIsPastListCollapsed] = useSessionState(
-    "matches:isPastListCollapsed",
-    true,
-  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [playerFilter, setPlayerFilter] = useState<"all" | "upcoming" | "past" | "abandoned">("all");
   const [playerSearch, setPlayerSearch] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"list" | "calendar" | "sheet">(
-    defaultAction === "calendar" ? "calendar" : (persona === "admin" ? "calendar" : "list")
+  // List View is the default; the chosen view is remembered for this tab
+  // session (same convention as other Match Centre UI state). A deep link to
+  // the calendar still opens the calendar.
+  const [viewMode, setViewMode] = useSessionState<MatchViewMode>(
+    "matches:viewMode",
+    defaultAction === "calendar" ? "calendar" : "list",
   );
+  useEffect(() => {
+    if (defaultAction === "calendar") setViewMode("calendar");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultAction]);
 
   // Remember where the user scrolled to before opening a match, so
   // Back lands them at the same row instead of the top of the list.
@@ -303,6 +315,9 @@ export function MatchesTab({
 
   const isPlayerView = persona === "player" || (!persona && !userHasAdminPrivileges);
   const isAdmin = !isPlayerView && Boolean(persona === "admin" || userHasAdminPrivileges);
+  // Table View (sheet) stays Super Admin only, as before; a remembered "sheet"
+  // choice falls back to the List View for other admins.
+  const activeView: MatchViewMode = viewMode === "sheet" && !isSuperAdmin ? "list" : viewMode;
 
   useEffect(() => {
     if (!isAdmin && subTab !== "matches") {
@@ -1014,33 +1029,30 @@ export function MatchesTab({
             </div>
 
             {!isAdding && (
-              <div className="flex bg-surface-hover p-1 rounded-xl border border-border">
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                    viewMode === "list" ? "bg-accent text-text-accent shadow" : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  List
-                </button>
-                <button
-                  onClick={() => setViewMode("calendar")}
-                  className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                    viewMode === "calendar" ? "bg-accent text-text-accent shadow" : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  Calendar
-                </button>
-                {isSuperAdmin && (
-                  <button
-                    onClick={() => setViewMode("sheet")}
-                    className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                      viewMode === "sheet" ? "bg-accent text-text-accent shadow" : "text-text-muted hover:text-text-primary"
-                    }`}
+              <div className="flex items-center justify-end">
+                <label className="relative inline-flex items-center" data-testid="match-view-select-wrap">
+                  <span className="sr-only">Match Centre view</span>
+                  {activeView === "calendar" ? (
+                    <Calendar className="pointer-events-none absolute left-3 w-4 h-4 text-brand" aria-hidden="true" />
+                  ) : activeView === "sheet" ? (
+                    <Table2 className="pointer-events-none absolute left-3 w-4 h-4 text-brand" aria-hidden="true" />
+                  ) : (
+                    <LayoutList className="pointer-events-none absolute left-3 w-4 h-4 text-brand" aria-hidden="true" />
+                  )}
+                  <select
+                    value={activeView}
+                    onChange={(e) => setViewMode(e.target.value as MatchViewMode)}
+                    data-testid="match-view-select"
+                    className="appearance-none min-h-[40px] pl-9 pr-9 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary shadow-xs cursor-pointer hover:border-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   >
-                    Sheet
-                  </button>
-                )}
+                    {MATCH_VIEW_OPTIONS.filter((o) => o.value !== "sheet" || isSuperAdmin).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 w-4 h-4 text-text-muted" aria-hidden="true" />
+                </label>
               </div>
             )}
 
@@ -1053,21 +1065,11 @@ export function MatchesTab({
 
           {editMatchModal}
 
-          {viewMode === "sheet" && isSuperAdmin ? (
+          {activeView === "sheet" ? (
             <MatchSheetView store={store} />
-          ) : viewMode === "list" ? (
+          ) : activeView === "list" ? (
             <div className="space-y-4">
             {(() => {
-              const now = new Date();
-              const fourteenDaysFromNow = new Date(now);
-              fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14);
-              // Admins still need to edit recent results (result, POTM, stats,
-              // fee assignments) for a while after the match. Keep the last
-              // 10 days out of "Past Matches" so those cards stay right at
-              // the top of the list.
-              const pastCutoff = new Date(now);
-              pastCutoff.setDate(pastCutoff.getDate() - 10);
-
               const getMatchDate = (match: Match) => {
                 const parts = dbToInputDate(match.date).split("/"); // returns DD/MM/YYYY
                 let d = new Date();
@@ -1155,49 +1157,36 @@ export function MatchesTab({
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            {matchToDelete === match.id ? (
-                              <div className="flex items-center gap-1 bg-surface-hover rounded-lg px-2 border border-red-500/30">
-                                <span className="text-[10px] text-red-400 uppercase font-bold tracking-wider">
-                                  Sure?
-                                </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    store
-                                      .deleteMatch(match.id)
-                                      .then(() => setMatchToDelete(null))
-                                      .catch((err) => {
-                                        console.error(err);
-                                        setMatchToDelete(null);
-                                      });
-                                  }}
-                                  className="text-red-400 hover:text-red-300 p-1 transition"
-                                >
-                                  <Check className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setMatchToDelete(null);
-                                  }}
-                                  className="text-text-muted hover:text-text-primary p-1 transition text-xs font-bold px-1.5"
-                                >
-                                  X
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMatchToDelete(match.id);
-                                }}
-                                title="Delete Match"
-                                aria-label={`Delete match vs ${match.opponent}`}
-                                className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-red-500/20 text-red-400 transition"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const when = [formatDate(match.date), match.time ? formatMatchDisplayTime(match.time) : ""]
+                                  .filter(Boolean)
+                                  .join(" at ");
+                                const ok = await confirmAction({
+                                  title: "Delete match?",
+                                  message: `Delete the ${match.isTentative ? "tentative block" : "match"} vs ${match.opponent || "TBC"}${
+                                    when ? ` on ${when}` : ""
+                                  }? This cannot be undone.`,
+                                  confirmLabel: "Delete match",
+                                  destructive: true,
+                                });
+                                if (!ok) return;
+                                try {
+                                  await store.deleteMatch(match.id);
+                                  toast("Match deleted", "success");
+                                } catch (err) {
+                                  console.error(err);
+                                  toast("The match could not be deleted.", "error");
+                                }
+                              }}
+                              title="Delete Match"
+                              aria-label={`Delete match vs ${match.opponent}`}
+                              data-testid={`admin-delete-match-${match.id}`}
+                              className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center hover:bg-red-500/20 text-red-400 transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                           ) : null
                         }
@@ -1370,6 +1359,21 @@ export function MatchesTab({
                 );
               };
 
+              if (isAdmin) {
+                return (
+                  <AdminMatchDateList
+                    matches={allMatches}
+                    loaded={store.isLoaded}
+                    renderMatchCard={renderMatchCard}
+                    onAddMatch={(dateKey: string) => {
+                      setFormData((prev) => ({ ...prev, date: dbToInputDate(dateKey) }));
+                      setEditingId(null);
+                      setIsAdding(true);
+                    }}
+                  />
+                );
+              }
+
               if (allMatches.length === 0) {
                  return (
                    <div className="py-12 text-center text-sm text-text-muted bg-surface border-dashed rounded-xl">
@@ -1468,67 +1472,7 @@ export function MatchesTab({
                 );
               }
                
-              const pastMatches = allMatches.filter(m => getMatchDate(m) < pastCutoff).sort((a,b) => getMatchDate(b).getTime() - getMatchDate(a).getTime());
-              const upcomingMatches = allMatches.filter(m => getMatchDate(m) >= pastCutoff).sort((a,b) => getMatchDate(a).getTime() - getMatchDate(b).getTime());
-
-              const upcomingNear = upcomingMatches.filter(m => {
-                 const date = getMatchDate(m);
-                 return date <= fourteenDaysFromNow;
-              });
-               
-              const upcomingLater = upcomingMatches.filter(m => {
-                 const date = getMatchDate(m);
-                 return date > fourteenDaysFromNow;
-              });
-               
-              return (
-                 <div className="space-y-4">
-                   {upcomingNear.length > 0 ? upcomingNear.map(renderMatchCard) : (
-                     <div className="py-12 text-center text-sm text-text-muted bg-surface border-dashed rounded-xl">
-                       No matches in the next 14 days.
-                     </div>
-                   )}
-               
-                   {upcomingLater.length > 0 && (
-                      <div className="bg-surface p-4 rounded-xl mt-8">
-                        <button
-                          onClick={() => setIsLaterScheduledCollapsed(!isLaterScheduledCollapsed)}
-                          className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
-                        >
-                          <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                            Scheduled Later ({upcomingLater.length})
-                          </h2>
-                          {isLaterScheduledCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </button>
-                        {!isLaterScheduledCollapsed && (
-                          <div className="mt-4 space-y-4">
-                            {upcomingLater.map(renderMatchCard)}
-                          </div>
-                        )}
-                      </div>
-                   )}
-
-                   {pastMatches.length > 0 && (
-                      <div className="bg-surface p-4 rounded-xl mt-8">
-                        <button
-                          onClick={() => setIsPastListCollapsed(!isPastListCollapsed)}
-                          className="flex w-full items-center justify-between text-text-primary hover:text-text-primary"
-                        >
-                          <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                            <Calendar className="w-4 h-4" /> Past Matches ({pastMatches.length})
-                          </h2>
-                          {isPastListCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </button>
-                        {!isPastListCollapsed && (
-                          <div className="mt-4 space-y-4">
-                            {pastMatches.map(renderMatchCard)}
-                          </div>
-                        )}
-                      </div>
-                   )}
-                 </div>
-              );
-
+              return null;
             })()}
           </div>
           ) : (
