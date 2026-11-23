@@ -18,7 +18,7 @@ import { isPristineRegular, isUntouchedAuto } from "@/lib/match-plan-application
 import { useMatchFinancePlans } from "@/hooks/useMatchFinancePlans";
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
-type Mode = "amount" | "plan" | "rule";
+type Mode = "amount" | "plan" | "regular" | "rule";
 
 export function FeeOverrideSheet({
   matchId,
@@ -28,6 +28,7 @@ export function FeeOverrideSheet({
   plans,
   onClose,
   onDone,
+  initialMode = "plan",
 }: {
   matchId: string;
   payment: MatchPayment;
@@ -36,11 +37,13 @@ export function FeeOverrideSheet({
   plans: FeePlan[];
   onClose: () => void;
   onDone: (message: string) => void;
+  /** Opening tab (the squad menu opens "plan" or "regular"). */
+  initialMode?: Mode;
 }) {
   const { override, clearOverride } = useMatchFinancePlans(matchId);
   const followsRule = isPristineRegular(payment) || isUntouchedAuto(payment);
   const activePlans = plans.filter((p) => p.isActive !== false);
-  const [mode, setMode] = useState<Mode>("amount");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [amount, setAmount] = useState<string>(String(payment.feeOverride ?? matchFee));
   const [planId, setPlanId] = useState<string>("");
   const [allocated, setAllocated] = useState<string>("");
@@ -57,6 +60,8 @@ export function FeeOverrideSheet({
   if (mode === "amount" && amount !== "" && Number.isFinite(Number(amount))) {
     const c = Math.max(0, Math.min(fee, Math.round(Number(amount))));
     preview = { pays: c, club: fee - c };
+  } else if (mode === "regular") {
+    preview = { pays: fee, club: 0 };
   } else if (mode === "plan" && calc) {
     if (needsAllocation) {
       const a = Math.max(0, Math.min(fee, Math.round(Number(allocated) || 0)));
@@ -84,12 +89,14 @@ export function FeeOverrideSheet({
     const r =
       mode === "rule"
         ? await clearOverride(payment.id, reason.trim())
-        : mode === "plan"
+        : mode === "regular"
+          ? await override(payment.id, reason.trim(), { regular: true })
+          : mode === "plan"
           ? await override(payment.id, reason.trim(), { planId, ...(needsAllocation ? { contribution: Number(allocated) } : {}) })
           : await override(payment.id, reason.trim(), { contribution: Number(amount) });
     setSaving(false);
     if (!r.ok) return setError(r.error);
-    onDone(mode === "rule" ? `${playerName} is back on the plan rule` : `${playerName}'s fee updated`);
+    onDone(mode === "rule" ? `${playerName} is back on the plan rule` : mode === "regular" ? `${playerName} pays the regular fee for this match` : `${playerName}'s fee updated`);
   };
 
   const tab = (m: Mode, label: string) => (
@@ -110,7 +117,7 @@ export function FeeOverrideSheet({
         <div className="sticky top-0 flex items-center justify-between gap-2 px-4 py-3 bg-surface border-b border-border">
           <div className="min-w-0">
             <h2 id="fee-override-title" className="text-base font-black font-heading text-text-primary truncate">Adjust fee · {playerName}</h2>
-            <p className="text-[11px] text-text-secondary">Match fee {inr(fee)} · Finance Admin override, audited</p>
+            <p className="text-[11px] text-text-secondary">Match fee {inr(fee)} · this match only · Finance Admin override, audited</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="Close" className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-hover cursor-pointer">
             <X className="w-5 h-5" aria-hidden="true" />
@@ -127,8 +134,9 @@ export function FeeOverrideSheet({
           )}
 
           <div className="flex gap-1 rounded-xl border border-border p-1" role="tablist" aria-label="Adjustment type">
-            {tab("amount", "Set amount")}
             {tab("plan", "Use a plan")}
+            {tab("regular", "Regular")}
+            {tab("amount", "Set amount")}
             {!followsRule && tab("rule", "Plan rule")}
           </div>
 
@@ -183,6 +191,12 @@ export function FeeOverrideSheet({
               )}
               {calc?.warning && <p className="text-[11px] font-semibold text-amber-700">{calc.warning}</p>}
             </div>
+          )}
+
+          {mode === "regular" && (
+            <p className="text-sm text-text-secondary" data-testid="fee-override-regular">
+              Remove the Finance Plan for this match only: {playerName} pays the full match fee. Their Finance Plan assignment is not changed.
+            </p>
           )}
 
           {mode === "rule" && (

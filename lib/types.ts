@@ -194,7 +194,18 @@ export type Match = {
   tentativelyBlockedBy?: string;
   isArchived?: boolean;
   isGroundFeePaid?: boolean;
+  /** Actual ground / vendor expense (₹). Server-only: /api/finance/match-ledger. */
   groundFeePaidAmount?: number;
+  groundFeeSetBy?: string;
+  groundFeeSetByName?: string;
+  groundFeeSetAt?: any;
+  groundFeeHistory?: { kind: "set" | "correction" | "adjustment"; from: number | null; to: number; reason: string; by: string; byName: string; at: string }[];
+  /** Match finance lifecycle (absent = "open"). Server-only. */
+  financeStatus?: "open" | "closed";
+  financeClosedAt?: any;
+  financeClosedBy?: string;
+  financeClosedByName?: string;
+  financeHistory?: { action: "closed" | "reopened"; reason?: string; statement?: Record<string, unknown>; by: string; byName: string; at: string }[];
   // When set, this match belongs to a tournament (see Tournament).
   // Autofilled fields on the match were seeded from that tournament
   // at creation time but are free to be edited afterwards.
@@ -329,6 +340,27 @@ export type MatchComment = {
 
 export type ManualPaymentMethod = "cash_collected" | "club_sponsored" | "part_of_plan" | "deposited_directly";
 
+export type PaymentReversal = {
+  amount: number;
+  method: "razorpay_refund" | "cash" | "upi" | "bank";
+  reference: string;
+  reason: string;
+  removedFromSquad: boolean;
+  original: {
+    status: string;
+    paymentMethod: string | null;
+    manualMethod: string | null;
+    feeCollectedAmount: number | null;
+    feeOverride: number | null;
+    razorpayPaymentId: string | null;
+    manualBy: string | null;
+  };
+  resultStatus: "Unpaid" | "Not Playing";
+  by: string;
+  byName: string;
+  at: string;
+};
+
 export type MatchPayment = {
   id: string;
   matchId: string;
@@ -360,6 +392,8 @@ export type MatchPayment = {
    * by `/api/finance/match-plans`. See lib/match-plan-application.
    */
   financeSnapshot?: import("./match-plan-application").FinanceSnapshot;
+  /** Append-only record of refunds / reversals (server-only: /api/finance/match-ledger). */
+  reversals?: PaymentReversal[];
   sponsoredBy?: string;
   sponsoring?: string;
   updatedAt?: any;

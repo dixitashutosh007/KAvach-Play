@@ -259,7 +259,7 @@ describe("UI", () => {
   it("Adjust fee only for Finance/Super Admins; apply for Match/Finance/Super; server re-checks", () => {
     assert.match(tab, /const canOverrideFees = isAdmin && Boolean\(hasAdminClaim \|\| appUser\?\.isFinanceAdmin\);/);
     assert.match(tab, /const canApplyPlans = isAdmin && Boolean\(hasAdminClaim \|\| appUser\?\.isFinanceAdmin \|\| appUser\?\.isMatchAdmin\);/);
-    assert.match(tab, /\{canOverrideFees && isOverridable\(payment\) && \(/);
+    assert.match(src("lib/match-squad.ts"), /if \(ctx\.canManageFees && !isGuest && !p\.sponsoredBy && !p\.sponsoring\) \{[\s\S]*?!isOverridable\(p\)/);
   });
   it("old client-side plan writes are gone from Match Details", () => {
     assert.ok(!/applyFeePlanToPayment|bifurcationModal|buildFixedPlanApplication|fee-plan-bulk/.test(tab));
@@ -279,9 +279,9 @@ describe("UI", () => {
   });
   it("override sheet requires a reason and offers amount / plan", () => {
     const { FeeOverrideSheet } = load("components/matches/FeeOverrideSheet.tsx");
-    const html = text(ReactDOMServer.renderToStaticMarkup(React.createElement(FeeOverrideSheet, { matchId: "m1", payment: pay("pa", "a"), playerName: "Asha", matchFee: 700, plans, onClose() {}, onDone() {} })));
+    const html = text(ReactDOMServer.renderToStaticMarkup(React.createElement(FeeOverrideSheet, { matchId: "m1", payment: pay("pa", "a"), playerName: "Asha", matchFee: 700, plans, initialMode: "amount", onClose() {}, onDone() {} })));
     assert.match(html, /Adjust fee · Asha/);
-    assert.match(html, /Set amount Use a plan/);
+    assert.match(html, /Use a plan Regular Set amount/);
     assert.ok(!/Plan rule/.test(html), "already follows the rule");
     assert.match(html, /Reason \(required\)/);
     assert.match(html, /Player pays ₹700 Club sponsors ₹0/);

@@ -227,7 +227,7 @@ export function buildMatchPlanApplication({
   plans,
   assignments,
 }: {
-  match: Pick<Match, "id" | "fee" | "date" | "result">;
+  match: Pick<Match, "id" | "fee" | "date" | "result"> & { financeStatus?: string };
   payments: PaymentWithSnapshot[];
   players: Pick<Player, "id" | "name" | "feePlanIds">[];
   plans: FeePlan[];
@@ -243,6 +243,10 @@ export function buildMatchPlanApplication({
     changes: [],
     totals: { players: 0, onPlans: 0, regular: 0, contribution: 0, sponsorship: 0, pendingAllocation: 0 },
   };
+  if (match.financeStatus === "closed") {
+    out.blocked = "Match finances are closed. Reopen them in the Finance tab to change Finance Plans.";
+    return out;
+  }
   if (match.result === "Abandoned") {
     out.blocked = "This match was abandoned, so no match fees apply.";
     return out;

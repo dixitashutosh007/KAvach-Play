@@ -25,7 +25,7 @@ export interface MatchPlanPreview {
 export type MatchPlanRequest =
   | { action: "preview"; matchId: string }
   | { action: "apply"; matchId: string; scope?: "all" | "refresh" }
-  | { action: "override"; matchId: string; paymentId: string; reason: string; contribution?: number; planId?: string }
+  | { action: "override"; matchId: string; paymentId: string; reason: string; contribution?: number; planId?: string; regular?: boolean }
   | { action: "clearOverride"; matchId: string; paymentId: string; reason: string };
 
 export type MatchPlanResult = { ok: true; data: MatchPlanPreview | { ok: true } } | { ok: false; error: string; status?: number };
@@ -49,7 +49,7 @@ export function useMatchFinancePlans(matchId: string) {
   const preview = useCallback(() => callMatchPlans({ action: "preview", matchId }), [matchId]);
   const apply = useCallback((scope: "all" | "refresh" = "all") => callMatchPlans({ action: "apply", matchId, scope }), [matchId]);
   const override = useCallback(
-    (paymentId: string, reason: string, opts: { contribution?: number; planId?: string }) =>
+    (paymentId: string, reason: string, opts: { contribution?: number; planId?: string; regular?: boolean }) =>
       callMatchPlans({ action: "override", matchId, paymentId, reason, ...opts }),
     [matchId],
   );

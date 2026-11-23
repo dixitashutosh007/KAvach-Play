@@ -3,7 +3,7 @@
  *
  * POST { action: "preview",  matchId }                     Club, Match, Finance, Super Admin
  * POST { action: "apply",    matchId, scope?: "all"|"refresh" }   Match, Finance, Super Admin
- * POST { action: "override", matchId, paymentId, reason, contribution?, planId? }  Finance, Super Admin
+ * POST { action: "override", matchId, paymentId, reason, contribution? | planId? | regular: true }  Finance, Super Admin
  * POST { action: "clearOverride", matchId, paymentId, reason }  back to the plan rule; Finance, Super Admin
  *
  * Everything is computed here from Firestore (match fee and date, plans, dated
@@ -196,6 +196,9 @@ export async function POST(req: Request) {
     await db.runTransaction(async (tx) => {
       const ctx = await loadMatchContext(db, tx, body.matchId);
       if (ctx.match.result === "Abandoned") throw new RequestError(409, "This match was abandoned, so no match fees apply.");
+      if ((ctx.match as { financeStatus?: string }).financeStatus === "closed") {
+        throw new RequestError(409, "Match finances are closed. Reopen them in the Finance tab to change this player's fee.");
+      }
       const payment = ctx.payments.find((p) => p.id === paymentId);
       if (!payment) throw new RequestError(404, "Payment not found.");
       if (payment.status === "Not Playing") throw new RequestError(409, "This player is not in the squad.");
@@ -237,7 +240,12 @@ export async function POST(req: Request) {
         let label: string;
         let planId: string | null = null;
         let planType: FinanceSnapshot["planType"] = "regular";
-        if (body.planId !== undefined && body.planId !== null && body.planId !== "") {
+        if (body.regular === true) {
+          // Remove the plan for this match only: the player pays the full match fee.
+          contribution = fee;
+          label = "Regular (this match)";
+          fields = fieldsForOverride(fee, fee, label);
+        } else if (body.planId !== undefined && body.planId !== null && body.planId !== "") {
           const plan = ctx.plans.find((p) => p.id === body.planId);
           if (!plan) throw new RequestError(404, "Plan not found.");
           if (plan.isActive === false) throw new RequestError(409, `${plan.name} is inactive.`);

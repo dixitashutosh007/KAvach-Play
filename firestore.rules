@@ -222,6 +222,45 @@ service cloud.firestore {
     // snapshot are set by Finance / Super Admins (or by the server via the
     // Admin SDK: /api/finance/match-plans). Match Admins manage the squad,
     // availability and cash / bank-deposit collection at the recorded fee.
+    // ── Match finance lifecycle (C1 / C2) ────────────────────────────────────
+    // Server-only fields on a match: actual ground fee, finance open/closed and
+    // their history (written by /api/finance/match-ledger via the Admin SDK).
+    function matchFinanceServerKeys() {
+      return ['groundFeePaidAmount', 'isGroundFeePaid', 'groundFeeSetBy', 'groundFeeSetByName', 'groundFeeSetAt',
+              'groundFeeHistory', 'financeStatus', 'financeClosedAt', 'financeClosedBy', 'financeClosedByName',
+              'financeHistory'];
+    }
+
+    function isFinanceClosedMatch(matchId) {
+      return exists(/databases/$(database)/documents/matches/$(matchId))
+        && get(/databases/$(database)/documents/matches/$(matchId)).data.get('financeStatus', 'open') == 'closed';
+    }
+
+    // Real money held on a match payment (refunds go through the server).
+    // Club-sponsored, subscription and paid-by-another-player settlements and
+    // ₹0 rows are not real money.
+    function isCollectedMoney(d) {
+      return d.get('status', '') == 'Paid'
+        && !(d.get('manualMethod', '') in ['club_sponsored', 'part_of_plan'])
+        && d.get('sponsoredBy', '') == ''
+        && d.get('feeCollectedAmount', d.get('feeOverride', 1)) != 0;
+    }
+
+    // Applies to every client update of a match payment, for every role.
+    function paymentFinanceGuards(matchId) {
+      let changed = incoming().diff(existing()).affectedKeys();
+      return !changed.hasAny(['reversals', 'financeSnapshot'])
+        && (!isCollectedMoney(existing())
+            || !changed.hasAny(['status', 'paymentMethod', 'manualMethod', 'manualBy', 'feeCollectedAmount',
+                                'razorpayPaymentId', 'feeOverride', 'feeOffsetAmount', 'planTag',
+                                'sponsoredBy', 'sponsoring']))
+        && (!isFinanceClosedMatch(matchId)
+            || (!changed.hasAny(['feeOverride', 'feeOffsetAmount', 'planTag', 'sponsoredBy', 'sponsoring'])
+                && !(existing().status == 'Not Playing' && incoming().status != 'Not Playing')
+                && !(changed.hasAny(['manualMethod'])
+                     && incoming().get('manualMethod', '') in ['club_sponsored', 'part_of_plan'])));
+    }
+
     function isPlanSettled(data) {
       return data.get('manualMethod', '') in ['club_sponsored', 'part_of_plan'];
     }
@@ -561,6 +600,7 @@ service cloud.firestore {
       allow create: if isMatchAdmin()
         && isValidId(matchId)
         && isValidMatch(incoming())
+        && !incoming().keys().hasAny(matchFinanceServerKeys())
         && exists(/databases/$(database)/documents/grounds/$(incoming().groundId))
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
@@ -568,11 +608,17 @@ service cloud.firestore {
       allow update: if (isMatchAdmin() || isFinanceAdmin())
         && isValidId(matchId)
         && isValidMatch(incoming())
+        // C1: finance lifecycle fields are server-only.
+        && !incoming().diff(existing()).affectedKeys().hasAny(matchFinanceServerKeys())
+        // C1: once match finances are closed, the fee basis can't change.
+        && (existing().get('financeStatus', 'open') != 'closed'
+            || !incoming().diff(existing()).affectedKeys().hasAny(['fee', 'matchFeeBudget']))
         && exists(/databases/$(database)/documents/grounds/$(incoming().groundId))
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time;
 
-      allow delete: if isMatchAdmin();
+      // C1: a match whose finances are closed keeps its financial history.
+      allow delete: if isMatchAdmin() && existing().get('financeStatus', 'open') != 'closed';
 
       match /comments/{commentId} {
         allow read: if isSignedIn();
@@ -602,6 +648,9 @@ service cloud.firestore {
           && isValidId(paymentId)
           && isValidMatchPayment(incoming())
           && incoming().matchId == matchId
+          // C2: server-only fields; no new squad rows once match finances are closed.
+          && !incoming().keys().hasAny(['reversals', 'financeSnapshot'])
+          && !isFinanceClosedMatch(matchId)
           && exists(/databases/$(database)/documents/players/$(incoming().playerId))
           && incoming().createdAt == request.time
           && incoming().updatedAt == request.time;
@@ -630,6 +679,8 @@ service cloud.firestore {
           )
           && isValidId(paymentId)
           && isValidMatchPayment(incoming())
+          // C2: collected money, reversals, snapshots and closed-match locks (all roles).
+          && paymentFinanceGuards(matchId)
           && incoming().matchId == existing().matchId
           && incoming().playerId == existing().playerId
           && incoming().createdAt == existing().createdAt

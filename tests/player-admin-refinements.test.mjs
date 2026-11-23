@@ -139,7 +139,9 @@ describe("Admin Match Centre cards: no WhatsApp share", () => {
     assert.match(card, /match\.result === "KAvach Won" &&\s*\(match\.potmId \|\| match\.playerOfTheMatch/);
   });
   it("per-player WhatsApp payment reminders are untouched (group reminder removed by owner request)", () => {
-    assert.match(tab, /title="Send WhatsApp Reminder"/);
+    // Per-player reminder now lives in the squad row ⋯ menu (Manage Match redesign).
+    assert.match(fs.readFileSync("lib/match-squad.ts", "utf-8"), /\{ id: "remind", label: "Send reminder" \}/);
+    assert.match(tab, /await store\.notifyPlayerPayment\(p\.playerId, match\.id\);/);
     assert.ok(!/Continue to WhatsApp/.test(tab));
   });
 });

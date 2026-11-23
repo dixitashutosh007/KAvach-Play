@@ -80,28 +80,29 @@ describe("Summary card", () => {
   });
 });
 
-describe("Match Details screen (admin)", () => {
-  it("summary card first with a clearly visible Edit Match action", () => {
+describe("Match Details screen (admin) — Manage Match redesign", () => {
+  it("compact match card (info + fee + edit) first for admins; players keep the summary", () => {
+    assert.match(details, /<MatchInfoCard\s+match=\{match\}/);
+    assert.match(src("components/matches/MatchInfoCard.tsx"), /data-testid="details-edit-match"/);
     assert.match(details, /<MatchDetailsSummary\s+match=\{match\}/);
-    assert.match(details, /data-testid="details-edit-match"/);
-    assert.ok(details.indexOf("<MatchDetailsSummary") < details.indexOf('data-testid="details-edit-match"'));
+    assert.ok(details.indexOf("<MatchInfoCard") < details.indexOf('data-testid="manage-match"'));
   });
-  it("Squad, Payments and Match Info as collapsible sections, in that order", () => {
-    const order = ['testId="details-squad"', 'testId="details-payments"', 'testId="details-match-info"'].map((k) => details.indexOf(k));
-    assert.ok(order.every((i) => i > 0));
-    assert.deepEqual([...order].sort((a, b) => a - b), order);
-    assert.match(details, /title=\{`Squad \(\$\{played\}\)`\}/);
+  it("Squad (default) and Finance tabs; squad then financial summary", () => {
+    assert.match(details, /useState<"squad" \| "finance">\("squad"\)/);
+    assert.match(details, /\["squad", `Squad \(\$\{played\}\)`\]/);
+    const squad = details.slice(details.indexOf('data-testid="details-squad"'), details.indexOf('manageTab === "finance" && ('));
+    assert.ok(squad.indexOf("<SquadList") < squad.indexOf("<MatchFinancialsCard"));
   });
-  it("squad keeps add players, Finance Plans and per-player payment actions", () => {
-    const squad = details.slice(details.indexOf('testId="details-squad"'), details.indexOf('testId="details-payments"'));
-    for (const k of ['data-testid="apply-fee-plans"', "<SquadPicker", "Adjust fee", "Change Fee Payer", "clearFeeOverride"]) {
-      assert.ok(squad.includes(k), k);
+  it("squad keeps add players, Finance Plans and per-player actions (now in the ⋯ menu)", () => {
+    const squad = details.slice(details.indexOf('data-testid="details-squad"'), details.indexOf('manageTab === "finance" && ('));
+    for (const k of ['data-testid="apply-fee-plans"', "<SquadPicker", "<SquadList"]) assert.ok(squad.includes(k), k);
+    for (const k of ['case "plan":', 'case "markPaid":', 'case "remove":', 'case "feePayer":', "store.clearFeeOverride(match.id, p.id)", "store.notifyPlayerPayment(p.playerId, match.id)"]) {
+      assert.ok(details.includes(k), k);
     }
   });
-  it("payments section keeps the financial breakdown", () => {
-    const pay = details.slice(details.indexOf('testId="details-payments"'), details.indexOf('testId="details-match-info"'));
-    assert.match(pay, /Direct Collected/);
-    assert.match(pay, /financials\.isBalanced/);
+  it("one financial statement (no duplicate inline calculation)", () => {
+    assert.match(details, /const statement = useMemo\(\(\) => buildMatchFinancialStatement\(match, matchPayments\)/);
+    assert.ok(!/const financials = useMemo/.test(details));
   });
   it("removed: discussion, travel estimate, WhatsApp result share, performer details", () => {
     for (const gone of ["Discussion", "Approx time to reach", "Share Result on WhatsApp", "BEST BATSMAN", "POTM", "TOP PERFORMERS", "handlePostComment", '"comments"']) {
@@ -110,22 +111,13 @@ describe("Match Details screen (admin)", () => {
   });
   it("kept: tentative unblock, archive toggle, player availability roster; group reminder removed", () => {
     assert.match(details, /Unblock/);
-    assert.match(details, /Archived/);
+    assert.match(details, /onToggleArchive=/);
+    assert.match(src("components/matches/MatchInfoCard.tsx"), /Archive match/);
     assert.match(details, /Player Availability/);
     assert.ok(!/Remind Group|handleGroupRemind|isGroupRemindModalOpen|wa\.me/.test(details));
   });
-  it("Match Info shows fee (with saved margin), ground fee, budget, links", () => {
-    const info = details.slice(details.indexOf('testId="details-match-info"'));
-    assert.match(info, /Match fee \(per player\)/);
-    assert.match(info, /match\.feeMarginPct !== undefined/);
-    assert.match(info, /Ground fee/);
-    assert.match(info, /match\.matchUrl/);
-    assert.match(info, /match\.streamingUrl/);
-  });
-  it("sections nest without page-edge negative margins", () => {
-    // admin branch only (the non-admin roster after ") : (" keeps its original layout)
-    const start = details.indexOf('data-testid="match-details-sections"');
-    const sections = details.slice(start, details.indexOf("      ) : (", start));
-    assert.ok(!sections.includes("-mx-4 sm:mx-0"));
+  it("match card shows fee, links, jersey and squad size", () => {
+    const card = src("components/matches/MatchInfoCard.tsx");
+    for (const k of ["Match Fee", "match.matchUrl", "match.streamingUrl", "match.jerseyColor", "match.maxSquadSize"]) assert.ok(card.includes(k), k);
   });
 });

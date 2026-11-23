@@ -19,28 +19,21 @@ import {
   ChevronRight,
   ChevronDown,
   Calendar,
-  Users,
   MapPin,
   Search,
-  CheckCircle2,
   MessageSquare,
   Trash2,
   X,
-  Undo2,
   ArrowRightLeft,
-  AlertCircle,
   Shield,
-  Info,
   LayoutList,
   Table2,
   ArrowLeft,
   CalendarDays,
-  Wallet,
-  ExternalLink,
   Trophy,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
-import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
+import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees, getClubCalendarDate } from "@/lib/utils";
 import { resolvePlayerForUser } from "@/lib/player-identity";
 import { db } from "@/lib/firebase";
 import {
@@ -78,9 +71,15 @@ import { AdminMatchDateList } from "./matches/AdminMatchDateList";
 import { MatchPaymentPanel } from "./matches/MatchPaymentPanel";
 import { SquadPicker } from "./matches/SquadPicker";
 import { FeePlanApplyDialog } from "./matches/FeePlanApplyDialog";
-import { DetailsSection, MatchDetailsSummary } from "./matches/MatchDetailsSummary";
+import { MatchDetailsSummary } from "./matches/MatchDetailsSummary";
 import { FeeOverrideSheet } from "./matches/FeeOverrideSheet";
-import { buildMatchPlanApplication, isOverridable } from "@/lib/match-plan-application";
+import { MatchInfoCard } from "./matches/MatchInfoCard";
+import { SquadList, type SquadRow } from "./matches/SquadList";
+import { MatchFinancialsCard } from "./matches/MatchFinancials";
+import { MatchFinanceTab, ReversalSheet, type ReversalTarget } from "./matches/MatchFinanceTab";
+import { buildMatchFinancialStatement } from "@/lib/match-finance";
+import { matchStatus, type RowActionContext, type RowActionId } from "@/lib/match-squad";
+import { buildMatchPlanApplication } from "@/lib/match-plan-application";
 import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
 import { callMatchPlans } from "@/hooks/useMatchFinancePlans";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
@@ -254,6 +253,10 @@ export function MatchesTab({
     }
   }, [store.grounds, formData.groundId]);
 
+  // Match finances closed (Manage Match → Finance): the fee basis is locked
+  // (also enforced by Firestore rules); other match details stay editable.
+  const editingFinanceClosed = !!editingId && store.matches.find((m) => m.id === editingId)?.financeStatus === "closed";
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Only the Review step saves; Enter on earlier steps moves forward.
@@ -272,6 +275,7 @@ export function MatchesTab({
     };
     if (editingId) {
       const before = store.matches.find((m) => m.id === editingId);
+      if (before && before.financeStatus === "closed") processedData.fee = Number(before.fee) || 0;
       const matchId = editingId;
       const feeOrDateChanged = !!before && (Number(before.fee) !== processedData.fee || before.date !== processedData.date);
       Promise.resolve(store.updateMatch({ ...processedData, id: editingId } as Match)).then(async () => {
@@ -767,6 +771,14 @@ export function MatchesTab({
                     : "No tournament or ground fee is configured — enter the fee per player."}{" "}
                 You can always edit the final fee.
               </p>
+              {editingFinanceClosed ? (
+                <div className="rounded-xl border border-border bg-surface-hover p-3" data-testid="match-form-fee-locked">
+                  <p className="text-sm font-bold text-text-primary">
+                    Match fee ₹{Number(store.matches.find((m) => m.id === editingId)?.fee || 0).toLocaleString("en-IN")} per player
+                  </p>
+                  <p className="text-xs text-text-secondary">Match finances are closed, so the fee can&apos;t change. Reopen them in Manage Match → Finance first.</p>
+                </div>
+              ) : (
               <MatchFeeCalculator
                 groundFeePerMatch={formFeeSource.amount}
                 source={formFeeSource.source}
@@ -781,6 +793,7 @@ export function MatchesTab({
                 tournamentPerPlayerFee={formTournament?.perPlayerFee}
                 defaultOpen
               />
+              )}
             </>
           )}
 
@@ -991,7 +1004,7 @@ export function MatchesTab({
     return (
       <>
         <MatchPayments
-          match={selectedMatch}
+          match={store.matches.find((m) => m.id === selectedMatch.id) || selectedMatch}
           store={store}
           persona={persona}
           isMatchAdmin={isMatchAdmin}
@@ -1698,77 +1711,6 @@ export function MatchPayments({
     .filter((p) => p.status !== "Not Playing")
     .reduce((sum, p) => sum + getPlayerFee(p), 0);
 
-  // Comprehensive Financial Accountability & Bifurcation
-  const financials = useMemo(() => {
-    const playing = matchPayments.filter((p) => p.status !== "Not Playing");
-    const grossValue = playing.reduce((sum, p) => sum + (p.feeOverride !== undefined ? p.feeOverride : match.fee), 0);
-
-    let directCollected = 0;
-    let directPaidCount = 0;
-    let monthlyPlanCovered = 0;
-    let monthlyPaidCount = 0;
-    let clubSponsoredTotal = 0;
-    let sponsoredCount = 0;
-    let pendingDues = 0;
-    let unpaidCount = 0;
-
-    for (const p of playing) {
-      const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-
-      if (p.status === "Paid") {
-        if (p.manualMethod === "club_sponsored") {
-          const offset = p.feeOffsetAmount !== undefined ? p.feeOffsetAmount : match.fee;
-          clubSponsoredTotal += offset;
-          sponsoredCount++;
-        } else if (p.manualMethod === "part_of_plan") {
-          const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : match.fee;
-          const offset = p.feeOffsetAmount || 0;
-          monthlyPlanCovered += collected;
-          monthlyPaidCount++;
-          if (offset > 0) {
-            clubSponsoredTotal += offset;
-            sponsoredCount++;
-          }
-        } else {
-          // Direct collection (Razorpay, cash, direct deposit)
-          const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
-          const offset = p.feeOffsetAmount !== undefined ? p.feeOffsetAmount : (match.fee > effectiveFee ? match.fee - effectiveFee : 0);
-          directCollected += collected;
-          directPaidCount++;
-          if (offset > 0) {
-            clubSponsoredTotal += offset;
-            sponsoredCount++;
-          }
-        }
-      } else if (p.status === "Unpaid") {
-        pendingDues += effectiveFee;
-        unpaidCount++;
-        const offset = p.feeOffsetAmount !== undefined ? p.feeOffsetAmount : (match.fee > effectiveFee ? match.fee - effectiveFee : 0);
-        if (offset > 0) {
-          clubSponsoredTotal += offset;
-          sponsoredCount++;
-        }
-      }
-    }
-
-    const totalAccounted = directCollected + monthlyPlanCovered + clubSponsoredTotal + pendingDues;
-    const isBalanced = totalAccounted === grossValue;
-
-    return {
-      playingCount: playing.length,
-      grossValue,
-      directCollected,
-      directPaidCount,
-      monthlyPlanCovered,
-      monthlyPaidCount,
-      clubSponsoredTotal,
-      sponsoredCount,
-      pendingDues,
-      unpaidCount,
-      totalAccounted,
-      isBalanced,
-    };
-  }, [matchPayments, match.fee]);
 
   let matchDateObj = new Date();
   const matchDateParts = dbToInputDate(match.date).split("/");
@@ -1786,7 +1728,9 @@ export function MatchPayments({
   const [confirmSquadDuplicates, setConfirmSquadDuplicates] = useState(false);
   // "Apply Finance Plans": server-computed breakdown + application.
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
-  const [overrideFor, setOverrideFor] = useState<{ payment: MatchPayment; playerName: string } | null>(null);
+  const [overrideFor, setOverrideFor] = useState<{ payment: MatchPayment; playerName: string; mode?: "plan" | "regular" } | null>(null);
+  const [manageTab, setManageTab] = useState<"squad" | "finance">("squad");
+  const [reversalFor, setReversalFor] = useState<ReversalTarget | null>(null);
   const { assignments: planAssignments } = useFinancePlanAssignments(isAdmin);
   const [editingSquadPlayerId, setEditingSquadPlayerId] = useState<string | null>(null);
 
@@ -2017,6 +1961,77 @@ export function MatchPayments({
   });
   const squadCount = matchPayments.filter((p) => p.status !== "Not Playing").length;
 
+  // ── Manage Match: one financial statement for the squad rows, summary and
+  // Finance tab (lib/match-finance); actions re-checked by rules / server.
+  const statement = useMemo(() => buildMatchFinancialStatement(match, matchPayments), [match, matchPayments]);
+  const rowCtx: RowActionContext = useMemo(
+    () => ({ canManageFees: canOverrideFees, canManageSquad: canApplyPlans, financeClosed: statement.financeClosed, matchFee: match.fee }),
+    [canOverrideFees, canApplyPlans, statement.financeClosed, match.fee],
+  );
+  const squadRows: SquadRow[] = matchPayments
+    .filter((p) => p.status !== "Not Playing")
+    .map((p) => {
+      const pl = store.players.find((x) => x.id === p.playerId);
+      return { payment: p, name: p.guestName || pl?.name || "Player", photoURL: p.guestName ? undefined : pl?.photoURL, isYou: !!mePlayer && pl?.id === mePlayer.id && !p.guestName };
+    });
+  const paymentName = (p: MatchPayment) => p.guestName || store.players.find((x) => x.id === p.playerId)?.name || "Player";
+
+  /** Existing manual "mark paid" workflow (cash), including the automatic late fee. */
+  const markPaidCash = async (payment: MatchPayment) => {
+    await store.updatePaymentStatus(payment.id, "Paid", match.id, undefined, "manual", appUser?.name || "Admin");
+    const exempted = store.otherFees.some(
+      (f: any) => f.playerId === payment.playerId && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(match.id) && f.status !== "Cancelled",
+    );
+    if (exempted) return;
+    const existingLateFee = store.otherFees.some((f: any) => f.playerId === payment.playerId && f.templateId === `latefee_${match.id}` && f.status !== "Cancelled");
+    if (existingLateFee) return;
+    const pLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
+    for (const lf of computeLateFees(match.date, match.id, payment.playerId, pLabel)) {
+      const feeId = await store.addOtherFee(payment.playerId, { title: lf.label, amount: lf.amount, comment: "Auto-levied late fee penalty (admin marked paid)", templateId: `latefee_${match.id}` });
+      if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
+    }
+  };
+
+  const handleRowAction = async (id: RowActionId, row: SquadRow) => {
+    const p = row.payment;
+    try {
+      switch (id) {
+        case "plan":
+        case "regular":
+          setOverrideFor({ payment: p, playerName: row.name, mode: id });
+          return;
+        case "markPaid":
+          if (!(await confirmAction({ message: `Mark ${row.name} as paid in cash (₹${getPlayerFee(p)})?` }))) return;
+          await markPaidCash(p);
+          toast(`${row.name} marked paid`, "success");
+          return;
+        case "refund":
+        case "refundRemove":
+          setReversalFor({ payment: p, playerName: row.name, removeFromSquad: id === "refundRemove" });
+          return;
+        case "remove":
+          if (!(await confirmAction({ message: `Remove ${row.name} from the squad? Their payment record is kept (marked Not Playing); their Finance Plan assignment is unchanged.`, destructive: true }))) return;
+          await store.updatePaymentStatus(p.id, "Not Playing", match.id);
+          toast(`${row.name} removed from the squad`, "success");
+          return;
+        case "feePayer":
+          setFeePayerPicker({ paymentId: p.id, playerName: row.name, fee: getPlayerFee(p), search: "" });
+          return;
+        case "undoFeePayer":
+          if (!(await confirmAction({ message: `Undo the fee payer for ${row.name} and reset their fee to ₹${match.fee}?`, destructive: true }))) return;
+          await store.clearFeeOverride(match.id, p.id);
+          return;
+        case "remind":
+          await store.notifyPlayerPayment(p.playerId, match.id);
+          toast(`Reminder sent to ${row.name}`, "success");
+          return;
+      }
+    } catch (err) {
+      console.error("Squad action failed:", err);
+      toast("That change was refused. Check the payment state and your permissions.", "error");
+    }
+  };
+
   return (
     <div className="space-y-4">
       {planDialogOpen && (
@@ -2042,9 +2057,22 @@ export function MatchPayments({
           playerName={overrideFor.playerName}
           matchFee={match.fee}
           plans={store.feePlans || []}
+          initialMode={overrideFor.mode || "plan"}
           onClose={() => setOverrideFor(null)}
           onDone={(msg) => {
             setOverrideFor(null);
+            toast(msg, "success");
+          }}
+        />
+      )}
+      {reversalFor && (
+        <ReversalSheet
+          target={reversalFor}
+          matchId={match.id}
+          matchFee={match.fee}
+          onClose={() => setReversalFor(null)}
+          onDone={(msg) => {
+            setReversalFor(null);
             toast(msg, "success");
           }}
         />
@@ -2060,9 +2088,9 @@ export function MatchPayments({
         </div>
       </div>
 
-      {/* Compact summary (Edit Match is a separate, clearly visible action) */}
-      <div className="rounded-2xl border border-border bg-surface p-4 flex flex-col gap-4" data-testid="match-details-card">
-        {match.isTentative && isAdmin && (
+      {isAdmin ? (
+        <>
+        {match.isTentative && (
           <div className="mb-4 bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg text-orange-400 text-sm font-bold flex items-center justify-between">
             <div className="flex items-center gap-2 animate-pulse">
               <span className="bg-orange-500 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
@@ -2074,7 +2102,7 @@ export function MatchPayments({
               onClick={async () => {
                 if (!await confirmAction({ message: "Remove tentative block and make this a regular match?", destructive: true })) return;
                 try {
-                  await store.updateMatch({ ...match, isTentative: false, tentativelyBlockedBy: "" });
+                  await store.updateMatch(match.id, { isTentative: false, tentativelyBlockedBy: "" });
                 } catch (err) {
                   console.error("Failed to unblock", err);
                 }
@@ -2085,44 +2113,36 @@ export function MatchPayments({
             </button>
           </div>
         )}
-        <MatchDetailsSummary
-          match={match}
-          ground={store.grounds.find((g) => g.id === match.groundId)}
-          tournamentName={match.tournamentId ? store.tournaments.find((t) => t.id === match.tournamentId)?.name : undefined}
-          playing={played}
-          paid={paid}
-          unpaid={unpaid}
-          showPaymentCounts={isAdmin}
-        />
-        {isAdmin && canArchive && (
-          <label className="flex items-center gap-2 cursor-pointer bg-surface-hover border border-border px-3 py-1.5 rounded-lg hover:bg-surface-hover transition">
-            <input
-              type="checkbox"
-              checked={!!match.isArchived}
-              onChange={async (e) => {
-                try {
-                  await store.updateMatch({ ...match, isArchived: e.target.checked });
-                } catch(err) {
-                  console.error("Failed to update archive status", err);
-                }
-              }}
-              className="accent-accent"
-            />
-            <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">Archived</span>
-          </label>
-        )}
-        {isAdmin && onEdit && (
-          <button
-            type="button"
-            onClick={onEdit}
-            data-testid="details-edit-match"
-            className="w-full min-h-[48px] rounded-xl border-2 border-brand/60 bg-surface text-brand text-sm font-black inline-flex items-center justify-center gap-2 hover:bg-brand-surface cursor-pointer"
-          >
-            <Edit2 className="w-4 h-4" aria-hidden="true" />
-            Edit Match
-          </button>
-        )}
-      </div>
+          <MatchInfoCard
+            match={match}
+            ground={store.grounds.find((g) => g.id === match.groundId)}
+            tournamentName={match.tournamentId ? store.tournaments.find((t) => t.id === match.tournamentId)?.name : undefined}
+            status={matchStatus(match, getClubCalendarDate().dateString)}
+            financeClosed={statement.financeClosed}
+            onEdit={onEdit}
+            canArchive={canArchive}
+            onToggleArchive={async (archived) => {
+              try {
+                await store.updateMatch(match.id, { isArchived: archived });
+              } catch (err) {
+                console.error("Failed to update archive status", err);
+              }
+            }}
+          />
+        </>
+      ) : (
+        <div className="rounded-2xl border border-border bg-surface p-4 flex flex-col gap-4" data-testid="match-details-card">
+          <MatchDetailsSummary
+            match={match}
+            ground={store.grounds.find((g) => g.id === match.groundId)}
+            tournamentName={match.tournamentId ? store.tournaments.find((t) => t.id === match.tournamentId)?.name : undefined}
+            playing={played}
+            paid={paid}
+            unpaid={unpaid}
+            showPaymentCounts={false}
+          />
+        </div>
+      )}
 
       {!isAdmin &&
         myPayment?.status === "Unpaid" && (() => {
@@ -2292,35 +2312,61 @@ export function MatchPayments({
       )}
 
       {isAdmin ? (
-        <div className="flex flex-col gap-3" data-testid="match-details-sections">
-          <DetailsSection icon={<Users className="w-5 h-5" />} title={`Squad (${played})`} testId="details-squad">
-      {isAdmin && (
-              <div className="bg-surface overflow-hidden">
-                <div className="px-4 py-2.5 bg-surface-hover border-b border-border flex items-center justify-between gap-2 flex-wrap">
-                  <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary">Squad & Payments</span>
-                  {isAdmin && (
-                    <span className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPlanDialogOpen(true)}
-                        data-testid="apply-fee-plans"
-                        className="min-h-[36px] px-3 rounded-lg border border-brand/30 bg-surface text-xs font-bold text-brand hover:bg-brand-surface cursor-pointer"
-                      >
-                        Finance Plans{canApplyPlans && planApplication.changes.length > 0 ? ` (${planApplication.changes.length})` : ""}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAddingSquad(!addingSquad)}
-                        data-testid="add-squad-players"
-                        className="min-h-[36px] px-3 rounded-lg bg-brand text-white text-xs font-bold hover:opacity-90 cursor-pointer"
-                      >
-                        {addingSquad ? "Close" : "+ Add Players"}
-                      </button>
-                    </span>
-                  )}
-                </div>
+        <div className="flex flex-col gap-3" data-testid="manage-match">
+          <div className="flex border-b border-border" role="tablist" aria-label="Manage match">
+            {([
+              ["squad", `Squad (${played})`],
+              ["finance", "Finance"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={manageTab === value}
+                onClick={() => setManageTab(value)}
+                data-testid={`manage-tab-${value}`}
+                className={`flex-1 min-h-[48px] text-base font-black border-b-[3px] -mb-px cursor-pointer ${manageTab === value ? "border-brand text-brand" : "border-transparent text-text-secondary hover:text-text-primary"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-                {isAdmin && addingSquad && (
+          {manageTab === "squad" && (
+            <div className="flex flex-col gap-3" data-testid="details-squad">
+              <div className="flex items-center justify-end gap-2 flex-wrap">
+                {canApplyPlans && (
+                  <button
+                    type="button"
+                    onClick={() => setPlanDialogOpen(true)}
+                    disabled={statement.financeClosed}
+                    title={statement.financeClosed ? "Match finances are closed" : undefined}
+                    data-testid="apply-fee-plans"
+                    className="min-h-[44px] px-3 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary hover:bg-surface-hover disabled:opacity-50 cursor-pointer"
+                  >
+                    Finance Plans{!statement.financeClosed && planApplication.changes.length > 0 ? ` (${planApplication.changes.length})` : ""}
+                  </button>
+                )}
+                {canApplyPlans && (
+                  <button
+                    type="button"
+                    onClick={() => setAddingSquad(!addingSquad)}
+                    disabled={statement.financeClosed && !addingSquad}
+                    title={statement.financeClosed ? "Match finances are closed — no new players" : undefined}
+                    data-testid="add-squad-players"
+                    className="min-h-[44px] px-4 rounded-xl border border-brand text-brand bg-surface text-sm font-black hover:bg-brand-surface disabled:opacity-50 cursor-pointer"
+                  >
+                    {addingSquad ? "Close" : "+ Add Players"}
+                  </button>
+                )}
+              </div>
+              {statement.financeClosed && (
+                <p className="rounded-xl bg-surface-hover px-3 py-2 text-xs text-text-secondary" data-testid="squad-closed-note">
+                  Match finances are closed: no new players, plan or fee changes. Outstanding fees can still be collected; refunds go through the Finance tab.
+                </p>
+              )}
+              {addingSquad && !statement.financeClosed && (
+                <div className="rounded-2xl border border-border overflow-hidden">
                   <SquadPicker
                     players={filteredPlayers}
                     selectedIds={selectedPlayerIds}
@@ -2345,357 +2391,15 @@ export function MatchPayments({
                       setConfirmSquadDuplicates(false);
                     }}
                   />
-                )}
-
-                <div className="divide-y divide-border">
-                  {matchPayments.map((payment) => {
-                    const player = store.players.find(p => p.id === payment.playerId);
-                    if (!player || payment.status === "Not Playing") return null;
-
-                    const fee = getPlayerFee(payment);
-                    const snap = payment.financeSnapshot;
-                    const hasOverride = payment.feeOverride !== undefined;
-
-                    return (
-                      <div
-                        key={payment.id}
-                        className="p-4 flex flex-col gap-2 hover:bg-surface-hover transition"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-semibold text-text-primary truncate">
-                              {payment.guestName || player.name}
-                              {mePlayer && player.id === mePlayer.id && !payment.guestName && (
-                                <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-bold uppercase">
-                                  You
-                                </span>
-                              )}
-                              {hasOverride && (
-                                <span className="ml-2 font-mono text-[11px] text-amber-400">
-                                  ₹{fee}
-                                </span>
-                              )}
-                              {payment.feeOffsetAmount ? (
-                                <span className="ml-2 font-mono text-[10px] text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                                  Offset ₹{payment.feeOffsetAmount}
-                                </span>
-                              ) : null}
-                            </p>
-                            {isAdmin && (
-                              <p className="text-xs font-mono text-text-muted mt-0.5">
-                                {player.mobile}
-                              </p>
-                            )}
-                            {payment.planTag && (
-                              <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                <span>{payment.planTag}</span>
-                                {payment.manualMethod === "part_of_plan" && payment.feeCollectedAmount !== undefined && (
-                                  <span className="text-blue-400 font-mono text-[9px] lowercase font-normal">
-                                    (₹{payment.feeCollectedAmount} sub)
-                                  </span>
-                                )}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 self-end sm:self-auto">
-                            {isAdmin ? (
-                              <>
-                                <select
-                                  value={payment.status}
-                                  onChange={async (e) => {
-                                    const newStatus = e.target.value;
-                                    await store.updatePaymentStatus(
-                                      payment.id,
-                                      newStatus as any,
-                                      match.id,
-                                      undefined,
-                                      newStatus === "Paid" ? "manual" : undefined,
-                                      newStatus === "Paid" ? (appUser?.name || "Admin") : undefined,
-                                    );
-                                    if (newStatus === "Paid") {
-                                      const exempted = store.otherFees.some(
-                                        (f: any) =>
-                                          f.playerId === payment.playerId &&
-                                          f.title?.startsWith("Late Fee Exemption:") &&
-                                          f.title?.includes(match.id) &&
-                                          f.status !== "Cancelled",
-                                      );
-                                      if (!exempted) {
-                                        const existingLateFee = store.otherFees.some(
-                                          (f: any) =>
-                                            f.playerId === payment.playerId &&
-                                            f.templateId === `latefee_${match.id}` &&
-                                            f.status !== "Cancelled",
-                                        );
-                                        if (!existingLateFee) {
-                                          const pLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
-                                          const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
-                                          for (const lf of fees) {
-                                            const feeId = await store.addOtherFee(payment.playerId, {
-                                              title: lf.label,
-                                              amount: lf.amount,
-                                              comment: "Auto-levied late fee penalty (admin marked paid)",
-                                              templateId: `latefee_${match.id}`,
-                                            });
-                                            if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }}
-                                  className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
-                                    payment.status === "Paid"
-                                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                      : payment.status === "Unpaid"
-                                        ? "bg-red-500/20 text-red-400 border-red-500/30"
-                                        : "bg-surface-hover text-text-secondary border-border "
-                                  }`}
-                                >
-                                  <option value="Not Playing">Out</option>
-                                  <option value="Unpaid">Unpaid</option>
-                                  <option value="Paid">Paid</option>
-                                </select>
-
-                                {payment.status === "Unpaid" && (
-                                  <button
-                                    onClick={() =>
-                                      store.notifyPlayerPayment(player.id, match.id)
-                                    }
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap ml-2 h-[34px]"
-                                    title="Send WhatsApp Reminder"
-                                  >
-                                    Remind
-                                  </button>
-                                )}
-                              </>
-                            ) : (
-                              <span
-                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
-                                  payment.status === "Paid"
-                                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                    : "bg-red-500/20 text-red-400 border-red-500/30"
-                                }`}
-                              >
-                                {payment.status}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Admin fee actions: plan quick-apply, change fee payer, undo */}
-                        {isAdmin && (
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                            {/* Finance Plans: how this fee was worked out, and the audited override (Finance/Super Admin) */}
-                            {snap && (
-                              <span className="text-[11px] text-text-secondary" data-testid={`finance-snapshot-${payment.id}`}>
-                                {snap.source === "override" ? "Override" : snap.planName}
-                                {` · player ₹${snap.contribution} · club ₹${snap.sponsorship}`}
-                                {snap.override?.reason ? ` · “${snap.override.reason}”` : ""}
-                              </span>
-                            )}
-                            {canOverrideFees && isOverridable(payment) && (
-                              <button
-                                type="button"
-                                onClick={() => setOverrideFor({ payment, playerName: payment.guestName || player.name })}
-                                data-testid={`adjust-fee-${payment.id}`}
-                                className="min-h-[32px] text-[10px] font-bold uppercase tracking-widest bg-surface text-brand border border-brand/30 px-2 py-1 rounded hover:bg-brand-surface transition"
-                              >
-                                Adjust fee
-                              </button>
-                            )}
-
-                            {/* Universal: Change Fee Payer (sponsorship) */}
-                            {canOverrideFees && payment.status === "Unpaid" && !payment.sponsoredBy && (
-                              <button
-                                onClick={() => setFeePayerPicker({ paymentId: payment.id, playerName: player.name, fee, search: "" })}
-                                className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
-                              >
-                                <ArrowRightLeft className="w-3 h-3" />
-                                Change Fee Payer
-                              </button>
-                            )}
-
-                            {/* Undo fee override / reset plan */}
-                            {canOverrideFees && payment.sponsoredBy && (
-                              <button
-                                onClick={async () => {
-                                  if (!await confirmAction({ message: `Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`, destructive: true })) return;
-                                  await store.clearFeeOverride(match.id, payment.id);
-                                }}
-                                className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition flex items-center gap-1"
-                                title="Reset fee to standard and clear all offsets"
-                              >
-                                <Undo2 className="w-3 h-3" />
-                                Reset Fee
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-          </DetailsSection>
-          <DetailsSection icon={<Wallet className="w-5 h-5" />} title="Payments" testId="details-payments">
-        {isAdmin && (
-              <div className="p-4">
-                <div className="flex items-center justify-between pb-3 border-b border-border flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-text-primary">
-                      Match Fee Financial Bifurcation
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-text-secondary bg-surface-hover px-2 py-0.5 rounded border border-border">
-                    {financials.playingCount} Playing • ₹{match.fee}/each
-                  </span>
-                </div>
-
-                {/* Financial breakdown metrics grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3">
-                  {/* 1. Direct Collections */}
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
-                      Direct Collected
-                    </p>
-                    <p className="text-lg font-mono font-bold text-emerald-400 mt-0.5">
-                      ₹{financials.directCollected}
-                    </p>
-                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                      {financials.directPaidCount} player(s) paid
-                    </p>
-                  </div>
-
-                  {/* 2. Monthly Plans */}
-                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400/80">
-                      Monthly Plans
-                    </p>
-                    <p className="text-lg font-mono font-bold text-blue-400 mt-0.5">
-                      ₹{financials.monthlyPlanCovered}
-                    </p>
-                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                      {financials.monthlyPaidCount} sub allocation(s)
-                    </p>
-                  </div>
-
-                  {/* 3. Club Sponsored / Offset */}
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80">
-                      Club Sponsored
-                    </p>
-                    <p className="text-lg font-mono font-bold text-amber-400 mt-0.5">
-                      ₹{financials.clubSponsoredTotal}
-                    </p>
-                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                      {financials.sponsoredCount} offset(s) absorbed
-                    </p>
-                  </div>
-
-                  {/* 4. Pending Dues */}
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">
-                      Pending Dues
-                    </p>
-                    <p className="text-lg font-mono font-bold text-red-400 mt-0.5">
-                      ₹{financials.pendingDues}
-                    </p>
-                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                      {financials.unpaidCount} unpaid player(s)
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bottom summary bar with full mathematical reconciliation */}
-                <div className="pt-2.5 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
-                  <div className="flex items-center gap-3 text-text-secondary font-mono flex-wrap">
-                    <span>
-                      Gross Match Value: <strong className="text-text-primary font-mono">₹{financials.grossValue}</strong>
-                    </span>
-                    <span>•</span>
-                    <span>
-                      Total Accounted:{" "}
-                      <strong className={`font-mono ${financials.isBalanced ? "text-emerald-400" : "text-amber-400"}`}>
-                        ₹{financials.totalAccounted}
-                      </strong>
-                    </span>
-                    {match.matchFeeBudget ? (
-                      <>
-                        <span>•</span>
-                        <span>
-                          Budget: <strong className="text-text-primary font-mono">₹{match.matchFeeBudget}</strong>
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold shrink-0">
-                    {financials.isBalanced ? (
-                      <span className="text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> 100% Accounted
-                      </span>
-                    ) : (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" /> ₹{Math.abs(financials.grossValue - financials.totalAccounted)} variance
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </DetailsSection>
-          <DetailsSection icon={<Info className="w-5 h-5" />} title="Match Info" testId="details-match-info">
-            <dl className="px-4 py-3 divide-y divide-border text-sm">
-              <div className="flex items-center justify-between gap-3 py-2">
-                <dt className="text-text-secondary">Match fee (per player)</dt>
-                <dd className="font-bold tabular-nums">
-                  ₹{match.fee}
-                  {match.feeMarginPct !== undefined && (
-                    <span className="ml-1 text-xs font-medium text-text-muted">({match.feeMarginPct}% margin)</span>
-                  )}
-                </dd>
-              </div>
-              {match.isGroundFeePaid && (
-                <div className="flex items-center justify-between gap-3 py-2">
-                  <dt className="text-text-secondary">Ground fee</dt>
-                  <dd className="font-bold text-emerald-700">Paid ₹{match.groundFeePaidAmount}</dd>
                 </div>
               )}
-              {match.matchFeeBudget ? (
-                <div className="flex items-center justify-between gap-3 py-2">
-                  <dt className="text-text-secondary">Budget</dt>
-                  <dd className="font-bold tabular-nums">₹{match.matchFeeBudget}</dd>
-                </div>
-              ) : null}
-              <div className="flex items-center justify-between gap-3 py-2">
-                <dt className="text-text-secondary">Jersey</dt>
-                <dd className="font-bold">{match.jerseyColor}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 py-2">
-                <dt className="text-text-secondary">Max squad</dt>
-                <dd className="font-bold tabular-nums">{match.maxSquadSize}</dd>
-              </div>
-              {(match.matchUrl || match.streamingUrl) && (
-                <div className="flex items-center gap-4 py-2 flex-wrap">
-                  {match.matchUrl && (
-                    <a href={match.matchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
-                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Match Centre link
-                    </a>
-                  )}
-                  {match.streamingUrl && (
-                    <a href={match.streamingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
-                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Live stream
-                    </a>
-                  )}
-                </div>
-              )}
-            </dl>
+
+              <SquadList rows={squadRows} plans={store.feePlans || []} ctx={rowCtx} onAction={handleRowAction} />
+
+              <MatchFinancialsCard s={statement} onOpenFinance={() => setManageTab("finance")} />
+
       {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-              <div className="bg-surface overflow-hidden border-t border-border">
+              <div className="bg-surface overflow-hidden rounded-2xl border border-border">
                 <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary">
                   Player Availability
                 </div>
@@ -2788,8 +2492,21 @@ export function MatchPayments({
               </div>
             </div>
             )}
+            </div>
+          )}
 
-          </DetailsSection>
+          {manageTab === "finance" && (
+            <MatchFinanceTab
+              match={match}
+              statement={statement}
+              payments={matchPayments}
+              playerName={paymentName}
+              canManageFees={canOverrideFees}
+              onReverse={setReversalFor}
+              toast={toast}
+              confirm={confirmAction}
+            />
+          )}
         </div>
       ) : (
         <>

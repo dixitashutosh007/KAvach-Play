@@ -25,6 +25,7 @@ import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
+import { isRealMoneyPayment } from "@/lib/match-finance";
 import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
 import { PLAN_TYPE_LABEL, assignmentOn, legacyAssignmentsFor } from "@/lib/finance-plans";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -1009,7 +1010,19 @@ function SquadPlayerDetails({
                         <li key={p.id} className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0">
                           <div className="flex items-center gap-2 truncate">
                             {isAdmin && (
-                              <input type="checkbox" checked={true} onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
+                              isRealMoneyPayment(p, m.fee) ? (
+                                <input
+                                  type="checkbox"
+                                  checked={true}
+                                  disabled
+                                  readOnly
+                                  aria-label="Money collected — refund it in Manage Match → Finance to reverse"
+                                  title="Money collected — refund it in Manage Match → Finance to reverse"
+                                  className="accent-accent w-3 h-3 shrink-0 opacity-60"
+                                />
+                              ) : (
+                                <input type="checkbox" checked={true} onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
+                              )
                             )}
                             <span className="truncate">Match vs {m.opponent} ({formatDate(m.date)})</span>
                           </div>

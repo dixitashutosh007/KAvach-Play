@@ -31,8 +31,10 @@ describe("D4: payment fee fields are Finance / Super Admin only", () => {
     assert.match(block, /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'availability',\s*'tacticalNote',\s*'availabilityNote',\s*'status',\s*'updatedAt'\s*\]\)/);
   });
   it("UI hides fee arrangements from Match Admins", () => {
+    const rows = fs.readFileSync("lib/match-squad.ts", "utf8");
+    assert.match(rows, /if \(ctx\.canManageFees && !share\.paid && !p\.sponsoredBy && !p\.sponsoring && !isGuest\) \{\s*actions\.push\(\{ id: "feePayer"/);
+    assert.match(rows, /if \(ctx\.canManageFees && p\.sponsoredBy\) actions\.push\(\{ id: "undoFeePayer"/);
     const tab = fs.readFileSync("components/MatchesTab.tsx", "utf8");
-    assert.match(tab, /\{canOverrideFees && payment\.status === "Unpaid" && !payment\.sponsoredBy && \(/);
-    assert.match(tab, /\{canOverrideFees && payment\.sponsoredBy && \(/);
+    assert.match(tab, /canManageFees: canOverrideFees, canManageSquad: canApplyPlans/);
   });
 });
