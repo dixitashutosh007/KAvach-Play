@@ -375,6 +375,13 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    // R5: unmatched / rejected Razorpay payment events. Written only by the server (Admin SDK);
+    // Finance and Super Admins may read them for reconciliation.
+    match /webhookDeadLetters/{recordId} {
+      allow read: if isFinanceAdmin() || isSuperAdmin();
+      allow write: if false;
+    }
+
     match /auditLogs/{logId} {
       allow read: if isSuperAdmin();
       allow create, update: if isAnyAdmin();

@@ -1,0 +1,22 @@
+# tests/r5-webhook-dead-letter.emulator.test.mjs run with webhook route + firestore.rules at the R3 commit (12f8eb8)
+    not ok 1 - R5-01 valid event without intentId → recorded (unmatched), 200, no payer PII stored
+    not ok 2 - R5-02 valid event with an unknown intent / order → recorded INTENT_NOT_FOUND
+    not ok 3 - R5-03 valid event with an unusable payment id → recorded PAYMENT_ID_INVALID; intent untouched
+    not ok 4 - R5-04 duplicate unmatched event → same single record, deliveryCount 2, both event ids kept
+    not ok 5 - R5-05 amount mismatch → recorded, intent pending, nothing fulfilled
+    not ok 6 - R5-06 second captured payment on a paid intent → recorded conflicting_payment; original payment kept
+    ok 7 - R5-07 invalid signature → 401 and nothing recorded
+    ok 8 - R5-08 malformed JSON → 400 and nothing recorded
+    ok 9 - R5-09 already-processed duplicate → 200 already_processed and nothing recorded
+    not ok 10 - R5-10 (mocked store failure) if the record cannot be written → 503 so Razorpay retries; never 200
+    not ok 11 - R5-11 Finance Admin lists open records and resolves one; outcome and audit entry stored; resolve is once-only
+    not ok 12 - R5-12 re-delivery after resolution does not reopen the record
+    not ok 13 - R5-13 unauthorised callers: unauthenticated 401; player, Club Admin and Designer 403 (list and resolve)
+    ok 14 - R5-14 resolve input validation: unknown keys, bad resolution, missing note for 'other', unknown id
+not ok 1 - R5: webhook dead-letter recording and finance reconciliation
+    not ok 1 - R5-15 Finance Admin and Super Admin can read; player and Club Admin cannot; nobody can write
+not ok 2 - R5: firestore.rules for webhookDeadLetters
+# tests 15
+# pass 4
+# fail 11
+# skipped 0

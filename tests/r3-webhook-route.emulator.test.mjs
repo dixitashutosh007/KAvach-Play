@@ -205,10 +205,11 @@ describe("R3: webhook route error classification (Firestore emulator, real HMAC)
     ["R3-11", "currency mismatch", (t) => ({ ...t, currency: "USD" }), "CURRENCY_MISMATCH"],
     ["R3-12", "order id mismatch", (t) => ({ ...t, order: "order_SOMEONEELSE" }), "ORDER_MISMATCH"],
   ]) {
-    it(`${id} ${label} → 422 ${code}; intent stays pending; nothing fulfilled; no internal values echoed`, async () => {
+    it(`${id} ${label} → recorded for reconciliation then 200 (${code}); intent stays pending; nothing fulfilled; no internal values echoed`, async () => {
       const t = await seedIntent();
       const r = await send(capturedEvent(t.intentId, mutate(t)));
-      assert.equal(r.status, 422);
+      assert.equal(r.status, 200, "R5: permanent failures are recorded, then acknowledged");
+      assert.equal(r.json.outcome, "recorded_for_reconciliation");
       assert.equal(r.json.code, code);
       assert.equal((await intentOf(t.intentId)).status, "pending");
       assert.equal(await merchOrderExists(t.intentId), false);
@@ -220,17 +221,19 @@ describe("R3: webhook route error classification (Firestore emulator, real HMAC)
     });
   }
 
-  it("R3-13 unknown intentId → 422 INTENT_NOT_FOUND", async () => {
+  it("R3-13 unknown intentId → recorded then 200 INTENT_NOT_FOUND", async () => {
     const r = await send(capturedEvent("intent_does_not_exist", { order: "order_X1", pay: "pay_X1" }));
-    assert.equal(r.status, 422);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.outcome, "recorded_for_reconciliation");
     assert.equal(r.json.code, "INTENT_NOT_FOUND");
   });
 
-  it("R3-14 second, different payment captured for an already-paid intent → 422 CONFLICTING_PAYMENT; original payment kept", async () => {
+  it("R3-14 second, different payment captured for an already-paid intent → recorded then 200 CONFLICTING_PAYMENT; original payment kept", async () => {
     const t = await seedIntent();
     assert.equal((await send(capturedEvent(t.intentId, t))).status, 200);
     const r = await send(capturedEvent(t.intentId, { ...t, pay: "pay_SECONDCAPTURE" }));
-    assert.equal(r.status, 422);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.outcome, "recorded_for_reconciliation");
     assert.equal(r.json.code, "CONFLICTING_PAYMENT");
     assert.equal((await intentOf(t.intentId)).razorpayPaymentId, t.pay);
   });

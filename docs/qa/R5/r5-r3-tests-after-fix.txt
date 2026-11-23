@@ -1,0 +1,41 @@
+# R5 + updated R3 route tests AFTER R5
+    ok 1 - R3-01 valid payment.captured → 200 processed; intent paid; order fulfilled
+    ok 2 - R3-02 duplicate delivery of the same event → 200 already_processed, no second fulfilment
+    ok 3 - R3-03 same payment via a different event (order.paid after payment.captured) → 200 already_processed
+    ok 4 - R3-04 concurrent duplicate deliveries (6 in parallel) → all 200, exactly one fulfilment
+    ok 5 - R3-05 missing signature → 401, no state change
+    ok 6 - R3-06 invalid signature → 401, no state change
+    ok 7 - R3-07 altered raw payload with the original signature → 401, no state change
+    ok 8 - R3-08 malformed JSON with a valid signature → 400 MALFORMED_JSON (no parser text echoed)
+    ok 9 - R3-09 event types we do not act on → 200 ignored
+    ok 10 - R3-10 amount mismatch → recorded for reconciliation then 200 (AMOUNT_MISMATCH); intent stays pending; nothing fulfilled; no internal values echoed
+    ok 11 - R3-11 currency mismatch → recorded for reconciliation then 200 (CURRENCY_MISMATCH); intent stays pending; nothing fulfilled; no internal values echoed
+    ok 12 - R3-12 order id mismatch → recorded for reconciliation then 200 (ORDER_MISMATCH); intent stays pending; nothing fulfilled; no internal values echoed
+    ok 13 - R3-13 unknown intentId → recorded then 200 INTENT_NOT_FOUND
+    ok 14 - R3-14 second, different payment captured for an already-paid intent → recorded then 200 CONFLICTING_PAYMENT; original payment kept
+    ok 15 - R3-15 Firestore UNAVAILABLE / DEADLINE_EXCEEDED / contention ABORTED → 503 INFRASTRUCTURE; nothing fulfilled
+    ok 16 - R3-16 recovery: the same event retried after a transient failure → 200 processed, once
+    ok 17 - R3-17 player merge in progress → 503 MERGE_IN_PROGRESS; after the merge settles the retry succeeds
+    ok 18 - R3-18 logs carry correlation id and reason codes but never the secret, signature or payer contact data
+ok 1 - R3: webhook route error classification (Firestore emulator, real HMAC)
+    ok 1 - R5-01 valid event without intentId → recorded (unmatched), 200, no payer PII stored
+    ok 2 - R5-02 valid event with an unknown intent / order → recorded INTENT_NOT_FOUND
+    ok 3 - R5-03 valid event with an unusable payment id → recorded PAYMENT_ID_INVALID; intent untouched
+    ok 4 - R5-04 duplicate unmatched event → same single record, deliveryCount 2, both event ids kept
+    ok 5 - R5-05 amount mismatch → recorded, intent pending, nothing fulfilled
+    ok 6 - R5-06 second captured payment on a paid intent → recorded conflicting_payment; original payment kept
+    ok 7 - R5-07 invalid signature → 401 and nothing recorded
+    ok 8 - R5-08 malformed JSON → 400 and nothing recorded
+    ok 9 - R5-09 already-processed duplicate → 200 already_processed and nothing recorded
+    ok 10 - R5-10 (mocked store failure) if the record cannot be written → 503 so Razorpay retries; never 200
+    ok 11 - R5-11 Finance Admin lists open records and resolves one; outcome and audit entry stored; resolve is once-only
+    ok 12 - R5-12 re-delivery after resolution does not reopen the record
+    ok 13 - R5-13 unauthorised callers: unauthenticated 401; player, Club Admin and Designer 403 (list and resolve)
+    ok 14 - R5-14 resolve input validation: unknown keys, bad resolution, missing note for 'other', unknown id
+ok 2 - R5: webhook dead-letter recording and finance reconciliation
+    ok 1 - R5-15 Finance Admin and Super Admin can read; player and Club Admin cannot; nobody can write
+ok 3 - R5: firestore.rules for webhookDeadLetters
+# tests 33
+# pass 33
+# fail 0
+# skipped 0

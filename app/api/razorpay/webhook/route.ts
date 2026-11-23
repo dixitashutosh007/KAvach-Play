@@ -9,6 +9,8 @@ import {
   getServerFirestore,
   arePaymentOperationsEnabled,
 } from "../../../../lib/server-db.ts";
+import { recordWebhookDeadLetter } from "../../../../lib/webhook-dead-letter.ts";
+import type { WebhookPermanentReason } from "../../../../lib/razorpay-webhook.ts";
 
 /**
  * Razorpay webhook receiver.
@@ -20,8 +22,10 @@ import {
  *  - 400  signed body that is not valid JSON
  *  - 503  retryable: infrastructure errors, known temporary states, and any unclassified error.
  *         Processing is idempotent, so Razorpay's retry is the recovery path.
- *  - 422  permanent: the event cannot match its intent. Never fulfils payment.
  *  - 200  processed, duplicate already processed, or event type we do not act on.
+ *  - 200  permanent (R5): the event cannot be matched to, or contradicts, its intent. It never
+ *         fulfils payment; it is first recorded in `webhookDeadLetters` for finance
+ *         reconciliation and only then acknowledged. If that record cannot be written: 503.
  *
  * Every response carries a correlation id (Razorpay's x-razorpay-event-id when present).
  * Logs and responses carry a reason code and identifiers only: no secrets, no raw payload,
@@ -46,6 +50,53 @@ function log(
     .filter(([, v]) => v !== undefined && v !== "")
     .map(([k, v]) => `${k}=${v}`);
   console[level](`[razorpay/webhook] cid=${correlationId} outcome=${outcome} ${parts.join(" ")}`.trim());
+}
+
+/**
+ * R5: record a permanent failure, then acknowledge it. Never acknowledges without a stored record.
+ */
+async function deadLetter(
+  correlationId: string,
+  eventIdHeader: string,
+  rawBody: string,
+  reason: WebhookPermanentReason,
+  fields: {
+    event: string;
+    orderId?: string;
+    paymentId?: string;
+    intentId?: string;
+    amountPaise?: number;
+    currency?: string;
+  },
+): Promise<NextResponse> {
+  try {
+    const { key, created } = await recordWebhookDeadLetter(getServerFirestore(), {
+      reason,
+      correlationId,
+      eventId: eventIdHeader,
+      rawBody,
+      ...fields,
+    });
+    log("warn", correlationId, "dead_lettered", {
+      event: fields.event,
+      reason,
+      record: key,
+      firstSighting: created,
+      intentId: fields.intentId,
+      orderId: fields.orderId,
+      paymentId: fields.paymentId,
+    });
+    return reply(200, correlationId, { received: true, outcome: "recorded_for_reconciliation", code: reason });
+  } catch (err) {
+    const errCode = (err as any)?.code;
+    log("error", correlationId, "retryable", {
+      event: fields.event,
+      reason: "DEAD_LETTER_WRITE_FAILED",
+      deadLetterReason: reason,
+      errCode: typeof errCode === "string" || typeof errCode === "number" ? errCode : undefined,
+    });
+    return reply(503, correlationId, { error: "Temporary processing failure; retry expected.", code: "DEAD_LETTER_WRITE_FAILED" });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -112,22 +163,30 @@ export async function POST(req: NextRequest) {
 
   const details = extractWebhookEventDetails(payload);
   if (!details || !details.intentId) {
-    // Valid, signed, supported event that names no intent. Recorded for reconciliation in R5.
-    log("warn", correlationId, "unmatched", {
+    // Valid, signed, supported payment event that names no intent: record, never fulfil (R5).
+    return deadLetter(correlationId, eventIdHeader, rawBody, details ? "NO_INTENT_ID" : "MALFORMED_EVENT", {
       event,
-      reason: details ? "NO_INTENT_ID" : "MALFORMED_EVENT",
       orderId: details?.orderId,
       paymentId: details?.paymentId,
+      amountPaise: details?.capturedPaise,
+      currency: details?.capturedCurrency,
     });
-    return reply(200, correlationId, { success: true, message: "No intentId attached." });
   }
+
+  const eventFields = {
+    event,
+    intentId: details.intentId,
+    orderId: details.orderId,
+    paymentId: details.paymentId,
+    amountPaise: details.capturedPaise,
+    currency: details.capturedCurrency,
+  };
 
   // 4. Process (FIN-002: transactional, idempotent)
   try {
     const result = await processWebhookIntentTransaction(getServerFirestore(), details, payload);
     if (!result.success) {
-      log("warn", correlationId, "permanent", { event, reason: "NO_INTENT_ID", intentId: details.intentId });
-      return reply(422, correlationId, { error: "Event could not be matched to a payment intent.", code: "NO_INTENT_ID" });
+      return deadLetter(correlationId, eventIdHeader, rawBody, "NO_INTENT_ID", eventFields);
     }
     log("info", correlationId, result.alreadyProcessed ? "duplicate" : "processed", {
       event,
@@ -154,7 +213,6 @@ export async function POST(req: NextRequest) {
       log("error", correlationId, "retryable", fields);
       return reply(503, correlationId, { error: "Temporary processing failure; retry expected.", code: cls.reason });
     }
-    log("warn", correlationId, "permanent", fields);
-    return reply(422, correlationId, { error: "Event does not match its payment intent.", code: cls.reason });
+    return deadLetter(correlationId, eventIdHeader, rawBody, cls.reason, eventFields);
   }
 }
