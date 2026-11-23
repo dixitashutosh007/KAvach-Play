@@ -1,0 +1,242 @@
+{
+  "schema": "kavach-r4-e5-recheck/v1",
+  "originalRun": "r4mwtfrkta4202",
+  "originalEvidenceSha256": "5c80fde3671cdcea908c896556599540a40479f91814ba1f1364215889e4c536",
+  "originalFinishedAt": "2026-11-23T15:44:30.056Z",
+  "nodeVersion": "v22.23.5",
+  "credentialMode": "test (proxy-attested by owner; NOT verified by script)",
+  "requestsSent": 8,
+  "results": {
+    "r4mwtfrkta4202-E1": {
+      "requestedAt": "2026-11-23T15:49:47.997Z",
+      "completedAt": "2026-11-23T15:49:49.162Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 2,
+      "returnedItems": 2,
+      "exactReceiptMatches": 2,
+      "orders": [
+        {
+          "id": "order_U3fdUpKbV67li7",
+          "receipt": "r4mwtfrkta4202-E1",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448646
+        },
+        {
+          "id": "order_U3fdUT9BtiXwEf",
+          "receipt": "r4mwtfrkta4202-E1",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448646
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [
+        "order_U3fdUT9BtiXwEf",
+        "order_U3fdUpKbV67li7"
+      ],
+      "knownIdsFound": 2
+    },
+    "r4mwtfrkta4202-E2": {
+      "requestedAt": "2026-11-23T15:49:49.162Z",
+      "completedAt": "2026-11-23T15:49:49.473Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 5,
+      "returnedItems": 5,
+      "exactReceiptMatches": 5,
+      "orders": [
+        {
+          "id": "order_U3fdW5kzBnZvc8",
+          "receipt": "r4mwtfrkta4202-E2",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448647
+        },
+        {
+          "id": "order_U3fdW2Fjkg1jLy",
+          "receipt": "r4mwtfrkta4202-E2",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448647
+        },
+        {
+          "id": "order_U3fdVxwTK3umcS",
+          "receipt": "r4mwtfrkta4202-E2",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448647
+        },
+        {
+          "id": "order_U3fdVxb4V1Ups4",
+          "receipt": "r4mwtfrkta4202-E2",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448647
+        },
+        {
+          "id": "order_U3fdVG5IxCOcKl",
+          "receipt": "r4mwtfrkta4202-E2",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448646
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [
+        "order_U3fdVG5IxCOcKl",
+        "order_U3fdW2Fjkg1jLy",
+        "order_U3fdVxwTK3umcS",
+        "order_U3fdVxb4V1Ups4",
+        "order_U3fdW5kzBnZvc8"
+      ],
+      "knownIdsFound": 5
+    },
+    "r4mwtfrkta4202-E3-5": {
+      "requestedAt": "2026-11-23T15:49:49.473Z",
+      "completedAt": "2026-11-23T15:49:49.781Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 0,
+      "returnedItems": 0,
+      "exactReceiptMatches": 0,
+      "orders": [],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [],
+      "knownIdsFound": 0
+    },
+    "r4mwtfrkta4202-E3-50": {
+      "requestedAt": "2026-11-23T15:49:49.781Z",
+      "completedAt": "2026-11-23T15:49:50.055Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 1,
+      "returnedItems": 1,
+      "exactReceiptMatches": 1,
+      "orders": [
+        {
+          "id": "order_U3fdWRWVWR0KeS",
+          "receipt": "r4mwtfrkta4202-E3-50",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448647
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [],
+      "knownIdsFound": 0
+    },
+    "r4mwtfrkta4202-E3-150": {
+      "requestedAt": "2026-11-23T15:49:50.055Z",
+      "completedAt": "2026-11-23T15:49:50.362Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 1,
+      "returnedItems": 1,
+      "exactReceiptMatches": 1,
+      "orders": [
+        {
+          "id": "order_U3fdWWEDypFeeC",
+          "receipt": "r4mwtfrkta4202-E3-150",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448647
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [],
+      "knownIdsFound": 0
+    },
+    "r4mwtfrkta4202-E3-400": {
+      "requestedAt": "2026-11-23T15:49:50.362Z",
+      "completedAt": "2026-11-23T15:49:50.666Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 1,
+      "returnedItems": 1,
+      "exactReceiptMatches": 1,
+      "orders": [
+        {
+          "id": "order_U3fdWdqnEeR2Qm",
+          "receipt": "r4mwtfrkta4202-E3-400",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448648
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [
+        "order_U3fdWdqnEeR2Qm"
+      ],
+      "knownIdsFound": 1
+    },
+    "r4mwtfrkta4202-E3-1000": {
+      "requestedAt": "2026-11-23T15:49:50.666Z",
+      "completedAt": "2026-11-23T15:49:50.960Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 1,
+      "returnedItems": 1,
+      "exactReceiptMatches": 1,
+      "orders": [
+        {
+          "id": "order_U3fdXWhdOAuoeM",
+          "receipt": "r4mwtfrkta4202-E3-1000",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448648
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [
+        "order_U3fdXWhdOAuoeM"
+      ],
+      "knownIdsFound": 1
+    },
+    "r4mwtfrkta4202-E4": {
+      "requestedAt": "2026-11-23T15:49:50.960Z",
+      "completedAt": "2026-11-23T15:49:51.253Z",
+      "httpStatus": 200,
+      "status": "complete",
+      "collectionCount": 2,
+      "returnedItems": 2,
+      "exactReceiptMatches": 2,
+      "orders": [
+        {
+          "id": "order_U3fdYBsNwahBiy",
+          "receipt": "r4mwtfrkta4202-E4",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448649
+        },
+        {
+          "id": "order_U3fdXsK3ywTnZ2",
+          "receipt": "r4mwtfrkta4202-E4",
+          "amount": 100,
+          "currency": "INR",
+          "status": "created",
+          "created_at": 1795448649
+        }
+      ],
+      "error": null,
+      "knownOrderIdsFromCreateResponses": [
+        "order_U3fdXsK3ywTnZ2",
+        "order_U3fdYBsNwahBiy"
+      ],
+      "knownIdsFound": 2
+    }
+  }
+}
