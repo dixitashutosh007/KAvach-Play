@@ -1,0 +1,22 @@
+(node:547) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+R4 experiment plan: up to 14 create (POST) and 48 list (GET) requests to https://api.razorpay.com/v1/orders; ₹1 INR test orders; concurrency 5; aborts 5/50/150/400/1000 ms.
+
+R4 receipt-uniqueness experiment r4mwtfrkta4202 (TEST mode, Node v22.23.5)
+Requests sent: 14 create (max 14), 16 list (max 48)
+E1 sequential: first=200 order_U3fdUT9BtiXwEf second=200 order_U3fdUpKbV67li7
+E2 concurrent x5: 200 order_U3fdVG5IxCOcKl | 200 order_U3fdW2Fjkg1jLy | 200 order_U3fdVxwTK3umcS | 200 order_U3fdVxb4V1Ups4 | 200 order_U3fdW5kzBnZvc8
+E3 abort@5ms (timer fired: true): caller saw aborted_by_timer; orders later: 0
+E3 abort@50ms (timer fired: true): caller saw aborted_by_timer; orders later: 0
+E3 abort@150ms (timer fired: true): caller saw aborted_by_timer; orders later: 0
+E3 abort@400ms (timer fired: false): caller saw 200 order_U3fdWdqnEeR2Qm; orders later: 0
+E3 abort@1000ms (timer fired: false): caller saw 200 order_U3fdXWhdOAuoeM; orders later: 0
+E4 first (received, discarded)=200 order_U3fdXsK3ywTnZ2 retry=200 order_U3fdYBsNwahBiy
+E5 r4mwtfrkta4202-E1: 0 @2026-11-23T15:44:12.856Z, 0 @2026-11-23T15:44:28.056Z
+E5 r4mwtfrkta4202-E2: 0 @2026-11-23T15:44:13.128Z, 0 @2026-11-23T15:44:28.340Z
+E5 r4mwtfrkta4202-E3-5: 0 @2026-11-23T15:44:13.409Z, 0 @2026-11-23T15:44:28.623Z
+E5 r4mwtfrkta4202-E3-50: 0 @2026-11-23T15:44:13.682Z, 0 @2026-11-23T15:44:28.898Z
+E5 r4mwtfrkta4202-E3-150: 0 @2026-11-23T15:44:13.951Z, 0 @2026-11-23T15:44:29.178Z
+E5 r4mwtfrkta4202-E3-400: 0 @2026-11-23T15:44:14.305Z, 0 @2026-11-23T15:44:29.447Z
+E5 r4mwtfrkta4202-E3-1000: 0 @2026-11-23T15:44:14.641Z, 0 @2026-11-23T15:44:29.752Z
+E5 r4mwtfrkta4202-E4: 0 @2026-11-23T15:44:14.945Z, 0 @2026-11-23T15:44:30.056Z

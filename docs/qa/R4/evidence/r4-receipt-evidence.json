@@ -1,0 +1,668 @@
+{
+  "schema": "kavach-r4-receipt-evidence/v3",
+  "run": "r4mwtfrkta4202",
+  "destination": "https://api.razorpay.com",
+  "endpoints": [
+    "POST /v1/orders",
+    "GET /v1/orders"
+  ],
+  "amountPaise": 100,
+  "currency": "INR",
+  "concurrency": 5,
+  "abortAfterMs": [
+    5,
+    50,
+    150,
+    400,
+    1000
+  ],
+  "maxCreateRequests": 14,
+  "maxListRequests": 48,
+  "receipts": 8,
+  "nodeVersion": "v22.23.5",
+  "scriptSha256": "1756ba91e4067b01021d9f0283693190c10daebb8fcaafbb74b72a70cd3c390e",
+  "keyMode": "test",
+  "startedAt": "2026-11-23T15:44:04.895Z",
+  "experiments": {
+    "E1_sequential": {
+      "receipt": "r4mwtfrkta4202-E1",
+      "first": {
+        "outcome": "response_received",
+        "sentAt": "2026-11-23T15:44:04.900Z",
+        "headersReceivedAt": "2026-11-23T15:44:06.189Z",
+        "completedAt": "2026-11-23T15:44:06.192Z",
+        "ms": 1292,
+        "httpStatus": 200,
+        "requestId": null,
+        "order": {
+          "id": "order_U3fdUT9BtiXwEf",
+          "receipt": "r4mwtfrkta4202-E1",
+          "amount": 100,
+          "amount_paid": 0,
+          "amount_due": 100,
+          "currency": "INR",
+          "status": "created",
+          "attempts": 0,
+          "created_at": 1795448646
+        },
+        "error": null,
+        "bodyProblem": null
+      },
+      "second": {
+        "outcome": "response_received",
+        "sentAt": "2026-11-23T15:44:06.192Z",
+        "headersReceivedAt": "2026-11-23T15:44:06.495Z",
+        "completedAt": "2026-11-23T15:44:06.496Z",
+        "ms": 304,
+        "httpStatus": 200,
+        "requestId": null,
+        "order": {
+          "id": "order_U3fdUpKbV67li7",
+          "receipt": "r4mwtfrkta4202-E1",
+          "amount": 100,
+          "amount_paid": 0,
+          "amount_due": 100,
+          "currency": "INR",
+          "status": "created",
+          "attempts": 0,
+          "created_at": 1795448646
+        },
+        "error": null,
+        "bodyProblem": null
+      }
+    },
+    "E2_concurrent": {
+      "receipt": "r4mwtfrkta4202-E2",
+      "concurrency": 5,
+      "results": [
+        {
+          "outcome": "response_received",
+          "sentAt": "2026-11-23T15:44:06.497Z",
+          "headersReceivedAt": "2026-11-23T15:44:06.899Z",
+          "completedAt": "2026-11-23T15:44:06.899Z",
+          "ms": 403,
+          "httpStatus": 200,
+          "requestId": null,
+          "order": {
+            "id": "order_U3fdVG5IxCOcKl",
+            "receipt": "r4mwtfrkta4202-E2",
+            "amount": 100,
+            "amount_paid": 0,
+            "amount_due": 100,
+            "currency": "INR",
+            "status": "created",
+            "attempts": 0,
+            "created_at": 1795448646
+          },
+          "error": null,
+          "bodyProblem": null
+        },
+        {
+          "outcome": "response_received",
+          "sentAt": "2026-11-23T15:44:06.497Z",
+          "headersReceivedAt": "2026-11-23T15:44:07.594Z",
+          "completedAt": "2026-11-23T15:44:07.595Z",
+          "ms": 1098,
+          "httpStatus": 200,
+          "requestId": null,
+          "order": {
+            "id": "order_U3fdW2Fjkg1jLy",
+            "receipt": "r4mwtfrkta4202-E2",
+            "amount": 100,
+            "amount_paid": 0,
+            "amount_due": 100,
+            "currency": "INR",
+            "status": "created",
+            "attempts": 0,
+            "created_at": 1795448647
+          },
+          "error": null,
+          "bodyProblem": null
+        },
+        {
+          "outcome": "response_received",
+          "sentAt": "2026-11-23T15:44:06.498Z",
+          "headersReceivedAt": "2026-11-23T15:44:07.543Z",
+          "completedAt": "2026-11-23T15:44:07.544Z",
+          "ms": 1047,
+          "httpStatus": 200,
+          "requestId": null,
+          "order": {
+            "id": "order_U3fdVxwTK3umcS",
+            "receipt": "r4mwtfrkta4202-E2",
+            "amount": 100,
+            "amount_paid": 0,
+            "amount_due": 100,
+            "currency": "INR",
+            "status": "created",
+            "attempts": 0,
+            "created_at": 1795448647
+          },
+          "error": null,
+          "bodyProblem": null
+        },
+        {
+          "outcome": "response_received",
+          "sentAt": "2026-11-23T15:44:06.499Z",
+          "headersReceivedAt": "2026-11-23T15:44:07.532Z",
+          "completedAt": "2026-11-23T15:44:07.532Z",
+          "ms": 1034,
+          "httpStatus": 200,
+          "requestId": null,
+          "order": {
+            "id": "order_U3fdVxb4V1Ups4",
+            "receipt": "r4mwtfrkta4202-E2",
+            "amount": 100,
+            "amount_paid": 0,
+            "amount_due": 100,
+            "currency": "INR",
+            "status": "created",
+            "attempts": 0,
+            "created_at": 1795448647
+          },
+          "error": null,
+          "bodyProblem": null
+        },
+        {
+          "outcome": "response_received",
+          "sentAt": "2026-11-23T15:44:06.499Z",
+          "headersReceivedAt": "2026-11-23T15:44:07.670Z",
+          "completedAt": "2026-11-23T15:44:07.671Z",
+          "ms": 1172,
+          "httpStatus": 200,
+          "requestId": null,
+          "order": {
+            "id": "order_U3fdW5kzBnZvc8",
+            "receipt": "r4mwtfrkta4202-E2",
+            "amount": 100,
+            "amount_paid": 0,
+            "amount_due": 100,
+            "currency": "INR",
+            "status": "created",
+            "attempts": 0,
+            "created_at": 1795448647
+          },
+          "error": null,
+          "bodyProblem": null
+        }
+      ]
+    },
+    "E3_client_abort": {
+      "note": "Whether an aborted request reached Razorpay is NOT inferred here; only E5 counts can confirm an order exists.",
+      "runs": [
+        {
+          "receipt": "r4mwtfrkta4202-E3-5",
+          "attempt": {
+            "outcome": "no_response",
+            "sentAt": "2026-11-23T15:44:07.671Z",
+            "failedAt": "2026-11-23T15:44:07.678Z",
+            "ms": 7,
+            "abortAfterMs": 5,
+            "abortTimerFired": true,
+            "headersReceived": false,
+            "httpStatus": null,
+            "requestId": null,
+            "clientError": {
+              "kind": "aborted_by_timer",
+              "errorName": "AbortError"
+            }
+          }
+        },
+        {
+          "receipt": "r4mwtfrkta4202-E3-50",
+          "attempt": {
+            "outcome": "no_response",
+            "sentAt": "2026-11-23T15:44:07.678Z",
+            "failedAt": "2026-11-23T15:44:07.730Z",
+            "ms": 52,
+            "abortAfterMs": 50,
+            "abortTimerFired": true,
+            "headersReceived": false,
+            "httpStatus": null,
+            "requestId": null,
+            "clientError": {
+              "kind": "aborted_by_timer",
+              "errorName": "AbortError"
+            }
+          }
+        },
+        {
+          "receipt": "r4mwtfrkta4202-E3-150",
+          "attempt": {
+            "outcome": "no_response",
+            "sentAt": "2026-11-23T15:44:07.730Z",
+            "failedAt": "2026-11-23T15:44:07.881Z",
+            "ms": 151,
+            "abortAfterMs": 150,
+            "abortTimerFired": true,
+            "headersReceived": false,
+            "httpStatus": null,
+            "requestId": null,
+            "clientError": {
+              "kind": "aborted_by_timer",
+              "errorName": "AbortError"
+            }
+          }
+        },
+        {
+          "receipt": "r4mwtfrkta4202-E3-400",
+          "attempt": {
+            "outcome": "response_received",
+            "sentAt": "2026-11-23T15:44:07.881Z",
+            "headersReceivedAt": "2026-11-23T15:44:08.145Z",
+            "completedAt": "2026-11-23T15:44:08.146Z",
+            "ms": 264,
+            "abortAfterMs": 400,
+            "abortTimerFired": false,
+            "httpStatus": 200,
+            "requestId": null,
+            "order": {
+              "id": "order_U3fdWdqnEeR2Qm",
+              "receipt": "r4mwtfrkta4202-E3-400",
+              "amount": 100,
+              "amount_paid": 0,
+              "amount_due": 100,
+              "currency": "INR",
+              "status": "created",
+              "attempts": 0,
+              "created_at": 1795448648
+            },
+            "error": null,
+            "bodyProblem": null
+          }
+        },
+        {
+          "receipt": "r4mwtfrkta4202-E3-1000",
+          "attempt": {
+            "outcome": "response_received",
+            "sentAt": "2026-11-23T15:44:08.146Z",
+            "headersReceivedAt": "2026-11-23T15:44:08.953Z",
+            "completedAt": "2026-11-23T15:44:08.954Z",
+            "ms": 808,
+            "abortAfterMs": 1000,
+            "abortTimerFired": false,
+            "httpStatus": 200,
+            "requestId": null,
+            "order": {
+              "id": "order_U3fdXWhdOAuoeM",
+              "receipt": "r4mwtfrkta4202-E3-1000",
+              "amount": 100,
+              "amount_paid": 0,
+              "amount_due": 100,
+              "currency": "INR",
+              "status": "created",
+              "attempts": 0,
+              "created_at": 1795448648
+            },
+            "error": null,
+            "bodyProblem": null
+          }
+        }
+      ]
+    },
+    "E4_discarded_then_retry": {
+      "note": "The first response WAS received and is recorded; the caller then deliberately ignores it (modelling a caller that treats the outcome as unknown) and retries with the same receipt. Genuine network-level unknown outcomes are E3.",
+      "receipt": "r4mwtfrkta4202-E4",
+      "firstAttempt": {
+        "outcome": "response_received",
+        "sentAt": "2026-11-23T15:44:08.954Z",
+        "headersReceivedAt": "2026-11-23T15:44:09.271Z",
+        "completedAt": "2026-11-23T15:44:09.271Z",
+        "ms": 318,
+        "httpStatus": 200,
+        "requestId": null,
+        "order": {
+          "id": "order_U3fdXsK3ywTnZ2",
+          "receipt": "r4mwtfrkta4202-E4",
+          "amount": 100,
+          "amount_paid": 0,
+          "amount_due": 100,
+          "currency": "INR",
+          "status": "created",
+          "attempts": 0,
+          "created_at": 1795448649
+        },
+        "error": null,
+        "bodyProblem": null,
+        "callerTreatment": "discarded"
+      },
+      "retry": {
+        "outcome": "response_received",
+        "sentAt": "2026-11-23T15:44:09.272Z",
+        "headersReceivedAt": "2026-11-23T15:44:09.564Z",
+        "completedAt": "2026-11-23T15:44:09.565Z",
+        "ms": 293,
+        "httpStatus": 200,
+        "requestId": null,
+        "order": {
+          "id": "order_U3fdYBsNwahBiy",
+          "receipt": "r4mwtfrkta4202-E4",
+          "amount": 100,
+          "amount_paid": 0,
+          "amount_due": 100,
+          "currency": "INR",
+          "status": "created",
+          "attempts": 0,
+          "created_at": 1795448649
+        },
+        "error": null,
+        "bodyProblem": null
+      }
+    },
+    "E5_counts": {
+      "first": {
+        "r4mwtfrkta4202-E1": {
+          "requestedAt": "2026-11-23T15:44:12.566Z",
+          "completedAt": "2026-11-23T15:44:12.856Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E2": {
+          "requestedAt": "2026-11-23T15:44:12.856Z",
+          "completedAt": "2026-11-23T15:44:13.128Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-5": {
+          "requestedAt": "2026-11-23T15:44:13.128Z",
+          "completedAt": "2026-11-23T15:44:13.409Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-50": {
+          "requestedAt": "2026-11-23T15:44:13.409Z",
+          "completedAt": "2026-11-23T15:44:13.682Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-150": {
+          "requestedAt": "2026-11-23T15:44:13.682Z",
+          "completedAt": "2026-11-23T15:44:13.951Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-400": {
+          "requestedAt": "2026-11-23T15:44:13.951Z",
+          "completedAt": "2026-11-23T15:44:14.305Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-1000": {
+          "requestedAt": "2026-11-23T15:44:14.305Z",
+          "completedAt": "2026-11-23T15:44:14.641Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E4": {
+          "requestedAt": "2026-11-23T15:44:14.641Z",
+          "completedAt": "2026-11-23T15:44:14.945Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        }
+      },
+      "second": {
+        "r4mwtfrkta4202-E1": {
+          "requestedAt": "2026-11-23T15:44:26.957Z",
+          "completedAt": "2026-11-23T15:44:28.056Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E2": {
+          "requestedAt": "2026-11-23T15:44:28.056Z",
+          "completedAt": "2026-11-23T15:44:28.340Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-5": {
+          "requestedAt": "2026-11-23T15:44:28.340Z",
+          "completedAt": "2026-11-23T15:44:28.623Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-50": {
+          "requestedAt": "2026-11-23T15:44:28.623Z",
+          "completedAt": "2026-11-23T15:44:28.898Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-150": {
+          "requestedAt": "2026-11-23T15:44:28.898Z",
+          "completedAt": "2026-11-23T15:44:29.178Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-400": {
+          "requestedAt": "2026-11-23T15:44:29.178Z",
+          "completedAt": "2026-11-23T15:44:29.447Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E3-1000": {
+          "requestedAt": "2026-11-23T15:44:29.447Z",
+          "completedAt": "2026-11-23T15:44:29.752Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        },
+        "r4mwtfrkta4202-E4": {
+          "requestedAt": "2026-11-23T15:44:29.752Z",
+          "completedAt": "2026-11-23T15:44:30.056Z",
+          "status": "complete",
+          "pages": [
+            {
+              "skip": 0,
+              "httpStatus": 200,
+              "requestId": null,
+              "collectionCount": 0,
+              "items": 0
+            }
+          ],
+          "returnedItems": 0,
+          "receiptFilterAppearsApplied": true,
+          "exactReceiptMatches": 0,
+          "orders": [],
+          "error": null
+        }
+      }
+    }
+  },
+  "requestsSent": {
+    "creates": 14,
+    "lists": 16
+  },
+  "finishedAt": "2026-11-23T15:44:30.056Z"
+}
