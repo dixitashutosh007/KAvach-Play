@@ -108,3 +108,21 @@ Modified:
 ## 7. Owner answers (2026-11-23) — follow-up, not yet implemented
 
 The owner answered the §5 questions. Several answers change the role model (retire Match Admin and Studio Admin into Club Admin; Activity Log to Finance Admin), which requires Firestore rules and server-authorisation changes that this navigation phase may not make. Follow-up questions are pending with the owner (migration of existing Match/Studio Admin users; separate security workstream; interim visibility; No Show / catch history on the player record). This commit does **not** implement those answers.
+
+## 8. D-19 follow-up implementation (commit `c2a910b`) — verification
+
+Implemented on this branch (navigation/UI only; no rules, server authorisation, role data, payment or Razorpay changes):
+- Home shown to every admin; unauthorised destinations and Club sections show a polite access-denied card (no redirect); writes rejected by Firestore rules raise an access-denied toast.
+- Club Admin sees Match Center and Club → Studio; legacy Match/Studio Admin flags keep their former areas until the role-consolidation migration.
+- Club sections are Club Admin capabilities; Reminders and the Activity Log moved to Finance; the Match Center Assign screen is retired (component removed, data untouched).
+
+| Check | Result |
+|---|---|
+| Type-check | 0 errors |
+| Functional / unit (`npm run test:functional`) | 1029 / 1029 pass, 0 skipped |
+| Full e2e (Desktop + Mobile Chrome) | 233 passed, 17 failed, 98 skipped (credential-gated, not executed) |
+| Build (`GIT_BRANCH=mig-mov npm run build`) | Pass |
+
+All 17 e2e failures are the same pre-existing failures that also fail on the base commit before D-16/D-18 (`match-center-corrections` ×2, `player-home-behavioral` 1/2/2B/4D/4E/4G on both projects, `production-app` 3 on Desktop). No new failures. All D-16/D-18/D-19 navigation, persona-isolation and role-matrix tests pass on both projects.
+
+Known interim limitation (by owner decision D-19 item 3): Club Admin saves in Match Center and Studio are rejected by the current Firestore rules and show the access-denied message until the role-consolidation security workstream is deployed.
