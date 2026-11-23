@@ -255,15 +255,20 @@ describe("Home composition", () => {
   it("Home no longer subscribes to playerStats for the removed section", () => {
     assert.match(src("app/page.tsx"), /const STATS_TABS = new Set\(\["club"\]\)/);
   });
-  it("duplicate shortcuts (Fixtures, My Finance, Studio, Leaderboard) are gone; shop shortcut only when enabled", () => {
+  it("D-16 Home quick access: Directory, Studio, Shop, Polls & Pulse, Announcements; no primary-nav duplicates", () => {
     const on = text(render(React.createElement(HomeQuickActions, { isFeatureEnabled: () => true, onNavigate: () => {} })));
-    for (const label of ["Fixtures", "My Finance", "Pay Dues", "Studio", "Leaderboard"]) assert.ok(!on.includes(label), label);
-    assert.ok(on.includes("Club Shop"));
-    assert.equal(render(React.createElement(HomeQuickActions, { isFeatureEnabled: (k) => k !== "shop", onNavigate: () => {} })), "");
+    for (const label of ["Directory", "Studio", "Shop", "Polls & Pulse", "Announcements"]) assert.ok(on.includes(label), label);
+    // Primary destinations and payments are never duplicated as Home shortcuts.
+    for (const label of ["Fixtures", "My Finance", "Pay Dues", "Leaderboard", "Matches", "Profile"]) assert.ok(!on.includes(label), label);
+    const off = text(render(React.createElement(HomeQuickActions, {
+      isFeatureEnabled: (k) => !["studio", "shop", "opinion"].includes(k), onNavigate: () => {},
+    })));
+    for (const label of ["Studio", "Shop", "Polls & Pulse"]) assert.ok(!off.includes(label), `${label} hidden when disabled`);
+    assert.ok(off.includes("Directory") && off.includes("Announcements"));
   });
   it("player-facing navigation says 'Studio'", () => {
-    assert.match(src("components/layout/MoreDrawer.tsx"), /\{ tab: "studio", label: "Studio", icon: Video, feature: "studio" \}/);
-    assert.match(src("components/ClubTab.tsx"), /key: "studio", label: "Studio"/);
+    assert.match(src("lib/player-navigation.ts"), /studio: \{ parent: "home", label: "Studio", feature: "studio" \}/);
+    assert.match(src("components/home/HomeQuickActions.tsx"), /\{ target: "studio", label: "Studio", icon: Video, feature: "studio" \}/);
     assert.match(src("components/layout/AppHeader.tsx"), /studio: "Studio",/);
   });
 });

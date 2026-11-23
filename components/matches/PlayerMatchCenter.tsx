@@ -56,22 +56,16 @@ export function PlayerMatchCenter({
   isAdmin = false,
 }: PlayerMatchCenterProps) {
   const { toast } = useToast();
-  const { user, hasAdminClaim } = useAuth();
+  const { user } = useAuth();
 
   // Resolve current logged-in player
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
   const mePlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
 
-  // Authoritative admin determination: the verified `admin` custom claim or the
-  // rules-protected appUsers permission flags. The free-form `role` string is
-  // deliberately NOT treated as an authority (same model as app/page.tsx and
-  // firestore.rules isMatchAdmin()/isClubAdmin()).
-  const effectiveIsAdmin = Boolean(
-    isAdmin ||
-    hasAdminClaim ||
-    appUser?.isClubAdmin ||
-    appUser?.isMatchAdmin
-  );
+  // Player persona (D-16): eligibility is evaluated exactly as for a regular
+  // player. Admin rights held by the signed-in user are deliberately NOT read
+  // here; the parent only passes isAdmin=true for an admin-persona context.
+  const effectiveIsAdmin = Boolean(isAdmin);
 
   // Compute initial search or initial match ID from defaultAction / defaultMatchId / URL
   const initialMatchId = useMemo(() => {

@@ -111,7 +111,8 @@ describe("Fix 3: banner Display Duration", () => {
     assert.match(input(legacy), /value="6"/);
   });
   it("persisted on add and edit; pin toggle leaves it unchanged; edit form receives the stored value", () => {
-    const home = src("components/HomeTab.tsx");
+    // D-16: announcement add/edit handlers moved from Player Home to Admin Home.
+    const home = src("components/home/AdminHomeAnnouncements.tsx");
     assert.equal((home.match(/draft\.displayDurationSec !== undefined \? \{ displayDurationSec: draft\.displayDurationSec \} : \{\}/g) || []).length, 2);
     assert.match(src("hooks/useStore.ts"), /"linkUrl" \| "displayDurationSec"/);
     const section = src("components/home/ClubAnnouncementsSection.tsx");
@@ -123,10 +124,12 @@ describe("Fix 3: banner Display Duration", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe("Fix 2: no stray Shop label at the top of Home", () => {
-  it("HomeTab no longer renders the quick-action row (its only remaining chip was Club Shop)", () => {
+  it("D-16 supersedes: HomeTab renders the club quick-access row (Directory, Studio, Shop, Pulse, Announcements), not a lone Shop chip", () => {
     const home = src("components/HomeTab.tsx");
-    assert.ok(!/<HomeQuickActions/.test(home));
-    assert.ok(!/import \{ HomeQuickActions \}/.test(home));
+    assert.match(home, /import \{ HomeQuickActions \} from "\.\/home\/HomeQuickActions";/);
+    assert.match(home, /<HomeQuickActions isFeatureEnabled=\{isFeatureEnabled\}/);
+    const qa = src("components/home/HomeQuickActions.tsx");
+    for (const t of ["players", "studio", "shop", "opinion", "announcements"]) assert.match(qa, new RegExp(`target: "${t}"`));
   });
   it("Shop module and navigation stay available", () => {
     assert.match(src("components/ClubTab.tsx"), /key: "shop", label: "Shop"/);

@@ -121,11 +121,21 @@ describe("Announcement composer", () => {
     assert.match(validateAnnouncementDraft({ title: "", text: "x".repeat(ANNOUNCEMENT_TEXT_MAX + 1), isPinned: false }), /Message/);
     assert.equal(validateAnnouncementDraft({ title: "AGM", text: "Sunday 10am", isPinned: true }), null);
   });
-  it("Home publishes through the existing post workflow with the announcement flag, gated to super/club admins", () => {
+  it("D-16: Admin Home publishes through the existing post workflow, gated to super/club admins; Player Home cannot publish", () => {
+    const admin = src("components/home/AdminHomeAnnouncements.tsx");
+    assert.match(admin, /await store\.addPost\(\{/);
+    assert.match(admin, /isAnnouncement: true,/);
+    const page = src("app/page.tsx");
+    // Mounted only in the Admin persona Home branch, for Super Admin claim or Club Admin.
+    const adminHome = page.slice(page.indexOf("isSuperAdmin || isClubAdmin ? ("), page.indexOf("isSuperAdmin || isClubAdmin ? (") + 1200);
+    assert.match(adminHome, /<AdminHomeAnnouncements/);
+    assert.match(page, /const isClubAdmin = isSuperAdmin \|\| appUser\?\.isClubAdmin;/);
+    assert.match(page, /const isSuperAdmin = !!hasAdminClaim;/);
+    // Player Home has no publishing path at all.
     const home = src("components/HomeTab.tsx");
-    assert.match(home, /const canPublishAnnouncements = Boolean\(hasAdminClaim \|\| appUser\?\.isClubAdmin\);/);
-    assert.match(home, /if \(!canPublishAnnouncements \|\| !store\.addPost\) return false;/);
-    assert.match(home, /isAnnouncement: true,/);
+    for (const re of [/addPost/, /updateAnnouncement/, /deleteAnnouncement/, /canPublish/, /hasAdminClaim/]) {
+      assert.doesNotMatch(home, re);
+    }
   });
   it("Firestore rules still restrict post creation to admins (unchanged)", () => {
     const rules = src("firestore.rules");

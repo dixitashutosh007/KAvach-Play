@@ -17,6 +17,7 @@ import { createNotification } from "@/lib/notifications";
 import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
+import { ProfilePerformanceCard, ProfileStudioCard } from "./profile/ProfileHubCards";
 import { PollInteraction, PollResults } from "./OpinionTab";
 import { AuthProviderBadges } from "./AuthProviderBadges";
 import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet, BadgeShowcase } from "./BadgeIcon";
@@ -31,9 +32,15 @@ const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct"
 export function ProfileTab({
   store,
   forceEdit,
+  persona,
+  onNavigate,
 }: {
   store: ReturnType<typeof useStore>;
   forceEdit?: boolean;
+  /** "player" renders the Player persona profile hub (D-16). */
+  persona?: "admin" | "player";
+  /** Opens a Profile secondary destination (leaderboard, badges, studio). */
+  onNavigate?: (tab: "leaderboard" | "badges" | "studio") => void;
 }) {
   const { confirm: confirmAction } = useConfirm();
   const { toast } = useToast();
@@ -584,7 +591,7 @@ export function ProfileTab({
                   {appUser?.mobile || linkedPlayer?.mobile || "Add mobile to link"}
                 </p>
                 <p className="inline-block mt-1 px-2 py-0.5 rounded border border-accent/30 bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-widest">
-                  {appUser?.role || "player"}
+                  {persona === "player" ? "player" : appUser?.role || "player"}
                 </p>
                 {linkedPlayer?.kavachId && (
                   <p className="inline-block ml-2 mt-1 px-2 py-0.5 rounded border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 text-[10px] font-bold uppercase tracking-widest font-mono">
@@ -667,6 +674,27 @@ export function ProfileTab({
           </div>
         )}
       </div>
+
+      {!isEditing && linkedPlayer?.id && persona === "player" && (
+        <ProfilePerformanceCard
+          players={store.players}
+          badges={store.badges}
+          playerId={linkedPlayer.id}
+          showCricketStats={store.appConfig?.features?.cricketStatsLeaderboard !== false}
+          leaderboardEnabled={store.appConfig?.features?.leaderboard !== false}
+          badgesEnabled={store.appConfig?.features?.badges !== false}
+          onOpenLeaderboard={onNavigate ? () => onNavigate("leaderboard") : undefined}
+          onOpenBadges={onNavigate ? () => onNavigate("badges") : undefined}
+        />
+      )}
+
+      {!isEditing && persona === "player" && store.appConfig?.features?.studio !== false && (
+        <ProfileStudioCard
+          player={linkedPlayer}
+          appUser={appUser}
+          onOpenStudio={onNavigate ? () => onNavigate("studio") : undefined}
+        />
+      )}
 
       {!isEditing && linkedPlayer?.id && (
         <div className="pt-2">

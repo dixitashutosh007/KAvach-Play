@@ -330,9 +330,9 @@ test.describe("Production Route (/) Verification Suite", () => {
     await expect(page.locator("text=₹1,350")).not.toBeVisible();
     await expect(page.locator("text=₹1350")).not.toBeVisible();
 
-    // 2. Mandatory Payments Tab Line-Item assertion
-    const paymentsTab = getNavigationTab(page, "Payments");
-    await paymentsTab.click();
+    // 2. Mandatory Payments line-item assertion (D-16: reached from the Home "Pay Now" action)
+    await page.locator('[data-testid="pay-now-button"]').click();
+    await expect(page.locator('[data-testid="player-back-button"]')).toBeVisible({ timeout: 10000 });
 
     // Billable match fee (₹650) and late fee (₹150) must appear in pending dues
     await expect(page.locator("text=Delhi Challengers").first()).toBeVisible({ timeout: 10000 });
@@ -729,8 +729,9 @@ test.describe("Production Route (/) Verification Suite", () => {
           const navButtons = nav.locator("button");
           const count = await navButtons.count();
 
-          // Exactly 5 primary buttons (Home, Matches, Payments, Performance, Club)
-          expect(count).toBe(5);
+          // D-16: exactly 3 primary buttons (Home, Profile, Matches)
+          expect(count).toBe(3);
+          expect(await navButtons.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Profile", "Matches"]);
 
           for (let i = 0; i < count; i++) {
             const btn = navButtons.nth(i);

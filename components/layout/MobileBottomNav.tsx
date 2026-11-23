@@ -7,21 +7,19 @@ import {
   Users,
   CalendarDays,
   MoreHorizontal,
+  User as UserIcon,
 } from "lucide-react";
 import type { AppConfig } from "@/lib/types";
 import { MoreDrawer, Tab, AdminPermissions } from "./MoreDrawer";
+import { getPlayerPrimaryNav, getPlayerNavParent, type PlayerPrimaryTab } from "@/lib/player-navigation";
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
-const PLAYER_OVERFLOW_TABS: Tab[] = [
-  "leaderboard",
-  "studio",
-  "shop",
-  "opinion",
-  "design",
-  "club",
-  "notifications",
-];
+const PLAYER_NAV_ICONS: Record<PlayerPrimaryTab, typeof HomeIcon> = {
+  home: HomeIcon,
+  profile: UserIcon,
+  matches: CalendarDays,
+};
 
 const ADMIN_OVERFLOW_TABS: Tab[] = [
   "settings",
@@ -56,7 +54,6 @@ export function MobileBottomNav({
   const [moreOpen, setMoreOpen] = useState(false);
   const handleCloseMore = useCallback(() => setMoreOpen(false), []);
   const adminMoreBtnRef = useRef<HTMLButtonElement>(null);
-  const playerMoreBtnRef = useRef<HTMLButtonElement>(null);
 
   const renderCountRef = useRef(0);
   renderCountRef.current += 1;
@@ -87,7 +84,6 @@ export function MobileBottomNav({
           activeTab={activeTab}
           isFeatureEnabled={isFeatureEnabled}
           canDesign={canDesign ?? false}
-          persona="admin"
           adminPermissions={adminPermissions}
           triggerRef={adminMoreBtnRef}
         />
@@ -148,75 +144,37 @@ export function MobileBottomNav({
     );
   }
 
-  // Approved Player Primary Navigation: Home | Matches | Finance | Players | More
-  const isPlayerMoreActive = PLAYER_OVERFLOW_TABS.includes(activeTab);
+  // Player Primary Navigation (D-16): exactly Home | Profile | Matches, the same
+  // order as the desktop sidebar. No More drawer — secondary screens are reached
+  // from Home / Profile and highlight their parent here.
+  const activeParent = getPlayerNavParent(activeTab);
+  const playerItems = getPlayerPrimaryNav((f) => isFeatureEnabled(f as Feature));
 
   return (
-    <>
-      <MoreDrawer
-        open={moreOpen}
-        onClose={handleCloseMore}
-        onSelectTab={onSelectTab}
-        activeTab={activeTab}
-        isFeatureEnabled={isFeatureEnabled}
-        canDesign={canDesign ?? false}
-        persona="player"
-        adminPermissions={adminPermissions}
-        triggerRef={playerMoreBtnRef}
-      />
-      <nav
-        data-testid="player-mobile-bottom-nav"
-        data-render-count={process.env.NODE_ENV !== "production" ? renderCountRef.current : undefined}
-        aria-label="Player primary mobile navigation"
-        className="fixed bottom-0 left-0 right-0 w-full bg-surface/95 backdrop-blur-2xl !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-lg justify-around border-t border-border px-1"
-      >
-        <button
-          onClick={() => onSelectTab("home")}
-          className={btnCls(activeTab === "home")}
-          title="Home"
-          aria-label="Home"
-        >
-          <HomeIcon className="w-5 h-5" />
-          <span className={labelCls}>Home</span>
-        </button>
-        <button
-          onClick={() => onSelectTab("matches")}
-          className={btnCls(activeTab === "matches")}
-          title="Matches"
-          aria-label="Matches"
-        >
-          <CalendarDays className="w-5 h-5" />
-          <span className={labelCls}>Matches</span>
-        </button>
-        <button
-          onClick={() => onSelectTab("finance")}
-          className={btnCls(activeTab === "finance" || activeTab === "dues_and_reminders")}
-          title="Finance & Payments"
-          aria-label="Finance"
-        >
-          <Wallet className="w-5 h-5" />
-          <span className={labelCls}>Finance</span>
-        </button>
-        <button
-          onClick={() => onSelectTab("players")}
-          className={btnCls(activeTab === "players")}
-          title="Player Directory & Roster"
-          aria-label="Players"
-        >
-          <Users className="w-5 h-5" />
-          <span className={labelCls}>Players</span>
-        </button>
-        <button
-          ref={playerMoreBtnRef}
-          onClick={() => setMoreOpen(true)}
-          className={btnCls(isPlayerMoreActive)}
-          title="More"
-          aria-label="More"
-        >
-          <MoreHorizontal className="w-5 h-5" />
-          <span className={labelCls}>More</span>
-        </button>
-      </nav>
-    </>
+    <nav
+      data-testid="player-mobile-bottom-nav"
+      data-render-count={process.env.NODE_ENV !== "production" ? renderCountRef.current : undefined}
+      aria-label="Player primary mobile navigation"
+      className="fixed bottom-0 left-0 right-0 w-full bg-surface/95 backdrop-blur-2xl !border-b-0 !border-x-0 !rounded-none md:hidden pb-safe z-30 flex items-center shadow-lg justify-around border-t border-border px-1"
+    >
+      {playerItems.map(({ tab, label }) => {
+        const Icon = PLAYER_NAV_ICONS[tab];
+        const isActive = activeParent === tab;
+        return (
+          <button
+            key={tab}
+            data-testid={`player-nav-${tab}`}
+            onClick={() => onSelectTab(tab)}
+            className={btnCls(isActive)}
+            title={label}
+            aria-label={label}
+            aria-current={isActive ? "page" : undefined}
+          >
+            <Icon className="w-5 h-5" />
+            <span className={labelCls}>{label}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }

@@ -93,51 +93,32 @@ test("UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and preven
   assert.ok(headerCode.includes('xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>'), "Header must use compact label on narrow mobile");
 });
 
-test("UX-P0-01: Player Club Screen is connected and renders player sub-views", () => {
+test("D-16 (supersedes UX-P0-01): Player persona has no Club screen; ClubTab is Admin persona only", () => {
   const pageCode = fs.readFileSync(path.resolve("app/page.tsx"), "utf-8");
   const clubTabCode = fs.readFileSync(path.resolve("components/ClubTab.tsx"), "utf-8");
-
-  // Verify app/page.tsx connects activeTab === "club" under persona === "player"
-  assert.ok(
-    pageCode.includes('{activeTab === "club" && (\n                    <ClubTab'),
-    "app/page.tsx must connect ClubTab under persona === 'player'",
+  const playerBranch = pageCode.slice(
+    pageCode.indexOf(") : !effectiveIsAdminMode ? ("),
+    pageCode.indexOf("</AnimatePresence>", pageCode.indexOf(") : !effectiveIsAdminMode ? (")),
   );
-
-  // Verify ClubTab handles player persona
-  assert.ok(
-    clubTabCode.includes("const isPlayer = persona === \"player\";"),
-    "ClubTab must check for player persona",
-  );
-  assert.ok(
-    clubTabCode.includes('key: "profile", label: "My Card"'),
-    "ClubTab player view must offer My Card profile",
-  );
-  assert.ok(
-    clubTabCode.includes('key: "studio", label: "Studio"'),
-    "ClubTab player view must offer Studio passes (player-facing label: Studio)",
-  );
-  assert.ok(
-    clubTabCode.includes('key: "shop", label: "Shop"'),
-    "ClubTab player view must offer Shop",
-  );
-  assert.ok(
-    clubTabCode.includes('key: "pulse", label: "Pulse"'),
-    "ClubTab player view must offer Pulse polls",
-  );
-  assert.ok(
-    clubTabCode.includes('isAdmin={!isPlayer}'),
-    "ClubTab must pass isAdmin=false to ShopTab when in player mode",
-  );
+  assert.ok(playerBranch.length > 0, "player render branch must exist");
+  assert.equal(playerBranch.includes("<ClubTab"), false, "Player persona must not render ClubTab");
+  assert.equal(playerBranch.includes("<DesignTab"), false, "Player persona must not render Design Studio");
+  assert.equal(clubTabCode.includes("const playerTabs"), false, "ClubTab must not offer a player sub-tab row");
+  // Former Club player destinations remain reachable from Home / Profile.
+  for (const t of ['"profile"', '"studio"', '"shop"', '"opinion"', '"players"', '"badges"']) {
+    assert.ok(playerBranch.includes(`activeTab === ${t}`), `player branch must render ${t}`);
+  }
 });
 
-test("UX-P0-03: Player MobileBottomNav renders the 5 approved primary items", () => {
+test("D-16 (supersedes UX-P0-03): Player MobileBottomNav renders exactly Home, Profile, Matches with no More", () => {
   const navCode = fs.readFileSync(path.resolve("components/layout/MobileBottomNav.tsx"), "utf-8");
-
-  assert.ok(navCode.includes('<span className={labelCls}>Home</span>'), "Nav must include Home");
-  assert.ok(navCode.includes('<span className={labelCls}>Matches</span>'), "Nav must include Matches");
-  assert.ok(navCode.includes('<span className={labelCls}>Finance</span>'), "Nav must include Finance");
-  assert.ok(navCode.includes('<span className={labelCls}>Players</span>'), "Nav must include Players");
-  assert.ok(navCode.includes('<span className={labelCls}>More</span>'), "Nav must include More");
+  const playerPart = navCode.slice(navCode.indexOf("// Player Primary Navigation (D-16)"));
+  assert.ok(playerPart.includes("getPlayerPrimaryNav("), "player nav must come from the shared D-16 config");
+  assert.equal(playerPart.includes("MoreDrawer"), false, "player nav must not open a More drawer");
+  assert.equal(playerPart.includes(">More<"), false, "player nav must not render More");
+  const cfg = fs.readFileSync(path.resolve("lib/player-navigation.ts"), "utf-8");
+  const order = [...cfg.slice(cfg.indexOf("PLAYER_PRIMARY_NAV"), cfg.indexOf("] as const;")).matchAll(/tab: "(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ["home", "profile", "matches"]);
 });
 
 test("UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View", () => {
@@ -237,17 +218,17 @@ test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () 
   assert.ok(headerCode.includes('data-testid="header-profile-avatar"'), "AppHeader must provide header profile avatar entry point");
   assert.ok(headerCode.includes('data-testid="header-notifications-btn"'), "AppHeader must provide notifications button");
 
-  // 2. Profile accessed via header avatar, NOT a 6th bottom nav item
-  assert.equal(navCode.includes('<span className={labelCls}>Profile</span>'), false, "MobileBottomNav must NOT include Profile as a bottom nav item");
+  // 2. D-16: Profile is a primary Player destination (also reachable from the avatar)
+  const cfg = fs.readFileSync(path.resolve("lib/player-navigation.ts"), "utf-8");
+  assert.ok(cfg.includes('{ tab: "profile", label: "Profile" }'), "Profile must be a primary Player destination");
 
-  // 3. MoreDrawer secondary navigation drawer
+  // 3. MoreDrawer is Admin persona only (D-16); it keeps its accessibility contract
   assert.ok(drawerCode.includes('data-testid="more-drawer-sheet"'), "MoreDrawer must have sheet container");
   assert.ok(drawerCode.includes('data-testid={`more-item-${item.tab}`}'), "MoreDrawer buttons must include data-testid");
-  assert.ok(drawerCode.includes('tab: "profile"'), "MoreDrawer must include Profile item");
-  assert.ok(drawerCode.includes('tab: "leaderboard"'), "MoreDrawer must include Performance item");
-  assert.ok(drawerCode.includes('tab: "studio"'), "MoreDrawer must include Studio item");
-  assert.ok(drawerCode.includes('tab: "shop"'), "MoreDrawer must include Shop item");
-  assert.ok(drawerCode.includes('tab: "club"'), "MoreDrawer must include Club item");
+  assert.equal(drawerCode.includes("PLAYER_MORE_ITEMS"), false, "MoreDrawer must not define player items");
+  for (const t of ["settings", "studio", "grounds", "design", "shop", "leaderboard", "opinion", "notifications"]) {
+    assert.ok(drawerCode.includes(`tab: "${t}"`), `Admin MoreDrawer must keep ${t}`);
+  }
   assert.ok(drawerCode.includes('e.key === "Escape"'), "MoreDrawer must close on Escape key");
 
   // 4. Safe area insets support
@@ -255,9 +236,9 @@ test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () 
   assert.ok(css.includes(".pt-safe"), "globals.css must define .pt-safe utility");
   assert.ok(navCode.includes("pb-safe"), "MobileBottomNav must use pb-safe for mobile home indicator");
 
-  // 5. Desktop sidebar alignment
-  assert.ok(pageCode.includes('onClick={() => setActiveTab("finance")}'), "Sidebar must link to finance tab");
-  assert.ok(pageCode.includes('onClick={() => setActiveTab("players")}'), "Sidebar must link to players tab");
+  // 5. Desktop sidebar alignment: same D-16 config as mobile
+  assert.ok(pageCode.includes("getPlayerPrimaryNav((f) => isFeatureEnabled(f)).map("), "Desktop player sidebar must use the shared D-16 config");
+  assert.ok(pageCode.includes('onNavigateToPayments={() => setActiveTab("finance")}'), "Player Pay Now must still reach the player payments screen");
 });
 
 test("UX-SHELL-02: Behavioural verification — Player and Admin navigation dispatch and active state", () => {

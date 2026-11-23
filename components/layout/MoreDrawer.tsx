@@ -31,7 +31,8 @@ export type Tab =
   | "shop"
   | "opinion"
   | "design"
-  | "club";
+  | "club"
+  | "badges";
 
 type Feature = keyof NonNullable<AppConfig["features"]>;
 
@@ -55,16 +56,8 @@ interface MoreDrawerItem {
   requireMatchAdmin?: boolean;
 }
 
-const PLAYER_MORE_ITEMS: MoreDrawerItem[] = [
-  { tab: "leaderboard", label: "Performance & Stats", icon: Trophy, feature: "leaderboard" },
-  { tab: "studio", label: "Studio", icon: Video, feature: "studio" },
-  { tab: "shop", label: "Club Merchandise", icon: ShoppingBag, feature: "shop" },
-  { tab: "opinion", label: "Polls & Pulse", icon: PieChart, feature: "opinion" },
-  { tab: "design", label: "Design Studio", icon: ImageIcon, requireDesign: true },
-  { tab: "club", label: "Club Details & Info", icon: Users },
-  { tab: "profile", label: "My Profile", icon: UserIcon },
-];
-
+// Admin persona only. The Player persona has no More drawer (D-16): its secondary
+// screens are reached from Home and Profile.
 const ADMIN_MORE_ITEMS: MoreDrawerItem[] = [
   { tab: "settings", label: "Settings & Access", icon: SettingsIcon, requireSuperAdmin: true },
   { tab: "studio", label: "Studio & Nets", icon: Video, feature: "studio", requireStudioAdmin: true },
@@ -83,7 +76,6 @@ export function MoreDrawer({
   activeTab,
   isFeatureEnabled,
   canDesign,
-  persona,
   adminPermissions,
   triggerRef,
 }: {
@@ -93,7 +85,6 @@ export function MoreDrawer({
   activeTab: Tab;
   isFeatureEnabled: (key: Feature) => boolean;
   canDesign: boolean;
-  persona?: "admin" | "player";
   adminPermissions?: AdminPermissions;
   triggerRef?: React.RefObject<HTMLElement | null>;
 }) {
@@ -207,30 +198,25 @@ export function MoreDrawer({
 
   if (!open) return null;
 
-  const targetItems = persona === "admin" ? ADMIN_MORE_ITEMS : PLAYER_MORE_ITEMS;
-  const visibleItems = targetItems.filter((item) => {
+  const visibleItems = ADMIN_MORE_ITEMS.filter((item) => {
     if (item.feature && !isFeatureEnabled(item.feature)) return false;
 
-    if (persona === "admin") {
-      if (item.requireSuperAdmin && !adminPermissions?.isSuperAdmin) return false;
-      if (
-        item.requireStudioAdmin &&
-        !(adminPermissions?.isStudioAdmin || adminPermissions?.isSuperAdmin)
+    if (item.requireSuperAdmin && !adminPermissions?.isSuperAdmin) return false;
+    if (
+      item.requireStudioAdmin &&
+      !(adminPermissions?.isStudioAdmin || adminPermissions?.isSuperAdmin)
+    )
+      return false;
+    if (
+      item.requireMatchAdmin &&
+      !(
+        adminPermissions?.isMatchAdmin ||
+        adminPermissions?.isSuperAdmin ||
+        adminPermissions?.isClubAdmin
       )
-        return false;
-      if (
-        item.requireMatchAdmin &&
-        !(
-          adminPermissions?.isMatchAdmin ||
-          adminPermissions?.isSuperAdmin ||
-          adminPermissions?.isClubAdmin
-        )
-      )
-        return false;
-      if (item.requireDesign && !(adminPermissions?.canDesign || canDesign)) return false;
-    } else {
-      if (item.requireDesign && !canDesign) return false;
-    }
+    )
+      return false;
+    if (item.requireDesign && !(adminPermissions?.canDesign || canDesign)) return false;
 
     return true;
   });
@@ -262,12 +248,10 @@ export function MoreDrawer({
               id="more-drawer-title"
               className="text-xs font-bold uppercase tracking-widest text-text-primary"
             >
-              {persona === "admin" ? "Admin Console Hubs" : "More Destinations"}
+              Admin Console Hubs
             </h3>
             <p id="more-drawer-desc" className="text-[11px] text-text-muted mt-0.5">
-              {persona === "admin"
-                ? "Administrative settings and operations"
-                : "Secondary club features and resources"}
+              Administrative settings and operations
             </p>
           </div>
           <button

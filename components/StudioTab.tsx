@@ -22,7 +22,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { dbToInputDate, normalizeIndianMobile, parseExpiryDate } from "@/lib/utils";
+import { dbToInputDate, normalizeIndianMobile } from "@/lib/utils";
+import { getStudioMembership, type StudioMembershipStatus } from "@/lib/studio-membership";
 import { resolvePlayerForUser } from "@/lib/player-identity";
 import { useToast } from "@/components/ui/Toast";
 
@@ -212,11 +213,9 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
     planSymbol;
 
   const startDateRaw = player?.studioStartDate || appUser?.studioStartDate;
-  const endDateRaw =
-    player?.studioExpiryDate ||
-    player?.studioEndDate ||
-    appUser?.studioExpiryDate ||
-    appUser?.studioEndDate;
+  // Membership status shared with the Profile card (lib/studio-membership.ts).
+  const membership = getStudioMembership(player, appUser);
+  const endDateRaw = membership.endDateRaw;
   const lastPaidDateRaw = player?.lastPaidDate || appUser?.lastPaidDate;
   const lastPaidAmount =
     player?.lastPaidAmount !== undefined
@@ -240,40 +239,10 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
       : lastPaidDateRaw
     : "—";
 
-  const hasPastSubscription = !!(
-    player?.studioExpiryDate ||
-    player?.studioEndDate ||
-    appUser?.studioExpiryDate ||
-    appUser?.studioEndDate ||
-    player?.lastPaidDate ||
-    appUser?.lastPaidDate
-  );
-
   // Compute subscription status: Active | Expired | Inactive | Paused
-  type SubStatus = "Active" | "Expired" | "Inactive" | "Paused";
-  let subscriptionStatus: SubStatus = "Inactive";
-  let daysRemaining: number | null = null;
-
-  if (endDateRaw) {
-    const expDateObj = parseExpiryDate(endDateRaw);
-    if (expDateObj && !isNaN(expDateObj.getTime())) {
-      const diffMs = expDateObj.getTime() - Date.now();
-      daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-      if (daysRemaining < 0) {
-        subscriptionStatus = "Expired";
-      } else if (isStudioUser) {
-        subscriptionStatus = "Active";
-      } else {
-        subscriptionStatus = "Paused";
-      }
-    } else {
-      subscriptionStatus = isStudioUser ? "Active" : "Expired";
-    }
-  } else if (isStudioUser) {
-    subscriptionStatus = "Active";
-  } else if (hasPastSubscription) {
-    subscriptionStatus = "Expired";
-  }
+  type SubStatus = StudioMembershipStatus;
+  const subscriptionStatus: SubStatus = membership.status;
+  const daysRemaining = membership.daysRemaining;
 
   const isExpired = subscriptionStatus === "Expired";
 
@@ -385,7 +354,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
     </div>
   );
 
-  if (!isStudioUser && !hasPastSubscription) {
+  if (!isStudioUser && !membership.hasPastSubscription) {
     return (
       <div className="bg-surface p-6 text-center text-text-muted rounded-2xl border border-border flex flex-col h-full">
         <div className="flex-1 flex flex-col items-center justify-center space-y-4 pt-10 pb-8">

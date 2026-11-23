@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award, ScrollText, User, Video, BarChart3 } from "lucide-react";
+import { Users, ShoppingBag, PieChart, ImageIcon, Trophy, Bell, Award, ScrollText, BarChart3 } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ default: m.PlayersTab })), { ssr: false });
@@ -55,24 +55,16 @@ export function ClubTab({
   const badgesDefaultView = defaultSubTab === "badges_grant" ? "award" : undefined;
   const openInviteModal = defaultSubTab === "invite_player";
 
-  const resolvedDefault = isPlayer
-    ? (defaultSubTab as ClubSubTab) || "profile"
-    : defaultSubTab === "badges_grant"
-      ? "badges"
-      : defaultSubTab === "invite_player"
-        ? "players"
-        : (defaultSubTab as ClubSubTab) || "players";
+  // Admin persona only (D-16). The Player persona has no Club tab: My Card,
+  // Badges and Profile live in Profile; Studio, Shop, Pulse and Directory are
+  // Home entry points.
+  const resolvedDefault = defaultSubTab === "badges_grant"
+    ? "badges"
+    : defaultSubTab === "invite_player"
+      ? "players"
+      : (defaultSubTab as ClubSubTab) || "players";
 
   const [subTab, setSubTab] = useState<ClubSubTab>(resolvedDefault);
-
-  const playerTabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
-    { key: "profile", label: "My Card", icon: User, visible: true },
-    { key: "studio", label: "Studio", icon: Video, visible: isFeatureEnabled("studio") },
-    { key: "shop", label: "Shop", icon: ShoppingBag, visible: isFeatureEnabled("shop") },
-    { key: "pulse", label: "Pulse", icon: PieChart, visible: isFeatureEnabled("opinion") },
-    { key: "players", label: "Directory", icon: Users, visible: true },
-    { key: "badges", label: "Badges", icon: Award, visible: isFeatureEnabled("badges") },
-  ];
 
   const adminTabs: { key: ClubSubTab; label: string; icon: any; visible: boolean }[] = [
     { key: "players", label: "Players", icon: Users, visible: true },
@@ -87,8 +79,7 @@ export function ClubTab({
     { key: "activity", label: "Activity", icon: ScrollText, visible: isSuperAdmin },
   ];
 
-  const activeTabs = isPlayer ? playerTabs : adminTabs;
-  const visibleTabs = activeTabs.filter((t) => t.visible);
+  const visibleTabs = adminTabs.filter((t) => t.visible);
 
   return (
     <div className="space-y-4">

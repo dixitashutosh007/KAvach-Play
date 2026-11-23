@@ -172,7 +172,9 @@ describe("Wiring", () => {
   });
   it("player payments are scoped by the resolved player id, not the login uid", () => {
     const page = src("app/page.tsx");
-    assert.match(page, /const playerScope = isAdminUser \? undefined : scopedPlayerId \|\| user\?\.uid;/);
+    // D-16: admins are only unscoped in Admin persona; in Player persona they are
+    // scoped by the resolved player id exactly like a regular player.
+    assert.match(page, /const playerScope = isAdminUser && persona === "admin" \? undefined : scopedPlayerId \|\| user\?\.uid;/);
     assert.match(page, /store\.refreshNonce, scopedPlayerId\]\);/);
   });
   it("Firestore rules still forbid clients from changing appUsers.playerId", () => {

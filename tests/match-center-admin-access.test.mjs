@@ -285,13 +285,15 @@ describe("D. Matches subscription errors are surfaced", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe("E. Admin authority model", () => {
-  it("PlayerMatchCenter does not treat the free-form role string as admin authority", () => {
+  it("PlayerMatchCenter (Player persona, D-16) reads no admin authority at all: no role string, claim or admin flags", () => {
     const src = fs.readFileSync(path.resolve("components/matches/PlayerMatchCenter.tsx"), "utf-8");
-    const block = src.slice(src.indexOf("const effectiveIsAdmin"), src.indexOf("const effectiveIsAdmin") + 300);
-    assert.ok(!block.includes('role === "admin"'));
-    assert.match(block, /hasAdminClaim/);
-    assert.match(block, /isClubAdmin/);
-    assert.match(block, /isMatchAdmin/);
+    assert.match(src, /const effectiveIsAdmin = Boolean\(isAdmin\);/);
+    for (const token of ['role === "admin"', "hasAdminClaim", "isClubAdmin", "isMatchAdmin", "isFinanceAdmin", "isStudioAdmin"]) {
+      assert.ok(!src.includes(token), token);
+    }
+    // MatchesTab only renders PlayerMatchCenter in player view, where isAdmin is false.
+    const tab = fs.readFileSync(path.resolve("components/MatchesTab.tsx"), "utf-8");
+    assert.match(tab, /const isAdmin = !isPlayerView && /);
   });
 
   it("app shell pending-approval bypass uses the claim/flag authority, not role", () => {

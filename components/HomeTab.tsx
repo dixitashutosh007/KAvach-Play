@@ -37,8 +37,6 @@ import {
 } from "./festive/IndependenceDay";
 import { useToast } from "@/components/ui/Toast";
 import { availabilityBlockMessage, PROFILE_LINK_MESSAGES } from "@/lib/profile-link";
-import { useAuth } from "@/components/AuthProvider";
-import type { AnnouncementDraft } from "./home/AnnouncementComposer";
 
 // Modular Phase 2.1 Subcomponents
 import { PlayerHomeHeader } from "./home/PlayerHomeHeader";
@@ -50,6 +48,7 @@ import { ClubAnnouncementsSection } from "./home/ClubAnnouncementsSection";
 import { BirthdaysCarousel } from "./home/BirthdaysCarousel";
 import { ClubFeedPreview } from "./home/ClubFeedPreview";
 import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
+import { HomeQuickActions } from "./home/HomeQuickActions";
 import { resolveGreetingName } from "@/lib/greeting";
 import { getClubCalendarDate } from "@/lib/utils";
 
@@ -90,56 +89,11 @@ export function HomeTab({
   );
   const mePlayer = myPlayers[0] || null;
 
-  // Club announcements: publishing is offered to super admins (verified claim)
-  // and Club Admins. Firestore rules independently restrict post creation to admins.
-  const { hasAdminClaim } = useAuth();
-  const canPublishAnnouncements = Boolean(hasAdminClaim || appUser?.isClubAdmin);
+  // Announcement publishing/editing and Club Performance management live on
+  // Admin Home (D-16). Player Home only reads published announcements, whatever
+  // the signed-in user's admin privileges.
   const [announcementToOpen, setAnnouncementToOpen] = useState<string | null>(null);
   const clearAnnouncementToOpen = useCallback(() => setAnnouncementToOpen(null), []);
-  const handlePublishAnnouncement = async (draft: AnnouncementDraft) => {
-    if (!canPublishAnnouncements || !store.addPost) return false;
-    const id = await store.addPost({
-      text: draft.text,
-      ...(draft.title ? { title: draft.title } : {}),
-      ...(typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
-      ...(draft.linkUrl ? { linkUrl: draft.linkUrl } : {}),
-      ...(draft.displayDurationSec !== undefined ? { displayDurationSec: draft.displayDurationSec } : {}),
-      isAnnouncement: true,
-      isPinned: draft.isPinned,
-      authorName:
-        resolveGreetingName(mePlayer?.name, appUser?.name, currentUserName) ||
-        appConfig?.clubName ||
-        "Club Management",
-      authorId: currentUserId,
-    });
-    if (id) {
-      toast("Announcement published", "success");
-      return true;
-    }
-    return false;
-  };
-  const handleUpdateAnnouncement = async (postId: string, draft: AnnouncementDraft) => {
-    if (!canPublishAnnouncements || !store.updateAnnouncement) return false;
-    const ok = await store.updateAnnouncement(postId, {
-      text: draft.text,
-      title: draft.title || undefined,
-      isPinned: draft.isPinned,
-      // "" removes the link; undefined (e.g. banner pin toggle) leaves it unchanged
-      ...(draft.linkUrl !== undefined ? { linkUrl: draft.linkUrl || undefined } : {}),
-      // undefined (e.g. banner pin toggle) leaves the stored duration unchanged
-      ...(draft.displayDurationSec !== undefined ? { displayDurationSec: draft.displayDurationSec } : {}),
-      // null → remove image, string → replace, undefined → leave unchanged
-      ...(draft.imageUrl === null ? { imageUrl: undefined } : typeof draft.imageUrl === "string" ? { imageUrl: draft.imageUrl } : {}),
-    });
-    toast(ok ? "Announcement updated" : "The announcement could not be updated.", ok ? "success" : "error");
-    return ok;
-  };
-  const handleDeleteAnnouncement = async (postId: string) => {
-    if (!canPublishAnnouncements || !store.deleteAnnouncement) return false;
-    const ok = await store.deleteAnnouncement(postId);
-    toast(ok ? "Announcement deleted" : "The announcement could not be deleted.", ok ? "success" : "error");
-    return ok;
-  };
 
   // Feature gate helper
   const isFeatureEnabled = (key: any) => {
@@ -597,6 +551,10 @@ export function HomeTab({
             </div>
           )}
 
+          {/* Club quick access (D-16): Directory, Studio, Shop, Polls & Pulse,
+              Announcements open directly from Home. */}
+          <HomeQuickActions isFeatureEnabled={isFeatureEnabled} onNavigate={(t) => handleNavigate(t)} />
+
           {/* 5. Campaign-Led Hero Banner (Section 4.B) */}
           <CampaignHeroBanner
             announcements={posts}
@@ -628,15 +586,11 @@ export function HomeTab({
           />
 
           {/* Club performance totals (admin-maintained; hidden until set) */}
-          <ClubPerformanceWidget canManage={canPublishAnnouncements} />
+          <ClubPerformanceWidget />
 
           {/* 9. Club Announcements (Section 4.D) */}
           <ClubAnnouncementsSection
             posts={posts}
-            canPublish={canPublishAnnouncements}
-            onPublish={handlePublishAnnouncement}
-            onUpdate={handleUpdateAnnouncement}
-            onDelete={handleDeleteAnnouncement}
             openAnnouncementId={announcementToOpen}
             onOpenHandled={clearAnnouncementToOpen}
           />

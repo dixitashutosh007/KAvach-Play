@@ -3,6 +3,7 @@ import { Trophy, Medal, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { Player, Badge } from "@/lib/types";
 import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet } from "./BadgeIcon";
+import { rankLeaderboard, countBadgesByPlayer } from "@/lib/leaderboard";
 
 type Category = "runs" | "wickets" | "stunning" | "dropped" | "badges";
 
@@ -50,30 +51,12 @@ export function LeaderboardTab({
     }
   }, [availableCategories, category]);
 
-  const activePlayers = useMemo(
-    () => store.players.filter(p => !p.disabled && p.inviteStatus !== "Pending"),
-    [store.players],
+  const badgeCounts = useMemo(() => countBadgesByPlayer(store.badges), [store.badges]);
+
+  const sorted = useMemo(
+    () => rankLeaderboard(store.players, category, badgeCounts).slice(0, MAX_ENTRIES),
+    [store.players, category, badgeCounts],
   );
-
-  const badgeCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const b of store.badges) {
-      counts.set(b.playerId, (counts.get(b.playerId) || 0) + 1);
-    }
-    return counts;
-  }, [store.badges]);
-
-  const sorted = useMemo(() => {
-    const cfg = CATEGORY_CONFIG[category];
-    const list = activePlayers.map(p => {
-      const value = cfg.field === "badgeCount"
-        ? (badgeCounts.get(p.id) || 0)
-        : ((p as any)[cfg.field] || 0) as number;
-      return { player: p, value };
-    });
-    list.sort((a, b) => b.value - a.value);
-    return list.filter(e => e.value > 0).slice(0, MAX_ENTRIES);
-  }, [activePlayers, category, badgeCounts]);
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageItems = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -179,7 +162,7 @@ export function LeaderboardTab({
       {selectedPlayerId && (
         <PlayerBadgesModal
           playerId={selectedPlayerId}
-          playerName={activePlayers.find(p => p.id === selectedPlayerId)?.name || "Player"}
+          playerName={store.players.find(p => p.id === selectedPlayerId)?.name || "Player"}
           badges={store.badges}
           badgeTypeDefs={store.badgeTypeDefs}
           onClose={() => setSelectedPlayerId(null)}

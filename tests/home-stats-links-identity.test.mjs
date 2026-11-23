@@ -142,8 +142,8 @@ describe("Announcement images", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe("Announcement permissions", () => {
-  it("UI: create/edit/delete only for super admin claim or Club Admin flag", () => {
-    const home = src("components/HomeTab.tsx");
+  it("UI: create/edit/delete only for super admin claim or Club Admin flag (D-16: on Admin Home)", () => {
+    const home = src("components/home/AdminHomeAnnouncements.tsx");
     assert.match(home, /const canPublishAnnouncements = Boolean\(hasAdminClaim \|\| appUser\?\.isClubAdmin\);/);
     for (const fn of ["handlePublishAnnouncement", "handleUpdateAnnouncement", "handleDeleteAnnouncement"]) {
       const i = home.indexOf(`const ${fn}`);
@@ -333,10 +333,11 @@ describe("Club Performance widget", () => {
     assert.match(html, /<span class="sr-only">120<\/span>/);
     assert.match(html, /<span class="sr-only">77<\/span>/);
   });
-  it("Home passes admin capability; Club Statistics tab is easy to find", () => {
-    assert.match(src("components/HomeTab.tsx"), /<ClubPerformanceWidget canManage=\{canPublishAnnouncements\} \/>/);
+  it("D-16: management hint only on Admin Home; Player Home widget is read-only; Club Statistics tab is easy to find", () => {
+    assert.match(src("components/home/AdminHomeAnnouncements.tsx"), /<ClubPerformanceWidget canManage=\{canPublishAnnouncements\} \/>/);
+    assert.match(src("components/HomeTab.tsx"), /<ClubPerformanceWidget \/>/);
     const club = src("components/ClubTab.tsx");
-    const admin = club.slice(club.indexOf("const adminTabs"), club.indexOf("const activeTabs"));
+    const admin = club.slice(club.indexOf("const adminTabs"), club.indexOf("const visibleTabs"));
     const keys = [...admin.matchAll(/key: "(\w+)"/g)].map((m) => m[1]);
     assert.deepEqual(keys.slice(0, 2), ["players", "stats"], "Club Statistics is the second admin tab");
     assert.match(admin, /key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin \|\| isSuperAdmin/);

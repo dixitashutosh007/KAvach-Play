@@ -18,7 +18,8 @@ export type Tab =
   | "shop"
   | "opinion"
   | "design"
-  | "club";
+  | "club"
+  | "badges";
 
 const TAB_TITLES: Record<string, string> = {
   home: "Home",
@@ -35,6 +36,7 @@ const TAB_TITLES: Record<string, string> = {
   settings: "Settings & Access",
   grounds: "Grounds & Venues",
   notifications: "Notifications",
+  badges: "Club Badges",
 };
 
 interface AppHeaderProps {

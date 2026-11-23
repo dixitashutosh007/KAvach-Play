@@ -33,6 +33,7 @@ import {
   ImageIcon,
   Wallet,
   CreditCard,
+  User as UserIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
@@ -59,6 +60,13 @@ import { DEVELOPMENT_FIRESTORE_DATABASE_ID } from "@/lib/database-config";
 import { normalizeIndianMobile } from "@/lib/utils";
 import { resolvePlayerForUser, resolveMyPlayers } from "@/lib/player-identity";
 import { calculatePlayerDues } from "@/lib/player-dues";
+import {
+  getPlayerPrimaryNav,
+  getPlayerNavParent,
+  getPlayerBackLink,
+  resolvePlayerTab,
+  type PlayerPrimaryTab,
+} from "@/lib/player-navigation";
 
 import { useTheme } from "@/hooks/useTheme";
 import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
@@ -71,6 +79,12 @@ import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { useToast } from "@/components/ui/Toast";
+
+const PLAYER_NAV_ICONS: Record<PlayerPrimaryTab, typeof HomeIcon> = {
+  home: HomeIcon,
+  profile: UserIcon,
+  matches: CalendarDays,
+};
 
 // Lazy-loaded tab components — only downloaded when the user navigates to them
 const MatchesTab = dynamic(() => import("@/components/MatchesTab").then(m => ({ default: m.MatchesTab })), { ssr: false });
@@ -87,6 +101,8 @@ const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersT
 const ShopTab = dynamic(() => import("@/components/ShopTab").then(m => ({ default: m.ShopTab })), { ssr: false });
 const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ default: m.OpinionTab })), { ssr: false });
 const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ default: m.DesignTab })), { ssr: false });
+const AdminHomeAnnouncements = dynamic(() => import("@/components/home/AdminHomeAnnouncements").then(m => ({ default: m.AdminHomeAnnouncements })), { ssr: false });
+const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
 const ClubTab = dynamic(() => import("@/components/ClubTab").then(m => ({ default: m.ClubTab })), { ssr: false });
 
 export default function Home() {
@@ -157,6 +173,7 @@ export default function Home() {
     | "opinion"
     | "design"
     | "club"
+    | "badges"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
   const [, setTestRerenderCount] = useState(0);
@@ -314,30 +331,23 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Enforce feature access
+  // Player persona guard (D-16): the Player persona may only show Home, Profile,
+  // Matches and their secondary destinations, and only when the club has the
+  // relevant feature enabled. Admin-only tabs (club, design, settings, grounds,
+  // dues_and_reminders) and disabled features fall back to a primary destination.
   useEffect(() => {
-    if (persona === "player") {
-      let redirect = false;
-      if (activeTab === "home" && !isFeatureEnabled("feed")) redirect = true;
-      if (activeTab === "matches" && !isFeatureEnabled("matches"))
-        redirect = true;
-      if (activeTab === "leaderboard" && !isFeatureEnabled("leaderboard"))
-        redirect = true;
-      if (activeTab === "studio" && !isFeatureEnabled("studio"))
-        redirect = true;
-      if (activeTab === "shop" && !isFeatureEnabled("shop"))
-        redirect = true;
-
-      if (redirect) {
-        setTimeout(() => setActiveTab("profile"), 0);
-      }
+    if (persona !== "player") return;
+    const resolved = resolvePlayerTab(activeTab, (f) => isFeatureEnabled(f));
+    if (resolved !== activeTab) {
+      setTimeout(() => setActiveTab(resolved), 0);
     }
-  }, [persona, activeTab, isFeatureEnabled]);
+  }, [persona, activeTab, isFeatureEnabled, setActiveTab]);
 
   // Lazy Firestore subscriptions — only start the expensive payments and
   // otherFees collectionGroup listeners when the user actually opens a tab
   // that consumes them. Previously these ran for every logged-in user on
   // login. Idempotent: calling ensurePayments twice does nothing.
+  const scopedPersonaRef = useRef<"player" | "admin">(persona);
   const PAYMENT_TABS = new Set([
     "home",
     "matches",
@@ -357,7 +367,7 @@ export default function Home() {
   const STATS_TABS = new Set(["club"]); // Home no longer shows the performance summary
   const MERCH_TABS = new Set(["club"]);
   const POLL_TABS = new Set(["club"]);
-  const BADGE_TABS = new Set(["club", "home", "profile"]);
+  const BADGE_TABS = new Set(["club", "home", "profile", "badges"]);
   const TOURNAMENT_TABS = new Set(["matches"]);
   const SUB_PLAN_TABS = new Set(["studio", "club"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
@@ -389,7 +399,16 @@ export default function Home() {
 
     // Players load only their own payment records. Records are keyed by the PLAYER
     // id, which differs from the login uid for most linked players (Google or phone).
-    const playerScope = isAdminUser ? undefined : scopedPlayerId || user?.uid;
+    // D-16: an admin in Player persona is scoped exactly like a regular player, so
+    // club-wide financial records are only loaded in Admin persona.
+    if (scopedPersonaRef.current !== persona) {
+      // Re-subscribe with the scope of the new persona (subscriptions are keyed
+      // by domain, not scope, so a stale scope would otherwise persist).
+      store.detachDomain?.("allPayments");
+      store.detachDomain?.("allOtherFees");
+      scopedPersonaRef.current = persona;
+    }
+    const playerScope = isAdminUser && persona === "admin" ? undefined : scopedPlayerId || user?.uid;
     if (wantsAllPayments) store.ensurePayments?.(playerScope);
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
     if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
@@ -906,95 +925,30 @@ export default function Home() {
 
               {!effectiveIsAdminMode ? (
                 <>
-                  {isFeatureEnabled("feed") && (
-                    <button
-                      onClick={() => setActiveTab("home")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "home"
-                          ? "bg-accent text-text-accent"
-                          : "text-text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <HomeIcon className="w-4.5 h-4.5 shrink-0" /> Home
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  {isFeatureEnabled("matches") && (
-                    <button
-                      onClick={() => setActiveTab("matches")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "matches"
-                          ? "bg-accent text-text-accent"
-                          : "text-text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <CalendarDays className="w-4.5 h-4.5 shrink-0" /> Matches
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => setActiveTab("finance")}
-                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                      activeTab === "finance" || activeTab === "dues_and_reminders"
-                        ? "bg-accent text-text-accent"
-                        : "text-text-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Wallet className="w-4.5 h-4.5 shrink-0" /> Finance
-                    </span>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab("players")}
-                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                      activeTab === "players"
-                        ? "bg-accent text-text-accent"
-                        : "text-text-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Users className="w-4.5 h-4.5 shrink-0" /> Players
-                    </span>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                  </button>
-
-                  {isFeatureEnabled("leaderboard") && (
-                    <button
-                      onClick={() => setActiveTab("leaderboard")}
-                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                        activeTab === "leaderboard"
-                          ? "bg-accent text-text-accent"
-                          : "text-text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <Trophy className="w-4.5 h-4.5 shrink-0" /> Performance
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => setActiveTab("club")}
-                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                      activeTab === "club"
-                        ? "bg-accent text-text-accent"
-                        : "text-text-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Users className="w-4.5 h-4.5 shrink-0" /> Club
-                    </span>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
-                  </button>
+                  {/* Player Primary Navigation (D-16): exactly Home, Profile,
+                      Matches — identical items and order to the mobile bottom nav. */}
+                  {getPlayerPrimaryNav((f) => isFeatureEnabled(f)).map(({ tab, label }) => {
+                    const IconComp = PLAYER_NAV_ICONS[tab];
+                    const isActive = getPlayerNavParent(activeTab) === tab;
+                    return (
+                      <button
+                        key={tab}
+                        data-testid={`sidebar-player-${tab}`}
+                        onClick={() => setActiveTab(tab)}
+                        aria-current={isActive ? "page" : undefined}
+                        className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                          isActive
+                            ? "bg-accent text-text-accent"
+                            : "text-text-secondary hover:bg-surface-hover"
+                        }`}
+                      >
+                        <span className="flex items-center gap-3">
+                          <IconComp className="w-4.5 h-4.5 shrink-0" /> {label}
+                        </span>
+                        <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    );
+                  })}
                 </>
               ) : (
                 <div className="space-y-1">
@@ -1195,6 +1149,10 @@ export default function Home() {
               </div>
             ) : !effectiveIsAdminMode ? (
               <AnimatePresence mode="wait">
+                {/* Player persona (D-16). Admin privileges are deliberately not
+                    passed into any player screen: every component below receives
+                    player-only flags, so a Super Admin here sees what a regular
+                    player sees. Admin capabilities live in Admin persona only. */}
                 <motion.div
                   key={activeTab}
                   initial={{ opacity: 0, y: 12 }}
@@ -1202,10 +1160,30 @@ export default function Home() {
                   exit={{ opacity: 0, y: -12 }}
                   transition={{ duration: 0.2, ease: "easeInOut" }}
                 >
+                  {(() => {
+                    const back = getPlayerBackLink(activeTab);
+                    if (!back) return null;
+                    return (
+                      <div className="mb-4 flex items-center gap-2" data-testid="player-back-bar">
+                        <button
+                          type="button"
+                          data-testid="player-back-button"
+                          onClick={() => setActiveTab(back.parent)}
+                          className="min-h-[44px] inline-flex items-center gap-1.5 pl-2 pr-3 rounded-xl text-sm font-bold text-text-secondary hover:text-text-primary hover:bg-surface-hover transition cursor-pointer"
+                          aria-label={`Back to ${back.parentLabel}`}
+                        >
+                          <ArrowRight className="w-4 h-4 rotate-180" aria-hidden="true" />
+                          {back.parentLabel}
+                        </button>
+                        <span className="text-text-muted" aria-hidden="true">/</span>
+                        <h2 className="text-sm font-bold text-text-primary truncate">{back.label}</h2>
+                      </div>
+                    );
+                  })()}
                   {activeTab === "home" && (
                     <HomeTab
                       store={store}
-                      isAdmin={isAdmin}
+                      isAdmin={false}
                       currentUserId={user.uid}
                       currentUserName={player?.name || user?.displayName || ""}
                       onNavigateToMatch={(matchId) => setActiveTab("matches", `match_${matchId}`)}
@@ -1216,16 +1194,19 @@ export default function Home() {
                   {activeTab === "matches" && (
                     <MatchesTab
                       store={store}
-                      persona={persona}
-                      isMatchAdmin={isMatchAdmin || isSuperAdmin || isClubAdmin}
-                      isSuperAdmin={isSuperAdmin}
+                      persona="player"
+                      isMatchAdmin={false}
+                      isSuperAdmin={false}
                       defaultAction={tabAction}
                     />
+                  )}
+                  {activeTab === "profile" && (
+                    <ProfileTab store={store} persona="player" onNavigate={(t) => setActiveTab(t)} />
                   )}
                   {activeTab === "finance" && (
                     <FinanceTab
                       store={store}
-                      persona={persona}
+                      persona="player"
                       isFinanceAdmin={false}
                       isSuperAdmin={false}
                     />
@@ -1233,37 +1214,30 @@ export default function Home() {
                   {activeTab === "players" && (
                     <PlayersTab
                       store={store}
-                      persona={persona}
+                      persona="player"
                       isStudioAdmin={false}
                     />
                   )}
                   {activeTab === "leaderboard" && (
-                    <LeaderboardTab store={store} persona={persona} />
+                    <LeaderboardTab store={store} persona="player" />
+                  )}
+                  {activeTab === "badges" && (
+                    <BadgesTab
+                      store={store}
+                      isClubAdmin={false}
+                      currentUserId={user?.uid || ""}
+                      currentUserName={player?.name || user?.displayName || "Player"}
+                    />
                   )}
                   {activeTab === "studio" && <StudioTab store={store} />}
                   {activeTab === "shop" && (
-                    <ShopTab store={store} persona={persona} isAdmin={false} />
+                    <ShopTab store={store} persona="player" isAdmin={false} />
                   )}
                   {activeTab === "opinion" && (
-                    <OpinionTab store={store} persona={persona} />
+                    <OpinionTab store={store} persona="player" />
                   )}
-                  {activeTab === "design" && canDesign && (
-                    <DesignTab store={store} />
-                  )}
-                  {activeTab === "profile" && <ProfileTab store={store} />}
-                  {activeTab === "club" && (
-                    <ClubTab
-                      store={store}
-                      persona={persona}
-                      canDesign={canDesign}
-                      isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
-                      isClubAdmin={isClubAdmin || isSuperAdmin}
-                      isSuperAdmin={isSuperAdmin}
-                      currentUserId={user?.uid || ""}
-                      currentUserName={player?.name || user?.displayName || "Player"}
-                      isFeatureEnabled={isFeatureEnabled}
-                      defaultSubTab={tabAction as any}
-                    />
+                  {activeTab === "notifications" && (
+                    <NotificationsTab store={store} persona="player" />
                   )}
                 </motion.div>
               </AnimatePresence>
@@ -1282,15 +1256,25 @@ export default function Home() {
                   >
                     {activeTab === "home" && (
                       isSuperAdmin || isClubAdmin ? (
-                        <AdminDashboard
-                          store={store}
-                          setActiveTab={setActiveTab}
-                          isSuperAdmin={isSuperAdmin}
-                          isFinanceAdmin={isFinanceAdmin}
-                          isMatchAdmin={isMatchAdmin}
-                          isStudioAdmin={isStudioAdmin}
-                          isClubAdmin={isClubAdmin}
-                        />
+                        <div className="space-y-6">
+                          <AdminDashboard
+                            store={store}
+                            setActiveTab={setActiveTab}
+                            isSuperAdmin={isSuperAdmin}
+                            isFinanceAdmin={isFinanceAdmin}
+                            isMatchAdmin={isMatchAdmin}
+                            isStudioAdmin={isStudioAdmin}
+                            isClubAdmin={isClubAdmin}
+                          />
+                          {/* D-16: announcement publishing/editing and Club
+                              Performance management moved here from Player Home.
+                              Same audience as before: Super Admin claim or Club Admin. */}
+                          <AdminHomeAnnouncements
+                            store={store}
+                            currentUserId={user.uid}
+                            currentUserName={player?.name || user?.displayName || ""}
+                          />
+                        </div>
                       ) : (
                         <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
                           <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>

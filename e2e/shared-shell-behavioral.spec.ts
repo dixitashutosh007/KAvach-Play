@@ -13,7 +13,7 @@ test.beforeAll(async () => {
 
 test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suite", () => {
   // ── 1. Player Navigation Workflow ──────────────────────────────────────────
-  test("1. Player navigation renders 5 approved items, changes screens, opens drawer, and routes avatar to profile", async ({
+  test("1. (D-16) Player navigation renders exactly Home, Profile, Matches, changes screens, uses Home entry points, and routes avatar to profile", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -30,42 +30,27 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     const avatarBtn = page.locator('[data-testid="header-profile-avatar"]');
     await expect(avatarBtn).toBeVisible();
 
-    // Verify 5 approved primary items in bottom nav
+    // Exactly 3 primary items, in order, and no More
     const playerNav = page.locator('[data-testid="player-mobile-bottom-nav"]');
     await expect(playerNav).toBeVisible();
-    await expect(playerNav.getByRole("button", { name: "Home", exact: true })).toBeVisible();
-    await expect(playerNav.getByRole("button", { name: "Matches", exact: true })).toBeVisible();
-    await expect(playerNav.getByRole("button", { name: "Finance", exact: true })).toBeVisible();
-    await expect(playerNav.getByRole("button", { name: "Players", exact: true })).toBeVisible();
-    await expect(playerNav.getByRole("button", { name: "More", exact: true })).toBeVisible();
-
-    // Verify profile is strictly not in bottom nav
-    await expect(playerNav.getByRole("button", { name: "Profile" })).toBeHidden();
+    expect(await playerNav.locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Profile", "Matches"]);
+    await expect(playerNav.getByRole("button", { name: "More" })).toHaveCount(0);
 
     // Navigate to Matches
     await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Match Schedule/i }).first()).toBeVisible({ timeout: 5000 });
 
-    // Navigate to Finance
-    await playerNav.getByRole("button", { name: "Finance", exact: true }).click();
+    // Navigate to Profile (payments live here)
+    await playerNav.getByRole("button", { name: "Profile", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /Personal Profile/i })).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole("heading", { name: /My Dues & Payments/i })).toBeVisible({ timeout: 5000 });
 
-    // Navigate to Players roster
-    await playerNav.getByRole("button", { name: "Players", exact: true }).click();
+    // Directory is a Home entry point with a contextual back link
+    await playerNav.getByRole("button", { name: "Home", exact: true }).click();
+    await page.locator('[data-testid="home-quick-players"]').click();
     await expect(page.getByPlaceholder(/Search players/i)).toBeVisible({ timeout: 5000 });
-
-    // Open More drawer and select a destination
-    await playerNav.getByRole("button", { name: "More", exact: true }).click();
-    const sheet = page.locator('[data-testid="more-drawer-sheet"]');
-    await expect(sheet).toBeVisible();
-
-    // Select Club Details from drawer
-    const clubItem = sheet.locator('[data-testid="more-item-club"]');
-    await expect(clubItem).toBeVisible();
-    await clubItem.click();
-
-    // Verify drawer closed
-    await expect(sheet).toBeHidden();
+    await page.locator('[data-testid="player-back-button"]').click();
+    await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible();
 
     // Verify Header Profile Avatar navigation
     await avatarBtn.click();
@@ -138,19 +123,24 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
   });
 
   // ── 3. Modal Behaviour: Focus Trap, Scroll Lock, Escape, and Rerender ────────
-  test("3. MoreDrawer implements focus trap, scroll lock, Escape dismissal, and preserves state across rerenders", async ({
+  test("3. MoreDrawer (Admin persona only, D-16) implements focus trap, scroll lock, Escape dismissal, and preserves state across rerenders", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await injectSyntheticSession(page, {
-      uid: "player-gamma",
-      role: "player",
+      uid: "admin-gamma",
+      role: "admin",
+      isSuperAdmin: true,
     });
 
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    const playerNav = page.locator('[data-testid="player-mobile-bottom-nav"]');
+    // The Player persona has no More drawer; it exists only in Admin persona.
+    await expect(page.locator('[data-testid="player-mobile-bottom-nav"]').getByRole("button", { name: "More" })).toHaveCount(0);
+    await page.locator('[data-testid="header-persona-toggle"]').click();
+    const playerNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
+    await expect(playerNav).toBeVisible({ timeout: 10000 });
     const moreBtn = playerNav.getByRole("button", { name: "More", exact: true });
 
     // Focus and click More button
@@ -178,7 +168,7 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     await expect(closeBtn).toBeFocused();
 
     // User moves focus to a specific item inside the drawer
-    const targetDrawerControl = sheet.locator('[data-testid="more-item-club"]');
+    const targetDrawerControl = sheet.locator('[data-testid="more-item-settings"]');
     await targetDrawerControl.focus();
     await expect(targetDrawerControl).toBeFocused();
 

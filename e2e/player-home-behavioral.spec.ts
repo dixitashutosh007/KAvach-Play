@@ -162,7 +162,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByText(/Availability updated: Playing/i)).toBeVisible({ timeout: 4000 });
   });
 
-  test("2C. Preserves legitimate administrator match access and search visibility for admin users", async ({
+  test("2C. (D-16) Admin in Player persona gets regular-player match visibility; Admin persona keeps full access", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -179,15 +179,21 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     const header = page.locator('[data-testid="player-home-header"]');
     const searchInput = header.getByPlaceholder(/Search matches, announcements/i);
 
-    // Admin searches for squad-restricted match -> visible
+    // Player persona: squad-restricted and tentative fixtures are hidden, exactly as for a regular player
     await searchInput.fill("Jaipur");
     await expect(page.getByText(/Search Results for “Jaipur”/i)).toBeVisible();
-    await expect(page.getByText(/vs Jaipur Strikers/i)).toBeVisible();
-
-    // Admin searches for tentative match -> visible
+    await expect(page.getByText(/vs Jaipur Strikers/i)).toBeHidden();
     await searchInput.fill("Tentative");
     await expect(page.getByText(/Search Results for “Tentative”/i)).toBeVisible();
-    await expect(page.getByText(/vs Tentative Challengers/i)).toBeVisible();
+    await expect(page.getByText(/vs Tentative Challengers/i)).toBeHidden();
+
+    // Admin persona: Match Centre still lists the restricted and tentative fixtures
+    await page.locator('[data-testid="header-persona-toggle"]').click();
+    await expect(page.locator('[data-testid="admin-mobile-bottom-nav"]')).toBeVisible({ timeout: 10000 });
+    await page.locator('[data-testid="admin-mobile-bottom-nav"]').getByRole("button", { name: "Match Centre" }).click();
+    await page.getByText(/Scheduled later/i).first().click();
+    await expect(page.getByText(/Jaipur Strikers/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Tentative Challengers/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   // ── 3. Announcements, Birthdays, and Feed Preview ─────────────────────────
@@ -472,7 +478,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByRole("heading", { name: /vs Delhi Challengers/i })).toBeVisible();
   });
 
-  test("4H. Guarded match navigation: administrator navigates to restricted and tentative matches", async ({
+  test("4H. (D-16) Guarded match navigation: admin in Player persona cannot open restricted matches; Admin persona can", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -489,13 +495,16 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     const header = page.locator('[data-testid="player-home-header"]');
     const searchInput = header.getByPlaceholder(/Search matches, announcements/i);
 
-    // Admin navigates to squad-restricted fixture from search
+    // Player persona: the restricted fixture is not offered from search
     await searchInput.fill("Jaipur");
-    const restrictedResult = page.locator('[data-testid="search-result-match-match-ineligible-squad"]');
-    await expect(restrictedResult).toBeVisible();
-    await restrictedResult.click();
-    await expect(page.getByRole("button", { name: /Back/i })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("heading", { name: /vs Jaipur Strikers/i })).toBeVisible();
+    await expect(page.getByText(/Search Results for “Jaipur”/i)).toBeVisible();
+    await expect(page.locator('[data-testid="search-result-match-match-ineligible-squad"]')).toHaveCount(0);
+
+    // Admin persona: the fixture is reachable in Match Centre
+    await page.locator('[data-testid="header-persona-toggle"]').click();
+    await page.locator('[data-testid="admin-mobile-bottom-nav"]').getByRole("button", { name: "Match Centre" }).click();
+    await page.getByText(/Scheduled later/i).first().click();
+    await expect(page.getByText(/Jaipur Strikers/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   // ── 5. Responsive Viewport Verification & Screenshots (5 Viewports) ────────
