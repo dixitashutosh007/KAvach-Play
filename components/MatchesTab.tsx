@@ -35,6 +35,8 @@ import {
   Info,
   LayoutList,
   Table2,
+  ArrowLeft,
+  CalendarDays,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
@@ -66,7 +68,11 @@ import { PlayerMatchCenter } from "./matches/PlayerMatchCenter";
 import { MatchesLoadError } from "./matches/MatchesLoadError";
 import { MatchCardHeader, MatchCardTopBar, MatchCardStackedBody, MatchCornerTab } from "./matches/MatchCardHeader";
 import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
-import { MATCH_TYPES, groundFeeForMatchType } from "@/lib/match-category";
+import { MATCH_TYPES } from "@/lib/match-category";
+import { DEFAULT_MARGIN_PCT, clampMargin, computeMatchFee, resolveGroundFee } from "@/lib/match-fee";
+import { MatchDatePicker } from "./matches/MatchDatePicker";
+import { MatchFeeCalculator } from "./matches/MatchFeeCalculator";
+import { ChoiceGroup, FIELD_CLASS, FieldLabel, FormSection } from "./matches/MatchFormParts";
 import { AdminMatchDateList } from "./matches/AdminMatchDateList";
 import { MatchPaymentPanel } from "./matches/MatchPaymentPanel";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
@@ -167,10 +173,12 @@ export function MatchesTab({
     }
   }, [defaultAction, store.matches, store.tournaments]);
 
+  // Default per-player fee for a new (Practice) match on the first ground:
+  // the existing rule, round(practiceFee / 12 × 1.05) — see lib/match-fee.
   const getInitialFee = () => {
      const ground = store.grounds[0];
      if (ground && ground.practiceFee) {
-        return Math.round((ground.practiceFee / 12) * 1.05);
+        return computeMatchFee(ground.practiceFee, DEFAULT_MARGIN_PCT).feePerPlayer;
      }
      return "";
   };
@@ -202,6 +210,10 @@ export function MatchesTab({
     tournamentId: "",
   });
 
+  // Margin for the fee calculator. A form control only (the match stores just
+  // the resulting per-player fee, as before); starts at the 5% default.
+  const [feeMarginPct, setFeeMarginPct] = useState<number>(DEFAULT_MARGIN_PCT);
+
   const { user, hasAdminClaim } = useAuth();
   const currentUserObj = store.appUsers.find(u => u.id === user?.uid);
   const currentUserName = currentUserObj?.name || "Admin";
@@ -231,6 +243,7 @@ export function MatchesTab({
   };
 
   const resetForm = () => {
+    setFeeMarginPct(DEFAULT_MARGIN_PCT);
     setFormData({
       groundId: store.grounds[0]?.id || "",
       format: "T30",
@@ -258,6 +271,9 @@ export function MatchesTab({
   };
 
   const startEdit = (match: Match) => {
+    // The saved fee is kept as-is; the margin control only recalculates when
+    // the admin changes it (no margin is stored on existing matches).
+    setFeeMarginPct(DEFAULT_MARGIN_PCT);
     setFormData({
       groundId: match.groundId,
       format: match.format,
@@ -287,6 +303,7 @@ export function MatchesTab({
   };
 
   const startDuplicate = (match: Match) => {
+    setFeeMarginPct(DEFAULT_MARGIN_PCT);
     setFormData({
       groundId: match.groundId,
       format: match.format,
@@ -354,607 +371,370 @@ export function MatchesTab({
   // clicking Edit inside a match forced the screen to close + open
   // the modal over the parent list, so Back landed the user on the
   // list instead of the match they were reviewing.
+  // Fee context for the calculator: the ground / tournament per-match fee the
+  // existing rule uses (see lib/match-fee).
+  const formGround = store.grounds.find((g) => g.id === formData.groundId);
+  const formTournament = formData.tournamentId
+    ? store.tournaments.find((t) => t.id === formData.tournamentId)
+    : undefined;
+  const formFeeSource = resolveGroundFee(formGround, formData.matchType, formTournament);
+  /** Recalculated standard fee for a candidate form state (keeps the current fee when no ground fee is configured). */
+  const recalcFee = (next: typeof formData, marginPct: number): number | "" => {
+    const ground = store.grounds.find((g) => g.id === next.groundId);
+    const tournament = next.tournamentId ? store.tournaments.find((t) => t.id === next.tournamentId) : undefined;
+    const { amount } = resolveGroundFee(ground, next.matchType, tournament);
+    return amount > 0 ? computeMatchFee(amount, marginPct).feePerPlayer : next.fee;
+  };
+  const isPresetTime = formData.time === "07:00" || formData.time === "12:00";
+  const closeMatchForm = () => {
+    setIsAdding(false);
+    setEditingId(null);
+    resetForm();
+  };
+
+  // Edit-match modal is hoisted so both the matches list AND the
+  // per-match screen (below early-return) can render it. Previously,
+  // clicking Edit inside a match forced the screen to close + open
+  // the modal over the parent list, so Back landed the user on the
+  // list instead of the match they were reviewing.
   const editMatchModal = isAdmin && isAdding ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-md my-8">
-        <div className="sticky top-0 bg-surface p-4 flex justify-between items-center rounded-t-xl z-10 border-b border-border">
-          <h2 className="text-xl font-bold text-text-primary">{editingId ? "Edit Match" : "Add Match"}</h2>
-          <button type="button" onClick={() => { setIsAdding(false); setEditingId(null); resetForm(); }} className="text-text-muted hover:text-text-primary"><X className="w-6 h-6"/></button>
+    <div
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="match-form-title"
+    >
+      <div className="relative w-full sm:max-w-lg max-h-[100dvh] sm:max-h-[92vh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl bg-background shadow-xl">
+        <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-2.5 bg-surface border-b border-border">
+          <button
+            type="button"
+            onClick={closeMatchForm}
+            aria-label="Close"
+            className="w-11 h-11 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-hover hover:text-text-primary cursor-pointer"
+          >
+            <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+          </button>
+          <h2 id="match-form-title" className="text-lg font-black font-heading text-text-primary">
+            {editingId ? "Edit Match" : "Add Match"}
+          </h2>
         </div>
-        <form
-          onSubmit={handleSubmit}
-          data-testid="match-form"
-          className="bg-surface p-4 rounded-b-xl space-y-3 max-h-[80vh] overflow-y-auto custom-scrollbar"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Tentative block only makes sense for FUTURE matches — no
-                point marking a past match tentative. Today's match is
-                also treated as past for this check (you've either
-                played it or you're about to; tentative is off the table). */}
-            {(() => {
-              const dbDate = inputToDbDate(formData.date);
-              // dbDate is YYYY-MM-DD after conversion.
-              const parts = dbDate.split("-");
-              let matchDay: Date | null = null;
-              if (parts.length === 3) {
-                matchDay = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
-              }
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const isFuture = !!matchDay && matchDay.getTime() > today.getTime();
-              if (!isFuture) return null;
-              return (
-                <div className="col-span-2 flex items-center gap-2 bg-orange-500/10 p-3 rounded-lg border border-orange-500/30">
-                  <input
-                    type="checkbox"
-                    id="tentative-block"
-                    checked={formData.isTentative || false}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      isTentative: e.target.checked,
-                      tentativelyBlockedBy: e.target.checked ? currentUserName : ""
-                    })}
-                    className="accent-orange-500 w-4 h-4 cursor-pointer"
-                  />
-                  <label htmlFor="tentative-block" className="text-orange-400 font-bold text-sm cursor-pointer select-none">
-                    Tentatively Block Slot
-                  </label>
-                </div>
-              );
-            })()}
-            {/* Tournament dropdown is always shown — admins may want to
-                link a Practice or friendly match to a tournament for
-                reporting even if it isn't formally counted as one. */}
-            <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Tournament{" "}
-                <span className="text-text-muted normal-case tracking-normal font-normal text-[10px]">
-                  (optional — autofills ground / jersey / fee)
-                </span>
-              </label>
-                <select
-                  value={formData.tournamentId || ""}
-                  onChange={(e) => {
-                    const tId = e.target.value;
-                    if (!tId) {
-                      // Cleared — leave everything else alone; admin
-                      // may want to keep the autofilled values.
-                      setFormData({ ...formData, tournamentId: "" });
-                      return;
-                    }
-                    const t = store.tournaments.find((x) => x.id === tId);
-                    if (!t) {
-                      setFormData({ ...formData, tournamentId: tId });
-                      return;
-                    }
-                    setFormData({
-                      ...formData,
-                      tournamentId: tId,
-                      groundId: t.groundId,
-                      jerseyColor: t.jerseyColor,
-                      format: t.format || "T30",
-                      fee: t.perPlayerFee,
-                    });
-                  }}
-                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
-                >
-                  <option value="">— None (fill manually) —</option>
-                  {[...store.tournaments]
-                    .filter(
-                      (t) => t.status === "Ongoing" || t.status === "Upcoming",
-                    )
-                    .sort((a, b) => {
-                      // Ongoing first, then Upcoming, then by name
-                      const r =
-                        (a.status === "Ongoing" ? 0 : 1) -
-                        (b.status === "Ongoing" ? 0 : 1);
-                      if (r !== 0) return r;
-                      return (a.name || "").localeCompare(b.name || "");
-                    })
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} · {t.status} · ₹{t.perPlayerFee}/player
-                      </option>
-                    ))}
-                </select>
-            </div>
-            <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Select Ground <span className="text-red-400">*</span>
-              </label>
-              <select
-                required
-                value={formData.groundId}
-                onChange={(e) => {
-                  const newGroundId = e.target.value;
-                  const ground = store.grounds.find(g => g.id === newGroundId);
-                  let newFee = formData.fee;
-                  if (ground) {
-                    const groundFee = groundFeeForMatchType(ground, formData.matchType);
-                    if (groundFee > 0) {
-                      newFee = Math.round((groundFee / 12) * 1.05);
-                    }
-                  }
-                  setFormData({ ...formData, groundId: newGroundId, fee: newFee });
-                }}
-                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
-              >
-                <option value="" disabled>
-                  Select a ground
-                </option>
-                {store.grounds.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Opponent Team <span className="text-red-400">*</span>
-              </label>
+        <form onSubmit={handleSubmit} data-testid="match-form" className="p-3 sm:p-4 flex flex-col gap-4">
+          {/* ── A. Match basics ───────────────────────────────────────── */}
+          <FormSection icon={<CalendarDays className="w-4 h-4" aria-hidden="true" />} title="Match Details" testId="match-form-basics">
+            <div>
+              <FieldLabel htmlFor="match-opponent" required>Opponent Team</FieldLabel>
               <input
+                id="match-opponent"
                 required
                 type="text"
                 value={formData.opponent}
-                onChange={(e) =>
-                  setFormData({ ...formData, opponent: e.target.value })
-                }
-                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                onChange={(e) => setFormData({ ...formData, opponent: e.target.value })}
+                className={FIELD_CLASS}
                 placeholder="e.g. Royal Challengers"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Date <span className="text-red-400">*</span>
-              </label>
-              <input
-                required
-                type="date"
+              <FieldLabel required>Date</FieldLabel>
+              <MatchDatePicker
                 value={inputToDbDate(formData.date)}
-                onChange={(e) =>
-                  setFormData({ ...formData, date: e.target.value })
-                }
-                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                onChange={(key) => setFormData({ ...formData, date: key })}
               />
             </div>
+
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Time <span className="text-red-400">*</span>
-              </label>
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
+              <FieldLabel required>Time</FieldLabel>
+              {/* 7:00 AM and 12:00 PM are the club's usual slots; Other opens a time picker. */}
+              <div role="radiogroup" aria-label="Match time" className="flex gap-2" data-testid="match-time-presets">
+                {([
+                  ["07:00", "7:00 AM"],
+                  ["12:00", "12:00 PM"],
+                ] as const).map(([t, label]) => (
                   <button
+                    key={t}
                     type="button"
-                    onClick={() => setFormData({ ...formData, time: "07:00" })}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
-                      formData.time === "07:00"
-                        ? "bg-accent/20 border-accent/50 text-accent"
-                        : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
+                    role="radio"
+                    aria-checked={formData.time === t}
+                    onClick={() => setFormData({ ...formData, time: t })}
+                    className={`flex-1 min-h-[44px] rounded-xl border text-sm font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                      formData.time === t ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
                     }`}
                   >
-                    07:00 AM
+                    {label}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, time: "12:00" })}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
-                      formData.time === "12:00"
-                        ? "bg-accent/20 border-accent/50 text-accent"
-                        : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    12:00 PM
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, time: formData.time === "07:00" || formData.time === "12:00" ? "" : formData.time })}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition ${
-                      formData.time !== "07:00" && formData.time !== "12:00"
-                        ? "bg-accent/20 border-accent/50 text-accent"
-                        : "bg-surface-hover border-border text-text-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    Other
-                  </button>
-                </div>
-                {formData.time !== "07:00" && formData.time !== "12:00" && (
+                ))}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!isPresetTime}
+                  onClick={() => setFormData({ ...formData, time: isPresetTime ? "" : formData.time })}
+                  className={`flex-1 min-h-[44px] rounded-xl border text-sm font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                    !isPresetTime ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
+                  }`}
+                >
+                  Other
+                </button>
+              </div>
+              {!isPresetTime && (
                 <input
-                  required={formData.time !== "07:00" && formData.time !== "12:00"}
+                  required
                   type="time"
+                  aria-label="Custom match time"
+                  data-testid="match-time-input"
                   value={formData.time}
-                  onChange={(e) =>
-                    setFormData({ ...formData, time: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none [&::-webkit-calendar-picker-indicator]:invert"
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  className={`${FIELD_CLASS} mt-2`}
                 />
-                )}
-              </div>
+              )}
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Max Squad Size <span className="text-red-400">*</span>
-              </label>
-              <input
-                required
-                type="number"
-                min="1"
-                value={formData.maxSquadSize}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    maxSquadSize: parseInt(e.target.value) || 12,
-                  })
-                }
-                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-              />
+              <FieldLabel htmlFor="match-ground" required>Ground</FieldLabel>
+              <div className="relative">
+                <MapPin className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand" aria-hidden="true" />
+                <select
+                  id="match-ground"
+                  required
+                  value={formData.groundId}
+                  onChange={(e) => {
+                    const next = { ...formData, groundId: e.target.value };
+                    setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
+                  }}
+                  className={`${FIELD_CLASS} appearance-none pl-9 pr-9`}
+                >
+                  <option value="" disabled>Select a ground</option>
+                  {store.grounds.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" aria-hidden="true" />
+              </div>
             </div>
+          </FormSection>
 
+          {/* ── B. Match configuration ────────────────────────────────── */}
+          <FormSection icon={<Shield className="w-4 h-4" aria-hidden="true" />} title="Match Configuration" testId="match-form-config">
             <div>
-              <label className="mb-1 flex justify-between text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                <span>Match Fee (₹)</span><span className="text-text-muted normal-case tracking-normal font-normal text-[10px]">(Optional)</span>
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.fee}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    fee: e.target.value === "" ? "" : parseInt(e.target.value) || 0,
-                  })
-                }
-                className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+              <FieldLabel required>Format</FieldLabel>
+              <ChoiceGroup
+                name="Format"
+                options={["T20", "T30", "Other"] as const}
+                value={formData.format}
+                onChange={(format) => setFormData({ ...formData, format })}
+                testId="match-format-choice"
               />
             </div>
+            <div>
+              <FieldLabel required>Match Type</FieldLabel>
+              <ChoiceGroup
+                name="Match Type"
+                options={MATCH_TYPES}
+                value={formData.matchType}
+                onChange={(matchType) => {
+                  // Switching away from Tournament wipes any linked
+                  // tournamentId — otherwise a Practice match would carry a
+                  // stale tournament link.
+                  const next = {
+                    ...formData,
+                    matchType,
+                    tournamentId: matchType === "Tournament" ? formData.tournamentId : "",
+                  };
+                  setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
+                }}
+                testId="match-type-choice"
+              />
+            </div>
+            {/* Tournament link: optional (autofills ground / jersey / format /
+                fee from the tournament, exactly as before). */}
+            <div>
+              <FieldLabel htmlFor="match-tournament">Tournament <span className="font-normal text-text-muted">(optional)</span></FieldLabel>
+              <select
+                id="match-tournament"
+                value={formData.tournamentId || ""}
+                onChange={(e) => {
+                  const tId = e.target.value;
+                  if (!tId) {
+                    setFormData({ ...formData, tournamentId: "" });
+                    return;
+                  }
+                  const t = store.tournaments.find((x) => x.id === tId);
+                  if (!t) {
+                    setFormData({ ...formData, tournamentId: tId });
+                    return;
+                  }
+                  setFormData({
+                    ...formData,
+                    tournamentId: tId,
+                    groundId: t.groundId,
+                    jerseyColor: t.jerseyColor,
+                    format: t.format || "T30",
+                    fee: t.perPlayerFee,
+                  });
+                }}
+                className={FIELD_CLASS}
+              >
+                <option value="">None</option>
+                {[...store.tournaments]
+                  .filter((t) => t.status === "Ongoing" || t.status === "Upcoming")
+                  .sort((a, b) => {
+                    const r = (a.status === "Ongoing" ? 0 : 1) - (b.status === "Ongoing" ? 0 : 1);
+                    if (r !== 0) return r;
+                    return (a.name || "").localeCompare(b.name || "");
+                  })
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} · {t.status} · ₹{t.perPlayerFee}/player
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel htmlFor="match-squad-size" required>Max Squad Size</FieldLabel>
+                <input
+                  id="match-squad-size"
+                  required
+                  type="number"
+                  min="1"
+                  inputMode="numeric"
+                  value={formData.maxSquadSize}
+                  onChange={(e) => setFormData({ ...formData, maxSquadSize: parseInt(e.target.value) || 12 })}
+                  className={FIELD_CLASS}
+                />
+              </div>
+              <div>
+                <FieldLabel required>Jersey Colour</FieldLabel>
+                <ChoiceGroup
+                  name="Jersey Colour"
+                  options={["Scarlet Red", "Whites"] as const}
+                  value={formData.jerseyColor}
+                  onChange={(jerseyColor) => setFormData({ ...formData, jerseyColor })}
+                  testId="match-jersey-choice"
+                  renderLabel={(c) => (
+                    <>
+                      <span className={`w-3 h-3 rounded-full shrink-0 ${c === "Scarlet Red" ? "bg-scarlet" : "bg-[#e5e5e5] border border-slate-300"}`} aria-hidden="true" />
+                      <span className="truncate">{c === "Scarlet Red" ? "Red" : "Whites"}</span>
+                    </>
+                  )}
+                />
+              </div>
+            </div>
+          </FormSection>
 
-            <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Format <span className="text-red-400">*</span>
+          {/* ── C. Match fee (compact, collapsible) ───────────────────── */}
+          <MatchFeeCalculator
+            groundFeePerMatch={formFeeSource.amount}
+            source={formFeeSource.source}
+            marginPct={feeMarginPct}
+            onMarginChange={(pct) => {
+              const margin = clampMargin(pct);
+              setFeeMarginPct(margin);
+              setFormData({ ...formData, fee: recalcFee(formData, margin) });
+            }}
+            fee={formData.fee}
+            onFeeChange={(fee) => setFormData({ ...formData, fee })}
+            tournamentPerPlayerFee={formTournament?.perPlayerFee}
+          />
+
+          {/* Tentative block only makes sense for FUTURE matches. */}
+          {(() => {
+            const dbDate = inputToDbDate(formData.date);
+            const parts = dbDate.split("-");
+            let matchDay: Date | null = null;
+            if (parts.length === 3) {
+              matchDay = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
+            }
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const isFuture = !!matchDay && matchDay.getTime() > today.getTime();
+            if (!isFuture) return null;
+            return (
+              <label className="flex items-center gap-3 min-h-[48px] rounded-2xl border border-orange-300/60 bg-orange-50 px-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="tentative-block"
+                  checked={formData.isTentative || false}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      isTentative: e.target.checked,
+                      tentativelyBlockedBy: e.target.checked ? currentUserName : "",
+                    })
+                  }
+                  className="accent-orange-500 w-5 h-5 cursor-pointer"
+                />
+                <span className="text-sm font-bold text-orange-800">Tentatively block this slot</span>
               </label>
-              <div className="flex gap-2">
-                {["T20", "T30", "Other"].map((fmt) => (
-                  <label
-                    key={fmt}
-                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.format === fmt ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
-                  >
-                    <input
-                      type="radio"
-                      className="hidden"
-                      name="format"
-                      value={fmt}
-                      checked={formData.format === fmt}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          format: e.target.value as Match["format"],
-                        })
-                      }
-                    />
-                    {fmt}
-                  </label>
-                ))}
-              </div>
-            </div>
+            );
+          })()}
 
-            <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Type <span className="text-red-400">*</span>
-              </label>
-              <div className="flex gap-2">
-                {MATCH_TYPES.map((type) => (
-                  <label
-                    key={type}
-                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition ${formData.matchType === type ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
-                  >
-                    <input
-                      type="radio"
-                      className="hidden"
-                      name="matchType"
-                      value={type}
-                      checked={formData.matchType === type}
-                      onChange={(e) => {
-                        const newMatchType = e.target.value as Match["matchType"];
-                        const ground = store.grounds.find(g => g.id === formData.groundId);
-                        let newFee = formData.fee;
-                        if (ground) {
-                          const groundFee = groundFeeForMatchType(ground, newMatchType);
-                          if (groundFee > 0) {
-                            newFee = Math.round((groundFee / 12) * 1.05);
-                          }
-                        }
-                        setFormData({
-                          ...formData,
-                          matchType: newMatchType,
-                          fee: newFee,
-                          // Switching away from Tournament wipes any
-                          // linked tournamentId — otherwise a Practice
-                          // match would carry a stale tournament link.
-                          tournamentId:
-                            newMatchType === "Tournament"
-                              ? formData.tournamentId
-                              : "",
-                        });
-                      }}
-                    />
-                    {type}
-                  </label>
-                ))}
+          {/* ── Optional match info: links and result ─────────────────── */}
+          <details className="group rounded-2xl border border-border bg-surface overflow-hidden" data-testid="match-form-optional">
+            <summary className="flex items-center justify-between min-h-[48px] px-4 cursor-pointer list-none text-sm font-black font-heading text-text-primary">
+              Links &amp; Result
+              <ChevronDown className="w-4 h-4 text-text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+            </summary>
+            <div className="px-4 pb-4 flex flex-col gap-4">
+              <div>
+                <FieldLabel htmlFor="match-url">Match URL</FieldLabel>
+                <input
+                  id="match-url"
+                  type="url"
+                  value={formData.matchUrl}
+                  onChange={(e) => setFormData({ ...formData, matchUrl: e.target.value })}
+                  className={FIELD_CLASS}
+                  placeholder="https://cricheroes.in/..."
+                />
               </div>
-            </div>
-
-            <div className="col-span-2">
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                Jersey Color <span className="text-red-400">*</span>
-              </label>
-              <div className="flex gap-2">
-                {["Scarlet Red", "Whites"].map((color) => (
-                  <label
-                    key={color}
-                    className={`flex-1 text-center py-2 border rounded-lg text-sm cursor-pointer select-none transition flex items-center justify-center gap-2 ${formData.jerseyColor === color ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
-                  >
-                    <input
-                      type="radio"
-                      className="hidden"
-                      name="jerseyColor"
-                      value={color}
-                      checked={formData.jerseyColor === color}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          jerseyColor: e.target
-                            .value as Match["jerseyColor"],
-                        })
-                      }
-                    />
-                    <div
-                      className={`w-3 h-3 rounded-full ${color === "Scarlet Red" ? "bg-red-500" : "bg-[#e5e5e5] border border-slate-300"}`}
-                    />
-                    {color}
-                  </label>
-                ))}
+              <div>
+                <FieldLabel htmlFor="match-stream-url">Streaming URL</FieldLabel>
+                <input
+                  id="match-stream-url"
+                  type="url"
+                  value={formData.streamingUrl}
+                  onChange={(e) => setFormData({ ...formData, streamingUrl: e.target.value })}
+                  className={FIELD_CLASS}
+                  placeholder="https://youtube.com/..."
+                />
               </div>
-            </div>
-
-            <div className="col-span-2 border-t border-border pt-4 mt-2">
-              <h3 className="text-sm font-bold text-accent mb-3">
-                Optional Match Info
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                    Match URL
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.matchUrl}
-                    onChange={(e) =>
-                      setFormData({ ...formData, matchUrl: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                    placeholder="https://cricheroes.in/..."
-                  />
+              <div>
+                <FieldLabel>Result</FieldLabel>
+                {/* The result itself stays editable. Margin (runs / wickets),
+                    Player of the Match, Top Performers and Best Batsman /
+                    Bowler inputs were removed; any saved values are kept
+                    untouched on the match document. */}
+                <div role="radiogroup" aria-label="Result" className="flex flex-wrap gap-2" data-testid="match-result-choice">
+                  {(["Pending", "KAvach Won", "KAvach Lost", "Draw", "Tie", "Abandoned"] as const).map((res) => (
+                    <button
+                      key={res}
+                      type="button"
+                      role="radio"
+                      aria-checked={formData.result === res}
+                      onClick={() => setFormData({ ...formData, result: res })}
+                      className={`min-h-[40px] px-3 rounded-xl border text-xs font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                        formData.result === res ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
+                      }`}
+                    >
+                      {res}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                    Streaming URL
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.streamingUrl}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        streamingUrl: e.target.value,
-                      })
-                    }
-                    className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                    placeholder="https://youtube.com/..."
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                    Result
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      "Pending",
-                      "KAvach Won",
-                      "KAvach Lost",
-                      "Draw",
-                      "Tie",
-                      "Abandoned",
-                    ].map((res) => (
-                      <label
-                        key={res}
-                        className={`px-3 py-1.5 border rounded-lg text-xs cursor-pointer select-none transition ${formData.result === res ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
-                      >
-                        <input
-                          type="radio"
-                          className="hidden"
-                          name="result"
-                          value={res}
-                          checked={formData.result === res}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              result: e.target.value as any,
-                            })
-                          }
-                        />
-                        {res}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {(formData.result === "KAvach Won" ||
-                  formData.result === "KAvach Lost") && (
-                  <div className="col-span-2 flex gap-4 mt-2 p-3 bg-surface-hover rounded-lg border border-border">
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                        Margin Type
-                      </label>
-                      <div className="flex gap-2">
-                        {["runs", "wickets"].map((type) => (
-                          <label
-                            key={type}
-                            className={`flex-1 text-center py-2 border rounded-lg text-xs cursor-pointer select-none transition ${formData.resultMarginType === type ? "bg-accent text-text-accent font-bold border-accent" : "bg-transparent text-text-primary border-border hover:bg-surface-hover"}`}
-                          >
-                            <input
-                              type="radio"
-                              className="hidden"
-                              name="marginType"
-                              value={type}
-                              checked={formData.resultMarginType === type}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  resultMarginType: e.target.value as
-                                    | "runs"
-                                    | "wickets",
-                                })
-                              }
-                            />
-                            By {type}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="w-1/3">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                        Amount
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.resultMarginAmount || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            resultMarginAmount:
-                              parseInt(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                        placeholder="e.g. 5"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {formData.result === "KAvach Won" && (
-                  <>
-                    <div className="col-span-2">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                        Player of the Match
-                      </label>
-                      <div className="flex gap-2">
-                        <select
-                          value={formData.potmId || ""}
-                          onChange={(e) =>
-                            setFormData({ ...formData, potmId: e.target.value })
-                          }
-                          className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none "
-                        >
-                          <option value="">Select (Optional)</option>
-                          {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={formData.playerOfTheMatch}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              playerOfTheMatch: e.target.value,
-                            })
-                          }
-                          className="w-1/2 rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                          placeholder="Or manual name"
-                        />
-                      </div>
-                    </div>
-                    <div className="col-span-2 border border-border p-3 rounded-lg bg-surface-hover">
-                      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                        Top Performers (Max 3)
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-32 pr-2 custom-scrollbar">
-                        {store.players.filter(p => !p.disabled && (!editingId || store.payments.some(pay => pay.matchId === editingId && pay.playerId === p.id && pay.status !== "Not Playing"))).map((p) => {
-                            const isSelected = formData.topPerformerIds?.includes(p.id);
-                            return (
-                              <label key={p.id} className={`flex items-center gap-2 text-xs p-1.5 rounded cursor-pointer transition ${isSelected ? "bg-accent/20 text-accent font-bold" : "hover:bg-surface-hover text-text-primary"}`}>
-                                <input
-                                  type="checkbox"
-                                  className="accent-accent"
-                                  checked={isSelected}
-                                  onChange={(e) => {
-                                    const current = formData.topPerformerIds || [];
-                                    if (e.target.checked) {
-                                      if (current.length < 3) {
-                                        setFormData({ ...formData, topPerformerIds: [...current, p.id] });
-                                      } else {
-                                        toast("Maximum 3 top performers allowed.");
-                                      }
-                                    } else {
-                                      setFormData({ ...formData, topPerformerIds: current.filter(id => id !== p.id) });
-                                    }
-                                  }}
-                                />
-                                <span className="truncate">{p.name}</span>
-                              </label>
-                            );
-                        })}
-                      </div>
-                    </div>
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                        Best Batsman
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.bestBatsman}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            bestBatsman: e.target.value,
-                          })
-                        }
-                        className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                        placeholder="Player Name"
-                      />
-                    </div>
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                        Best Bowler
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.bestBowler}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            bestBowler: e.target.value,
-                          })
-                        }
-                        className="w-full rounded-lg border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                        placeholder="Player Name"
-                      />
-                    </div>
-                  </>
-                )}
               </div>
             </div>
-          </div>
+          </details>
 
-          <div className="pt-2">
+          <div className="flex gap-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+            <button
+              type="button"
+              onClick={closeMatchForm}
+              className="min-h-[48px] px-5 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary hover:bg-surface-hover cursor-pointer"
+            >
+              Cancel
+            </button>
             <button
               type="submit"
-              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition"
+              data-testid="match-form-submit"
+              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
             >
               {editingId ? "Save Changes" : "Create Match"}
             </button>

@@ -231,7 +231,7 @@ describe("Admin Match Center card", () => {
 describe("Match categories: Practice and Tournament only", () => {
   it("add/edit match offer exactly Practice and Tournament", () => {
     assert.deepEqual(MATCH_TYPES, ["Practice", "Tournament"]);
-    assert.match(src("components/MatchesTab.tsx"), /\{MATCH_TYPES\.map\(\(type\) => \(/);
+    assert.match(src("components/MatchesTab.tsx"), /options=\{MATCH_TYPES\}/);
     assert.match(src("components/MatchSheetView.tsx"), /\{MATCH_TYPES\.map\(\(t\) => \(/);
   });
   it("no 'Club Match' option anywhere in the type, rules or screens", () => {
