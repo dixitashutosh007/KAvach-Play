@@ -146,27 +146,28 @@ describe("Fee calculator component", () => {
 });
 
 describe("Date picker", () => {
-  it("weekend-first: shows only that month's Saturdays and Sundays as tiles, with month navigation", () => {
+  it("inline: only that month's Saturdays and Sundays as tiles, month navigation, View Full Calendar", () => {
     const html = render(React.createElement(MatchDatePicker, { value: "2026-11-29", onChange: () => {}, todayKey: "2026-11-23" }));
     assert.match(text(html), /Sun, 29 Nov 2026/);
     assert.match(text(html), /November 2026/);
     assert.ok(html.includes('aria-label="Previous month"') && html.includes('aria-label="Next month"'));
     assert.ok(html.includes('data-testid="match-date-weekends"'));
-    assert.ok(!html.includes('data-testid="match-date-calendar"'));
-    const tiles = html.match(/data-testid="match-date-day-[^"]+"/g) || [];
-    assert.equal(tiles.length, 9, "Nov 2026: Sun 1, Sat/Sun 7-8, 14-15, 21-22, 28-29");
-    assert.ok(!html.includes("match-date-day-2026-11-25"), "weekday hidden by default");
+    assert.equal((html.match(/data-testid="match-date-day-[^"]+"/g) || []).length, 9, "Nov 2026: Sun 1, Sat/Sun 7-8, 14-15, 21-22, 28-29");
+    assert.ok(!html.includes("match-date-day-2026-11-25"), "weekdays not shown inline");
+    assert.ok(!html.includes('data-testid="match-date-calendar"'), "full calendar is not inline");
     assert.match(html, /aria-pressed="true"[^>]*data-testid="match-date-day-2026-11-29"|data-testid="match-date-day-2026-11-29"[^>]*aria-pressed="true"/);
-    assert.match(text(html), /Show all days \(pick a weekday\)/);
-    assert.match(html, /min-h-\[52px\]/);
+    assert.match(text(html), /View Full Calendar/);
+    assert.match(html, /grid grid-cols-5 gap-1\.5/);
   });
-  it("a weekday selection opens the full month grid automatically", () => {
-    const html = render(React.createElement(MatchDatePicker, { value: "2026-11-25", onChange: () => {}, todayKey: "2026-11-23" }));
-    assert.ok(html.includes('data-testid="match-date-calendar"'));
-    assert.ok(html.includes("match-date-day-2026-11-25"));
-    assert.equal((html.match(/data-testid="match-date-day-/g) || []).length, 30);
-    assert.match(text(html), /Weekends only/);
-    assert.match(html, /class="h-10 text-sm/);
+  it("View Full Calendar opens a pop-up month calendar with every day; picking closes it", () => {
+    const html = render(React.createElement(MatchDatePicker, { value: "2026-11-25", onChange: () => {}, todayKey: "2026-11-23", defaultFullOpen: true }));
+    assert.ok(html.includes('data-testid="match-date-full-dialog"'));
+    assert.match(html, /role="dialog" aria-modal="true"/);
+    assert.equal((html.match(/data-testid="match-date-full-day-/g) || []).length, 30);
+    assert.match(text(html), /Sun, 29 Nov 2026|Wed, 25 Nov 2026/);
+    assert.match(text(html), /\(weekday\)/);
+    const s2 = fs.readFileSync(path.resolve("components/matches/MatchDatePicker.tsx"), "utf-8");
+    assert.match(s2, /onChange\(key\);\s*setView\(\{ year: fullView\.year, month: fullView\.month \}\);\s*setFullOpen\(false\);/);
   });
   it("weekend list helper", () => {
     assert.deepEqual(monthWeekendDays(2026, 10).map((d) => d.day), [1, 7, 8, 14, 15, 21, 22, 28, 29]);
@@ -186,27 +187,42 @@ describe("Date picker", () => {
 });
 
 describe("Add / Edit Match form", () => {
-  it("3-step wizard: Details → Schedule → Fee, one step shown at a time", () => {
-    assert.match(tab, /const MATCH_FORM_STEPS = \["Details", "Schedule", "Fee"\] as const;/);
-    const s1 = modal.indexOf("{formStep === 1 && (");
-    const s2 = modal.indexOf("{formStep === 2 && (");
-    const s3 = modal.indexOf("{formStep === 3 && (");
-    assert.ok(s1 > 0 && s2 > s1 && s3 > s2);
-    // step 1: tournament first, then ground and opponent
+  it("4-step wizard: Details → Schedule → Fee → Review, one step at a time; only Review saves", () => {
+    assert.match(tab, /const MATCH_FORM_STEPS = \["Details", "Schedule", "Fee", "Review"\] as const;/);
+    const at = (n) => modal.indexOf(`{formStep === ${n} && (`);
+    const [s1, s2, s3, s4] = [1, 2, 3, 4].map(at);
+    assert.ok(s1 > 0 && s2 > s1 && s3 > s2 && s4 > s3);
     const step1 = modal.slice(s1, s2);
     assert.ok(step1.indexOf('id="match-tournament"') < step1.indexOf('id="match-ground"'));
     assert.ok(step1.indexOf('id="match-ground"') < step1.indexOf('id="match-opponent"'));
-    // step 2: date, time, type, format, jersey
     const step2 = modal.slice(s2, s3);
     for (const k of ["<MatchDatePicker", 'data-testid="match-time-presets"', 'testId="match-type-choice"', 'testId="match-format-choice"', 'testId="match-jersey-choice"']) {
       assert.ok(step2.includes(k), k);
     }
-    // step 3: summary, fee calculator, links & result, save
-    const step3 = modal.slice(s3);
-    for (const k of ['data-testid="match-form-summary"', "<MatchFeeCalculator", 'data-testid="match-form-optional"']) {
-      assert.ok(step3.includes(k), k);
+    const step3 = modal.slice(s3, s4);
+    assert.ok(step3.includes("<MatchFeeCalculator"));
+    assert.ok(step3.includes('data-testid="match-form-fee-intro"'));
+    assert.ok(!step3.includes("match-form-summary"));
+    const step4 = modal.slice(s4);
+    for (const k of ['data-testid="match-form-summary"', 'data-testid="match-form-review-fee"', "Tentatively block this slot"]) {
+      assert.ok(step4.includes(k), k);
     }
-    assert.match(modal, /type="submit"\s+data-testid="match-form-submit"/);
+    // the submit button exists only for the last step
+    assert.match(modal, /\{formStep < 4 \? \(\s*<button\s+key="wizard-next"/);
+    assert.match(tab, /if \(formStep < 4\) \{\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*return;\s*\}/);
+  });
+  it("Links & Result only when editing", () => {
+    const step4 = modal.slice(modal.indexOf("{formStep === 4 && ("));
+    assert.match(step4, /\{editingId && \(\s*<details[^>]*data-testid="match-form-optional"/);
+  });
+  it("review lists every choice with Edit links back to its step, and the fee", () => {
+    const step4 = modal.slice(modal.indexOf("{formStep === 4 && ("));
+    for (const k of ['label: "Opponent"', 'label: "Tournament"', 'label: "Ground"', 'label: "Date & time"', 'label: "Type & format"', 'label: "Jersey"']) {
+      assert.ok(step4.includes(k), k);
+    }
+    assert.match(step4, /onClick=\{\(\) => goToFormStep\(row\.step\)\}/);
+    assert.match(step4, /onClick=\{\(\) => goToFormStep\(3\)\}/);
+    assert.match(step4, /Nothing is saved until you tap Save/);
   });
   it("navigation: Next validates, Back / header back go to the previous step, progress labels jump", () => {
     assert.match(modal, /key="wizard-next"\s*type="button"\s*onClick=\{\(e\) => \{[\s\S]*?e\.preventDefault\(\);\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*\}\}\s*data-testid="match-form-next"/);
@@ -215,8 +231,8 @@ describe("Add / Edit Match form", () => {
     assert.match(modal, /formStep > 1 \? goToFormStep\(\(formStep - 1\) as MatchFormStep\) : closeMatchForm\(\)/);
     assert.match(modal, /onClick=\{\(\) => goToFormStep\(st\)\}/);
     assert.match(tab, /const problem = matchFormStepProblem\(st as MatchFormStep, formData\);/);
-    // Enter on steps 1-2 advances instead of saving
-    assert.match(tab, /if \(formStep < 3\) \{\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*return;\s*\}/);
+    // Enter before the Review step advances instead of saving
+    assert.match(tab, /if \(formStep < 4\) \{\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*return;\s*\}/);
   });
   it("add, duplicate and edit all use the wizard from step 1", () => {
     const edit = tab.slice(tab.indexOf("const startEdit ="), tab.indexOf("const startDuplicate ="));
@@ -288,5 +304,6 @@ describe("Wizard step validation", () => {
     assert.match(src2, /if \(step === 1 && !data\.groundId\) return "Select a ground to continue\.";/);
     assert.match(src2, /if \(step === 2 && !data\.date\) return "Pick a match date to continue\.";/);
     assert.match(src2, /if \(step === 2 && !\/\^\\d\{1,2\}:\\d\{2\}\/\.test\(data\.time \|\| ""\)\) return/);
+    assert.match(src2, /if \(step === 3 && \(data\.fee === "" \|\| data\.fee === undefined \|\| Number\(data\.fee\) < 0\)\) \{\s*return "Enter the match fee per player \(0 if there is no fee\)\.";/);
   });
 });
