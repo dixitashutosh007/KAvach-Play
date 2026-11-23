@@ -99,6 +99,7 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
 
     // Club: only Pulse and Leaderboard & Stats (Match Admin is in isAnyAdmin(); no roster/badges/shop)
     await adminNav.getByRole("button", { name: "Club" }).click();
+    await expect(page.locator('[data-testid="club-sub-tab-pulse"]')).toBeVisible({ timeout: 10000 });
     const ids = await page.locator('[data-testid^="club-sub-tab-"]').evaluateAll((els) =>
       els.map((e) => (e.getAttribute("data-testid") || "").replace("club-sub-tab-", "")),
     );

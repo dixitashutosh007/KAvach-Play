@@ -476,6 +476,7 @@ test.describe("Production Route (/) Verification Suite", () => {
         }
       } else if (tab === "club") {
         await expect(page.locator('[data-testid="club-sub-tabs"]')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator(`[data-testid="club-sub-tab-${clubSections[0]}"]`)).toBeVisible({ timeout: 5000 });
         const ids = await page.locator('[data-testid^="club-sub-tab-"]').evaluateAll((els) =>
           els.map((e) => (e.getAttribute("data-testid") || "").replace("club-sub-tab-", "")),
         );
@@ -508,7 +509,9 @@ test.describe("Production Route (/) Verification Suite", () => {
         await page.goto("/");
         await page.waitForLoadState("domcontentloaded");
         await page.locator('[data-testid="header-persona-toggle"]').click();
-        await expect(page.locator('[data-testid^="sidebar-tab-"], [data-testid="admin-mobile-bottom-nav"]').first()).toBeVisible({ timeout: 10000 });
+        await expect(
+          page.locator('[data-testid^="sidebar-tab-"], [data-testid="admin-mobile-bottom-nav"]').filter({ visible: true }).first(),
+        ).toBeVisible({ timeout: 10000 });
 
         expect(await visibleAdminNav(page)).toEqual(role.nav);
 
