@@ -78,7 +78,7 @@ Modified:
 
 ## 4. Test results
 
-See the final report in the session for exact counts; recorded here:
+Recorded counts:
 
 | Check | Command | Result |
 |---|---|---|
@@ -92,7 +92,19 @@ See the final report in the session for exact counts; recorded here:
 
 ### 4.1 Full e2e suite
 
-FULL_E2E_PLACEHOLDER
+Command: `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test --trace off` (Desktop Chrome + Mobile Chrome, local dev server with `GIT_BRANCH=mig-mov`, synthetic sessions).
+
+| Result | Count | Notes |
+|---|---|---|
+| Passed | 197 | includes all 56 D-16 tests (28 per project) |
+| Skipped | 98 | credential-gated legacy specs (`ADMIN_EMAIL` etc. not set) — **not executed**, coverage gap per QA-003 |
+| Failed | 25 | 23 pre-existing + 2 flaky (below) |
+
+**Pre-existing (23):** the same tests fail on the base commit `c0e089e` with identical selection — Desktop 12 (`match-center-corrections` ×2, `player-home-behavioral` 1/2/2B/4D/4E/4G, `production-app` 3/6A/6B/6C) and Mobile 11 (same minus `production-app` 3). Root cause not investigated in this workstream.
+
+**Flaky (2), passed on rerun:** `player-nav-persona` screenshot test at 768×1024 (Desktop; 1/1 on rerun) and `prototype-responsive` 430×932 (Mobile; `/prototype` page, untouched; 3/3 on rerun with `--repeat-each=3`).
+
+**Updated for D-16 and passing:** `shared-shell-behavioral` 1 and 3, `player-home-behavioral` 2C and 4H, `production-app` 2 and 7.
 
 ## 5. Known limitations
 
