@@ -57,8 +57,8 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     await expect(page.getByRole("heading", { name: /Personal Profile/i })).toBeVisible({ timeout: 5000 });
   });
 
-  // ── 2. Admin Navigation Workflow & RBAC Gating ──────────────────────────────
-  test("2. Admin navigation renders 5 approved items, respects RBAC in More drawer, and hides unauthorized hubs", async ({
+  // ── 2. Admin Navigation Workflow & RBAC Gating (D-18) ───────────────────────
+  test("2. (D-18) Match Admin sees only Match Center and Club; Match Center holds Matches, Tournaments, Grounds; no More drawer", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -77,53 +77,40 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // Toggle into Admin Console via Header Persona Switcher
     const toggleBtn = page.locator('[data-testid="header-persona-toggle"]');
     await expect(toggleBtn).toBeVisible();
     await toggleBtn.click();
 
-    // Verify 5 approved admin primary items: Overview | Match Centre | Player Roster | Finance & Dues | More
     const adminNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
     await expect(adminNav).toBeVisible();
-    await expect(adminNav.getByRole("button", { name: "Overview" })).toBeVisible();
-    await expect(adminNav.getByRole("button", { name: "Match Centre" })).toBeVisible();
-    await expect(adminNav.getByRole("button", { name: "Player Roster" })).toBeVisible();
-    await expect(adminNav.getByRole("button", { name: "Finance & Dues" })).toBeVisible();
-    await expect(adminNav.getByRole("button", { name: "More" })).toBeVisible();
+    expect(await adminNav.locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual([
+      "Match Center",
+      "Club",
+    ]);
+    await expect(adminNav.getByRole("button", { name: "More" })).toHaveCount(0);
 
-    // Verify Player Roster navigation and active state
-    const rosterBtn = adminNav.getByRole("button", { name: "Player Roster" });
-    await rosterBtn.click();
-    await expect(rosterBtn).toHaveClass(/text-accent/);
+    // Match Center: Matches, Tournaments, Grounds (and Assign) as sections; active state
+    const matchBtn = adminNav.getByRole("button", { name: "Match Center" });
+    await matchBtn.click();
+    await expect(matchBtn).toHaveAttribute("aria-current", "page");
+    const sub = page.locator('[data-testid="match-subtabs"]');
+    for (const t of ["Matches", "Tournaments", "Grounds"]) await expect(sub.getByRole("button", { name: t, exact: true })).toBeVisible();
+    await sub.getByRole("button", { name: "Grounds", exact: true }).click();
 
-    // Open Admin More Drawer
-    const moreBtn = adminNav.getByRole("button", { name: "More" });
-    await moreBtn.click();
-    const sheet = page.locator('[data-testid="more-drawer-sheet"]');
-    await expect(sheet).toBeVisible();
+    // Club: only Pulse and Leaderboard & Stats (Match Admin is in isAnyAdmin(); no roster/badges/shop)
+    await adminNav.getByRole("button", { name: "Club" }).click();
+    const ids = await page.locator('[data-testid^="club-sub-tab-"]').evaluateAll((els) =>
+      els.map((e) => (e.getAttribute("data-testid") || "").replace("club-sub-tab-", "")),
+    );
+    expect(ids).toEqual(["pulse", "leaderboard"]);
 
-    // RBAC: Grounds & Venues must be visible specifically due to Match Admin permission
-    await expect(sheet.locator('[data-testid="more-item-grounds"]')).toBeVisible();
-
-    // RBAC: Settings & Access must NOT be visible (user is NOT Super Admin)
-    await expect(sheet.locator('[data-testid="more-item-settings"]')).toBeHidden();
-
-    // RBAC: Studio & Nets must NOT be visible (user is NOT Studio Admin)
-    await expect(sheet.locator('[data-testid="more-item-studio"]')).toBeHidden();
-
-    // RBAC: Design Studio must NOT be visible (user is NOT Designer / Club Admin)
-    await expect(sheet.locator('[data-testid="more-item-design"]')).toBeHidden();
-
-    // Feature Flags: Merchandise Shop must NOT be visible (feature disabled)
-    await expect(sheet.locator('[data-testid="more-item-shop"]')).toBeHidden();
-
-    // Close drawer
-    await sheet.getByLabel("Close navigation drawer").click();
-    await expect(sheet).toBeHidden();
+    // Legacy Grounds deep link opens inside Match Center
+    await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("grounds"));
+    await expect(adminNav.getByRole("button", { name: "Match Center" })).toHaveAttribute("aria-current", "page", { timeout: 5000 });
   });
 
-  // ── 3. Modal Behaviour: Focus Trap, Scroll Lock, Escape, and Rerender ────────
-  test("3. MoreDrawer (Admin persona only, D-16) implements focus trap, scroll lock, Escape dismissal, and preserves state across rerenders", async ({
+  // ── 3. Club sections are an accessible tab list; no drawer anywhere (D-18) ───
+  test("3. (D-18) Club sections are keyboard-reachable tabs; Super Admin mobile bar has all six destinations", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -135,95 +122,25 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
 
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
-
-    // The Player persona has no More drawer; it exists only in Admin persona.
-    await expect(page.locator('[data-testid="player-mobile-bottom-nav"]').getByRole("button", { name: "More" })).toHaveCount(0);
     await page.locator('[data-testid="header-persona-toggle"]').click();
-    const playerNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
-    await expect(playerNav).toBeVisible({ timeout: 10000 });
-    const moreBtn = playerNav.getByRole("button", { name: "More", exact: true });
+    const adminNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
+    await expect(adminNav).toBeVisible({ timeout: 10000 });
+    expect(await adminNav.locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual([
+      "Home", "Match Center", "Club", "Finance", "Design Studio", "Settings",
+    ]);
+    for (const box of await adminNav.locator("button").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))) {
+      expect(box).toBeGreaterThanOrEqual(44);
+    }
+    await expect(page.locator('[data-testid="more-drawer-sheet"]')).toHaveCount(0);
 
-    // Focus and click More button
-    await moreBtn.focus();
-    await moreBtn.click();
-
-    const sheet = page.locator('[data-testid="more-drawer-sheet"]');
-    await expect(sheet).toBeVisible();
-
-    // Initial focus: close button must be focused
-    const closeBtn = sheet.getByLabel("Close navigation drawer");
-    await expect(closeBtn).toBeFocused({ timeout: 3000 });
-
-    // Scroll lock: body overflow must be hidden
-    const isScrollLocked = await page.evaluate(() => document.body.style.overflow === "hidden");
-    expect(isScrollLocked).toBe(true);
-
-    // Focus Trap: Shift+Tab on close button wraps to last item
-    await page.keyboard.press("Shift+Tab");
-    const lastItem = sheet.locator("button").last();
-    await expect(lastItem).toBeFocused();
-
-    // Tab on last item wraps back to close button
-    await page.keyboard.press("Tab");
-    await expect(closeBtn).toBeFocused();
-
-    // User moves focus to a specific item inside the drawer
-    const targetDrawerControl = sheet.locator('[data-testid="more-item-settings"]');
-    await targetDrawerControl.focus();
-    await expect(targetDrawerControl).toBeFocused();
-
-    // Record baseline parent render count before triggering rerender
-    const initialRenderCount = await page.evaluate(
-      () => (window as any).__KAVACH_BOTTOM_NAV_RENDER_COUNT__ || 0
-    );
-
-    // Deterministic parent re-render: trigger genuine React state update in parent (app/page.tsx)
-    await page.evaluate(() => {
-      if (typeof (window as any).__KAVACH_TRIGGER_PARENT_RERENDER__ === "function") {
-        (window as any).__KAVACH_TRIGGER_PARENT_RERENDER__();
-      }
-    });
-
-    // Confirm that the parent rerender actually occurred in the DOM / component lifecycle
-    await expect
-      .poll(
-        async () =>
-          page.evaluate(() => (window as any).__KAVACH_BOTTOM_NAV_RENDER_COUNT__ || 0),
-        { message: "Expected parent component to execute at least one re-render", timeout: 4000 }
-      )
-      .toBeGreaterThan(initialRenderCount);
-
-    // Confirm drawer remains open
-    await expect(sheet).toBeVisible();
-
-    // Confirm focus remains on the SAME drawer control (neither stolen by trigger nor reset)
-    await expect(targetDrawerControl).toBeFocused();
-
-    // Confirm original focus trigger (moreBtn) is NOT focused prematurely
-    await expect(moreBtn).not.toBeFocused();
-
-    // Confirm document.body.style.overflow remains hidden
-    const isStillLocked = await page.evaluate(() => document.body.style.overflow === "hidden");
-    expect(isStillLocked).toBe(true);
-
-    // Close drawer via Escape key
-    await page.keyboard.press("Escape");
-    await expect(sheet).toBeHidden();
-
-    // Scroll lock released
-    const isUnlocked = await page.evaluate(() => document.body.style.overflow !== "hidden");
-    expect(isUnlocked).toBe(true);
-
-    // Focus restored cleanly to More trigger button
-    await expect(moreBtn).toBeFocused();
-
-    // Test Backdrop dismissal
-    await moreBtn.click();
-    await expect(sheet).toBeVisible();
-    // Click outside sheet (backdrop area)
-    await page.mouse.click(187, 50);
-    await expect(sheet).toBeHidden();
-    await expect(moreBtn).toBeFocused();
+    await adminNav.getByRole("button", { name: "Club" }).click();
+    const tablist = page.getByRole("tablist", { name: "Club sections" });
+    await expect(tablist).toBeVisible();
+    const studioTab = tablist.getByRole("tab", { name: /Studio/ });
+    await studioTab.focus();
+    await page.keyboard.press("Enter");
+    await expect(studioTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('[data-testid="studio-tabs"]')).toBeVisible({ timeout: 5000 });
   });
 
   // ── 4. Responsive Viewport Verification (360px, 375px, 390px, 768px) ─────────
@@ -280,18 +197,18 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
       if (vp.width < 768) {
         const adminNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
         await expect(adminNav).toBeVisible();
-        await expect(adminNav.getByRole("button", { name: "Player Roster" })).toBeVisible();
+        await expect(adminNav.getByRole("button", { name: "Club" })).toBeVisible();
+        expect(await adminNav.locator("button").count()).toBe(6);
       }
 
       // Capture representative Admin screenshots
       if (vp.name === "360x800") {
         await page.screenshot({ path: path.join(SCREENSHOT_DIR, "shell-admin-360x800.png") });
 
-        // Open More drawer and capture screenshot
+        // D-18: no More drawer; Club sections replace it
         const adminNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
-        await adminNav.getByRole("button", { name: "More" }).click();
-        await expect(page.locator('[data-testid="more-drawer-sheet"]')).toBeVisible();
-        await page.screenshot({ path: path.join(SCREENSHOT_DIR, "shell-drawer-360x800.png") });
+        await adminNav.getByRole("button", { name: "Club" }).click();
+        await expect(page.locator('[data-testid="club-sub-tabs"]')).toBeVisible();
       } else if (vp.name === "768x1024") {
         await page.screenshot({ path: path.join(SCREENSHOT_DIR, "shell-admin-768x1024.png") });
       }

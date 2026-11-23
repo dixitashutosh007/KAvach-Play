@@ -121,14 +121,16 @@ describe("Announcement composer", () => {
     assert.match(validateAnnouncementDraft({ title: "", text: "x".repeat(ANNOUNCEMENT_TEXT_MAX + 1), isPinned: false }), /Message/);
     assert.equal(validateAnnouncementDraft({ title: "AGM", text: "Sunday 10am", isPinned: true }), null);
   });
-  it("D-16: Admin Home publishes through the existing post workflow, gated to super/club admins; Player Home cannot publish", () => {
-    const admin = src("components/home/AdminHomeAnnouncements.tsx");
+  it("D-18: Admin → Club → Announcements publishes through the existing post workflow, gated to super/club admins; Player Home cannot publish", () => {
+    const admin = src("components/home/AdminAnnouncementsManager.tsx");
     assert.match(admin, /await store\.addPost\(\{/);
     assert.match(admin, /isAnnouncement: true,/);
     const page = src("app/page.tsx");
-    // Mounted only in the Admin persona Home branch, for Super Admin claim or Club Admin.
-    const adminHome = page.slice(page.indexOf("isSuperAdmin || isClubAdmin ? ("), page.indexOf("isSuperAdmin || isClubAdmin ? (") + 1200);
-    assert.match(adminHome, /<AdminHomeAnnouncements/);
+    // Mounted only in Admin persona Club, section "announcements", for Super Admin claim or Club Admin.
+    const club = src("components/ClubTab.tsx");
+    assert.match(club, /show\("announcements"\) && isClubAdmin && \(\s*<AdminAnnouncementsManager/);
+    assert.match(src("lib/admin-navigation.ts"), /\{ key: "announcements", label: "Announcements", allowed: \(c\) => c\.isClubAdmin \}/);
+    assert.match(admin, /const canPublishAnnouncements = Boolean\(hasAdminClaim \|\| appUser\?\.isClubAdmin\);/);
     assert.match(page, /const isClubAdmin = isSuperAdmin \|\| appUser\?\.isClubAdmin;/);
     assert.match(page, /const isSuperAdmin = !!hasAdminClaim;/);
     // Player Home has no publishing path at all.

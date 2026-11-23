@@ -67,7 +67,9 @@ async function assertNoAdminControls(page: Page) {
   await expect(page.locator('[data-testid="admin-mobile-bottom-nav"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="more-drawer-sheet"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="admin-home-announcements"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="admin-announcements-manager"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="admin-home-announcements-link"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="admin-club"]')).toHaveCount(0);
   await expect(page.locator('[data-testid^="sidebar-tab-"]')).toHaveCount(0);
   const main = (await page.locator("main").innerText()).replace(/\s+/g, " ");
   for (const text of ADMIN_ONLY_TEXT.filter((t) => t !== "Navigation Console")) {
@@ -185,14 +187,16 @@ test.describe("D-16 player features stay reachable (Super Admin in Player person
   });
 });
 
-test.describe("D-16 announcement management relocated to Admin Home", () => {
+test.describe("Announcement management is Admin persona only (D-16; D-18: Club → Announcements)", () => {
   for (const roleName of ["Club Admin", "Super Admin"]) {
-    test(`${roleName}: Admin Home offers announcement publishing; Player Home does not`, async ({ page }) => {
+    test(`${roleName}: Admin Home links to Club → Announcements publishing; Player Home does not`, async ({ page }) => {
       await openAsPlayer(page, `ann-${roleName.replace(/\s+/g, "-").toLowerCase()}`, ROLES[roleName], 1280, 900);
       await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
       await page.locator('[data-testid="header-persona-toggle"]').click();
-      if (roleName === "Club Admin") await page.locator('[data-testid="sidebar-tab-home"]').click();
-      await expect(page.locator('[data-testid="admin-home-announcements"]')).toBeVisible({ timeout: 15_000 });
+      await page.locator('[data-testid="sidebar-tab-home"]').click();
+      await page.locator('[data-testid="admin-home-announcements-link"]').click();
+      await expect(page.locator('[data-testid="admin-announcements-manager"]')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('[data-testid="sidebar-tab-club"]')).toHaveAttribute("aria-current", "page");
       await expect(page.locator('[data-testid="new-announcement-button"]')).toBeVisible();
     });
   }
@@ -221,14 +225,10 @@ test.describe("D-16 screenshots", () => {
       await shoot(page, `player-matches-${w}x${h}`);
     });
   }
-  test("secondary screen with back link, and Admin Home announcements", async ({ page }) => {
+  test("secondary screen with back link", async ({ page }) => {
     await openAsPlayer(page, "shot-secondary", ROLES["Super Admin"], 390, 844);
     await page.locator('[data-testid="home-quick-players"]').click();
     await expect(page.locator('[data-testid="player-back-button"]')).toBeVisible();
     await shoot(page, "player-directory-back-390x844");
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.locator('[data-testid="header-persona-toggle"]').click();
-    await page.locator('[data-testid="admin-home-announcements"]').scrollIntoViewIfNeeded();
-    await shoot(page, "admin-home-announcements-1280x900");
   });
 });

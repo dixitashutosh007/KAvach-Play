@@ -1,0 +1,18 @@
+/** All screen ids the application shell can show (Player and Admin persona). */
+export type Tab =
+  | "home"
+  | "matches"
+  | "grounds"
+  | "players"
+  | "leaderboard"
+  | "profile"
+  | "settings"
+  | "studio"
+  | "notifications"
+  | "finance"
+  | "dues_and_reminders"
+  | "shop"
+  | "opinion"
+  | "design"
+  | "club"
+  | "badges";

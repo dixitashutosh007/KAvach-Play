@@ -143,7 +143,7 @@ describe("Announcement images", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("Announcement permissions", () => {
   it("UI: create/edit/delete only for super admin claim or Club Admin flag (D-16: on Admin Home)", () => {
-    const home = src("components/home/AdminHomeAnnouncements.tsx");
+    const home = src("components/home/AdminAnnouncementsManager.tsx");
     assert.match(home, /const canPublishAnnouncements = Boolean\(hasAdminClaim \|\| appUser\?\.isClubAdmin\);/);
     for (const fn of ["handlePublishAnnouncement", "handleUpdateAnnouncement", "handleDeleteAnnouncement"]) {
       const i = home.indexOf(`const ${fn}`);
@@ -273,10 +273,11 @@ describe("Club Statistics", () => {
     assert.equal(stats.readStoredClubStats({ matchesPlayed: "5", matchesWon: 3 }), null);
     assert.equal(stats.readStoredClubStats(null), null);
   });
-  it("admin sub-tab is visible only to Club Admins / Super Admins", () => {
+  it("D-18: Club Statistics (inside Club → Leaderboard & Stats) renders only for Club Admins / Super Admins", () => {
     const club = src("components/ClubTab.tsx");
-    assert.match(club, /\{ key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin \|\| isSuperAdmin \}/);
-    assert.match(club, /subTab === "stats" && !isPlayer && \(isClubAdmin \|\| isSuperAdmin\)/);
+    assert.match(club, /show\("leaderboard"\) && \(\s*<div className="space-y-6">\s*\{isClubAdmin && <ClubStatisticsAdmin \/>\}/);
+    // isClubAdmin passed to ClubTab is (isClubAdmin || isSuperAdmin) in app/page.tsx
+    assert.match(src("app/page.tsx"), /isClubAdmin=\{isClubAdmin \|\| isSuperAdmin\}/);
   });
 });
 
@@ -317,7 +318,7 @@ describe("Club Performance widget", () => {
     assert.ok(!/350|246/.test(w), "no hardcoded example statistics");
   });
   it("admins see where to publish the totals", () => {
-    assert.match(text(widget({}, { canManage: true })), /Admin Console → Player Roster → Club Statistics/);
+    assert.match(text(widget({}, { canManage: true })), /Admin → Club → Leaderboard &(amp;)? Stats/);
   });
   it("loading state is a skeleton, error state is explained", () => {
     const loading = widget({ loading: true });
@@ -333,14 +334,13 @@ describe("Club Performance widget", () => {
     assert.match(html, /<span class="sr-only">120<\/span>/);
     assert.match(html, /<span class="sr-only">77<\/span>/);
   });
-  it("D-16: management hint only on Admin Home; Player Home widget is read-only; Club Statistics tab is easy to find", () => {
-    assert.match(src("components/home/AdminHomeAnnouncements.tsx"), /<ClubPerformanceWidget canManage=\{canPublishAnnouncements\} \/>/);
+  it("D-18: management hint only on Admin Home; Player Home widget is read-only; Club Statistics is easy to find", () => {
+    const page = src("app/page.tsx");
+    const adminHome = page.slice(page.indexOf('data-testid="admin-home-club-panel"'), page.indexOf('data-testid="admin-home-club-panel"') + 1600);
+    assert.match(adminHome, /<ClubPerformanceWidget canManage \/>/);
     assert.match(src("components/HomeTab.tsx"), /<ClubPerformanceWidget \/>/);
-    const club = src("components/ClubTab.tsx");
-    const admin = club.slice(club.indexOf("const adminTabs"), club.indexOf("const visibleTabs"));
-    const keys = [...admin.matchAll(/key: "(\w+)"/g)].map((m) => m[1]);
-    assert.deepEqual(keys.slice(0, 2), ["players", "stats"], "Club Statistics is the second admin tab");
-    assert.match(admin, /key: "stats", label: "Club Statistics", icon: BarChart3, visible: isClubAdmin \|\| isSuperAdmin/);
+    // Leaderboard & Stats is a Club section; Club Statistics is its first panel.
+    assert.match(src("lib/admin-navigation.ts"), /\{ key: "leaderboard", label: "Leaderboard & Stats", allowed: isAnyAdmin \}/);
   });
   it("animation runs once, respects reduced motion, no looping effects", () => {
     const w = src("components/home/ClubPerformanceWidget.tsx");

@@ -125,9 +125,20 @@ export function MatchesTab({
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
+  // Match Center sections (D-18): Matches, Tournaments, Grounds, Assign. Deep
+  // links / quick actions may open a section directly ("grounds", "tournaments",
+  // "assign"; "grounds:<x>" from the legacy Grounds tab alias).
+  const sectionFromAction = (a?: string | null): "matches" | "grounds" | "assign" | "tournaments" => {
+    const s = (a || "").split(":")[0];
+    return s === "assign" || s === "grounds" || s === "tournaments" ? s : "matches";
+  };
   const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign" | "tournaments">(
-    defaultAction === "assign" ? "assign" : "matches"
+    sectionFromAction(defaultAction)
   );
+  useEffect(() => {
+    if (defaultAction) setSubTab(sectionFromAction(defaultAction));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultAction]);
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
   const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useSessionState(
     "matches:isLaterScheduledCollapsed",

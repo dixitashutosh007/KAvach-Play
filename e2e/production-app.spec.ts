@@ -450,210 +450,92 @@ test.describe("Production Route (/) Verification Suite", () => {
     await expect(page.locator('nav[data-testid="player-mobile-bottom-nav"]')).not.toBeVisible();
   });
 
-  // ── 6. Complete 7-Role x 7-Hub Granular RBAC Authorization Matrix ───────────
-  test.describe("6. Complete 7-Role x 7-Hub Granular RBAC Authorization Matrix", () => {
-    const ALL_7_HUBS = [
-      { tab: "home", name: "Overview", rejectionMsg: "Your administrative role does not grant access to the Overview hub." },
-      { tab: "matches", name: "Match Centre", rejectionMsg: "You do not have Match Admin permissions for Match Centre management." },
-      { tab: "club", name: "Player Roster", rejectionMsg: "You do not have Club Admin permissions for Player Roster management." },
-      { tab: "finance", name: "Finance & Dues", rejectionMsg: "You do not have Finance Admin permissions for Finance & Dues operations." },
-      { tab: "studio", name: "Studio & Nets", rejectionMsg: "You do not have Studio Admin permissions for Studio & Nets management." },
-      { tab: "design", name: "Club Operations", rejectionMsg: "You do not have Designer permissions for Design Studio." },
-      { tab: "settings", name: "Settings & Access", rejectionMsg: "Only Super Admins may access Settings & Access." },
-    ] as const;
+  // ── 6. D-18 Admin navigation: role → destination / screen / Club section matrix ─
+  test.describe("6. D-18 Admin destinations and granular RBAC matrix", () => {
+    const DESTINATIONS = ["home", "matches", "club", "finance", "design", "settings"] as const;
+    const ALL_TABS = [...DESTINATIONS, "studio", "grounds"] as const;
 
-    // Helper to evaluate a role across all 7 hubs
-    async function verifyHubAccessMatrix(
-      page: Page,
-      authorizedTabs: Set<string>,
-    ) {
-      for (const hub of ALL_7_HUBS) {
-        // Direct navigation attempt via non-production navigation hook
-        await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__?.(t), hub.tab);
-        await page.waitForTimeout(50);
-
-        if (authorizedTabs.has(hub.tab)) {
-          // Positive Authorization: Hub Restricted card MUST NOT be visible
-          await expect(
-            page.locator("text=Hub Restricted"),
-            `Hub '${hub.name}' (${hub.tab}) should be authorized but displayed Hub Restricted`,
-          ).not.toBeVisible();
-
-          // Specific positive component / heading assertions per hub
-          if (hub.tab === "home") {
-            await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 5000 });
-          } else if (hub.tab === "matches") {
-            await expect(page.getByRole("heading", { name: "Match Schedule" })).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('button:has-text("Add Match")').first()).toBeVisible();
-          } else if (hub.tab === "club") {
-            await expect(page.locator('[data-testid="club-sub-tabs"]')).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('[data-testid="club-sub-tab-players"]')).toBeVisible();
-          } else if (hub.tab === "finance") {
-            await expect(page.getByRole("heading", { name: "Match Fee Accounting" })).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('button:has-text("Match Fees")').first()).toBeVisible();
-          } else if (hub.tab === "studio") {
-            await expect(page.locator('[data-testid="studio-tabs"]')).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('[data-testid="studio-crm-tab"]')).toBeVisible();
-          } else if (hub.tab === "design") {
-            await expect(page.getByRole("heading", { name: "KAvach Design" })).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('button:has-text("Match / POTM")').first()).toBeVisible();
-          } else if (hub.tab === "settings") {
-            await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
-            await expect(page.locator("text=App Configuration").first()).toBeVisible();
-          }
-        } else {
-          // Negative Authorization: Hub Restricted card MUST be visible with exact error message
-          await expect(
-            page.locator("text=Hub Restricted"),
-            `Hub '${hub.name}' (${hub.tab}) should be restricted but Hub Restricted card was missing`,
-          ).toBeVisible({ timeout: 5000 });
-
-          await expect(
-            page.locator(`text=${hub.rejectionMsg}`),
-            `Hub '${hub.name}' rejection message was missing or incorrect`,
-          ).toBeVisible();
-        }
-      }
+    async function visibleAdminNav(page: Page) {
+      const ids = await page
+        .locator('[data-testid^="sidebar-tab-"], [data-testid^="admin-nav-"]')
+        .evaluateAll((els) =>
+          els
+            .filter((e) => (e as HTMLElement).offsetParent !== null)
+            .map((e) => (e.getAttribute("data-testid") || "").replace(/^sidebar-tab-|^admin-nav-/, "")),
+        );
+      return ids;
     }
 
-    // 6A. Super Admin: Authorized for ALL 7 hubs
-    test("6A. Super Admin: full positive authorization across all 7 administrative hubs", async ({
-      page,
-    }) => {
-      await injectSyntheticSession(page, {
-        uid: "user-superadmin",
-        role: "admin",
-        isSuperAdmin: true,
+    async function assertScreen(page: Page, tab: string, clubSections: string[]) {
+      if (tab === "home") {
+        await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 5000 });
+      } else if (tab === "matches") {
+        await expect(page.locator('[data-testid="match-subtabs"]')).toBeVisible({ timeout: 5000 });
+        for (const t of ["Matches", "Tournaments", "Grounds"]) {
+          await expect(page.locator('[data-testid="match-subtabs"]').getByRole("button", { name: t, exact: true })).toBeVisible();
+        }
+      } else if (tab === "club") {
+        await expect(page.locator('[data-testid="club-sub-tabs"]')).toBeVisible({ timeout: 5000 });
+        const ids = await page.locator('[data-testid^="club-sub-tab-"]').evaluateAll((els) =>
+          els.map((e) => (e.getAttribute("data-testid") || "").replace("club-sub-tab-", "")),
+        );
+        expect(ids).toEqual(clubSections);
+      } else if (tab === "finance") {
+        await expect(page.getByRole("heading", { name: "Match Fee Accounting" })).toBeVisible({ timeout: 5000 });
+      } else if (tab === "design") {
+        await expect(page.getByRole("heading", { name: "KAvach Design" })).toBeVisible({ timeout: 5000 });
+      } else if (tab === "settings") {
+        await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
+      }
+      await expect(page.locator("text=Hub Restricted")).toHaveCount(0);
+    }
+
+    const ROLES: { name: string; cfg: Record<string, boolean>; nav: string[]; club: string[] }[] = [
+      { name: "6A. Super Admin", cfg: { isSuperAdmin: true }, nav: [...DESTINATIONS],
+        club: ["players", "studio", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders", "activity"] },
+      { name: "6B. Club Admin", cfg: { isClubAdmin: true }, nav: ["home", "club", "design"],
+        club: ["players", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders"] },
+      { name: "6C. Match Admin", cfg: { isMatchAdmin: true }, nav: ["matches", "club"], club: ["pulse", "leaderboard"] },
+      { name: "6D. Finance Admin", cfg: { isFinanceAdmin: true }, nav: ["club", "finance"], club: ["pulse", "leaderboard"] },
+      { name: "6E. Studio Admin", cfg: { isStudioAdmin: true }, nav: ["club"], club: ["studio", "pulse", "leaderboard"] },
+      { name: "6F. Designer", cfg: { isDesigner: true }, nav: ["design"], club: [] },
+      { name: "6H. Match + Finance Admin (multi-role)", cfg: { isMatchAdmin: true, isFinanceAdmin: true }, nav: ["matches", "club", "finance"], club: ["pulse", "leaderboard"] },
+    ];
+
+    for (const role of ROLES) {
+      test(`${role.name}: sees exactly ${role.nav.join(", ")}; unauthorised destinations redirect`, async ({ page }) => {
+        await injectSyntheticSession(page, { uid: `rbac-${role.name.slice(0, 2)}`, role: "admin", ...role.cfg });
+        await page.goto("/");
+        await page.waitForLoadState("domcontentloaded");
+        await page.locator('[data-testid="header-persona-toggle"]').click();
+        await expect(page.locator('[data-testid^="sidebar-tab-"], [data-testid="admin-mobile-bottom-nav"]').first()).toBeVisible({ timeout: 10000 });
+
+        expect(await visibleAdminNav(page)).toEqual(role.nav);
+
+        for (const tab of ALL_TABS) {
+          await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__?.(t), tab);
+          await page.waitForTimeout(150);
+          const parent = tab === "studio" ? "club" : tab === "grounds" ? "matches" : tab;
+          if (role.nav.includes(parent) && (tab !== "studio" || role.club.includes("studio"))) {
+            await assertScreen(page, parent, role.club);
+            if (tab === "studio") await expect(page.locator('[data-testid="studio-tabs"]')).toBeVisible({ timeout: 5000 });
+          } else {
+            // Unauthorised: redirected to an authorised destination, never a dead-end card
+            await expect(page.locator("text=Hub Restricted")).toHaveCount(0);
+            const current = await page
+              .locator('[data-testid^="sidebar-tab-"][aria-current="page"], [data-testid^="admin-nav-"][aria-current="page"]')
+              .evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => e.getAttribute("data-testid")));
+            expect(current.length, `${tab} must land on an authorised destination`).toBe(1);
+            expect(role.nav).toContain((current[0] || "").replace(/^sidebar-tab-|^admin-nav-/, ""));
+          }
+        }
+
+        // Return to Player persona restores the 3-item player navigation
+        await page.locator('[data-testid="header-persona-toggle"]').click();
+        await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid^="sidebar-tab-"], [data-testid="admin-mobile-bottom-nav"]')).toHaveCount(0);
       });
-
-      await page.goto("/");
-      await page.waitForLoadState("domcontentloaded");
-
-      // Super Admin sees Admin Console entry in header
-      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
-      await expect(adminEntry).toBeVisible({ timeout: 10000 });
-      await adminEntry.click();
-
-      // Test all 7 hubs: all 7 are authorized
-      await verifyHubAccessMatrix(
-        page,
-        new Set(["home", "matches", "club", "finance", "studio", "design", "settings"]),
-      );
-
-      // Return to Player View button restores player session without persona switching
-      const returnBtn = page
-        .locator('button:has-text("Player View"), button:has-text("Return to Player View"), button[title*="Player View"]')
-        .filter({ visible: true })
-        .first();
-      await expect(returnBtn).toBeVisible({ timeout: 5000 });
-      await returnBtn.click();
-      await expect(page.locator("h1", { hasText: /KAVACH/i })).toBeVisible();
-    });
-
-    // 6B. Club Admin: Overview, Match Centre, Player Roster, Club Operations (design) authorized; Finance, Studio, Settings rejected
-    test("6B. Club Admin: 7-hub authorization matrix (authorized: Overview, Matches, Roster, Ops; rejected: Finance, Studio, Settings)", async ({
-      page,
-    }) => {
-      await injectSyntheticSession(page, {
-        uid: "user-club-admin",
-        role: "player",
-        isClubAdmin: true,
-      });
-
-      await page.goto("/");
-      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
-      await expect(adminEntry).toBeVisible({ timeout: 10000 });
-      await adminEntry.click();
-
-      await verifyHubAccessMatrix(
-        page,
-        new Set(["home", "matches", "club", "design"]),
-      );
-    });
-
-    // 6C. Match Admin: Match Centre authorized; remaining 6 hubs rejected
-    test("6C. Match Admin: 7-hub authorization matrix (authorized: Match Centre; rejected: remaining 6 hubs)", async ({
-      page,
-    }) => {
-      await injectSyntheticSession(page, {
-        uid: "user-match-admin",
-        role: "player",
-        isMatchAdmin: true,
-      });
-
-      await page.goto("/");
-      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
-      await expect(adminEntry).toBeVisible({ timeout: 10000 });
-      await adminEntry.click();
-
-      await verifyHubAccessMatrix(
-        page,
-        new Set(["matches"]),
-      );
-    });
-
-    // 6D. Finance Admin: Finance & Dues authorized; remaining 6 hubs rejected
-    test("6D. Finance Admin: 7-hub authorization matrix (authorized: Finance & Dues; rejected: remaining 6 hubs)", async ({
-      page,
-    }) => {
-      await injectSyntheticSession(page, {
-        uid: "user-finance-admin",
-        role: "player",
-        isFinanceAdmin: true,
-      });
-
-      await page.goto("/");
-      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
-      await expect(adminEntry).toBeVisible({ timeout: 10000 });
-      await adminEntry.click();
-
-      await verifyHubAccessMatrix(
-        page,
-        new Set(["finance"]),
-      );
-    });
-
-    // 6E. Studio Admin: Studio & Nets authorized; remaining 6 hubs rejected
-    test("6E. Studio Admin: 7-hub authorization matrix (authorized: Studio & Nets; rejected: remaining 6 hubs)", async ({
-      page,
-    }) => {
-      await injectSyntheticSession(page, {
-        uid: "user-studio-admin",
-        role: "player",
-        isStudioAdmin: true,
-      });
-
-      await page.goto("/");
-      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
-      await expect(adminEntry).toBeVisible({ timeout: 10000 });
-      await adminEntry.click();
-
-      await verifyHubAccessMatrix(
-        page,
-        new Set(["studio"]),
-      );
-    });
-
-    // 6F. Designer: Club Operations (design) authorized; remaining 6 hubs rejected
-    test("6F. Designer: 7-hub authorization matrix (authorized: Club Operations; rejected: remaining 6 hubs)", async ({
-      page,
-    }) => {
-      await injectSyntheticSession(page, {
-        uid: "user-designer",
-        role: "player",
-        isDesigner: true,
-      });
-
-      await page.goto("/");
-      const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console"), button:has-text("Admin")').first();
-      await expect(adminEntry).toBeVisible({ timeout: 10000 });
-      await adminEntry.click();
-
-      await verifyHubAccessMatrix(
-        page,
-        new Set(["design"]),
-      );
-    });
+    }
 
     // 6G. Standard Player: No Admin Console access; client-side tampering rejected
     test("6G. Standard Player: player view only; no Admin Console; client-side tampering rejected", async ({
@@ -667,25 +549,21 @@ test.describe("Production Route (/) Verification Suite", () => {
       await page.goto("/");
       await page.waitForLoadState("domcontentloaded");
 
-      // Negative check: Admin Console entry must NOT be rendered in header or sidebar
       const adminEntry = page.locator('button[title*="Admin Console"], button:has-text("Admin Console")');
       await expect(adminEntry).not.toBeVisible();
 
-      // Negative check: Attempt client-side persona tampering
+      // Client-side persona tampering is reverted by the app/page.tsx guard
       await page.evaluate(() => (window as any).__KAVACH_SET_PERSONA__?.("admin"));
       await page.waitForTimeout(500);
-
-      // Guard in app/page.tsx immediately forces persona back to player
       await expect(page.locator("text=Return to Player View")).not.toBeVisible();
-      await expect(page.locator("text=Admin Hub Context Banner")).not.toBeVisible();
+      await expect(page.locator('[data-testid^="sidebar-tab-"], [data-testid="admin-mobile-bottom-nav"]')).toHaveCount(0);
       await expect(page.locator("h1", { hasText: /KAVACH/i })).toBeVisible();
 
-      // Verifying that navigating while unprivileged keeps player in standard player experience
-      for (const hub of ALL_7_HUBS) {
-        await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__?.(t), hub.tab);
+      for (const tab of ALL_TABS) {
+        await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__?.(t), tab);
         await page.waitForTimeout(50);
-        // Standard player mode renders Player tabs, never the admin error card 'Hub Restricted'
         await expect(page.locator("text=Hub Restricted")).not.toBeVisible();
+        await expect(page.locator('[data-testid="admin-club"]')).toHaveCount(0);
       }
     });
   });

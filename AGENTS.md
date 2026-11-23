@@ -120,11 +120,11 @@ Retain granular capabilities, including Super Admin, Club Admin, Match Admin, Fi
 - **Matches:** upcoming/past matches, details, squad, availability, own fee/payment status, results/scorecards.
 - Secondary destinations (Directory, Studio, Shop, Polls & Pulse, Notifications, Leaderboard, Player Finance) open directly and offer contextual navigation back to their parent; they must not form another navigation layer.
 
-**Administrator hubs:** Overview, Match Centre, Player Roster, Finance & Dues, Studio & Nets, Club Operations, Settings & Access.
+**Administrator navigation (D-18, 2026-11-23):** exactly **Home, Match Center, Club, Finance, Design Studio, Settings**, in that order, identical on desktop and mobile, each shown only to authorised roles (Finance: Finance/Super Admin; Design Studio: Designer/Club/Super Admin; Settings: Super Admin; others derived from the current permission model). Match Center holds Matches, Grounds, Tournaments; Club holds roster/directory, Studio, Pulse, Leaderboard & Stats, Announcements, Badges, Invite and related club operations as contextual sections. Menu visibility is never authorisation.
 
 **Persona model:** administrators see the Player persona first. The existing Player/Admin persona switch is retained for authorised admin users. Admin menus, widgets, management actions (including announcement publishing and Club Performance Widget management) and admin-only data are available **only in Admin persona**. Admin privileges must never influence the Player navigation or Player experience. Persona is a presentation boundary only; Firestore rules and server-side RBAC remain the security boundary.
 
-D-16 supersedes the earlier five-item player navigation (D-09, player portion) and the persona-switch elimination (D-10). If the current implementation differs from this direction, document the difference and obtain product-owner direction before changing it.
+D-16 supersedes the earlier five-item player navigation (D-09, player portion) and the persona-switch elimination (D-10); D-18 supersedes the seven admin hubs (D-09, admin portion). If the current implementation differs from this direction, document the difference and obtain product-owner direction before changing it.
 
 ### Feature preservation
 

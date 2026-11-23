@@ -94,7 +94,7 @@ export function ClubPerformanceStatus({
                 <p>Club statistics haven&apos;t been published yet.</p>
                 {canManage && (
                   <p className="mt-1 text-xs text-white/60">
-                    Add the totals in Admin Console → Player Roster → Club Statistics.
+                    Add the totals in Admin → Club → Leaderboard &amp; Stats.
                   </p>
                 )}
               </>

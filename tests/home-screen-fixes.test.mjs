@@ -112,7 +112,7 @@ describe("Fix 3: banner Display Duration", () => {
   });
   it("persisted on add and edit; pin toggle leaves it unchanged; edit form receives the stored value", () => {
     // D-16: announcement add/edit handlers moved from Player Home to Admin Home.
-    const home = src("components/home/AdminHomeAnnouncements.tsx");
+    const home = src("components/home/AdminAnnouncementsManager.tsx");
     assert.equal((home.match(/draft\.displayDurationSec !== undefined \? \{ displayDurationSec: draft\.displayDurationSec \} : \{\}/g) || []).length, 2);
     assert.match(src("hooks/useStore.ts"), /"linkUrl" \| "displayDurationSec"/);
     const section = src("components/home/ClubAnnouncementsSection.tsx");
@@ -132,7 +132,9 @@ describe("Fix 2: no stray Shop label at the top of Home", () => {
     for (const t of ["players", "studio", "shop", "opinion", "announcements"]) assert.match(qa, new RegExp(`target: "${t}"`));
   });
   it("Shop module and navigation stay available", () => {
-    assert.match(src("components/ClubTab.tsx"), /key: "shop", label: "Shop"/);
+    // D-18: merchandise management is the Admin → Club → Shop section (Club/Super Admin).
+    assert.match(src("lib/admin-navigation.ts"), /\{ key: "shop", label: "Shop", feature: "shop", allowed: \(c\) => c\.isClubAdmin \}/);
+    assert.match(src("components/ClubTab.tsx"), /show\("shop"\) && isClubAdmin && <ShopTab store=\{store\} persona="admin" isAdmin=\{isClubAdmin\} \/>/);
     assert.ok(fs.existsSync(path.resolve("components/ShopTab.tsx")) || /shop/i.test(src("app/page.tsx")));
   });
 });

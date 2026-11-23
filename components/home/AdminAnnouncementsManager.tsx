@@ -1,16 +1,13 @@
 "use client";
 
 /**
- * Admin Home — Club Announcements & Club Performance management (D-16).
+ * Admin → Club → Announcements (D-18): club announcement publishing, editing
+ * and deleting. Moved from Player Home in D-16 and from Admin Home into Club in
+ * D-18; behaviour is unchanged (same store calls, same gate, Firestore rules
+ * still decide whether a write is allowed).
  *
- * Announcement publishing/editing/deleting and the Club Performance widget's
- * management hint used to render on the Player Home for Super/Club Admins. Under
- * D-16 those controls exist only in Admin persona, so they live here, on Admin
- * Home (Overview). Behaviour is unchanged: the same store calls, the same
- * components, and Firestore rules still decide whether a write is allowed.
- *
- * Mounted only on Admin Home for Super/Club Admins; the component also gates
- * every action itself with the original `canPublishAnnouncements` check.
+ * Every action is gated by the original `canPublishAnnouncements` check
+ * (Super Admin claim or Club Admin) in addition to the Club section guard.
  */
 import { useMemo } from "react";
 import { useStore } from "@/hooks/useStore";
@@ -19,10 +16,9 @@ import { useAuth } from "@/components/AuthProvider";
 import { resolveMyPlayers } from "@/lib/player-identity";
 import { resolveGreetingName } from "@/lib/greeting";
 import { ClubAnnouncementsSection } from "./ClubAnnouncementsSection";
-import { ClubPerformanceWidget } from "./ClubPerformanceWidget";
 import type { AnnouncementDraft } from "./AnnouncementComposer";
 
-export function AdminHomeAnnouncements({
+export function AdminAnnouncementsManager({
   store,
   currentUserId,
   currentUserName,
@@ -92,7 +88,7 @@ export function AdminHomeAnnouncements({
   };
 
   return (
-    <div data-testid="admin-home-announcements" className="space-y-5">
+    <div data-testid="admin-announcements-manager" className="space-y-5">
       <ClubAnnouncementsSection
         posts={posts}
         canPublish={canPublishAnnouncements}
@@ -100,7 +96,6 @@ export function AdminHomeAnnouncements({
         onUpdate={handleUpdateAnnouncement}
         onDelete={handleDeleteAnnouncement}
       />
-      <ClubPerformanceWidget canManage={canPublishAnnouncements} />
     </div>
   );
 }

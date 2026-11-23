@@ -64,7 +64,7 @@ const ROLES = {
   Designer: { canDesign: true },
   "Super Admin": { isSuperAdmin: true, isClubAdmin: true, isMatchAdmin: true, isFinanceAdmin: true, isStudioAdmin: true, canDesign: true },
 };
-const ADMIN_LABELS = ["Overview", "Match Centre", "Player Roster", "Finance & Dues", "Studio & Nets", "Design Studio", "Settings & Access", "More", "Finance", "Players"];
+const ADMIN_LABELS = ["Overview", "Match Centre", "Match Center", "Player Roster", "Finance & Dues", "Studio & Nets", "Design Studio", "Settings & Access", "Settings", "Club", "More", "Finance", "Players"];
 
 function renderBottomNav(persona, perms, activeTab = "home", enabled = () => true) {
   return render(
@@ -138,10 +138,10 @@ describe("Persona isolation — mobile bottom navigation rendered for every role
     assert.deepEqual(current(renderBottomNav("player", {}, "matches")), ["Matches"]);
     assert.deepEqual(current(renderBottomNav("player", {}, "settings")), []);
   });
-  it("Admin persona keeps its existing hubs and More (regression)", () => {
+  it("Admin persona renders the D-18 six destinations for Super Admin (regression)", () => {
     const html = renderBottomNav("admin", ROLES["Super Admin"]);
     assert.match(html, /data-testid="admin-mobile-bottom-nav"/);
-    assert.deepEqual(buttonLabels(html), ["Overview", "Match Centre", "Player Roster", "Finance & Dues", "More"]);
+    assert.deepEqual(buttonLabels(html), ["Home", "Match Center", "Club", "Finance", "Design Studio", "Settings"]);
   });
 });
 
@@ -164,7 +164,7 @@ describe("Persona isolation — app shell wiring (app/page.tsx)", () => {
     assert.match(playerBranch, /<BadgesTab[\s\S]*?isClubAdmin=\{false\}/);
   });
   it("the player render branch never renders admin hubs", () => {
-    for (const c of ["<ClubTab", "<DesignTab", "<SettingsTab", "<GroundsTab", "<AdminDashboard", "<StudioAdminTab", "<DuesAndRemindersTab", "<AdminHomeAnnouncements"]) {
+    for (const c of ["<ClubTab", "<DesignTab", "<SettingsTab", "<GroundsTab", "<AdminDashboard", "<StudioAdminTab", "<DuesAndRemindersTab", "<AdminAnnouncementsManager", "<ClubPerformanceWidget canManage"]) {
       assert.ok(!playerBranch.includes(c), c);
     }
   });
@@ -183,9 +183,11 @@ describe("Persona isolation — app shell wiring (app/page.tsx)", () => {
     assert.match(page, /const playerScope = isAdminUser && persona === "admin" \? undefined : scopedPlayerId \|\| user\?\.uid;/);
     assert.match(page, /store\.detachDomain\?\.\("allPayments"\);\s*store\.detachDomain\?\.\("allOtherFees"\);\s*scopedPersonaRef\.current = persona;/);
   });
-  it("announcement management is mounted on Admin Home only", () => {
-    const adminHome = page.slice(page.indexOf("isSuperAdmin || isClubAdmin ? ("), page.indexOf("isSuperAdmin || isClubAdmin ? (") + 1200);
-    assert.match(adminHome, /<AdminDashboard[\s\S]*<AdminHomeAnnouncements/);
+  it("announcement management is Admin persona only (D-18: Club → Announcements; Home links to it)", () => {
+    const adminHome = page.slice(page.indexOf("isSuperAdmin || isClubAdmin ? ("), page.indexOf("isSuperAdmin || isClubAdmin ? (") + 2600);
+    assert.match(adminHome, /<AdminDashboard[\s\S]*admin-home-announcements-link[\s\S]*<ClubPerformanceWidget canManage \/>/);
+    assert.match(src("components/ClubTab.tsx"), /<AdminAnnouncementsManager/);
+    assert.ok(!playerBranch.includes("announcements-link"));
   });
 });
 
@@ -199,10 +201,10 @@ describe("Player screens read no admin authority", () => {
     assert.match(pmc, /const effectiveIsAdmin = Boolean\(isAdmin\);/);
     for (const t of ["hasAdminClaim", "isMatchAdmin", "isClubAdmin"]) assert.ok(!pmc.includes(t), t);
   });
-  it("Player More drawer is gone; MoreDrawer only lists admin hubs", () => {
-    const drawer = src("components/layout/MoreDrawer.tsx");
-    assert.ok(!drawer.includes("PLAYER_MORE_ITEMS"));
-    assert.ok(!src("components/layout/MobileBottomNav.tsx").includes("playerMoreBtnRef"));
+  it("no More drawer exists in either persona (D-16 player, D-18 admin)", () => {
+    assert.equal(fs.existsSync(path.resolve("components/layout/MoreDrawer.tsx")), false);
+    const nav = src("components/layout/MobileBottomNav.tsx");
+    assert.ok(!nav.includes("MoreDrawer") && !nav.includes("moreOpen"));
   });
 });
 

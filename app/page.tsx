@@ -15,23 +15,17 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   Home as HomeIcon,
-  Trophy,
   CalendarDays,
   Map,
   Users,
   LogOut,
-  Settings as SettingsIcon,
   ArrowRight,
-  Shield,
-  Video,
   Palette,
   Sparkles,
   Check,
   ChevronRight,
   ShoppingBag,
   X,
-  ImageIcon,
-  Wallet,
   CreditCard,
   User as UserIcon,
 } from "lucide-react";
@@ -67,6 +61,16 @@ import {
   resolvePlayerTab,
   type PlayerPrimaryTab,
 } from "@/lib/player-navigation";
+import {
+  getAdminPrimaryNav,
+  getAdminNavParent,
+  getAdminLanding,
+  getVisibleClubSections,
+  resolveAdminRoute,
+  type AdminCapabilities,
+} from "@/lib/admin-navigation";
+import { ADMIN_NAV_ICONS } from "@/components/layout/MobileBottomNav";
+import { ClubPerformanceWidget } from "@/components/home/ClubPerformanceWidget";
 
 import { useTheme } from "@/hooks/useTheme";
 import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
@@ -88,20 +92,17 @@ const PLAYER_NAV_ICONS: Record<PlayerPrimaryTab, typeof HomeIcon> = {
 
 // Lazy-loaded tab components — only downloaded when the user navigates to them
 const MatchesTab = dynamic(() => import("@/components/MatchesTab").then(m => ({ default: m.MatchesTab })), { ssr: false });
-const GroundsTab = dynamic(() => import("@/components/GroundsTab").then(m => ({ default: m.GroundsTab })), { ssr: false });
 const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ default: m.PlayersTab })), { ssr: false });
 const LeaderboardTab = dynamic(() => import("@/components/LeaderboardTab").then(m => ({ default: m.LeaderboardTab })), { ssr: false });
 const SettingsTab = dynamic(() => import("@/components/SettingsTab").then(m => ({ default: m.SettingsTab })), { ssr: false });
 const AdminDashboard = dynamic(() => import("@/components/AdminDashboard").then(m => ({ default: m.AdminDashboard })), { ssr: false });
 const StudioTab = dynamic(() => import("@/components/StudioTab").then(m => ({ default: m.StudioTab })), { ssr: false });
-const StudioAdminTab = dynamic(() => import("@/components/StudioAdminTab").then(m => ({ default: m.StudioAdminTab })), { ssr: false });
 const NotificationsTab = dynamic(() => import("@/components/NotificationsTab").then(m => ({ default: m.NotificationsTab })), { ssr: false });
 const FinanceTab = dynamic(() => import("@/components/FinanceTab").then(m => ({ default: m.FinanceTab })), { ssr: false });
 const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersTab").then(m => ({ default: m.DuesAndRemindersTab })), { ssr: false });
 const ShopTab = dynamic(() => import("@/components/ShopTab").then(m => ({ default: m.ShopTab })), { ssr: false });
 const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ default: m.OpinionTab })), { ssr: false });
 const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ default: m.DesignTab })), { ssr: false });
-const AdminHomeAnnouncements = dynamic(() => import("@/components/home/AdminHomeAnnouncements").then(m => ({ default: m.AdminHomeAnnouncements })), { ssr: false });
 const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
 const ClubTab = dynamic(() => import("@/components/ClubTab").then(m => ({ default: m.ClubTab })), { ssr: false });
 
@@ -223,6 +224,22 @@ export default function Home() {
       currentUserObj?.isFinanceAdmin ||
       currentUserObj?.isClubAdmin ||
       currentUserObj?.isDesigner);
+
+  // Effective admin capabilities (D-18 navigation input). Same derivation as the
+  // per-screen guards further down: Super Admin claim folds into every role and
+  // canDesign = Club Admin or Designer. Not an authority — rules decide writes.
+  const adminCaps = useMemo<AdminCapabilities>(() => {
+    const sup = !!hasAdminClaim;
+    const club = sup || !!currentUserObj?.isClubAdmin;
+    return {
+      isSuperAdmin: sup,
+      isClubAdmin: club,
+      isMatchAdmin: sup || !!currentUserObj?.isMatchAdmin,
+      isFinanceAdmin: sup || !!currentUserObj?.isFinanceAdmin,
+      isStudioAdmin: sup || !!currentUserObj?.isStudioAdmin,
+      canDesign: club || !!currentUserObj?.isDesigner,
+    };
+  }, [hasAdminClaim, currentUserObj]);
 
   useEffect(() => {
     if (isAdminUser && !hasInitializedAdminRef.current) {
@@ -347,6 +364,16 @@ export default function Home() {
   // otherFees collectionGroup listeners when the user actually opens a tab
   // that consumes them. Previously these ran for every logged-in user on
   // login. Idempotent: calling ensurePayments twice does nothing.
+  // Admin persona route guard (D-18): legacy tab ids (studio, grounds, opinion,
+  // leaderboard, shop, badges, players, dues_and_reminders) open inside their
+  // destination, and destinations this user is not shown fall back to their
+  // landing. UI routing only — every screen keeps its own role guard.
+  useEffect(() => {
+    if (persona !== "admin" || !store.isLoaded || !isAdminUser) return;
+    const next = resolveAdminRoute(activeTab, tabAction, adminCaps, (f) => isFeatureEnabled(f));
+    if (next) setTimeout(() => setActiveTab(next.tab, next.action), 0);
+  }, [persona, activeTab, tabAction, adminCaps, store.isLoaded, isAdminUser, isFeatureEnabled, setActiveTab]);
+
   const scopedPersonaRef = useRef<"player" | "admin">(persona);
   const PAYMENT_TABS = new Set([
     "home",
@@ -808,12 +835,9 @@ export default function Home() {
             setActiveTab("home");
           } else {
             setPersona("admin");
-            if (isSuperAdmin) setActiveTab("home");
-            else if (isFinanceAdmin) setActiveTab("finance");
-            else if (isMatchAdmin) setActiveTab("matches");
-            else if (isStudioAdmin) setActiveTab("studio");
-            else if (isClubAdmin) setActiveTab("club");
-            else setActiveTab("home");
+            // Existing role priority, expressed in D-18 destinations.
+            const landing = getAdminLanding(adminCaps, (f) => isFeatureEnabled(f));
+            setActiveTab(landing.tab, landing.action);
           }
         }}
         unreadCount={unreadCount}
@@ -952,44 +976,35 @@ export default function Home() {
                 </>
               ) : (
                 <div className="space-y-1">
-                  {([
-                    { tab: "home", label: "Overview", icon: HomeIcon, show: true },
-                    { tab: "matches", label: "Match Centre", icon: CalendarDays, show: isMatchAdmin },
-                    { tab: "club", label: "Player Roster", icon: Users, show: isClubAdmin },
-                    { tab: "finance", label: "Finance & Dues", icon: Shield, show: isFinanceAdmin },
-                    { tab: "studio", label: "Studio & Nets", icon: Video, show: isStudioAdmin },
-                    { tab: "design", label: "Design Studio", icon: ImageIcon, show: canDesign },
-                    { tab: "settings", label: "Settings & Access", icon: SettingsIcon, show: isSuperAdmin },
-                  ] as const)
-                    .filter((item) => item.show)
-                    .map((item) => {
-                      const IconComp = item.icon;
-                      return (
-                        <button
-                          key={item.tab}
-                          data-testid={`sidebar-tab-${item.tab}`}
-                          onClick={() => setActiveTab(item.tab as any)}
-                          className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
-                            activeTab === item.tab
-                              ? "bg-accent text-text-accent"
-                              : "text-text-secondary hover:bg-surface-hover"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5 uppercase text-[11px]">
-                            <IconComp
-                              className="w-4 h-4 text-accent group-hover:scale-110 transition-transform"
-                              style={
-                                activeTab === item.tab
-                                  ? { color: "#000" }
-                                  : undefined
-                              }
-                            />
-                            {item.label}
-                          </span>
-                          <ChevronRight className="w-3.5 h-3.5 opacity-40 group-hover:translate-x-1 transition-transform" />
-                        </button>
-                      );
-                    })}
+                  {/* Admin Primary Navigation (D-18): Home, Match Center, Club,
+                      Finance, Design Studio, Settings — same config and order as
+                      the mobile bar, filtered by the existing permission model. */}
+                  {getAdminPrimaryNav(adminCaps, (f) => isFeatureEnabled(f)).map((item) => {
+                    const IconComp = ADMIN_NAV_ICONS[item.tab];
+                    const isActive = getAdminNavParent(activeTab) === item.tab;
+                    return (
+                      <button
+                        key={item.tab}
+                        data-testid={`sidebar-tab-${item.tab}`}
+                        onClick={() => setActiveTab(item.tab)}
+                        aria-current={isActive ? "page" : undefined}
+                        className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center justify-between group cursor-pointer ${
+                          isActive
+                            ? "bg-accent text-text-accent"
+                            : "text-text-secondary hover:bg-surface-hover"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5 uppercase text-[11px]">
+                          <IconComp
+                            className="w-4 h-4 text-accent group-hover:scale-110 transition-transform"
+                            style={isActive ? { color: "#000" } : undefined}
+                          />
+                          {item.label}
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 opacity-40 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    );
+                  })}
                   <div className="pt-2 border-t border-border mt-2">
                     <button
                       onClick={() => {
@@ -1254,6 +1269,9 @@ export default function Home() {
                     exit={{ opacity: 0, y: -12 }}
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
+                    {/* Admin persona destinations (D-18). Each keeps its existing
+                        role guard; the route guard above canonicalises legacy tab ids
+                        (studio, grounds, opinion, leaderboard, shop, badges, players). */}
                     {activeTab === "home" && (
                       isSuperAdmin || isClubAdmin ? (
                         <div className="space-y-6">
@@ -1266,40 +1284,32 @@ export default function Home() {
                             isStudioAdmin={isStudioAdmin}
                             isClubAdmin={isClubAdmin}
                           />
-                          {/* D-16: announcement publishing/editing and Club
-                              Performance management moved here from Player Home.
-                              Same audience as before: Super Admin claim or Club Admin. */}
-                          <AdminHomeAnnouncements
-                            store={store}
-                            currentUserId={user.uid}
-                            currentUserName={player?.name || user?.displayName || ""}
-                          />
+                          {/* Club Performance widget with its management hint (moved from
+                              Player Home in D-16). Announcement management lives in
+                              Club → Announcements (D-18); this shortcut opens it. */}
+                          <div className="max-w-4xl mx-auto w-full px-4 space-y-4" data-testid="admin-home-club-panel">
+                            <button
+                              type="button"
+                              data-testid="admin-home-announcements-link"
+                              onClick={() => setActiveTab("club", "announcements")}
+                              className="w-full min-h-[44px] bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition cursor-pointer"
+                            >
+                              <span className="flex items-center gap-3 text-left">
+                                <Bell className="w-5 h-5 text-accent" aria-hidden="true" />
+                                <span>
+                                  <span className="block text-sm font-bold text-text-primary">Club Announcements</span>
+                                  <span className="block text-xs text-text-secondary">Publish, edit and pin announcements in Club</span>
+                                </span>
+                              </span>
+                              <ChevronRight className="w-4 h-4 text-text-muted" aria-hidden="true" />
+                            </button>
+                            <ClubPerformanceWidget canManage />
+                          </div>
                         </div>
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
                           <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">Your administrative role does not grant access to the Overview hub.</p>
-                        </div>
-                      )
-                    )}
-                    {activeTab === "club" && (
-                      isClubAdmin || isSuperAdmin ? (
-                        <ClubTab
-                          store={store}
-                          persona={persona}
-                          canDesign={canDesign}
-                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
-                          isClubAdmin={isClubAdmin || isSuperAdmin}
-                          isSuperAdmin={isSuperAdmin}
-                          currentUserId={user?.uid || ""}
-                          currentUserName={player?.name || user?.displayName || "Admin"}
-                          isFeatureEnabled={isFeatureEnabled}
-                          defaultSubTab={tabAction as any}
-                        />
-                      ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Club Admin permissions for Player Roster management.</p>
+                          <p className="text-xs text-text-secondary">Your administrative role does not grant access to Admin Home.</p>
                         </div>
                       )
                     )}
@@ -1313,39 +1323,56 @@ export default function Home() {
                           defaultAction={tabAction}
                         />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
                           <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Match Admin permissions for Match Centre management.</p>
+                          <p className="text-xs text-text-secondary">You do not have Match Admin permissions for Match Center.</p>
                         </div>
                       )
                     )}
-                    {activeTab === "studio" && (
-                      isStudioAdmin || isSuperAdmin ? (
-                        <StudioAdminTab
+                    {activeTab === "club" && (() => {
+                      const clubSections = getVisibleClubSections(adminCaps, (f) => isFeatureEnabled(f));
+                      return clubSections.length > 0 ? (
+                        <ClubTab
                           store={store}
-                          adminId={user.uid}
-                          adminName={appUser?.name || "Admin"}
-                          persona={persona}
-                          isStudioAdmin={isStudioAdmin || isSuperAdmin}
+                          sections={clubSections}
+                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                          isClubAdmin={isClubAdmin || isSuperAdmin}
                           isSuperAdmin={isSuperAdmin}
-                          defaultAction={tabAction}
+                          isStudioAdmin={isStudioAdmin || isSuperAdmin}
+                          currentUserId={user?.uid || ""}
+                          currentUserName={player?.name || user?.displayName || "Admin"}
+                          adminName={appUser?.name || "Admin"}
                           isFeatureEnabled={isFeatureEnabled}
+                          defaultSubTab={tabAction}
                         />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
                           <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Studio Admin permissions for Studio & Nets management.</p>
+                          <p className="text-xs text-text-secondary">Your administrative role does not include Club management.</p>
+                        </div>
+                      );
+                    })()}
+                    {activeTab === "finance" && (
+                      isFinanceAdmin || isSuperAdmin ? (
+                        <FinanceTab
+                          store={store}
+                          persona="admin"
+                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
+                          isSuperAdmin={isSuperAdmin}
+                          defaultAction={tabAction}
+                        />
+                      ) : (
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
+                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
+                          <p className="text-xs text-text-secondary">You do not have Finance Admin permissions for Finance.</p>
                         </div>
                       )
-                    )}
-                    {activeTab === "notifications" && (
-                      <NotificationsTab store={store} persona={persona} />
                     )}
                     {activeTab === "design" && (
                       canDesign ? (
                         <DesignTab store={store} />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
                           <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
                           <p className="text-xs text-text-secondary">You do not have Designer permissions for Design Studio.</p>
                         </div>
@@ -1355,48 +1382,17 @@ export default function Home() {
                       isSuperAdmin ? (
                         <SettingsTab store={store} setPreviewTheme={setPreviewThemeId} />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
+                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
                           <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">Only Super Admins may access Settings & Access.</p>
+                          <p className="text-xs text-text-secondary">Only Super Admins may access Settings.</p>
                         </div>
                       )
                     )}
-                    {activeTab === "grounds" && (
-                      isMatchAdmin || isSuperAdmin || isClubAdmin ? (
-                        <GroundsTab store={store} persona={persona} />
-                      ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Match Admin permissions for Grounds management.</p>
-                        </div>
-                      )
-                    )}
-                    {activeTab === "shop" && (
-                      <ShopTab store={store} persona={persona} isAdmin={isClubAdmin || isSuperAdmin} />
-                    )}
-                    {activeTab === "leaderboard" && (
-                      <LeaderboardTab store={store} persona={persona} />
-                    )}
-                    {activeTab === "opinion" && (
-                      <OpinionTab store={store} persona={persona} />
+                    {/* Global admin screens reached from the header. */}
+                    {activeTab === "notifications" && (
+                      <NotificationsTab store={store} persona={persona} />
                     )}
                     {activeTab === "profile" && <ProfileTab store={store} />}
-                    {activeTab === "finance" && (
-                      !effectiveIsAdminMode || isFinanceAdmin || isSuperAdmin ? (
-                        <FinanceTab
-                          store={store}
-                          persona={effectiveIsAdminMode ? "admin" : "player"}
-                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
-                          isSuperAdmin={isSuperAdmin}
-                          defaultAction={tabAction}
-                        />
-                      ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Finance Admin permissions for Finance & Dues operations.</p>
-                        </div>
-                      )
-                    )}
                   </motion.div>
                 </AnimatePresence>
               </div>

@@ -69,16 +69,14 @@ test("UX-004: MobileBottomNav provides complete navigation for both admin and pl
   assert.equal(navCode.includes('persona !== "player"'), false, "Must not return null for admin persona");
   assert.equal(navCode.includes("persona !== 'player'"), false, "Must not return null for admin persona");
 
-  // Verify that admin persona renders approved 5 hubs: Overview | Match Centre | Player Roster | Finance & Dues | More
+  // D-18: admin persona renders the six approved destinations from the shared config, no More
   assert.ok(navCode.includes('data-testid="admin-mobile-bottom-nav"'), "Admin mobile bottom nav must be defined");
   assert.ok(navCode.includes('data-testid="player-mobile-bottom-nav"'), "Player mobile bottom nav must be defined");
-  assert.ok(navCode.includes('title="Overview"'), "Admin mobile nav must include Overview");
-  assert.ok(navCode.includes('title="Match Centre"'), "Admin mobile nav must include Match Centre");
-  assert.ok(navCode.includes('title="Player Roster"'), "Admin mobile nav must include Player Roster");
-  assert.ok(navCode.includes('aria-label="Player Roster"'), "Admin mobile nav must have accessible label Player Roster");
-  assert.ok(navCode.includes('>Player Roster</span>'), "Admin mobile nav must render Player Roster text");
-  assert.ok(navCode.includes('title="Finance & Dues"'), "Admin mobile nav must include Finance & Dues");
-  assert.ok(navCode.includes('title="More"'), "Admin mobile nav must include More");
+  assert.ok(navCode.includes("getAdminPrimaryNav(caps"), "Admin mobile nav must use the shared D-18 config");
+  assert.equal(navCode.includes("MoreDrawer"), false, "Admin mobile nav must not use a More drawer");
+  const cfg = fs.readFileSync(path.resolve("lib/admin-navigation.ts"), "utf-8");
+  const order = [...cfg.slice(cfg.indexOf("ADMIN_PRIMARY_NAV"), cfg.indexOf("] as const;", cfg.indexOf("ADMIN_PRIMARY_NAV"))).matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ["Home", "Match Center", "Club", "Finance", "Design Studio", "Settings"]);
 });
 
 test("UX-001 & UX-005: Header enforces mobile touch targets (>= 44px) and prevents narrow viewport collision", () => {
@@ -208,7 +206,6 @@ test("UX-P1-03 & UX-P1-04: Adaptive responsive cards for dense mobile data and r
 test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () => {
   const headerCode = fs.readFileSync(path.resolve("components/layout/AppHeader.tsx"), "utf-8");
   const navCode = fs.readFileSync(path.resolve("components/layout/MobileBottomNav.tsx"), "utf-8");
-  const drawerCode = fs.readFileSync(path.resolve("components/layout/MoreDrawer.tsx"), "utf-8");
   const pageCode = fs.readFileSync(path.resolve("app/page.tsx"), "utf-8");
   const css = fs.readFileSync(path.resolve("app/globals.css"), "utf-8");
 
@@ -222,14 +219,10 @@ test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () 
   const cfg = fs.readFileSync(path.resolve("lib/player-navigation.ts"), "utf-8");
   assert.ok(cfg.includes('{ tab: "profile", label: "Profile" }'), "Profile must be a primary Player destination");
 
-  // 3. MoreDrawer is Admin persona only (D-16); it keeps its accessibility contract
-  assert.ok(drawerCode.includes('data-testid="more-drawer-sheet"'), "MoreDrawer must have sheet container");
-  assert.ok(drawerCode.includes('data-testid={`more-item-${item.tab}`}'), "MoreDrawer buttons must include data-testid");
-  assert.equal(drawerCode.includes("PLAYER_MORE_ITEMS"), false, "MoreDrawer must not define player items");
-  for (const t of ["settings", "studio", "grounds", "design", "shop", "leaderboard", "opinion", "notifications"]) {
-    assert.ok(drawerCode.includes(`tab: "${t}"`), `Admin MoreDrawer must keep ${t}`);
-  }
-  assert.ok(drawerCode.includes('e.key === "Escape"'), "MoreDrawer must close on Escape key");
+  // 3. D-18: no More drawer in either persona; club features live in Club sections
+  assert.equal(fs.existsSync(path.resolve("components/layout/MoreDrawer.tsx")), false, "MoreDrawer must be removed");
+  const clubCode = fs.readFileSync(path.resolve("components/ClubTab.tsx"), "utf-8");
+  assert.ok(clubCode.includes('data-testid="club-sub-tabs"') && clubCode.includes('role="tablist"'), "Club sections must be an accessible tab list");
 
   // 4. Safe area insets support
   assert.ok(css.includes(".pb-safe"), "globals.css must define .pb-safe utility");
@@ -241,308 +234,11 @@ test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () 
   assert.ok(pageCode.includes('onNavigateToPayments={() => setActiveTab("finance")}'), "Player Pay Now must still reach the player payments screen");
 });
 
-test("UX-SHELL-02: Behavioural verification — Player and Admin navigation dispatch and active state", () => {
-  // 1. Player Navigation Contract Simulation
-  const playerItems = [
-    { label: "Home", tab: "home" },
-    { label: "Matches", tab: "matches" },
-    { label: "Finance", tab: "finance" },
-    { label: "Players", tab: "players" },
-    { label: "More", tab: "more" },
-  ];
-  assert.equal(playerItems.length, 5, "Player nav must have exactly 5 primary items");
-
-  let activeTab = "home";
-  let moreOpen = false;
-  const onSelectTab = (tab) => {
-    if (tab === "more") {
-      moreOpen = true;
-    } else {
-      activeTab = tab;
-      moreOpen = false;
-    }
-  };
-
-  // Dispatch all 5 player destinations
-  for (const item of playerItems) {
-    onSelectTab(item.tab);
-    if (item.tab === "more") {
-      assert.equal(moreOpen, true, "More item must toggle drawer open");
-    } else {
-      assert.equal(activeTab, item.tab, `Selecting ${item.label} must navigate to ${item.tab}`);
-    }
-  }
-
-  // 2. Admin Navigation Contract Simulation: Overview | Match Centre | Player Roster | Finance & Dues | More
-  const adminItems = [
-    { label: "Overview", tab: "home" },
-    { label: "Match Centre", tab: "matches" },
-    { label: "Player Roster", tab: "club" },
-    { label: "Finance & Dues", tab: "finance" },
-    { label: "More", tab: "more" },
-  ];
-  assert.equal(adminItems.length, 5, "Admin nav must have exactly 5 primary items");
-
-  for (const item of adminItems) {
-    onSelectTab(item.tab);
-    if (item.tab === "more") {
-      assert.equal(moreOpen, true, "Admin More item must toggle drawer open");
-    } else {
-      assert.equal(activeTab, item.tab, `Admin selecting ${item.label} must navigate to ${item.tab}`);
-    }
-  }
-
-  // 3. Admin subview selection active indicators
-  const isAdminClubActive = (tab) => tab === "club" || tab === "players";
-  assert.equal(isAdminClubActive("club"), true);
-  assert.equal(isAdminClubActive("players"), true, "Player Roster tab must remain active on players subview");
-  assert.equal(isAdminClubActive("matches"), false);
-
-  const isAdminFinanceActive = (tab) => tab === "finance" || tab === "dues_and_reminders";
-  assert.equal(isAdminFinanceActive("finance"), true);
-  assert.equal(isAdminFinanceActive("dues_and_reminders"), true, "Finance & Dues tab must remain active on dues subview");
-  assert.equal(isAdminFinanceActive("home"), false);
-});
-
-test("UX-SHELL-03: Behavioural verification — Admin More Drawer completeness and RBAC permissions gating", () => {
-  const ALL_ADMIN_OVERFLOW = [
-    "settings",
-    "studio",
-    "grounds",
-    "design",
-    "shop",
-    "leaderboard",
-    "opinion",
-    "notifications",
-  ];
-
-  // Filter function matching MoreDrawer.tsx implementation
-  function filterAdminMoreItems(items, permissions, features) {
-    return items.filter((item) => {
-      if (item.feature && features?.[item.feature] === false) return false;
-      if (item.requireSuperAdmin && !permissions.isSuperAdmin) return false;
-      if (
-        item.requireStudioAdmin &&
-        !(permissions.isStudioAdmin || permissions.isSuperAdmin)
-      )
-        return false;
-      if (
-        item.requireMatchAdmin &&
-        !(permissions.isMatchAdmin || permissions.isSuperAdmin || permissions.isClubAdmin)
-      )
-        return false;
-      if (item.requireDesign && !(permissions.canDesign || permissions.isSuperAdmin))
-        return false;
-      return true;
-    });
-  }
-
-  const rawAdminItems = [
-    { tab: "settings", requireSuperAdmin: true },
-    { tab: "studio", feature: "studio", requireStudioAdmin: true },
-    { tab: "grounds", requireMatchAdmin: true },
-    { tab: "design", requireDesign: true },
-    { tab: "shop", feature: "shop" },
-    { tab: "leaderboard", feature: "leaderboard" },
-    { tab: "opinion", feature: "opinion" },
-    { tab: "notifications" },
-  ];
-
-  // Reconcile: every overflow tab is accounted for
-  assert.equal(rawAdminItems.length, ALL_ADMIN_OVERFLOW.length);
-  for (const tab of ALL_ADMIN_OVERFLOW) {
-    assert.ok(rawAdminItems.some((item) => item.tab === tab), `Missing ${tab} from admin drawer items`);
-  }
-
-  // 1. Super Admin with all features: sees all 8 items
-  const superAdminVisible = filterAdminMoreItems(
-    rawAdminItems,
-    { isSuperAdmin: true, isClubAdmin: true, isMatchAdmin: true, isFinanceAdmin: true, isStudioAdmin: true, canDesign: true },
-    { studio: true, shop: true, leaderboard: true, opinion: true }
-  ).map((i) => i.tab);
-  assert.deepEqual(superAdminVisible, ALL_ADMIN_OVERFLOW);
-
-  // 2. Match Admin only: sees grounds, shop, leaderboard, opinion, notifications (NO settings, NO studio, NO design)
-  const matchAdminVisible = filterAdminMoreItems(
-    rawAdminItems,
-    { isMatchAdmin: true },
-    { studio: true, shop: true, leaderboard: true, opinion: true }
-  ).map((i) => i.tab);
-  assert.ok(matchAdminVisible.includes("grounds"), "Match admin must see grounds");
-  assert.ok(matchAdminVisible.includes("notifications"), "Match admin must see notifications");
-  assert.equal(matchAdminVisible.includes("settings"), false, "Match admin must not see settings");
-  assert.equal(matchAdminVisible.includes("studio"), false, "Match admin must not see studio");
-  assert.equal(matchAdminVisible.includes("design"), false, "Match admin must not see design");
-
-  // 3. Studio Admin only: sees studio, but NO grounds or settings
-  const studioAdminVisible = filterAdminMoreItems(
-    rawAdminItems,
-    { isStudioAdmin: true },
-    { studio: true, shop: true, leaderboard: true, opinion: true }
-  ).map((i) => i.tab);
-  assert.ok(studioAdminVisible.includes("studio"), "Studio admin must see studio");
-  assert.equal(studioAdminVisible.includes("grounds"), false, "Studio admin must not see grounds");
-  assert.equal(studioAdminVisible.includes("settings"), false, "Studio admin must not see settings");
-
-  // 4. Feature flag gating: when shop is disabled, shop disappears
-  const disabledShopVisible = filterAdminMoreItems(
-    rawAdminItems,
-    { isSuperAdmin: true },
-    { shop: false }
-  ).map((i) => i.tab);
-  assert.equal(disabledShopVisible.includes("shop"), false, "Disabled feature shop must not appear");
-});
-
-test("UX-SHELL-04: Behavioural verification — MoreDrawer modal accessibility, focus containment, and scroll lock", () => {
-  // Mock DOM environment to test modal accessibility algorithms
-  let bodyOverflow = "auto";
-  let activeElement = null;
-  const listeners = {};
-
-  const mockDocument = {
-    body: {
-      style: {
-        get overflow() {
-          return bodyOverflow;
-        },
-        set overflow(val) {
-          bodyOverflow = val;
-        },
-      },
-    },
-    get activeElement() {
-      return activeElement;
-    },
-    addEventListener(event, fn) {
-      listeners[event] = listeners[event] || [];
-      listeners[event].push(fn);
-    },
-    removeEventListener(event, fn) {
-      listeners[event] = (listeners[event] || []).filter((f) => f !== fn);
-    },
-    dispatchKeyDown(key, shiftKey = false) {
-      const e = {
-        key,
-        shiftKey,
-        defaultPrevented: false,
-        preventDefault() {
-          this.defaultPrevented = true;
-        },
-      };
-      for (const fn of listeners["keydown"] || []) {
-        fn(e);
-      }
-      return e;
-    },
-  };
-
-  const mockTrigger = {
-    id: "more-trigger",
-    focused: false,
-    focus() {
-      this.focused = true;
-      activeElement = this;
-    },
-  };
-
-  // Focus trigger initially
-  mockTrigger.focus();
-  assert.equal(mockDocument.activeElement.id, "more-trigger");
-
-  // Simulate opening drawer
-  let isDrawerOpen = true;
-  let closedViaAction = false;
-  const originalOverflow = mockDocument.body.style.overflow;
-  mockDocument.body.style.overflow = "hidden"; // Scroll locked
-  assert.equal(mockDocument.body.style.overflow, "hidden", "Background scrolling must be locked on open");
-
-  const closeButton = {
-    id: "close-btn",
-    focused: false,
-    focus() {
-      this.focused = true;
-      activeElement = this;
-    },
-  };
-
-  const item1 = {
-    id: "item-1",
-    focused: false,
-    focus() {
-      this.focused = true;
-      activeElement = this;
-    },
-  };
-
-  const itemLast = {
-    id: "item-last",
-    focused: false,
-    focus() {
-      this.focused = true;
-      activeElement = this;
-    },
-  };
-
-  const focusable = [closeButton, item1, itemLast];
-  closeButton.focus(); // Initial focus enters drawer
-  assert.equal(mockDocument.activeElement.id, "close-btn", "Initial focus must enter close button");
-
-  // Test Focus Trap Tab handler algorithm
-  const handleTab = (shiftKey) => {
-    const firstElement = focusable[0];
-    const lastElement = focusable[focusable.length - 1];
-
-    if (shiftKey) {
-      if (activeElement === firstElement) {
-        lastElement.focus();
-        return true;
-      }
-    } else {
-      if (activeElement === lastElement) {
-        firstElement.focus();
-        return true;
-      }
-    }
-    return false;
-  };
-
-  // 1. Shift+Tab on first element wraps to last element
-  assert.equal(activeElement.id, "close-btn");
-  handleTab(true);
-  assert.equal(activeElement.id, "item-last", "Shift+Tab on first element must cycle to last element");
-
-  // 2. Tab on last element wraps to first element
-  handleTab(false);
-  assert.equal(activeElement.id, "close-btn", "Tab on last element must cycle to first element");
-
-  // 3. User moves focus to an item inside the open drawer
-  item1.focus();
-  assert.equal(activeElement.id, "item-1", "User focuses on item-1 inside drawer");
-
-  // 4. Simulate parent rerender with a new onClose callback instance while drawer remains open
-  let newOnClose = () => { isDrawerOpen = false; };
-  // Lifecycle check: open did not transition, so scroll lock and focus must remain undisturbed
-  assert.equal(mockDocument.body.style.overflow, "hidden", "Parent rerender must NOT release scroll lock");
-  assert.equal(activeElement.id, "item-1", "Parent rerender must NOT steal focus or reset focus to close button");
-
-  // 5. Escape key dismissal
-  const onClose = () => {
-    isDrawerOpen = false;
-    closedViaAction = true;
-    mockDocument.body.style.overflow = originalOverflow;
-    mockTrigger.focus();
-  };
-
-  // Test Escape keydown
-  mockDocument.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") onClose();
-  });
-
-  mockDocument.dispatchKeyDown("Escape");
-  assert.equal(isDrawerOpen, false, "Escape must close drawer");
-  assert.equal(mockDocument.body.style.overflow, "auto", "Scroll lock must be restored to auto");
-  assert.equal(mockDocument.activeElement.id, "more-trigger", "Focus must restore to More trigger element");
-});
+// UX-SHELL-02/03/04 (removed in D-18): they re-implemented navigation dispatch,
+// the More drawer RBAC filter and drawer focus handling inside this file, so they
+// could not detect regressions in production code (QA-001). The More drawer no
+// longer exists. Replaced by production-importing tests in
+// tests/player-nav-persona.test.mjs and tests/admin-nav-realignment.test.mjs.
 
 test("UX-SHELL-05: Behavioural verification — AppHeader responsiveness and persona switching across viewports", () => {
   const VIEWPORTS = [

@@ -187,10 +187,10 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByText(/Search Results for “Tentative”/i)).toBeVisible();
     await expect(page.getByText(/vs Tentative Challengers/i)).toBeHidden();
 
-    // Admin persona: Match Centre still lists the restricted and tentative fixtures
+    // Admin persona: Match Center still lists the restricted and tentative fixtures
     await page.locator('[data-testid="header-persona-toggle"]').click();
     await expect(page.locator('[data-testid="admin-mobile-bottom-nav"]')).toBeVisible({ timeout: 10000 });
-    await page.locator('[data-testid="admin-mobile-bottom-nav"]').getByRole("button", { name: "Match Centre" }).click();
+    await page.locator('[data-testid="admin-mobile-bottom-nav"]').getByRole("button", { name: "Match Center" }).click();
     await page.getByText(/Scheduled later/i).first().click();
     await expect(page.getByText(/Jaipur Strikers/i).first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Tentative Challengers/i).first()).toBeVisible({ timeout: 10000 });
@@ -500,9 +500,9 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(page.getByText(/Search Results for “Jaipur”/i)).toBeVisible();
     await expect(page.locator('[data-testid="search-result-match-match-ineligible-squad"]')).toHaveCount(0);
 
-    // Admin persona: the fixture is reachable in Match Centre
+    // Admin persona: the fixture is reachable in Match Center
     await page.locator('[data-testid="header-persona-toggle"]').click();
-    await page.locator('[data-testid="admin-mobile-bottom-nav"]').getByRole("button", { name: "Match Centre" }).click();
+    await page.locator('[data-testid="admin-mobile-bottom-nav"]').getByRole("button", { name: "Match Center" }).click();
     await page.getByText(/Scheduled later/i).first().click();
     await expect(page.getByText(/Jaipur Strikers/i).first()).toBeVisible({ timeout: 10000 });
   });

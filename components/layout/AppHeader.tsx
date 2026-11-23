@@ -3,23 +3,8 @@
 import Image from "next/image";
 import { Shield, Bell, LogOut, User as UserIcon } from "lucide-react";
 
-export type Tab =
-  | "home"
-  | "matches"
-  | "grounds"
-  | "players"
-  | "leaderboard"
-  | "profile"
-  | "settings"
-  | "studio"
-  | "notifications"
-  | "finance"
-  | "dues_and_reminders"
-  | "shop"
-  | "opinion"
-  | "design"
-  | "club"
-  | "badges";
+import type { Tab } from "./navTypes";
+export type { Tab } from "./navTypes";
 
 const TAB_TITLES: Record<string, string> = {
   home: "Home",
@@ -32,8 +17,8 @@ const TAB_TITLES: Record<string, string> = {
   opinion: "Pulse",
   design: "Design Studio",
   profile: "My Profile",
-  club: "Club Roster & Ops",
-  settings: "Settings & Access",
+  club: "Club",
+  settings: "Settings",
   grounds: "Grounds & Venues",
   notifications: "Notifications",
   badges: "Club Badges",
