@@ -185,9 +185,9 @@ describe("On-demand payment loading (no preload for the admin Match Centre)", ()
     assert.match(st, /if \(lazySubsRef\.current\.has\(key\)\) return;/, "duplicate listeners prevented");
     assert.match(st, /    matchPaymentsStatus,\n/);
   });
-  it("Matches tab: Calendar/Assign load all; edit form and match detail load one match", () => {
+  it("Matches tab: Calendar loads all (Assign retired, D-19); edit form and match detail load one match", () => {
     const tab = src("components/MatchesTab.tsx");
-    assert.match(tab, /if \(subTab === "assign" \|\| \(subTab === "matches" && activeView === "calendar"\)\) store\.ensurePayments\?\.\(\);/);
+    assert.match(tab, /if \(subTab === "matches" && activeView === "calendar"\) store\.ensurePayments\?\.\(\);/);
     assert.match(tab, /if \(isAdmin && editingId\) store\.ensureMatchPayments\?\.\(editingId\);/);
     assert.match(tab, /store\.ensureMatchPayments\?\.\(match\.id\);\s*\/\/ eslint-disable-next-line react-hooks\/exhaustive-deps\s*\}, \[match\.id, store\.ensureMatchPayments, store\.refreshNonce\]\);/);
   });

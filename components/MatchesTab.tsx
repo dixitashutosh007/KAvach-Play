@@ -48,7 +48,6 @@ import {
 } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { GroundsTab } from "./GroundsTab";
-import { AssignFeesAdmin } from "./AssignFeesAdmin";
 import { TournamentsTab } from "./TournamentsTab";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { useAuth } from "./AuthProvider";
@@ -125,14 +124,15 @@ export function MatchesTab({
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
-  // Match Center sections (D-18): Matches, Tournaments, Grounds, Assign. Deep
-  // links / quick actions may open a section directly ("grounds", "tournaments",
-  // "assign"; "grounds:<x>" from the legacy Grounds tab alias).
-  const sectionFromAction = (a?: string | null): "matches" | "grounds" | "assign" | "tournaments" => {
+  // Match Center sections (D-18): Matches, Tournaments, Grounds. The former
+  // Assign section is retired (D-19); an old "assign" link opens Matches.
+  // Deep links may open a section directly ("grounds", "tournaments",
+  // "grounds:<x>" from the legacy Grounds tab alias).
+  const sectionFromAction = (a?: string | null): "matches" | "grounds" | "tournaments" => {
     const s = (a || "").split(":")[0];
-    return s === "assign" || s === "grounds" || s === "tournaments" ? s : "matches";
+    return s === "grounds" || s === "tournaments" ? s : "matches";
   };
-  const [subTab, setSubTab] = useState<"matches" | "grounds" | "assign" | "tournaments">(
+  const [subTab, setSubTab] = useState<"matches" | "grounds" | "tournaments">(
     sectionFromAction(defaultAction)
   );
   useEffect(() => {
@@ -204,8 +204,6 @@ export function MatchesTab({
       if (tourn) {
         setPlayerSearch(tourn.name || "");
       }
-    } else if (defaultAction === "assign") {
-      setSubTab("assign");
     }
   }, [defaultAction, store.matches, store.tournaments]);
 
@@ -426,7 +424,7 @@ export function MatchesTab({
   // per-match "Payment Details" panels load their own match when expanded.
   useEffect(() => {
     if (!isAdmin) return;
-    if (subTab === "assign" || (subTab === "matches" && activeView === "calendar")) store.ensurePayments?.();
+    if (subTab === "matches" && activeView === "calendar") store.ensurePayments?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, subTab, activeView, store.ensurePayments, store.refreshNonce]);
   useEffect(() => {
@@ -1033,13 +1031,12 @@ export function MatchesTab({
         // Mobile: the four sub-tabs scroll horizontally instead of forcing the
         // page wider than the viewport ("TOURNAMENTS" cannot shrink to 1/4 width).
         <div className="flex gap-1.5 sm:gap-2 mb-4 bg-surface-hover p-1.5 rounded-2xl border border-border overflow-x-auto no-scrollbar" data-testid="match-subtabs">
-          {["matches", "tournaments", "grounds", "assign"].map((tab) => {
+          {["matches", "tournaments", "grounds"].map((tab) => {
             const active = subTab === tab;
             const labels: Record<string, string> = {
               matches: "Matches",
               tournaments: "Tournaments",
               grounds: "Grounds",
-              assign: "Assign",
             };
             return (
               <button
@@ -1061,7 +1058,6 @@ export function MatchesTab({
       {subTab === "grounds" && isAdmin && (
         <GroundsTab store={store} persona={persona || "player"} />
       )}
-      {subTab === "assign" && isAdmin && <AssignFeesAdmin store={store} isSuperAdmin={isSuperAdmin} />}
       {subTab === "tournaments" && isAdmin && <TournamentsTab store={store} />}
 
       {subTab === "matches" && (

@@ -1,7 +1,7 @@
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
 import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { Calculator, IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus, UserPlus, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus, UserPlus, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { format, isPast, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
@@ -473,7 +473,7 @@ export function AdminDashboard({
             </div>
 
             <div className="flex flex-col gap-4">
-              <button onClick={() => setActiveTab("club", "reminders")} className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
+              <button onClick={() => setActiveTab("finance", "dues")} className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
                  <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
                      <Bell className="w-5 h-5 group-hover:scale-110 transition" />
                  </div>
@@ -514,18 +514,6 @@ export function AdminDashboard({
                     <p className="font-bold text-text-primary text-sm">Add New Match</p>
                     <p className="text-[10px] text-text-muted">Schedule a fixture</p>
                 </div>
-            </button>
-            <button onClick={() => setActiveTab("matches", "assign")} className="bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition">
-               <div className="flex items-center gap-3">
-                   <div className="bg-blue-500/20 text-blue-400 p-2 rounded-lg">
-                       <Calculator className="w-5 h-5" />
-                   </div>
-                   <div className="text-left">
-                       <p className="text-sm font-bold text-text-primary">Assign Fees</p>
-                       <p className="text-[10px] text-text-muted uppercase font-black tracking-widest mt-0.5">To Players</p>
-                   </div>
-               </div>
-               <ArrowRight className="w-4 h-4 text-text-primary/30" />
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -615,7 +603,7 @@ export function AdminDashboard({
         </button>
       )}
       
-      {/* Club Admin: Players + Reminders + Invite */}
+      {/* Club Admin: Players + Invite (D-19: Reminders moved to Finance) */}
       {isClubAdmin && !isSuperAdmin && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <button
@@ -628,18 +616,6 @@ export function AdminDashboard({
               <div className="text-left">
                   <p className="font-bold text-text-primary text-sm">Manage Players</p>
                   <p className="text-[10px] text-text-muted">Directory & profiles</p>
-              </div>
-          </button>
-          <button
-            onClick={() => setActiveTab("club", "reminders")}
-            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-rose-500/10 transition group"
-          >
-              <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
-                  <Bell className="w-5 h-5 group-hover:scale-110 transition" />
-              </div>
-              <div className="text-left">
-                  <p className="font-bold text-text-primary text-sm">Send Reminders</p>
-                  <p className="text-[10px] text-text-muted">Payment notifications</p>
               </div>
           </button>
           <button

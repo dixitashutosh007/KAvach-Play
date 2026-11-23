@@ -64,29 +64,22 @@ function caps(raw) {
   };
 }
 
+// D-19: Match Admin and Studio Admin are retired into Club Admin; until the
+// migration runs, the legacy flags still open Match Center / Club → Studio.
+const CLUB_ALL = ["players", "studio", "announcements", "pulse", "leaderboard", "badges", "shop"];
 const MATRIX = {
-  "Super Admin": {
-    raw: { super: true },
-    nav: ["home", "matches", "club", "finance", "design", "settings"],
-    club: ["players", "studio", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders", "activity"],
-    landing: { tab: "home" },
-  },
-  "Club Admin": {
-    raw: { club: true },
-    nav: ["home", "club", "design"],
-    club: ["players", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders"],
-    landing: { tab: "club" },
-  },
-  "Match Admin": { raw: { match: true }, nav: ["matches", "club"], club: ["pulse", "leaderboard"], landing: { tab: "matches" } },
-  "Finance Admin": { raw: { finance: true }, nav: ["club", "finance"], club: ["pulse", "leaderboard"], landing: { tab: "finance" } },
-  "Studio Admin": { raw: { studio: true }, nav: ["club"], club: ["studio", "pulse", "leaderboard"], landing: { tab: "club", action: "studio" } },
-  Designer: { raw: { designer: true }, nav: ["design"], club: [], landing: { tab: "design" } },
-  "Match + Finance Admin": { raw: { match: true, finance: true }, nav: ["matches", "club", "finance"], club: ["pulse", "leaderboard"], landing: { tab: "finance" } },
-  "Studio Admin + Designer": { raw: { studio: true, designer: true }, nav: ["club", "design"], club: ["studio", "pulse", "leaderboard"], landing: { tab: "club", action: "studio" } },
-  "Club Admin + Designer": { raw: { club: true, designer: true }, nav: ["home", "club", "design"], club: ["players", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders"], landing: { tab: "club" } },
+  "Super Admin": { raw: { super: true }, nav: ["home", "matches", "club", "finance", "design", "settings"], club: CLUB_ALL, landing: { tab: "home" } },
+  "Club Admin": { raw: { club: true }, nav: ["home", "matches", "club", "design"], club: CLUB_ALL, landing: { tab: "home" } },
+  "Finance Admin": { raw: { finance: true }, nav: ["home", "finance"], club: [], landing: { tab: "finance" } },
+  Designer: { raw: { designer: true }, nav: ["home", "design"], club: [], landing: { tab: "design" } },
+  "Legacy Match Admin (pre-migration)": { raw: { match: true }, nav: ["home", "matches"], club: [], landing: { tab: "matches" } },
+  "Legacy Studio Admin (pre-migration)": { raw: { studio: true }, nav: ["home", "club"], club: ["studio"], landing: { tab: "club", action: "studio" } },
+  "Finance Admin + Designer": { raw: { finance: true, designer: true }, nav: ["home", "finance", "design"], club: [], landing: { tab: "finance" } },
+  "Club Admin + Finance Admin": { raw: { club: true, finance: true }, nav: ["home", "matches", "club", "finance", "design"], club: CLUB_ALL, landing: { tab: "finance" } },
+  "Club Admin + Designer": { raw: { club: true, designer: true }, nav: ["home", "matches", "club", "design"], club: CLUB_ALL, landing: { tab: "home" } },
 };
 
-describe("D-18 configuration", () => {
+describe("D-18/D-19 configuration", () => {
   it("defines exactly six destinations in the approved order", () => {
     assert.deepEqual(nav.ADMIN_PRIMARY_NAV.map((i) => i.label), ["Home", "Match Center", "Club", "Finance", "Design Studio", "Settings"]);
   });
@@ -102,11 +95,27 @@ describe("D-18 configuration", () => {
     const c = caps({ designer: true });
     assert.equal(c.isClubAdmin, false);
     assert.deepEqual(nav.getVisibleClubSections(c), []);
-    assert.equal(nav.isAdminDestinationVisible("home", c), false);
+    assert.equal(nav.isAdminDestinationVisible("club", c), false);
+    assert.equal(nav.isAdminDestinationVisible("matches", c), false);
+  });
+  it("D-19: Home is shown to every admin role; Match Center and Club to Club Admins", () => {
+    for (const raw of [{ super: true }, { club: true }, { finance: true }, { designer: true }, { match: true }, { studio: true }]) {
+      assert.equal(nav.isAdminDestinationVisible("home", caps(raw)), true, JSON.stringify(raw));
+    }
+    assert.equal(nav.isAdminDestinationVisible("home", caps({})), false, "non-admins never see Admin Home");
+    assert.equal(nav.isAdminDestinationVisible("matches", caps({ club: true })), true);
+    assert.equal(nav.isAdminDestinationVisible("club", caps({ finance: true })), false);
+  });
+  it("D-19: Reminders and Activity Log are not Club sections; Assign is gone", () => {
+    const keys = nav.CLUB_SECTIONS.map((x) => x.key);
+    for (const k of ["reminders", "activity"]) assert.ok(!keys.includes(k), k);
+    assert.ok(!fs.existsSync(path.resolve("components/AssignFeesAdmin.tsx")));
+    assert.doesNotMatch(src("components/MatchesTab.tsx"), /"assign"\]|AssignFeesAdmin|assign: "Assign"/);
+    assert.doesNotMatch(src("components/AdminDashboard.tsx"), /setActiveTab\("matches", "assign"\)/);
   });
 });
 
-describe("D-18 role → destination and role → Club section matrix", () => {
+describe("D-19 role → destination and role → Club section matrix", () => {
   for (const [role, m] of Object.entries(MATRIX)) {
     it(`${role}`, () => {
       const c = caps(m.raw);
@@ -117,10 +126,7 @@ describe("D-18 role → destination and role → Club section matrix", () => {
   }
   it("club feature flags hide Pulse, Badges and Shop sections", () => {
     const off = (f) => !["opinion", "badges", "shop"].includes(f);
-    assert.deepEqual(nav.getVisibleClubSections(caps({ club: true }), off), ["players", "announcements", "leaderboard", "reminders"]);
-    // Match Admin's only management section is Pulse; with polls off, Club disappears.
-    assert.deepEqual(nav.getVisibleClubSections(caps({ match: true }), off), []);
-    assert.deepEqual(nav.getAdminPrimaryNav(caps({ match: true }), off).map((i) => i.tab), ["matches"]);
+    assert.deepEqual(nav.getVisibleClubSections(caps({ club: true }), off), ["players", "studio", "announcements", "leaderboard"]);
   });
 });
 
@@ -144,49 +150,46 @@ describe("D-18 mobile bar renders the same config as desktop for every role", ()
   });
 });
 
-describe("D-18 routing: legacy tabs, deep links and unauthorised destinations", () => {
+describe("D-18/D-19 routing: legacy tabs, moved sections, deep links", () => {
   const sup = caps({ super: true });
   it("legacy tab ids open inside their destination, carrying the sub-action", () => {
-    assert.deepEqual(nav.resolveAdminRoute("studio", "add_player", sup), { tab: "club", action: "studio:add_player" });
-    assert.deepEqual(nav.resolveAdminRoute("studio", null, sup), { tab: "club", action: "studio" });
-    assert.deepEqual(nav.resolveAdminRoute("grounds", null, sup), { tab: "matches", action: "grounds" });
-    assert.deepEqual(nav.resolveAdminRoute("opinion", null, sup), { tab: "club", action: "pulse" });
-    assert.deepEqual(nav.resolveAdminRoute("leaderboard", null, sup), { tab: "club", action: "leaderboard" });
-    assert.deepEqual(nav.resolveAdminRoute("shop", null, sup), { tab: "club", action: "shop" });
-    assert.deepEqual(nav.resolveAdminRoute("dues_and_reminders", null, sup), { tab: "finance", action: "dues" });
+    assert.deepEqual(nav.resolveAdminRoute("studio", "add_player"), { tab: "club", action: "studio:add_player" });
+    assert.deepEqual(nav.resolveAdminRoute("studio", null), { tab: "club", action: "studio" });
+    assert.deepEqual(nav.resolveAdminRoute("grounds", null), { tab: "matches", action: "grounds" });
+    assert.deepEqual(nav.resolveAdminRoute("opinion", null), { tab: "club", action: "pulse" });
+    assert.deepEqual(nav.resolveAdminRoute("leaderboard", null), { tab: "club", action: "leaderboard" });
+    assert.deepEqual(nav.resolveAdminRoute("shop", null), { tab: "club", action: "shop" });
+    assert.deepEqual(nav.resolveAdminRoute("dues_and_reminders", null), { tab: "finance", action: "dues" });
   });
-  it("visible destinations and header screens are left alone", () => {
+  it("D-19: former Club sections move to Finance", () => {
+    assert.deepEqual(nav.resolveAdminRoute("club", "reminders"), { tab: "finance", action: "dues" });
+    assert.deepEqual(nav.resolveAdminRoute("club", "activity"), { tab: "finance", action: "activity" });
+  });
+  it("D-19: destinations and header screens are never redirected (denial is shown on the screen instead)", () => {
     for (const t of ["home", "matches", "club", "finance", "design", "settings", "notifications", "profile"]) {
-      assert.equal(nav.resolveAdminRoute(t, null, sup), null, t);
+      assert.equal(nav.resolveAdminRoute(t, null), null, t);
     }
   });
-  it("unauthorised destinations redirect to the role's landing", () => {
-    assert.deepEqual(nav.resolveAdminRoute("settings", null, caps({ club: true })), { tab: "club" });
-    assert.deepEqual(nav.resolveAdminRoute("finance", null, caps({ match: true })), { tab: "matches" });
-    assert.deepEqual(nav.resolveAdminRoute("home", null, caps({ finance: true })), { tab: "finance" });
-    assert.deepEqual(nav.resolveAdminRoute("club", null, caps({ designer: true })), { tab: "design" });
-    assert.deepEqual(nav.resolveAdminRoute("studio", null, caps({ match: true })), { tab: "matches" });
-    assert.deepEqual(nav.resolveAdminRoute("matches", null, caps({ club: true })), { tab: "club" });
-  });
-  it("Club actions resolve to an allowed section; disallowed sections fall back", () => {
+  it("Club actions resolve to an allowed section; a known but unauthorised section is denied politely", () => {
     const all = nav.getVisibleClubSections(sup);
-    assert.deepEqual(nav.resolveClubSection("badges_grant", all), { section: "badges", subAction: "grant" });
-    assert.deepEqual(nav.resolveClubSection("invite_player", all), { section: "players", subAction: "invite" });
-    assert.deepEqual(nav.resolveClubSection("studio:add_player", all), { section: "studio", subAction: "add_player" });
-    assert.deepEqual(nav.resolveClubSection("stats", all), { section: "leaderboard", subAction: null });
-    assert.deepEqual(nav.resolveClubSection("players", ["studio", "pulse", "leaderboard"]), { section: "studio", subAction: null });
+    assert.deepEqual(nav.resolveClubSection("badges_grant", all), { section: "badges", subAction: "grant", denied: null });
+    assert.deepEqual(nav.resolveClubSection("invite_player", all), { section: "players", subAction: "invite", denied: null });
+    assert.deepEqual(nav.resolveClubSection("studio:add_player", all), { section: "studio", subAction: "add_player", denied: null });
+    assert.deepEqual(nav.resolveClubSection("stats", all), { section: "leaderboard", subAction: null, denied: null });
+    assert.deepEqual(nav.resolveClubSection("players", ["studio"]), { section: null, subAction: null, denied: "Player Roster" });
+    assert.deepEqual(nav.resolveClubSection("nonsense", ["studio"]), { section: "studio", subAction: null, denied: null });
   });
-  it("every existing admin dashboard shortcut still resolves", () => {
+  it("every existing admin dashboard shortcut still resolves to a destination", () => {
     const dash = src("components/AdminDashboard.tsx");
     const calls = [...dash.matchAll(/setActiveTab\("(\w+)"(?:, "([\w-]+)")?\)/g)].map((m) => [m[1], m[2] || null]);
     assert.ok(calls.length >= 10);
     for (const [tab, action] of calls) {
-      const routed = nav.resolveAdminRoute(tab, action, sup) || { tab, action };
+      const routed = nav.resolveAdminRoute(tab, action) || { tab, action };
       assert.ok(["home", "matches", "club", "finance", "design", "settings"].includes(routed.tab), `${tab}/${action}`);
       if (routed.tab === "club") {
-        const { section } = nav.resolveClubSection(routed.action, nav.getVisibleClubSections(sup));
-        const expected = (routed.action || "").split(":")[0].replace("badges_grant", "badges").replace("invite_player", "players");
-        assert.equal(section, expected || section, `${tab}/${action} → club section`);
+        const r = nav.resolveClubSection(routed.action, nav.getVisibleClubSections(sup));
+        assert.equal(r.denied, null, `${tab}/${action}`);
+        assert.ok(r.section, `${tab}/${action}`);
       }
     }
   });
@@ -196,19 +199,28 @@ describe("D-18 screens keep their own guards (menu visibility is not authorisati
   const page = src("app/page.tsx");
   const club = src("components/ClubTab.tsx");
   it("each Club section render is guarded by its role", () => {
-    for (const [sec, guard] of [["players", "isClubAdmin"], ["studio", "isStudioAdmin"], ["announcements", "isClubAdmin"], ["badges", "isClubAdmin"], ["shop", "isClubAdmin"], ["reminders", "isClubAdmin"], ["activity", "isSuperAdmin"]]) {
+    for (const [sec, guard] of [["players", "isClubAdmin"], ["studio", "\\(isClubAdmin \\|\\| isStudioAdmin\\)"], ["announcements", "isClubAdmin"], ["pulse", "isClubAdmin"], ["leaderboard", "isClubAdmin"], ["badges", "isClubAdmin"], ["shop", "isClubAdmin"]]) {
       assert.match(club, new RegExp(`show\\("${sec}"\\) && ${guard} &&`), sec);
     }
-    assert.match(club, /const show = \(key: ClubSection\) => subTab === key && sections\.includes\(key\);/);
+    assert.match(club, /const show = \(key: ClubSection\) => !denied && subTab === key && sections\.includes\(key\);/);
+    assert.match(club, /\{denied && <AccessDenied feature=\{denied\} requiredRole="Club Admins" \/>\}/);
   });
   it("destination screens keep their existing role guards in app/page.tsx", () => {
     assert.match(page, /activeTab === "finance" && \(\s*isFinanceAdmin \|\| isSuperAdmin \? \(/);
     assert.match(page, /activeTab === "settings" && \(\s*isSuperAdmin \? \(/);
     assert.match(page, /activeTab === "design" && \(\s*canDesign \? \(/);
-    assert.match(page, /activeTab === "home" && \(\s*isSuperAdmin \|\| isClubAdmin \? \(/);
+    assert.match(page, /activeTab === "home" && \(\s*isAdminDestinationVisible\("home", adminCaps\) \? \(/);
+    // D-19: unauthorised screens show the polite AccessDenied card, not "Hub Restricted"
+    assert.doesNotMatch(page, /Hub Restricted/);
+    for (const f of ["Match Center", "Finance", "Design Studio", "Settings"]) assert.match(page, new RegExp(`<AccessDenied feature="${f}"`));
   });
   it("the admin route guard only runs in Admin persona", () => {
-    assert.match(page, /if \(persona !== "admin" \|\| !store\.isLoaded \|\| !isAdminUser\) return;\s*const next = resolveAdminRoute\(/);
+    assert.match(page, /if \(persona !== "admin" \|\| !store\.isLoaded \|\| !isAdminUser\) return;\s*const next = resolveAdminRoute\(activeTab, tabAction\);/);
+  });
+  it("D-19: writes rejected by Firestore rules surface a polite access-denied toast", () => {
+    assert.match(src("lib/errorHandling.ts"), /if \(isPermissionDenied && isWrite && typeof window !== "undefined"\) \{\s*window\.dispatchEvent\(new CustomEvent\("firestore-permission-denied"/);
+    assert.match(page, /window\.addEventListener\("firestore-permission-denied", onDenied\)/);
+    assert.match(src("components/AuditLogTab.tsx"), /if \(accessDenied\) \{\s*return <AccessDenied/);
   });
   it("no Firestore rules, payment or role logic is referenced by the navigation config", () => {
     const code = src("lib/admin-navigation.ts").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");

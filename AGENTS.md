@@ -98,7 +98,7 @@ May help with product decisions, prompt preparation, design review and independe
 
 ### Roles and permissions
 
-Retain granular capabilities, including Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin and Designer. Simplify the assignment experience, not enforcement. Any narrow match-manager/pitch-side cash capability must be restricted to assigned matches and explicitly approved operations; it must not confer broad Finance Admin or Super Admin authority.
+Retain granular capabilities: Super Admin, Club Admin, Finance Admin and Designer. **D-19 (2026-11-23): Match Admin and Studio Admin are retired; their capabilities belong to Club Admin and existing holders are migrated to Club Admin.** Simplify the assignment experience, not enforcement. Any narrow match-manager/pitch-side cash capability must be restricted to assigned matches and explicitly approved operations; it must not confer broad Finance Admin or Super Admin authority.
 
 ### Abandoned-match financial policy — approved Option A
 
@@ -120,7 +120,7 @@ Retain granular capabilities, including Super Admin, Club Admin, Match Admin, Fi
 - **Matches:** upcoming/past matches, details, squad, availability, own fee/payment status, results/scorecards.
 - Secondary destinations (Directory, Studio, Shop, Polls & Pulse, Notifications, Leaderboard, Player Finance) open directly and offer contextual navigation back to their parent; they must not form another navigation layer.
 
-**Administrator navigation (D-18, 2026-11-23):** exactly **Home, Match Center, Club, Finance, Design Studio, Settings**, in that order, identical on desktop and mobile, each shown only to authorised roles (Finance: Finance/Super Admin; Design Studio: Designer/Club/Super Admin; Settings: Super Admin; others derived from the current permission model). Match Center holds Matches, Grounds, Tournaments; Club holds roster/directory, Studio, Pulse, Leaderboard & Stats, Announcements, Badges, Invite and related club operations as contextual sections. Menu visibility is never authorisation.
+**Administrator navigation (D-18, 2026-11-23):** exactly **Home, Match Center, Club, Finance, Design Studio, Settings**, in that order, identical on desktop and mobile, each shown only to authorised roles (Finance: Finance/Super Admin; Design Studio: Designer/Club/Super Admin; Settings: Super Admin; Match Center and Club: Club/Super Admin; Home: every admin). Inaccessible functions show a polite access-denied message (D-19). Match Center holds Matches, Grounds, Tournaments; Club holds roster/directory, Studio, Pulse, Leaderboard & Stats, Announcements, Badges, Shop and Invite as contextual sections; Finance holds Reminders and the Activity Log; the Match Center Assign screen is retired (D-19). Menu visibility is never authorisation.
 
 **Persona model:** administrators see the Player persona first. The existing Player/Admin persona switch is retained for authorised admin users. Admin menus, widgets, management actions (including announcement publishing and Club Performance Widget management) and admin-only data are available **only in Admin persona**. Admin privileges must never influence the Player navigation or Player experience. Persona is a presentation boundary only; Firestore rules and server-side RBAC remain the security boundary.
 

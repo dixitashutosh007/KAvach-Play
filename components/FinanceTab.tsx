@@ -35,6 +35,7 @@ import { CreateFeeAdmin } from "./CreateFeeAdmin";
 import { FeePlansAdmin } from "./FeePlansAdmin";
 import { PlansView } from "./PlansView";
 import { DuesAndRemindersTab } from "./DuesAndRemindersTab";
+import { AuditLogTab } from "./AuditLogTab";
 import { useToast } from "@/components/ui/Toast";
 
 export function FinanceTab({
@@ -1082,8 +1083,15 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
 function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: ReturnType<typeof useStore>; defaultAction?: string | null; isSuperAdmin?: boolean }) {
   const { toast } = useToast();
   const [subTab, setSubTab] = useState<
-    "matches" | "wix" | "fee" | "razor" | "dues"
+    "matches" | "wix" | "fee" | "razor" | "dues" | "activity"
   >((defaultAction as any) || "matches");
+  // Follow quick actions / deep links while Finance is already open (D-19:
+  // Reminders = "dues", Activity Log = "activity").
+  useEffect(() => {
+    if (defaultAction === "dues" || defaultAction === "activity" || defaultAction === "matches" || defaultAction === "razor" || defaultAction === "fee") {
+      setSubTab(defaultAction);
+    }
+  }, [defaultAction]);
   const [searchPlayer, setSearchPlayer] = useState("");
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
@@ -1147,6 +1155,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
           "dues",
           "razor",
           "fee",
+          "activity",
         ].map((tab) => {
           const active = subTab === tab;
           const labels: Record<string, string> = {
@@ -1155,6 +1164,7 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
             razor: "Transactions",
             wix: "Wix",
             fee: "Other Fees",
+            activity: "Activity Log",
           };
           return (
             <button
@@ -1579,6 +1589,10 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
       {subTab === "razor" && <RazorReportView store={store} />}
 
       {subTab === "fee" && <FeeManagementView store={store} />}
+
+      {/* D-19: the Activity Log (audit trail) moved here from Club. Purge controls
+          stay Super Admin only; reading is enforced by Firestore rules. */}
+      {subTab === "activity" && <AuditLogTab isSuperAdmin={!!isSuperAdmin} />}
 
     </div>
   );

@@ -5,7 +5,7 @@ import type { Match, MatchPayment, Player } from "./types";
  * real persisted MatchPayment records in Firestore.
  *
  * In KAvach Play:
- * - When an admin assigns players to a match squad (via MatchesTab or AssignFeesAdmin),
+ * - When an admin assigns players to a match squad (via MatchesTab),
  *   those players are assigned an active match fee obligation: status !== "Not Playing"
  *   (e.g. "Unpaid", "Paid", "Waived").
  * - Player-controlled availability RSVPs ("Confirmed", "Tentative", "Yes", "No", "Pending")

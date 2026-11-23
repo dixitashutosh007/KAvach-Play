@@ -58,16 +58,14 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
   });
 
   // ── 2. Admin Navigation Workflow & RBAC Gating (D-18) ───────────────────────
-  test("2. (D-18) Match Admin sees only Match Center and Club; Match Center holds Matches, Tournaments, Grounds; no More drawer", async ({
+  test("2. (D-19) Club Admin sees Home, Match Center, Club, Design Studio; Match Center holds Matches, Tournaments, Grounds; denied areas are polite", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    // Match Admin strictly without Club Admin or Super Admin privileges (isolated RBAC test)
     await injectSyntheticSession(page, {
       uid: "admin-beta",
       role: "admin",
-      isMatchAdmin: true,
-      isClubAdmin: false,
+      isClubAdmin: true,
       isSuperAdmin: false,
       features: {
         shop: false,
@@ -84,26 +82,34 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     const adminNav = page.locator('[data-testid="admin-mobile-bottom-nav"]');
     await expect(adminNav).toBeVisible();
     expect(await adminNav.locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual([
+      "Home",
       "Match Center",
       "Club",
+      "Design Studio",
     ]);
     await expect(adminNav.getByRole("button", { name: "More" })).toHaveCount(0);
 
-    // Match Center: Matches, Tournaments, Grounds (and Assign) as sections; active state
+    // Match Center: Matches, Tournaments, Grounds; Assign retired (D-19)
     const matchBtn = adminNav.getByRole("button", { name: "Match Center" });
     await matchBtn.click();
     await expect(matchBtn).toHaveAttribute("aria-current", "page");
     const sub = page.locator('[data-testid="match-subtabs"]');
     for (const t of ["Matches", "Tournaments", "Grounds"]) await expect(sub.getByRole("button", { name: t, exact: true })).toBeVisible();
-    await sub.getByRole("button", { name: "Grounds", exact: true }).click();
+    await expect(sub.getByRole("button", { name: "Assign", exact: true })).toHaveCount(0);
 
-    // Club: only Pulse and Leaderboard & Stats (Match Admin is in isAnyAdmin(); no roster/badges/shop)
+    // Club: all Club Admin sections; Shop hidden by the feature flag
     await adminNav.getByRole("button", { name: "Club" }).click();
-    await expect(page.locator('[data-testid="club-sub-tab-pulse"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="club-sub-tab-players"]')).toBeVisible({ timeout: 10000 });
     const ids = await page.locator('[data-testid^="club-sub-tab-"]').evaluateAll((els) =>
       els.map((e) => (e.getAttribute("data-testid") || "").replace("club-sub-tab-", "")),
     );
-    expect(ids).toEqual(["pulse", "leaderboard"]);
+    expect(ids).toEqual(["players", "studio", "announcements", "pulse", "leaderboard", "badges"]);
+
+    // Finance and Settings are not Club Admin areas: polite access denied
+    await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("settings"));
+    await expect(page.locator('[data-testid="access-denied"]')).toContainText("Access denied");
+    await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+    await expect(page.locator('[data-testid="access-denied"]')).toBeVisible();
 
     // Legacy Grounds deep link opens inside Match Center
     await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("grounds"));

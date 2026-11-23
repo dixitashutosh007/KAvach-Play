@@ -489,22 +489,24 @@ test.describe("Production Route (/) Verification Suite", () => {
         await expect(page.getByRole("heading", { name: "Admin Settings" })).toBeVisible({ timeout: 5000 });
       }
       await expect(page.locator("text=Hub Restricted")).toHaveCount(0);
+      await expect(page.locator('[data-testid="access-denied"]')).toHaveCount(0);
     }
 
+    // D-19: Match Admin / Studio Admin retired into Club Admin; legacy flags keep
+    // their former areas until the role-consolidation migration runs.
+    const CLUB_ALL = ["players", "studio", "announcements", "pulse", "leaderboard", "badges", "shop"];
     const ROLES: { name: string; cfg: Record<string, boolean>; nav: string[]; club: string[] }[] = [
-      { name: "6A. Super Admin", cfg: { isSuperAdmin: true }, nav: [...DESTINATIONS],
-        club: ["players", "studio", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders", "activity"] },
-      { name: "6B. Club Admin", cfg: { isClubAdmin: true }, nav: ["home", "club", "design"],
-        club: ["players", "announcements", "pulse", "leaderboard", "badges", "shop", "reminders"] },
-      { name: "6C. Match Admin", cfg: { isMatchAdmin: true }, nav: ["matches", "club"], club: ["pulse", "leaderboard"] },
-      { name: "6D. Finance Admin", cfg: { isFinanceAdmin: true }, nav: ["club", "finance"], club: ["pulse", "leaderboard"] },
-      { name: "6E. Studio Admin", cfg: { isStudioAdmin: true }, nav: ["club"], club: ["studio", "pulse", "leaderboard"] },
-      { name: "6F. Designer", cfg: { isDesigner: true }, nav: ["design"], club: [] },
-      { name: "6H. Match + Finance Admin (multi-role)", cfg: { isMatchAdmin: true, isFinanceAdmin: true }, nav: ["matches", "club", "finance"], club: ["pulse", "leaderboard"] },
+      { name: "6A. Super Admin", cfg: { isSuperAdmin: true }, nav: [...DESTINATIONS], club: CLUB_ALL },
+      { name: "6B. Club Admin", cfg: { isClubAdmin: true }, nav: ["home", "matches", "club", "design"], club: CLUB_ALL },
+      { name: "6C. Legacy Match Admin", cfg: { isMatchAdmin: true }, nav: ["home", "matches"], club: [] },
+      { name: "6D. Finance Admin", cfg: { isFinanceAdmin: true }, nav: ["home", "finance"], club: [] },
+      { name: "6E. Legacy Studio Admin", cfg: { isStudioAdmin: true }, nav: ["home", "club"], club: ["studio"] },
+      { name: "6F. Designer", cfg: { isDesigner: true }, nav: ["home", "design"], club: [] },
+      { name: "6H. Club + Finance Admin (multi-role)", cfg: { isClubAdmin: true, isFinanceAdmin: true }, nav: ["home", "matches", "club", "finance", "design"], club: CLUB_ALL },
     ];
 
     for (const role of ROLES) {
-      test(`${role.name}: sees exactly ${role.nav.join(", ")}; unauthorised destinations redirect`, async ({ page }) => {
+      test(`${role.name}: sees exactly ${role.nav.join(", ")}; unauthorised destinations show access denied`, async ({ page }) => {
         await injectSyntheticSession(page, { uid: `rbac-${role.name.slice(0, 2)}`, role: "admin", ...role.cfg });
         await page.goto("/");
         await page.waitForLoadState("domcontentloaded");
@@ -523,13 +525,9 @@ test.describe("Production Route (/) Verification Suite", () => {
             await assertScreen(page, parent, role.club);
             if (tab === "studio") await expect(page.locator('[data-testid="studio-tabs"]')).toBeVisible({ timeout: 5000 });
           } else {
-            // Unauthorised: redirected to an authorised destination, never a dead-end card
+            // Unauthorised (D-19): polite access-denied card, no redirect, no "Hub Restricted"
+            await expect(page.locator('[data-testid="access-denied"]').first()).toBeVisible({ timeout: 5000 });
             await expect(page.locator("text=Hub Restricted")).toHaveCount(0);
-            const current = await page
-              .locator('[data-testid^="sidebar-tab-"][aria-current="page"], [data-testid^="admin-nav-"][aria-current="page"]')
-              .evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => e.getAttribute("data-testid")));
-            expect(current.length, `${tab} must land on an authorised destination`).toBe(1);
-            expect(role.nav).toContain((current[0] || "").replace(/^sidebar-tab-|^admin-nav-/, ""));
           }
         }
 

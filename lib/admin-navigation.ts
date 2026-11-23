@@ -10,6 +10,12 @@
  *
  * Inputs are the *effective* flags computed in app/page.tsx (Super Admin claim
  * already folded into each role flag; `canDesign = isClubAdmin || isDesigner`).
+ *
+ * D-19: Match Admin and Studio Admin are retired into Club Admin. Until the
+ * role-consolidation migration has run, the legacy flags still open their former
+ * areas (Match Center / Club → Studio) so nobody loses access in between.
+ * Destinations a role cannot use are hidden from the menu; if one is opened
+ * directly, the screen shows a polite access-denied message (no silent redirect).
  */
 
 export interface AdminCapabilities {
@@ -30,9 +36,7 @@ export type ClubSection =
   | "pulse"
   | "leaderboard"
   | "badges"
-  | "shop"
-  | "reminders"
-  | "activity";
+  | "shop";
 
 export type AdminNavFeature = "studio" | "opinion" | "badges" | "shop";
 export type AdminFeatureCheck = (feature: AdminNavFeature) => boolean;
@@ -54,9 +58,9 @@ export const ADMIN_PRIMARY_NAV: readonly AdminPrimaryNavItem[] = [
   { tab: "settings", label: "Settings", shortLabel: "Settings" },
 ] as const;
 
-/** Any administrative role recognised by Firestore `isAnyAdmin()` (Designer is not one). */
-function isAnyAdmin(c: AdminCapabilities): boolean {
-  return c.isSuperAdmin || c.isClubAdmin || c.isMatchAdmin || c.isFinanceAdmin || c.isStudioAdmin;
+/** Any administrative role (incl. Designer) — every admin sees Home (D-19). */
+function isAnyAdminRole(c: AdminCapabilities): boolean {
+  return c.isSuperAdmin || c.isClubAdmin || c.isMatchAdmin || c.isFinanceAdmin || c.isStudioAdmin || c.canDesign;
 }
 
 export interface ClubSectionDef {
@@ -67,36 +71,20 @@ export interface ClubSectionDef {
   allowed: (c: AdminCapabilities) => boolean;
 }
 
-/** Club sections in display order. */
+/** Club sections in display order (D-19: all Club Admin capabilities). */
 export const CLUB_SECTIONS: readonly ClubSectionDef[] = [
-  // Player Roster / Directory incl. Invite Player and verification (was Club → Players; Club/Super Admin).
   { key: "players", label: "Player Roster", allowed: (c) => c.isClubAdmin },
-  // Studio & Nets management (was its own hub; Studio/Super Admin).
-  { key: "studio", label: "Studio", allowed: (c) => c.isStudioAdmin },
-  // Announcement publishing/editing (moved from Player Home in D-16; Super Admin claim or Club Admin).
+  // Studio: Club Admin (D-19); legacy Studio Admin flag honoured until migrated.
+  { key: "studio", label: "Studio", allowed: (c) => c.isClubAdmin || c.isStudioAdmin },
   { key: "announcements", label: "Announcements", allowed: (c) => c.isClubAdmin },
-  // Polls management (was More → Polls & Pulse for every admin; rules: isAnyAdmin()).
-  { key: "pulse", label: "Pulse", feature: "opinion", allowed: isAnyAdmin },
-  // Leaderboard (read-only, was More for every admin) + Club Statistics (Club/Super Admin, gated inside).
-  { key: "leaderboard", label: "Leaderboard & Stats", allowed: isAnyAdmin },
-  // Badge gallery, Hall of Fame, Grant/Manage (Club/Super Admin; rules: isClubAdmin()).
+  { key: "pulse", label: "Pulse", feature: "opinion", allowed: (c) => c.isClubAdmin },
+  { key: "leaderboard", label: "Leaderboard & Stats", allowed: (c) => c.isClubAdmin },
   { key: "badges", label: "Badges", feature: "badges", allowed: (c) => c.isClubAdmin },
-  // Merchandise management (Club/Super Admin manage the catalogue).
   { key: "shop", label: "Shop", feature: "shop", allowed: (c) => c.isClubAdmin },
-  // Dues reminders (was Club → Reminders; Club/Super Admin).
-  { key: "reminders", label: "Reminders", allowed: (c) => c.isClubAdmin },
-  // Audit log (Super Admin only).
-  { key: "activity", label: "Activity Log", allowed: (c) => c.isSuperAdmin },
-];
-
-/** Sections that make Club worth showing on their own (Leaderboard is read-only). */
-const CLUB_MANAGEMENT_SECTIONS: readonly ClubSection[] = [
-  "players", "studio", "announcements", "pulse", "badges", "shop", "reminders", "activity",
 ];
 
 export function getVisibleClubSections(c: AdminCapabilities, isFeatureEnabled: AdminFeatureCheck = allEnabled): ClubSection[] {
-  const visible = CLUB_SECTIONS.filter((s) => s.allowed(c) && (!s.feature || isFeatureEnabled(s.feature))).map((s) => s.key);
-  return visible.some((k) => CLUB_MANAGEMENT_SECTIONS.includes(k)) ? visible : [];
+  return CLUB_SECTIONS.filter((s) => s.allowed(c) && (!s.feature || isFeatureEnabled(s.feature))).map((s) => s.key);
 }
 
 export function isAdminDestinationVisible(
@@ -106,11 +94,11 @@ export function isAdminDestinationVisible(
 ): boolean {
   switch (tab) {
     case "home":
-      // Admin Dashboard + announcements/performance management: Super/Club Admin (existing guard).
-      return c.isClubAdmin;
+      // D-19: every admin; dashboard tiles are role-gated and denials are polite.
+      return isAnyAdminRole(c);
     case "matches":
-      // Match Center operations: Match/Super Admin (matches/grounds/tournaments rules use isMatchAdmin()).
-      return c.isMatchAdmin;
+      // D-19: Club Admin (legacy Match Admin flag honoured until migrated).
+      return c.isClubAdmin || c.isMatchAdmin;
     case "club":
       return getVisibleClubSections(c, isFeatureEnabled).length > 0;
     case "finance":
@@ -142,6 +130,12 @@ export const ADMIN_TAB_ALIASES: Readonly<Record<string, { tab: AdminDestination;
   dues_and_reminders: { tab: "finance", section: "dues" },
 };
 
+/** Former Club sections that now live in another destination (D-19). */
+export const CLUB_ACTION_REDIRECTS: Readonly<Record<string, { tab: AdminDestination; action: string }>> = {
+  reminders: { tab: "finance", action: "dues" },
+  activity: { tab: "finance", action: "activity" },
+};
+
 /** Screens available to every admin outside the six destinations (header controls). */
 export const ADMIN_GLOBAL_TABS = ["notifications", "profile"] as const;
 
@@ -163,37 +157,36 @@ export function getAdminLanding(c: AdminCapabilities, isFeatureEnabled: AdminFea
   return (
     (c.isSuperAdmin && pick("home")) ||
     (c.isFinanceAdmin && pick("finance")) ||
+    (c.isClubAdmin && pick("home")) ||
     (c.isMatchAdmin && pick("matches")) ||
     (c.isStudioAdmin && club.includes("studio") && pick("club", "studio")) ||
-    (c.isClubAdmin && pick("club")) ||
     (c.canDesign && pick("design")) ||
-    (getAdminPrimaryNav(c, isFeatureEnabled)[0] ? { tab: getAdminPrimaryNav(c, isFeatureEnabled)[0].tab } : { tab: "notifications" })
+    (getAdminPrimaryNav(c, isFeatureEnabled)[0] ? { tab: getAdminPrimaryNav(c, isFeatureEnabled)[0].tab } : { tab: "home" })
   );
 }
 
 /**
- * Canonical route for the Admin persona. Aliases map to their destination (with
- * the section carried in the action, e.g. "studio:add_player"); destinations the
- * user is not shown redirect to their landing. Returns null when no change is needed.
+ * Canonical route for the Admin persona. Legacy tab ids map to their destination
+ * (section carried in the action, e.g. "studio:add_player"); former Club sections
+ * now in Finance are moved there. Destinations the user may not use are NOT
+ * redirected — the screen shows a polite access-denied message (D-19).
+ * Returns null when no change is needed.
  */
 export function resolveAdminRoute(
   tab: string,
-  action: string | null | undefined,
-  c: AdminCapabilities,
-  isFeatureEnabled: AdminFeatureCheck = allEnabled,
+  action?: string | null,
 ): { tab: string; action?: string } | null {
   if ((ADMIN_GLOBAL_TABS as readonly string[]).includes(tab)) return null;
   const alias = ADMIN_TAB_ALIASES[tab];
   if (alias) {
     const target = { tab: alias.tab, action: action ? `${alias.section}:${action}` : alias.section };
-    if (!isAdminDestinationVisible(alias.tab, c, isFeatureEnabled)) return getAdminLanding(c, isFeatureEnabled);
-    if (alias.tab === "club" && !getVisibleClubSections(c, isFeatureEnabled).includes(alias.section as ClubSection)) {
-      return getAdminLanding(c, isFeatureEnabled);
-    }
-    return target;
+    return resolveAdminRoute(target.tab, target.action) ?? target;
   }
-  if (isPrimary(tab) && isAdminDestinationVisible(tab, c, isFeatureEnabled)) return null;
-  return getAdminLanding(c, isFeatureEnabled);
+  if (tab === "club" && action) {
+    const redirect = CLUB_ACTION_REDIRECTS[action.split(":")[0]];
+    if (redirect) return { tab: redirect.tab, action: redirect.action };
+  }
+  return null;
 }
 
 /**
@@ -203,7 +196,7 @@ export function resolveAdminRoute(
 export function resolveClubSection(
   action: string | null | undefined,
   visible: readonly ClubSection[],
-): { section: ClubSection | null; subAction: string | null } {
+): { section: ClubSection | null; subAction: string | null; denied: string | null } {
   let section: string | null = null;
   let subAction: string | null = null;
   if (action === "badges_grant") {
@@ -217,6 +210,8 @@ export function resolveClubSection(
     section = s === "stats" ? "leaderboard" : s;
     subAction = rest.length ? rest.join(":") : null;
   }
-  if (section && visible.includes(section as ClubSection)) return { section: section as ClubSection, subAction };
-  return { section: visible[0] ?? null, subAction: null };
+  if (section && visible.includes(section as ClubSection)) return { section: section as ClubSection, subAction, denied: null };
+  // A known section the user may not open → polite denial (D-19); unknown → first section.
+  const known = CLUB_SECTIONS.find((d) => d.key === section);
+  return { section: known ? null : visible[0] ?? null, subAction: null, denied: known ? known.label : null };
 }

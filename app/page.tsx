@@ -67,10 +67,12 @@ import {
   getAdminLanding,
   getVisibleClubSections,
   resolveAdminRoute,
+  isAdminDestinationVisible,
   type AdminCapabilities,
 } from "@/lib/admin-navigation";
 import { ADMIN_NAV_ICONS } from "@/components/layout/MobileBottomNav";
 import { ClubPerformanceWidget } from "@/components/home/ClubPerformanceWidget";
+import { AccessDenied, PERMISSION_DENIED_MESSAGE } from "@/components/ui/AccessDenied";
 
 import { useTheme } from "@/hooks/useTheme";
 import { PhoneSyncPrompt } from "@/components/onboarding/PhoneSyncPrompt";
@@ -364,15 +366,30 @@ export default function Home() {
   // otherFees collectionGroup listeners when the user actually opens a tab
   // that consumes them. Previously these ran for every logged-in user on
   // login. Idempotent: calling ensurePayments twice does nothing.
-  // Admin persona route guard (D-18): legacy tab ids (studio, grounds, opinion,
-  // leaderboard, shop, badges, players, dues_and_reminders) open inside their
-  // destination, and destinations this user is not shown fall back to their
-  // landing. UI routing only — every screen keeps its own role guard.
+  // Admin persona route guard (D-18/D-19): legacy tab ids (studio, grounds,
+  // opinion, leaderboard, shop, badges, players, dues_and_reminders) and former
+  // Club sections (reminders, activity) open inside their destination. Screens a
+  // role may not use show a polite access-denied message rather than redirecting.
   useEffect(() => {
     if (persona !== "admin" || !store.isLoaded || !isAdminUser) return;
-    const next = resolveAdminRoute(activeTab, tabAction, adminCaps, (f) => isFeatureEnabled(f));
+    const next = resolveAdminRoute(activeTab, tabAction);
     if (next) setTimeout(() => setActiveTab(next.tab, next.action), 0);
-  }, [persona, activeTab, tabAction, adminCaps, store.isLoaded, isAdminUser, isFeatureEnabled, setActiveTab]);
+  }, [persona, activeTab, tabAction, store.isLoaded, isAdminUser, setActiveTab]);
+
+  // D-19: a save rejected by Firestore rules gets a polite access-denied message
+  // instead of failing silently (lib/errorHandling.ts dispatches the event).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let last = 0;
+    const onDenied = () => {
+      const now = Date.now();
+      if (now - last < 3000) return;
+      last = now;
+      toast(PERMISSION_DENIED_MESSAGE, "error");
+    };
+    window.addEventListener("firestore-permission-denied", onDenied);
+    return () => window.removeEventListener("firestore-permission-denied", onDenied);
+  }, [toast]);
 
   const scopedPersonaRef = useRef<"player" | "admin">(persona);
   const PAYMENT_TABS = new Set([
@@ -1273,8 +1290,10 @@ export default function Home() {
                         role guard; the route guard above canonicalises legacy tab ids
                         (studio, grounds, opinion, leaderboard, shop, badges, players). */}
                     {activeTab === "home" && (
-                      isSuperAdmin || isClubAdmin ? (
+                      isAdminDestinationVisible("home", adminCaps) ? (
                         <div className="space-y-6">
+                          {/* D-19: Home for every admin. Dashboard tiles are role-gated;
+                              anything beyond a role's rights shows a polite denial. */}
                           <AdminDashboard
                             store={store}
                             setActiveTab={setActiveTab}
@@ -1286,7 +1305,9 @@ export default function Home() {
                           />
                           {/* Club Performance widget with its management hint (moved from
                               Player Home in D-16). Announcement management lives in
-                              Club → Announcements (D-18); this shortcut opens it. */}
+                              Club → Announcements (D-18); this shortcut opens it.
+                              Club/Super Admin only (D-19). */}
+                          {(isSuperAdmin || isClubAdmin) && (
                           <div className="max-w-4xl mx-auto w-full px-4 space-y-4" data-testid="admin-home-club-panel">
                             <button
                               type="button"
@@ -1305,12 +1326,10 @@ export default function Home() {
                             </button>
                             <ClubPerformanceWidget canManage />
                           </div>
+                          )}
                         </div>
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">Your administrative role does not grant access to Admin Home.</p>
-                        </div>
+                        <AccessDenied feature="Admin Home" requiredRole="administrators" />
                       )
                     )}
                     {activeTab === "matches" && (
@@ -1323,19 +1342,15 @@ export default function Home() {
                           defaultAction={tabAction}
                         />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Match Admin permissions for Match Center.</p>
-                        </div>
+                        <AccessDenied feature="Match Center" requiredRole="Club Admins" />
                       )
                     )}
                     {activeTab === "club" && (() => {
                       const clubSections = getVisibleClubSections(adminCaps, (f) => isFeatureEnabled(f));
-                      return clubSections.length > 0 ? (
+                      return isAdminDestinationVisible("club", adminCaps, (f) => isFeatureEnabled(f)) ? (
                         <ClubTab
                           store={store}
                           sections={clubSections}
-                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                           isClubAdmin={isClubAdmin || isSuperAdmin}
                           isSuperAdmin={isSuperAdmin}
                           isStudioAdmin={isStudioAdmin || isSuperAdmin}
@@ -1346,10 +1361,7 @@ export default function Home() {
                           defaultSubTab={tabAction}
                         />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">Your administrative role does not include Club management.</p>
-                        </div>
+                        <AccessDenied feature="Club" requiredRole="Club Admins" />
                       );
                     })()}
                     {activeTab === "finance" && (
@@ -1362,30 +1374,21 @@ export default function Home() {
                           defaultAction={tabAction}
                         />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Finance Admin permissions for Finance.</p>
-                        </div>
+                        <AccessDenied feature="Finance" requiredRole="Finance Admins" />
                       )
                     )}
                     {activeTab === "design" && (
                       canDesign ? (
                         <DesignTab store={store} />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">You do not have Designer permissions for Design Studio.</p>
-                        </div>
+                        <AccessDenied feature="Design Studio" requiredRole="Designers and Club Admins" />
                       )
                     )}
                     {activeTab === "settings" && (
                       isSuperAdmin ? (
                         <SettingsTab store={store} setPreviewTheme={setPreviewThemeId} />
                       ) : (
-                        <div className="bg-surface rounded-2xl p-8 border border-border text-center space-y-2" data-testid="hub-restricted">
-                          <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Hub Restricted</h3>
-                          <p className="text-xs text-text-secondary">Only Super Admins may access Settings.</p>
-                        </div>
+                        <AccessDenied feature="Settings" requiredRole="Super Admins" />
                       )
                     )}
                     {/* Global admin screens reached from the header. */}

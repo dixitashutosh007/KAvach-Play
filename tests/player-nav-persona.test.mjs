@@ -184,8 +184,9 @@ describe("Persona isolation — app shell wiring (app/page.tsx)", () => {
     assert.match(page, /store\.detachDomain\?\.\("allPayments"\);\s*store\.detachDomain\?\.\("allOtherFees"\);\s*scopedPersonaRef\.current = persona;/);
   });
   it("announcement management is Admin persona only (D-18: Club → Announcements; Home links to it)", () => {
-    const adminHome = page.slice(page.indexOf("isSuperAdmin || isClubAdmin ? ("), page.indexOf("isSuperAdmin || isClubAdmin ? (") + 2600);
-    assert.match(adminHome, /<AdminDashboard[\s\S]*admin-home-announcements-link[\s\S]*<ClubPerformanceWidget canManage \/>/);
+    const start = page.indexOf('isAdminDestinationVisible("home", adminCaps) ? (');
+    const adminHome = page.slice(start, start + 3200);
+    assert.match(adminHome, /<AdminDashboard[\s\S]*\{\(isSuperAdmin \|\| isClubAdmin\) && \(\s*<div[^>]*admin-home-club-panel[\s\S]*admin-home-announcements-link[\s\S]*<ClubPerformanceWidget canManage \/>/);
     assert.match(src("components/ClubTab.tsx"), /<AdminAnnouncementsManager/);
     assert.ok(!playerBranch.includes("announcements-link"));
   });

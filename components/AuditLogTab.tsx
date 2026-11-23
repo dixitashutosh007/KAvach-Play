@@ -11,6 +11,7 @@ import {
   formatFieldName,
 } from "@/lib/auditLog";
 import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
+import { AccessDenied } from "@/components/ui/AccessDenied";
 
 const ENTITY_OPTIONS: { value: AuditEntity; label: string }[] = [
   { value: "match", label: "Matches" },
@@ -113,6 +114,8 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [truncating, setTruncating] = useState(false);
   const [truncateMonths, setTruncateMonths] = useState<number | null>(null);
   const [truncateResult, setTruncateResult] = useState<string | null>(null);
+  // D-19: show a polite denial when Firestore rules refuse to read the audit log.
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const loadLogs = useCallback(async (reset: boolean = true) => {
     if (reset) {
@@ -133,6 +136,8 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       setLastDoc(result.lastDoc);
       setHasMore(result.hasMore);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/insufficient permissions|permission-denied/i.test(msg)) setAccessDenied(true);
       console.error("Failed to load audit logs:", e);
     } finally {
       setLoading(false);
@@ -174,6 +179,11 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       setTruncating(false);
     }
   };
+
+
+  if (accessDenied) {
+    return <AccessDenied feature="the Activity Log" requiredRole="Finance Admins and Super Admins" />;
+  }
 
   return (
     <div className="space-y-4">

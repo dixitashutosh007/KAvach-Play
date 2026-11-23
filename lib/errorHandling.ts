@@ -50,6 +50,18 @@ export function handleFirestoreError(
 
   const errMessage = error instanceof Error ? error.message : String(error);
 
+  // D-19: a write rejected by Firestore rules is surfaced to the user as a polite
+  // access-denied message (app/page.tsx listens). Reads are excluded so screens
+  // that subscribe to optional data do not raise alerts on load.
+  const isWrite =
+    operationType === OperationType.CREATE ||
+    operationType === OperationType.UPDATE ||
+    operationType === OperationType.DELETE ||
+    operationType === OperationType.WRITE;
+  if (isPermissionDenied && isWrite && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("firestore-permission-denied", { detail: { path, operationType } }));
+  }
+
   // Check for Firestore Quota Exceeded error
   if (
     errMessage.toLowerCase().includes("quota") ||

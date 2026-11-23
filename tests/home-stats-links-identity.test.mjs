@@ -273,9 +273,9 @@ describe("Club Statistics", () => {
     assert.equal(stats.readStoredClubStats({ matchesPlayed: "5", matchesWon: 3 }), null);
     assert.equal(stats.readStoredClubStats(null), null);
   });
-  it("D-18: Club Statistics (inside Club → Leaderboard & Stats) renders only for Club Admins / Super Admins", () => {
+  it("D-18/D-19: Club Statistics (inside Club → Leaderboard & Stats) renders only for Club Admins / Super Admins", () => {
     const club = src("components/ClubTab.tsx");
-    assert.match(club, /show\("leaderboard"\) && \(\s*<div className="space-y-6">\s*\{isClubAdmin && <ClubStatisticsAdmin \/>\}/);
+    assert.match(club, /show\("leaderboard"\) && isClubAdmin && \(\s*<div className="space-y-6">\s*<ClubStatisticsAdmin \/>/);
     // isClubAdmin passed to ClubTab is (isClubAdmin || isSuperAdmin) in app/page.tsx
     assert.match(src("app/page.tsx"), /isClubAdmin=\{isClubAdmin \|\| isSuperAdmin\}/);
   });
@@ -340,7 +340,7 @@ describe("Club Performance widget", () => {
     assert.match(adminHome, /<ClubPerformanceWidget canManage \/>/);
     assert.match(src("components/HomeTab.tsx"), /<ClubPerformanceWidget \/>/);
     // Leaderboard & Stats is a Club section; Club Statistics is its first panel.
-    assert.match(src("lib/admin-navigation.ts"), /\{ key: "leaderboard", label: "Leaderboard & Stats", allowed: isAnyAdmin \}/);
+    assert.match(src("lib/admin-navigation.ts"), /\{ key: "leaderboard", label: "Leaderboard & Stats", allowed: \(c\) => c\.isClubAdmin \}/);
   });
   it("animation runs once, respects reduced motion, no looping effects", () => {
     const w = src("components/home/ClubPerformanceWidget.tsx");

@@ -3,8 +3,9 @@
  *
  * Club consolidates club-management screens as contextual sections: Player
  * Roster (incl. Invite Player), Studio, Announcements, Pulse, Leaderboard &
- * Stats, Badges, Shop, Reminders and Activity Log. Admin persona only — the
- * Player persona never renders this component (D-16).
+ * Stats, Badges and Shop — all Club Admin capabilities (D-19; Reminders and the
+ * Activity Log moved to Finance). Admin persona only — the Player persona never
+ * renders this component (D-16).
  *
  * The visible sections are computed by `getVisibleClubSections()` from the
  * existing permission model and passed in; each section ALSO keeps its own role
@@ -13,7 +14,8 @@
  */
 import { useEffect, useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, Trophy, Bell, Award, ScrollText, Video, Megaphone } from "lucide-react";
+import { Users, ShoppingBag, PieChart, Trophy, Award, Video, Megaphone } from "lucide-react";
+import { AccessDenied } from "@/components/ui/AccessDenied";
 import dynamic from "next/dynamic";
 import { CLUB_SECTIONS, resolveClubSection, type ClubSection } from "@/lib/admin-navigation";
 
@@ -21,9 +23,7 @@ const PlayersTab = dynamic(() => import("@/components/PlayersTab").then(m => ({ 
 const ShopTab = dynamic(() => import("@/components/ShopTab").then(m => ({ default: m.ShopTab })), { ssr: false });
 const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ default: m.OpinionTab })), { ssr: false });
 const LeaderboardTab = dynamic(() => import("@/components/LeaderboardTab").then(m => ({ default: m.LeaderboardTab })), { ssr: false });
-const DuesAndRemindersTab = dynamic(() => import("@/components/DuesAndRemindersTab").then(m => ({ default: m.DuesAndRemindersTab })), { ssr: false });
 const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
-const AuditLogTab = dynamic(() => import("@/components/AuditLogTab").then(m => ({ default: m.AuditLogTab })), { ssr: false });
 const StudioAdminTab = dynamic(() => import("@/components/StudioAdminTab").then(m => ({ default: m.StudioAdminTab })), { ssr: false });
 const ClubStatisticsAdmin = dynamic(() => import("@/components/ClubStatisticsAdmin").then(m => ({ default: m.ClubStatisticsAdmin })), { ssr: false });
 const AdminAnnouncementsManager = dynamic(() => import("@/components/home/AdminAnnouncementsManager").then(m => ({ default: m.AdminAnnouncementsManager })), { ssr: false });
@@ -36,14 +36,11 @@ const SECTION_ICONS: Record<ClubSection, typeof Users> = {
   leaderboard: Trophy,
   badges: Award,
   shop: ShoppingBag,
-  reminders: Bell,
-  activity: ScrollText,
 };
 
 export function ClubTab({
   store,
   sections,
-  isFinanceAdmin,
   isClubAdmin,
   isSuperAdmin,
   isStudioAdmin,
@@ -56,7 +53,6 @@ export function ClubTab({
   store: ReturnType<typeof useStore>;
   /** Sections this user may see (from getVisibleClubSections). */
   sections: ClubSection[];
-  isFinanceAdmin: boolean;
   isClubAdmin: boolean;
   isSuperAdmin: boolean;
   isStudioAdmin: boolean;
@@ -71,17 +67,19 @@ export function ClubTab({
   const initial = resolveClubSection(defaultSubTab, sections);
   const [subTab, setSubTab] = useState<ClubSection | null>(initial.section);
   const [subAction, setSubAction] = useState<string | null>(initial.subAction);
+  const [denied, setDenied] = useState<string | null>(initial.denied);
 
   // Follow new deep links / quick actions while Club is already open.
   useEffect(() => {
     const next = resolveClubSection(defaultSubTab, sections);
     setSubTab(next.section);
     setSubAction(next.subAction);
+    setDenied(next.denied);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultSubTab, sections.join(",")]);
 
   const visibleTabs = CLUB_SECTIONS.filter((s) => sections.includes(s.key));
-  const show = (key: ClubSection) => subTab === key && sections.includes(key);
+  const show = (key: ClubSection) => !denied && subTab === key && sections.includes(key);
 
   return (
     <div className="space-y-4" data-testid="admin-club">
@@ -97,14 +95,15 @@ export function ClubTab({
             <button
               key={key}
               role="tab"
-              aria-selected={subTab === key}
+              aria-selected={!denied && subTab === key}
               data-testid={`club-sub-tab-${key}`}
               onClick={() => {
                 setSubTab(key);
                 setSubAction(null);
+                setDenied(null);
               }}
               className={`shrink-0 min-h-[40px] text-[10px] font-bold uppercase py-2 px-3 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
-                subTab === key
+                !denied && subTab === key
                   ? "bg-accent text-text-accent"
                   : "text-text-muted hover:text-text-primary"
               }`}
@@ -116,6 +115,7 @@ export function ClubTab({
         })}
       </div>
 
+      {denied && <AccessDenied feature={denied} requiredRole="Club Admins" />}
       {show("players") && isClubAdmin && (
         <PlayersTab
           store={store}
@@ -124,13 +124,13 @@ export function ClubTab({
           autoOpenInvite={subAction === "invite"}
         />
       )}
-      {show("studio") && isStudioAdmin && (
+      {show("studio") && (isClubAdmin || isStudioAdmin) && (
         <StudioAdminTab
           store={store}
           adminId={currentUserId}
           adminName={adminName}
           persona="admin"
-          isStudioAdmin={isStudioAdmin}
+          isStudioAdmin={isClubAdmin || isStudioAdmin}
           isSuperAdmin={isSuperAdmin}
           defaultAction={subAction}
           isFeatureEnabled={isFeatureEnabled}
@@ -143,10 +143,10 @@ export function ClubTab({
           currentUserName={currentUserName}
         />
       )}
-      {show("pulse") && <OpinionTab store={store} persona="admin" />}
-      {show("leaderboard") && (
+      {show("pulse") && isClubAdmin && <OpinionTab store={store} persona="admin" />}
+      {show("leaderboard") && isClubAdmin && (
         <div className="space-y-6">
-          {isClubAdmin && <ClubStatisticsAdmin />}
+          <ClubStatisticsAdmin />
           <LeaderboardTab store={store} persona="admin" />
         </div>
       )}
@@ -160,10 +160,6 @@ export function ClubTab({
         />
       )}
       {show("shop") && isClubAdmin && <ShopTab store={store} persona="admin" isAdmin={isClubAdmin} />}
-      {show("reminders") && isClubAdmin && (
-        <DuesAndRemindersTab store={store} isFinanceAdmin={isFinanceAdmin} />
-      )}
-      {show("activity") && isSuperAdmin && <AuditLogTab isSuperAdmin={isSuperAdmin} />}
     </div>
   );
 }
