@@ -86,8 +86,8 @@ Modified:
 | Full e2e | `npx playwright test` (Desktop + Mobile Chrome) | 220 passed, 26 failed, 98 skipped (credential-gated, not executed) |
 
 **Full e2e breakdown.**
-- 18 of the failures are the pre-existing ones (also failing on the base commit before D-16 and D-18): `match-center-corrections` ×2, `player-home-behavioral` 1/2/2B/4D/4E/4G, `production-app` 3 (Desktop only) — on both projects.
-- 8 were new failures caused by two races in my own new tests (Club sections read before the lazy section bar rendered; `.first()` matched the hidden desktop sidebar on mobile). Fixed; rerun of all D-18 matrix + shell tests on both projects: **20 / 20 pass**.
+- 17 of the failures are pre-existing (they also fail on the base commit before D-16 and D-18): `match-center-corrections` ×2 and `player-home-behavioral` 1/2/2B/4D/4E/4G on both projects (16), plus `production-app` 3 on Desktop (1). The old `production-app` 6A/6B/6C matrix failures are gone (tests rewritten for D-18 and passing).
+- 9 were new failures (shell test 2 on both projects; the 7 matrix tests on Mobile) caused by two races in my own new tests (Club sections read before the lazy section bar rendered; `.first()` matched the hidden desktop sidebar on mobile). Fixed; rerun of all D-18 matrix + shell tests on both projects: **20 / 20 pass**.
 
 ## 5. Owner clarifications requested
 
