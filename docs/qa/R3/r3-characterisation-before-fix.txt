@@ -1,3 +1,22 @@
 # R3 characterisation of the PRE-FIX webhook route (base f759a74)
 # Real HMAC-signed requests to app/api/razorpay/webhook/route.ts POST against the Firestore emulator.
 # Infrastructure cases inject gRPC-coded errors from runTransaction.
+01 valid payment.captured                    -> 200 {"success":true}
+02 duplicate, same payment id                -> 200 {"success":true}
+03 duplicate, DIFFERENT payment id           -> 400 {"error":"Conflicting payment ID replay: intent was already fulfilled with payment pay_C1, received pay_C2"}
+04 missing signature                         -> 401 {"error":"Missing x-razorpay-signature header."}
+05 invalid signature                         -> 401 {"error":"Invalid signature."}
+06 altered body, original signature          -> 401 {"error":"Invalid signature."}
+07 malformed JSON, valid signature           -> 500 {"error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+08 missing entities (valid sig)              -> 200 {"success":true,"message":"No intentId attached."}
+09 no notes.intentId                         -> 200 {"success":true,"message":"No intentId attached."}
+10 unknown intentId                          -> 400 {"error":"Intent not found: i_does_not_exist"}
+11 amount mismatch                           -> 400 {"error":"Amount mismatch: expected 50000 paise, received 100 paise"}
+12 currency mismatch                         -> 400 {"error":"Currency mismatch: expected INR, received USD"}
+13 order id mismatch                         -> 400 {"error":"Order ID mismatch: expected order_C1, received order_OTHER"}
+14 unsupported event payment.failed          -> 200 {"success":true}
+15 player merge in progress                  -> 400 {"error":"Player p_merge merge is currently in progress; retry requested."}
+16 Firestore UNAVAILABLE (code 14)           -> 400 {"error":"14 UNAVAILABLE: simulated"}
+17 contention exhaustion ABORTED (10)        -> 400 {"error":"10 ABORTED: too much contention"}
+18 DEADLINE_EXCEEDED (code 4)                -> 400 {"error":"4 DEADLINE_EXCEEDED: simulated"}
+19 recovery after transient failure          -> 200 {"success":true}
