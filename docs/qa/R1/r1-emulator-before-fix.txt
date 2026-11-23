@@ -1,0 +1,51 @@
+# R1 emulator test output BEFORE fix (base 338a2db + docs, server code unchanged)
+# command: npm run test:emulator -- tests/r1-token-revocation.emulator.test.mjs
+    ok 1 - R1-01 valid token succeeds and returns the token's uid
+    ok 2 - R1-02 expired token fails with 401
+    not ok 3 - R1-03 revoked token fails with 401 TOKEN_REVOKED
+      expected: 'TOKEN_REVOKED'
+    not ok 4 - R1-04 account disabled in Firebase Auth fails with 401 ACCOUNT_DISABLED
+      expected: 'ACCOUNT_DISABLED'
+    not ok 5 - R1-05 deleted account fails with 401 ACCOUNT_NOT_FOUND
+      expected: 'ACCOUNT_NOT_FOUND'
+    ok 6 - R1-06 after revocation the same user can sign in again and is accepted (persistent login preserved)
+    ok 7 - R1-07 in-app appUsers status Disabled is still rejected with 403 (existing behaviour preserved)
+    ok 8 - R1-08 missing and malformed Authorization headers fail with 401
+    ok 9 - R1-09 player calling an admin guard gets 403; super admin claim gets through; revoked admin gets 401
+    ok 10 - R1-10a order route: valid token passes auth (rejected later by currency validation, not auth)
+    not ok 11 - R1-10b order route: revoked player cannot initiate Razorpay order creation (401)
+      expected: 'TOKEN_REVOKED'
+    ok 12 - R1-10c order route: Firebase-disabled and deleted accounts are rejected (401)
+    not ok 13 - R1-10d link-account route: valid token passes auth; revoked user cannot link another account
+      expected: 'TOKEN_REVOKED'
+    ok 14 - R1-10e link-google route: valid token passes auth; revoked and Firebase-disabled users are rejected
+        ok 1 - R1-P0 precondition: in production mode a revoked token is accepted by verifyIdToken() without checkRevoked
+        ok 2 - R1-P1 valid token is accepted
+        not ok 3 - R1-P2 revoked token is rejected by requireAuth (401 TOKEN_REVOKED)
+          expected: false
+          actual: true
+        not ok 4 - R1-P3 Firebase-disabled account is rejected by requireAuth (401 ACCOUNT_DISABLED)
+          expected: false
+          actual: true
+        not ok 5 - R1-P4 deleted account is rejected by requireAuth (401 ACCOUNT_NOT_FOUND)
+          expected: false
+          actual: true
+        not ok 6 - R1-P5 order route: revoked player cannot initiate Razorpay order creation
+          expected: 401
+          actual: 400
+        not ok 7 - R1-P6 link-account route: revoked user cannot link another account
+          expected: 401
+          actual: 400
+        not ok 8 - R1-P7 link-google route: Firebase-disabled user cannot link
+          expected: 401
+          actual: 403
+        ok 9 - R1-P8 after revocation, a fresh sign-in is accepted (persistent login unaffected)
+    not ok 15 - R1-P: production token-verification mode (signature check replaced; revocation lookups real)
+    not ok 16 - R1-11 (mocked SDK error) Auth backend unavailable fails closed with 503, not 401 and not success
+      expected: 503
+      actual: 401
+not ok 1 - R1: token revocation on requireAuth and sensitive endpoints (Auth + Firestore emulators)
+# tests 24
+# pass 12
+# fail 12
+# skipped 0

@@ -82,7 +82,7 @@ R2-B is moved after the payment work because it requires a data migration and ow
 | # | Decision | Status |
 |---|---|---|
 | 1 | **Branch:** remediation commits go directly to `mig-mov` (owner, 2026-11-23). This overrides the `AGENTS.md §11` default for this programme. | **Decided** |
-| 2 | **R1 scope:** apply revocation checks to all three `requireAuth` callers (order, link-account, link-google). The owner asked for an explanation (given in session); approval is pending. | **Pending** |
+| 2 | **R1 scope:** apply revocation checks to all three `requireAuth` callers (order, link-account, link-google), keeping persistent login. Approved by owner 2026-11-23. Implemented: see `docs/qa/R1/R1_TOKEN_REVOCATION_REPORT.md`. | **Decided** |
 | 3 | **R2-B:** "Players should not see other players' data" (owner, 2026-11-23). Ordinary players get **no** private fields of other players (`mobile`, `email`, `dob`, `bloodGroup`, `emergencyContact`, `locality`, sizes). This removes other players' mobile numbers from player-facing directory and squad screens. | **Decided** (principle) |
 | 3a | **R2-B public fields:** working assumption is that players still see name, photo, jersey name/number, playing role/styles, badges and stats, which the Directory, squads, leaderboard and match cards need. Owner to confirm. | **To confirm** |
 | 3b | **R2-B admin field access** under D-19 (Match Admin and Studio Admin retired → Club Admin). Proposed: Self, Super Admin and Club Admin: all fields. Finance Admin: `mobile`, `email` only (reminders/receipts), with no `dob`/`bloodGroup`/`emergencyContact`/sizes. Designer: none. | **To confirm** before R2-B design |
