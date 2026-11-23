@@ -108,11 +108,11 @@ describe("Match Details screen (admin)", () => {
       assert.ok(!markup.includes(gone), gone);
     }
   });
-  it("kept: tentative unblock, archive toggle, group reminder, player availability roster", () => {
+  it("kept: tentative unblock, archive toggle, player availability roster; group reminder removed", () => {
     assert.match(details, /Unblock/);
     assert.match(details, /Archived/);
-    assert.match(details, /Remind Group/);
     assert.match(details, /Player Availability/);
+    assert.ok(!/Remind Group|handleGroupRemind|isGroupRemindModalOpen|wa\.me/.test(details));
   });
   it("Match Info shows fee (with saved margin), ground fee, budget, links", () => {
     const info = details.slice(details.indexOf('testId="details-match-info"'));

@@ -43,7 +43,7 @@ const text = (html) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").rep
 const src = (f) => fs.readFileSync(path.resolve(f), "utf-8");
 
 const fee = load("lib/match-fee.ts");
-const { MatchDatePicker, monthGrid, formatPickerDate } = load("components/matches/MatchDatePicker.tsx");
+const { MatchDatePicker, monthGrid, monthWeekendDays, formatPickerDate } = load("components/matches/MatchDatePicker.tsx");
 const { MatchFeeCalculator } = load("components/matches/MatchFeeCalculator.tsx");
 const tab = src("components/MatchesTab.tsx");
 const modal = tab.slice(tab.indexOf("const editMatchModal ="), tab.indexOf("if (isPlayerView) {", tab.indexOf("const editMatchModal =")));
@@ -146,14 +146,30 @@ describe("Fee calculator component", () => {
 });
 
 describe("Date picker", () => {
-  it("field shows the selected date; calendar has month heading, prev/next and 44px day cells", () => {
-    const html = render(React.createElement(MatchDatePicker, { value: "2026-11-14", onChange: () => {}, todayKey: "2026-11-22", defaultOpen: true }));
-    assert.match(text(html), /Sat, 14 Nov 2026/);
+  it("weekend-first: shows only that month's Saturdays and Sundays as tiles, with month navigation", () => {
+    const html = render(React.createElement(MatchDatePicker, { value: "2026-11-29", onChange: () => {}, todayKey: "2026-11-23" }));
+    assert.match(text(html), /Sun, 29 Nov 2026/);
     assert.match(text(html), /November 2026/);
     assert.ok(html.includes('aria-label="Previous month"') && html.includes('aria-label="Next month"'));
-    assert.match(html, /data-testid="match-date-day-2026-11-14"/);
-    assert.match(html, /aria-pressed="true"[^>]*data-testid="match-date-day-2026-11-14"|data-testid="match-date-day-2026-11-14"[^>]*aria-pressed="true"/);
-    assert.match(html, /class="h-11 rounded-lg/);
+    assert.ok(html.includes('data-testid="match-date-weekends"'));
+    assert.ok(!html.includes('data-testid="match-date-calendar"'));
+    const tiles = html.match(/data-testid="match-date-day-[^"]+"/g) || [];
+    assert.equal(tiles.length, 9, "Nov 2026: Sun 1, Sat/Sun 7-8, 14-15, 21-22, 28-29");
+    assert.ok(!html.includes("match-date-day-2026-11-25"), "weekday hidden by default");
+    assert.match(html, /aria-pressed="true"[^>]*data-testid="match-date-day-2026-11-29"|data-testid="match-date-day-2026-11-29"[^>]*aria-pressed="true"/);
+    assert.match(text(html), /Show all days \(pick a weekday\)/);
+    assert.match(html, /min-h-\[52px\]/);
+  });
+  it("a weekday selection opens the full month grid automatically", () => {
+    const html = render(React.createElement(MatchDatePicker, { value: "2026-11-25", onChange: () => {}, todayKey: "2026-11-23" }));
+    assert.ok(html.includes('data-testid="match-date-calendar"'));
+    assert.ok(html.includes("match-date-day-2026-11-25"));
+    assert.equal((html.match(/data-testid="match-date-day-/g) || []).length, 30);
+    assert.match(text(html), /Weekends only/);
+    assert.match(html, /class="h-10 text-sm/);
+  });
+  it("weekend list helper", () => {
+    assert.deepEqual(monthWeekendDays(2026, 10).map((d) => d.day), [1, 7, 8, 14, 15, 21, 22, 28, 29]);
   });
   it("month grid offsets the first weekday and has every day", () => {
     const g = monthGrid(2026, 10); // Nov 2026 starts on a Sunday
@@ -193,17 +209,19 @@ describe("Add / Edit Match form", () => {
     assert.match(modal, /type="submit"\s+data-testid="match-form-submit"/);
   });
   it("navigation: Next validates, Back / header back go to the previous step, progress labels jump", () => {
-    assert.match(modal, /onClick=\{\(\) => goToFormStep\(\(formStep \+ 1\) as MatchFormStep\)\}\s*data-testid="match-form-next"/);
+    assert.match(modal, /key="wizard-next"\s*type="button"\s*onClick=\{\(e\) => \{[\s\S]*?e\.preventDefault\(\);\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*\}\}\s*data-testid="match-form-next"/);
+    // Next and Save are distinct elements, so the Next click can never become a submit
+    assert.match(modal, /key="wizard-save"\s*type="submit"\s*data-testid="match-form-submit"/);
     assert.match(modal, /formStep > 1 \? goToFormStep\(\(formStep - 1\) as MatchFormStep\) : closeMatchForm\(\)/);
     assert.match(modal, /onClick=\{\(\) => goToFormStep\(st\)\}/);
     assert.match(tab, /const problem = matchFormStepProblem\(st as MatchFormStep, formData\);/);
     // Enter on steps 1-2 advances instead of saving
     assert.match(tab, /if \(formStep < 3\) \{\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*return;\s*\}/);
   });
-  it("new / duplicate start at step 1; editing opens on step 3", () => {
+  it("add, duplicate and edit all use the wizard from step 1", () => {
     const edit = tab.slice(tab.indexOf("const startEdit ="), tab.indexOf("const startDuplicate ="));
     const dup = tab.slice(tab.indexOf("const startDuplicate ="), tab.indexOf("const userHasAdminPrivileges"));
-    assert.match(edit, /setFormStep\(3\);/);
+    assert.match(edit, /setFormStep\(1\);/);
     assert.match(dup, /setFormStep\(1\);/);
     assert.match(tab.slice(tab.indexOf("const resetForm ="), tab.indexOf("const startEdit =")), /setFormStep\(1\);/);
   });

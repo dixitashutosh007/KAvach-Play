@@ -138,9 +138,9 @@ describe("Admin Match Centre cards: no WhatsApp share", () => {
     assert.ok(!/WhatsApp/.test(card.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")), "no WhatsApp action in the card markup");
     assert.match(card, /match\.result === "KAvach Won" &&\s*\(match\.potmId \|\| match\.playerOfTheMatch/);
   });
-  it("WhatsApp features elsewhere are untouched", () => {
-    assert.match(tab, /Continue to WhatsApp/);
+  it("per-player WhatsApp payment reminders are untouched (group reminder removed by owner request)", () => {
     assert.match(tab, /title="Send WhatsApp Reminder"/);
+    assert.ok(!/Continue to WhatsApp/.test(tab));
   });
 });
 

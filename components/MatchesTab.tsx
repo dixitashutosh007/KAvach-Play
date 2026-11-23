@@ -310,8 +310,8 @@ export function MatchesTab({
     // Reopen with the margin saved on the match (older matches: 5%). The saved
     // fee is kept as-is; it only recalculates when the admin changes something.
     setFeeMarginPct(match.feeMarginPct !== undefined ? clampMargin(match.feeMarginPct) : DEFAULT_MARGIN_PCT);
-    // Editing opens on the last step (summary + fee); earlier steps are one tap away.
-    setFormStep(3);
+    // Editing uses the same wizard from step 1 (labels jump between steps).
+    setFormStep(1);
     setFormStepError(null);
     setFormData({
       groundId: match.groundId,
@@ -895,8 +895,14 @@ export function MatchesTab({
           )}
           {formStep < 3 ? (
             <button
+              key="wizard-next"
               type="button"
-              onClick={() => goToFormStep((formStep + 1) as MatchFormStep)}
+              onClick={(e) => {
+                // Never submit from Next: React would otherwise reuse this
+                // element as the Save (submit) button mid-click on step 2.
+                e.preventDefault();
+                goToFormStep((formStep + 1) as MatchFormStep);
+              }}
               data-testid="match-form-next"
               className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
             >
@@ -904,6 +910,7 @@ export function MatchesTab({
             </button>
           ) : (
             <button
+              key="wizard-save"
               type="submit"
               data-testid="match-form-submit"
               className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
@@ -1804,8 +1811,6 @@ export function MatchPayments({
     }
   };
   
-  const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
-  const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
 
   useEffect(() => {
     // Dynamically load Razorpay SDK
@@ -1817,41 +1822,6 @@ export function MatchPayments({
       document.body.appendChild(script);
     }
   }, []);
-
-  const handleGroupRemind = () => {
-    const ground = store.grounds.find(g => g.id === match.groundId);
-    
-    let text = `🏏 *Upcoming Match Reminder* 🏏\n`;
-    text += `*Date*: ${formatDate(match.date)}\n`;
-    text += `*Time*: ${match.time || 'TBD'}\n`;
-    text += `*Ground*: ${ground?.name || 'TBD'}\n`;
-    if (ground?.mapUrl) {
-       text += `*Location*: ${ground.mapUrl}\n`;
-    }
-    
-    if (groupRemindCustomMsg.trim()) {
-       text += `\n${groupRemindCustomMsg.trim()}\n`;
-    }
-    
-    text += `\n*Squad*:\n`;
-    
-    const playing = matchPayments.filter(p => p.status !== "Not Playing");
-    playing.forEach(p => {
-       const player = store.players.find(pl => pl.id === p.playerId);
-       if (player?.mobile) {
-           let mob = player.mobile.replace(/\D/g, '');
-           if (mob.startsWith('0') && mob.length === 11) mob = "91" + mob.substring(1);
-           else if (mob.length === 10) mob = "91" + mob;
-           text += `@+${mob} `;
-       } else if (player) {
-           text += `${player.name} `;
-       }
-    });
-    
-    const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    setIsGroupRemindModalOpen(false);
-  };
 
   const matchLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
   const myLateFees = (() => {
@@ -2101,14 +2071,6 @@ export function MatchPayments({
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
         <div className="flex items-center gap-2 flex-wrap">
-          {isAdmin && (
-            <button
-              onClick={() => setIsGroupRemindModalOpen(true)}
-              className="text-[11px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition flex items-center gap-1 border border-emerald-500/20"
-            >
-              <MessageSquare className="w-3.5 h-3.5" /> Remind Group
-            </button>
-          )}
         </div>
       </div>
 
@@ -3322,45 +3284,6 @@ export function MatchPayments({
         </div>
       )}
 
-      {/* Group Remind Modal */}
-      {isGroupRemindModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
-            <button
-              onClick={() => setIsGroupRemindModalOpen(false)}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" /> Remind Group
-            </h3>
-            <p className="text-xs text-text-secondary mb-4 leading-relaxed">
-              This will open WhatsApp with the match details and squad list. You can select your club's WhatsApp group to send the message.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
-                  Optional Custom Message
-                </label>
-                <textarea
-                  value={groupRemindCustomMsg}
-                  onChange={(e) => setGroupRemindCustomMsg(e.target.value)}
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-text-primary placeholder-text-muted"
-                  placeholder="e.g., Please reach 15 mins early!"
-                  rows={3}
-                />
-              </div>
-              <button
-                onClick={handleGroupRemind}
-                className="w-full bg-emerald-500 text-black font-bold py-2.5 rounded-lg hover:bg-emerald-400 transition shadow flex items-center justify-center gap-2"
-              >
-                Continue to WhatsApp
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
