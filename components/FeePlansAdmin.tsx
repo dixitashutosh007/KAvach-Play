@@ -13,7 +13,7 @@
  * server API for assignments). Everyone else who can open this screen views.
  */
 import React, { useMemo, useState } from "react";
-import { ArrowLeft, CalendarRange, ChevronRight, Loader2, Plus, Search, Users, X } from "lucide-react";
+import { ArrowLeft, CalendarRange, ChevronRight, Loader2, Plus, Search, Users } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ui/Toast";
@@ -31,6 +31,9 @@ import {
   type AssignmentStatus,
 } from "@/lib/finance-plans";
 import type { FeePlan, FinancePlanAssignment, Player } from "@/lib/types";
+import { ErrorNote, Sheet, fmtDate } from "@/components/finance/FinanceUi";
+import { SubscriptionsPanel } from "@/components/finance/SubscriptionsPanel";
+import { SponsorshipReport } from "@/components/finance/SponsorshipReport";
 
 type Store = ReturnType<typeof useStore>;
 
@@ -46,12 +49,6 @@ const STATUS_CHIP: Record<AssignmentStatus, string> = {
   scheduled: "bg-blue-50 text-blue-800 border-blue-200",
   ended: "bg-surface-hover text-text-secondary border-border",
   cancelled: "bg-surface-hover text-text-muted border-border",
-};
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const fmtDate = (d: string | null | undefined) => {
-  if (!d) return "";
-  const [y, m, day] = d.split("-").map(Number);
-  return `${day} ${MONTHS[m - 1]} ${y}`;
 };
 function rangeLabel(a: FinancePlanAssignment): string {
   const start = a.startDate ? fmtDate(a.startDate) : "Before date tracking";
@@ -78,6 +75,7 @@ export function FeePlansAdmin({ store }: { store: Store }) {
 
   const [view, setView] = useState<{ kind: "overview" } | { kind: "plan"; planId: string } | { kind: "regular" }>({ kind: "overview" });
   const [editing, setEditing] = useState<FeePlan | "new" | null>(null);
+  const [section, setSection] = useState<"plans" | "subscriptions" | "report">("plans");
 
   const activeOnToday = (planId: string) =>
     allAssignments.filter((a) => a.planId === planId && assignmentStatus(a, todayKey) === "active").length;
@@ -97,6 +95,30 @@ export function FeePlansAdmin({ store }: { store: Store }) {
       )}
 
       {view.kind === "overview" && (
+        <div className="flex gap-1 rounded-xl border border-border p-1" role="tablist" aria-label="Finance Plans sections" data-testid="finance-plans-sections">
+          {([
+            ["plans", "Plans"],
+            ["subscriptions", "Subscriptions"],
+            ["report", "Sponsorship"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={section === value}
+              onClick={() => setSection(value)}
+              data-testid={`finance-plans-section-${value}`}
+              className={`flex-1 min-h-[44px] rounded-lg text-xs font-bold cursor-pointer ${section === value ? "bg-brand text-white" : "text-text-secondary hover:bg-surface-hover"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {view.kind === "overview" && section === "subscriptions" && <SubscriptionsPanel canManage={canManage} todayKey={todayKey} />}
+      {view.kind === "overview" && section === "report" && <SponsorshipReport todayKey={todayKey} />}
+
+      {view.kind === "overview" && section === "plans" && (
         <>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -791,22 +813,6 @@ function PlanEditor({
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
 
-function Sheet({ title, onClose, children, testId }: { title: string; onClose: () => void; children: React.ReactNode; testId?: string }) {
-  return (
-    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/60 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl bg-surface shadow-xl" data-testid={testId}>
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-3 bg-surface border-b border-border">
-          <h3 className="text-base font-black font-heading text-text-primary">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-hover cursor-pointer">
-            <X className="w-5 h-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="p-4 flex flex-col gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">{children}</div>
-      </div>
-    </div>
-  );
-}
-
 function TypeChip({ type }: { type: string }) {
   return <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${TYPE_CHIP[type] || TYPE_CHIP.regular}`}>{PLAN_TYPE_LABEL[type] || type}</span>;
 }
@@ -825,17 +831,6 @@ function BackLink({ onClick }: { onClick: () => void }) {
     <button type="button" onClick={onClick} className="self-start inline-flex items-center gap-1 min-h-[40px] text-xs font-bold text-text-secondary hover:text-text-primary cursor-pointer">
       <ArrowLeft className="w-4 h-4" aria-hidden="true" /> All plans
     </button>
-  );
-}
-
-function ErrorNote({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 flex items-center justify-between gap-2 text-sm text-rose-800">
-      <span>{message}</span>
-      <button type="button" onClick={onRetry} className="min-h-[36px] px-3 rounded-lg border border-rose-300 bg-white text-xs font-bold cursor-pointer">
-        Retry
-      </button>
-    </div>
   );
 }
 

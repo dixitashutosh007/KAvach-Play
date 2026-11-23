@@ -183,9 +183,10 @@ function RowList({ title, rows, testId }: { title?: string; rows: MatchPlanPrevi
                 </span>
                 {r.reason && <span className="block text-[11px] text-text-muted">{r.reason}</span>}
                 {r.warning && <span className="block text-[11px] font-semibold text-amber-700">{r.warning}</span>}
+                {r.pendingAllocation && <span className="block text-[11px] text-blue-700">Covered by subscription · amount set when the period closes</span>}
               </span>
               <span className="text-right text-sm tabular-nums">
-                <span className="block font-black text-text-primary">{inr(regularNow && r.action === "revert" ? r.fee : r.contribution)}</span>
+                <span className="block font-black text-text-primary">{r.pendingAllocation ? "Sub" : inr(regularNow && r.action === "revert" ? r.fee : r.contribution)}</span>
                 {r.sponsorship > 0 && r.action !== "revert" && (
                   <span className="block text-[11px] font-bold text-emerald-700">club {inr(r.sponsorship)}</span>
                 )}

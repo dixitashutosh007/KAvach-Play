@@ -26,6 +26,7 @@ const ENTITY_OPTIONS: { value: AuditEntity; label: string }[] = [
   { value: "fee", label: "Fees" },
   { value: "fee_plan", label: "Finance Plans" },
   { value: "fee_plan_assignment", label: "Finance Plan Assignments" },
+  { value: "subscription_period", label: "Subscription Periods" },
   { value: "settings", label: "Settings" },
   { value: "reminder", label: "Reminders" },
   { value: "poll", label: "Polls" },

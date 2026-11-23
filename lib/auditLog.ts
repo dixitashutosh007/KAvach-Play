@@ -32,6 +32,7 @@ export type AuditEntity =
   | "fee"
   | "fee_plan"
   | "fee_plan_assignment"
+  | "subscription_period"
   | "fee_template"
   | "settings"
   | "reminder"

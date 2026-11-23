@@ -121,9 +121,15 @@ describe("Automatic application: plan on the match date, brief amounts", () => {
     assert.deepEqual(row(app, "pc").fields, { status: "Paid", feeOverride: 0, feeOffsetAmount: 700, feeCollectedAmount: 0, planTag: "Sponsored", paymentMethod: "manual", manualMethod: "club_sponsored" });
     assert.deepEqual(row(app, "pe").fields, { status: "Paid", feeOverride: 0, feeOffsetAmount: 200, feeCollectedAmount: 500, planTag: "Monthly Fixed (Subscription)", paymentMethod: "manual", manualMethod: "part_of_plan" });
   });
-  it("skips with reasons: subscription spread, already paid, guests; ignores Not Playing", () => {
-    assert.equal(row(app, "pf").action, "skip");
-    assert.match(row(app, "pf").reason, /period closes/);
+  it("monthly spread: covered by the subscription now, amounts set when the period closes (Stage 4)", () => {
+    const r = row(app, "pf");
+    assert.equal(r.action, "apply");
+    assert.equal(r.pendingAllocation, true);
+    assert.deepEqual(r.fields, { status: "Paid", feeOverride: 0, feeOffsetAmount: 0, feeCollectedAmount: 0, planTag: "Monthly Spread (Subscription)", paymentMethod: "manual", manualMethod: "part_of_plan" });
+    assert.equal(mpa.snapshotForRow(app, r).pendingAllocation, true);
+    assert.equal(app.totals.pendingAllocation, 1);
+  });
+  it("skips with reasons: already paid, guests; ignores Not Playing", () => {
     assert.equal(row(app, "pj").action, "skip");
     assert.equal(row(app, "pj").reason, "Already paid");
     assert.equal(row(app, "pk").action, "skip");
@@ -131,7 +137,7 @@ describe("Automatic application: plan on the match date, brief amounts", () => {
     assert.equal(row(app, "pn"), undefined);
   });
   it("totals and change list", () => {
-    assert.equal(app.changes.length, 6);
+    assert.equal(app.changes.length, 7);
     assert.equal(app.totals.players, 11);
     assert.equal(app.totals.sponsorship, 200 + 700 + 70 + 200 + 350);
   });

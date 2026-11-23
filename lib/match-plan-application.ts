@@ -16,8 +16,9 @@
  *   monthly (fixed per   status Paid (manual, part_of_plan), feeOverride 0,
  *   match)               feeCollectedAmount = allocated contribution,
  *                        feeOffsetAmount = sponsorship
- *   monthly distribute   not applied automatically (allocation is settled when
- *                        the subscription period closes — pending decision)
+ *   monthly distribute   status Paid (manual, part_of_plan), amounts ₹0 and
+ *                        `pendingAllocation` until the subscription period
+ *                        closes (lib/subscription-periods settles them)
  *
  * Snapshot: every write carries `financeSnapshot` recording plan, assignment,
  * match date/fee, contribution, sponsorship and the exact fields written
@@ -55,6 +56,10 @@ export interface FinanceSnapshot {
   contribution: number;
   sponsorship: number;
   warning?: string;
+  /** Monthly "distribute": amounts are set when the subscription period closes. */
+  pendingAllocation?: boolean;
+  /** Set when a subscription period settled this payment: final from then on. */
+  periodId?: string;
   applied: AppliedFields;
   /** Present on overrides: why, and what the plan rule would have produced. */
   override?: { reason: string; computedContribution: number; computedSponsorship: number; computedPlanName: string };
@@ -197,6 +202,7 @@ export interface PlanRow {
   contribution: number;
   sponsorship: number;
   warning?: string;
+  pendingAllocation?: boolean;
   /** Fields to write (apply/update/revert only). */
   fields?: AppliedFields;
 }
@@ -210,7 +216,7 @@ export interface MatchPlanApplication {
   rows: PlanRow[];
   /** Rows that will be written. */
   changes: PlanRow[];
-  totals: { players: number; onPlans: number; regular: number; contribution: number; sponsorship: number };
+  totals: { players: number; onPlans: number; regular: number; contribution: number; sponsorship: number; pendingAllocation: number };
 }
 
 /** Builds the per-player breakdown for a match. Pure. */
@@ -235,7 +241,7 @@ export function buildMatchPlanApplication({
     matchFee: fee,
     rows: [],
     changes: [],
-    totals: { players: 0, onPlans: 0, regular: 0, contribution: 0, sponsorship: 0 },
+    totals: { players: 0, onPlans: 0, regular: 0, contribution: 0, sponsorship: 0, pendingAllocation: 0 },
   };
   if (match.result === "Abandoned") {
     out.blocked = "This match was abandoned, so no match fees apply.";
@@ -274,8 +280,24 @@ export function buildMatchPlanApplication({
       contribution: calc.contribution,
       sponsorship: calc.sponsorship,
       warning: calc.warning,
+      ...(calc.pendingAllocation ? { pendingAllocation: true } : {}),
     };
     const snap = p.financeSnapshot;
+
+    if (snap?.periodId) {
+      out.rows.push({
+        ...base,
+        ...desc,
+        planName: snap.planName,
+        planType: snap.planType,
+        contribution: snap.contribution,
+        sponsorship: snap.sponsorship,
+        pendingAllocation: false,
+        action: "skip",
+        reason: "Settled when the subscription period closed",
+      });
+      continue;
+    }
 
     // Final records are never re-evaluated.
     const editable = isPristineRegular(p) || isUntouchedAuto(p);
@@ -306,11 +328,6 @@ export function buildMatchPlanApplication({
       out.rows.push({ ...base, ...desc, action: "skip", reason: "Assigned plan no longer exists — check Finance Plans" });
       continue;
     }
-    if (calc.pendingAllocation) {
-      out.rows.push({ ...base, ...desc, action: "skip", reason: "Subscription allocated when the period closes" });
-      continue;
-    }
-
     if (!plan) {
       if (isUntouchedAuto(p) && snap?.planType !== "regular") {
         out.rows.push({ ...base, ...desc, action: "revert", reason: `No plan on ${matchDate}; back to the regular fee`, fields: REGULAR_FIELDS });
@@ -345,6 +362,7 @@ export function buildMatchPlanApplication({
     else out.totals.onPlans += 1;
     out.totals.contribution += r.contribution;
     out.totals.sponsorship += r.sponsorship;
+    if (r.pendingAllocation) out.totals.pendingAllocation += 1;
   }
   return out;
 }
@@ -365,6 +383,7 @@ export function snapshotForRow(app: Pick<MatchPlanApplication, "matchDate" | "ma
     contribution: reverted ? app.matchFee : row.contribution,
     sponsorship: reverted ? 0 : row.sponsorship,
     ...(row.warning && !reverted ? { warning: row.warning } : {}),
+    ...(row.pendingAllocation && !reverted ? { pendingAllocation: true } : {}),
     applied: row.fields || REGULAR_FIELDS,
   };
 }

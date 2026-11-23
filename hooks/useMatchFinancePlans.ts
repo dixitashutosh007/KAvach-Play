@@ -16,7 +16,7 @@ export interface MatchPlanPreview {
   matchDate: string;
   matchFee: number;
   blocked: string | null;
-  totals: { players: number; onPlans: number; regular: number; contribution: number; sponsorship: number };
+  totals: { players: number; onPlans: number; regular: number; contribution: number; sponsorship: number; pendingAllocation: number };
   rows: Omit<PlanRow, "fields">[];
   changeCount: number;
   written?: number;
