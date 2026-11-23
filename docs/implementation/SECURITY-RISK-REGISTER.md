@@ -281,4 +281,8 @@ If base fee is ₹800 and a guest is charged ₹1,000 via `feeOverride`, `grossV
 | FIN-002 | P1 | Webhook | High | No | **FIXED** (Phase 5: Atomic Firestore transaction + replay guards) |
 | FIN-003 | P1 | Webhook | Medium | No | **FIXED** (Phase 5: Strict signature, amount, currency & order validation) |
 | IDT-001 | P1 | Identity | High | **D-02** | **FIXED** (Phase 5: Positive link ownership, no UID===playerId fallback) |
+| SUB-001 | P0 (proposed; owner has not reclassified) | Webhook / Studio subscriptions | Low | Owner | **OPEN** — reproduced 2026-11-23 on emulator. First Studio subscription (no prior expiry) throws in `lib/razorpay-webhook.ts:476` (`oldExpiryDate: undefined`); webhook returns 400 on every retry; intent stays pending; membership not applied. Evidence: `docs/qa/player-nav-persona/P0_VERIFICATION.md` §4. Remediation deferred to a separate workstream (D-17). |
+| IDT-003 | P0 per Phase 5/6 audit §9; P2 per AGENTS.md §5 (unresolved) | Identity / Subscriptions | Medium | Owner | **OPEN** — reproduced 2026-11-23 on emulator. Subscription intents store only `userId: authUid` (`lib/razorpay-order.ts:1531-1555`); webhook resolves `players/{authUid}` (`lib/razorpay-webhook.ts:275-283, 452-455`), so players whose playerId differs from their UID are not credited. Evidence: `docs/qa/player-nav-persona/P0_VERIFICATION.md` §4. Remediation deferred to a separate workstream (D-17). |
+
+> **D-17 (2026-11-23):** The product owner authorised Player navigation UX work (D-16) to proceed while SUB-001 and IDT-003 remain OPEN. This is a sequencing decision only. It is **not** a security clearance, does not change either finding's severity, and does not confirm that production is unaffected (the production deployment commit has not been verified).
 

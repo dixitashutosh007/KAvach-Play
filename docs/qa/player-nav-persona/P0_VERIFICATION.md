@@ -58,3 +58,5 @@
 ## 6. Gate outcome
 
 Per `AGENTS.md` §10 and the owner's instruction, UX implementation for D-16 is **not started**. Owner decision required on severity and sequencing of SUB-001 / IDT-003.
+
+**Update 2026-11-23 (D-17):** The owner authorised D-16 UX implementation to proceed with SUB-001 and IDT-003 still OPEN. Both findings remain open and unchanged; this is not a security clearance.
