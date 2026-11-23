@@ -1,0 +1,25 @@
+# R2-A/C emulator test output BEFORE fix (base 459bf21: rules/webhook unchanged)
+# command: npm run test:emulator -- tests/r2a-account-privacy.emulator.test.mjs
+    ok 1 - R2A-01 player reads own account doc (self listener / AuthProvider shape)
+    not ok 2 - R2A-02 player cannot read another player's account doc
+    not ok 3 - R2A-03 player cannot enumerate appUsers (ensureAllAppUsers query shape)
+    not ok 4 - R2A-04 player cannot run filtered appUsers queries (role, email, own-uid-shaped)
+    ok 5 - R2A-05 Club Admin, Finance Admin and Super Admin (claim) can read and list accounts
+    not ok 6 - R2A-06 Designer-only account reads own doc but cannot enumerate accounts
+    not ok 7 - R2A-07 disabled Club Admin cannot enumerate accounts
+    ok 8 - R2A-08 unauthenticated caller cannot read any account doc
+    ok 9 - R2A-09 regression: player still updates own non-privileged field; cannot self-escalate or write others
+    ok 10 - R2A-10 regression: a brand-new user can still create and then read their own account doc
+    not ok 11 - R2C-01 player cannot list all membership history (ensureSubscriptionHistory query shape)
+    not ok 12 - R2C-02 player cannot read another player's membership history
+    ok 13 - R2C-03 player can read own membership history (doc and playerId-filtered query)
+    ok 14 - R2C-04 Club Admin, Finance Admin and Super Admin can list membership history
+    not ok 15 - R2C-05 Designer-only account cannot list membership history
+    ok 16 - R2C-06 regression: membership history stays immutable and player-uncreatable
+not ok 1 - R2-A/R2-C: appUsers and subscriptionHistory read privacy (Firestore emulator)
+    not ok 1 - R2C-07 fulfilled intent keeps payment identifiers and drops payer email/contact/VPA/card data
+not ok 2 - R2-C: webhook stores no raw gateway payload (production processWebhookIntentTransaction)
+# tests 17
+# pass 8
+# fail 9
+# skipped 0
