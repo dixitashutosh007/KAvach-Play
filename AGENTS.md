@@ -111,17 +111,20 @@ Retain granular capabilities, including Super Admin, Club Admin, Match Admin, Fi
 - Do not automatically refund paid amounts; refunds are a separate authorised process.
 - The transition and reconciliation must be idempotent and safely retryable.
 
-### Navigation and information architecture — approved direction
+### Navigation and information architecture — approved direction (D-16, 2026-11-23)
 
-**Player primary navigation:** Home, Matches, Payments, Performance, Club.
+**Player primary navigation:** exactly **Home, Profile, Matches**, in that order, identical on desktop and mobile. No fourth item, no More menu/drawer, no secondary horizontal tab row.
 
-Club contains profile/digital player card, Studio and memberships, Shop and merchandise, polls, club information, announcements/community content and relevant settings.
+- **Home:** player dashboard (search, campaigns/announcements, birthdays, next matches with availability, personal dues and Pay Now, club feed) plus entry points to Directory, Studio, Shop, Polls & Pulse and Announcements/Feed.
+- **Profile:** player card/identity, personal details, badges, catches, aggregate stats, leaderboard position, own payment history/receipts, own Studio membership, player-facing preferences.
+- **Matches:** upcoming/past matches, details, squad, availability, own fee/payment status, results/scorecards.
+- Secondary destinations (Directory, Studio, Shop, Polls & Pulse, Notifications, Leaderboard, Player Finance) open directly and offer contextual navigation back to their parent; they must not form another navigation layer.
 
 **Administrator hubs:** Overview, Match Centre, Player Roster, Finance & Dues, Studio & Nets, Club Operations, Settings & Access.
 
-Administrators should see the normal player experience first, with a clear authorised Admin Console entry. Do not introduce a separate persona-switching experience.
+**Persona model:** administrators see the Player persona first. The existing Player/Admin persona switch is retained for authorised admin users. Admin menus, widgets, management actions (including announcement publishing and Club Performance Widget management) and admin-only data are available **only in Admin persona**. Admin privileges must never influence the Player navigation or Player experience. Persona is a presentation boundary only; Firestore rules and server-side RBAC remain the security boundary.
 
-If the current implementation differs (for example, a five-item nav using “My Finance”, “Pay”, “Profile”, “More”), do not silently assume it supersedes the approved navigation. Document the difference and obtain product-owner direction before changing it.
+D-16 supersedes the earlier five-item player navigation (D-09, player portion) and the persona-switch elimination (D-10). If the current implementation differs from this direction, document the difference and obtain product-owner direction before changing it.
 
 ### Feature preservation
 
