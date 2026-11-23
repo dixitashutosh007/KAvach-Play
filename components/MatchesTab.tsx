@@ -2506,7 +2506,7 @@ export function MatchPayments({
                             )}
 
                             {/* Universal: Change Fee Payer (sponsorship) */}
-                            {payment.status === "Unpaid" && !payment.sponsoredBy && (
+                            {canOverrideFees && payment.status === "Unpaid" && !payment.sponsoredBy && (
                               <button
                                 onClick={() => setFeePayerPicker({ paymentId: payment.id, playerName: player.name, fee, search: "" })}
                                 className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
@@ -2517,7 +2517,7 @@ export function MatchPayments({
                             )}
 
                             {/* Undo fee override / reset plan */}
-                            {payment.sponsoredBy && (
+                            {canOverrideFees && payment.sponsoredBy && (
                               <button
                                 onClick={async () => {
                                   if (!await confirmAction({ message: `Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`, destructive: true })) return;

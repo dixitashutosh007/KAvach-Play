@@ -217,6 +217,41 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    // ── Finance Plans / D4: fee fields on match payments ─────────────────────
+    // Fee amounts, plan tags, sponsorship arrangements and the finance
+    // snapshot are set by Finance / Super Admins (or by the server via the
+    // Admin SDK: /api/finance/match-plans). Match Admins manage the squad,
+    // availability and cash / bank-deposit collection at the recorded fee.
+    function isPlanSettled(data) {
+      return data.get('manualMethod', '') in ['club_sponsored', 'part_of_plan'];
+    }
+
+    // What a Match Admin may create: a squad / availability row, no fee fields.
+    function isMatchAdminPaymentCreate(data) {
+      return data.keys().hasOnly(['id', 'matchId', 'playerId', 'guestName', 'status', 'availability',
+                                  'tacticalNote', 'availabilityNote', 'createdAt', 'updatedAt'])
+        && data.status in ['Unpaid', 'Not Playing'];
+    }
+
+    // What a Match Admin may change on an existing payment.
+    function isMatchAdminPaymentUpdate(matchId) {
+      let changed = incoming().diff(existing()).affectedKeys();
+      return changed.hasOnly(['status', 'availability', 'tacticalNote', 'availabilityNote',
+                              'paymentMethod', 'manualMethod', 'manualBy', 'feeCollectedAmount', 'updatedAt'])
+        && incoming().status in ['Paid', 'Unpaid', 'Not Playing']
+        // No gateway claims: Razorpay payments are confirmed by the server.
+        && (!changed.hasAny(['paymentMethod']) || incoming().get('paymentMethod', 'manual') == 'manual')
+        // Only real collection methods; plan / club sponsorship is a Finance decision.
+        && (!changed.hasAny(['manualMethod'])
+            || incoming().get('manualMethod', 'cash_collected') in ['cash_collected', 'deposited_directly'])
+        // Collected amount must be the recorded fee (plan fee, else the match fee).
+        && (!changed.hasAny(['feeCollectedAmount'])
+            || incoming().feeCollectedAmount == existing().get('feeOverride',
+                 get(/databases/$(database)/documents/matches/$(matchId)).data.fee))
+        // A fee settled by a plan / club sponsorship can only be marked Not Playing.
+        && (!isPlanSettled(existing()) || incoming().status == existing().status || incoming().status == 'Not Playing');
+    }
+
     function isValidMatchPayment(data) {
       return data.keys().hasAll(['id', 'matchId', 'playerId', 'status', 'createdAt', 'updatedAt'])
         && data.id is string
@@ -553,7 +588,8 @@ service cloud.firestore {
       match /payments/{paymentId} {
         allow read: if isAnyAdmin() || (isSignedIn() && (resource.data.playerId == request.auth.uid || isSelf(resource.data.playerId)));
         allow create: if (
-            (isMatchAdmin() || isFinanceAdmin()) ||
+            isFinanceAdmin() ||
+            (isMatchAdmin() && isMatchAdminPaymentCreate(incoming())) ||
             (
               isSignedIn()
               && isSelf(incoming().playerId)
@@ -575,7 +611,8 @@ service cloud.firestore {
         // this collection from the client — /api/admin/merge-players
         // uses the admin SDK, which bypasses these rules entirely.
         allow update: if (
-            (isMatchAdmin() || isFinanceAdmin()) ||
+            isFinanceAdmin() ||
+            (isMatchAdmin() && isMatchAdminPaymentUpdate(matchId)) ||
             (
               isSignedIn()
               && isSelf(existing().playerId)
