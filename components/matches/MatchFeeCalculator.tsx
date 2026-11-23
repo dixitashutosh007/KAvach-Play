@@ -4,11 +4,11 @@
  * Compact, collapsible "Match Fee Calculation" for Add / Edit Match
  * (`components/matches/MatchFeeCalculator.tsx`).
  *
- * Shows the existing rule (lib/match-fee): ground fee per match ÷ 12 players +
- * margin (default 5%, adjustable) = standard per-player fee. The final fee is
- * always visible, also when collapsed. The admin can still type a fee
- * directly, as before; a tournament's own per-player fee is shown when it
- * applies.
+ * Fee precedence (lib/match-fee): a linked tournament's fee from the
+ * Tournaments page, else the ground fee for the match type (÷ 12 players +
+ * margin, default 5%), else manual entry. The final per-player fee is always
+ * visible (also when collapsed) and always editable. When nothing is
+ * configured the panel opens so the fee can be typed straight away.
  */
 import React, { useState } from "react";
 import { ChevronDown, Info, Minus, Plus, Receipt } from "lucide-react";
@@ -51,9 +51,11 @@ export function MatchFeeCalculator({
   tournamentPerPlayerFee?: number;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   const calc = computeMatchFee(groundFeePerMatch, marginPct);
   const hasGroundFee = groundFeePerMatch > 0;
+  const hasTournamentFee = (tournamentPerPlayerFee ?? 0) > 0;
+  const nothingConfigured = !hasGroundFee && !hasTournamentFee;
+  const [open, setOpen] = useState(defaultOpen || nothingConfigured);
   const shownFee = fee === "" ? 0 : Number(fee);
   const differsFromCalc = hasGroundFee && shownFee !== calc.feePerPlayer;
 
@@ -81,6 +83,9 @@ export function MatchFeeCalculator({
       {open && (
         <div className="px-4 py-3 text-sm" data-testid="match-fee-body">
           <dl className="divide-y divide-border">
+            {hasTournamentFee && (
+              <Row label="Tournament fee (per player)" value={inr(tournamentPerPlayerFee as number)} />
+            )}
             <Row label={SOURCE_LABEL[source]} value={hasGroundFee ? inr(calc.groundFeePerMatch) : "Not set"} />
             <Row label={`Per player (÷ ${MATCH_FEE_PLAYER_BASIS})`} value={hasGroundFee ? inr(calc.perPlayerBase) : "—"} />
             <div className="flex items-center justify-between gap-3 py-2">
@@ -150,9 +155,9 @@ export function MatchFeeCalculator({
               </button>
             </p>
           )}
-          {!hasGroundFee && (
-            <p className="mt-1.5 text-[11px] text-text-secondary">
-              This ground has no {source === "practice" || source === "none" ? "practice/tournament" : "tournament"} fee set; enter the fee manually.
+          {nothingConfigured && (
+            <p className="mt-1.5 text-[11px] text-text-secondary" data-testid="match-fee-manual-hint">
+              No tournament or ground fee is configured; enter the per-player fee manually.
             </p>
           )}
         </div>

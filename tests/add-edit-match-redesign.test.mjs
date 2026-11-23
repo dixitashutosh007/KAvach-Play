@@ -69,13 +69,37 @@ describe("Fee rule: unchanged at the default margin", () => {
     assert.equal(fee.DEFAULT_MARGIN_PCT, 5);
     assert.equal(fee.MATCH_FEE_PLAYER_BASIS, 12);
   });
-  it("fee sources: practice / tournament ground fee, or the linked tournament's per-match fee", () => {
+  it("fee sources: a linked tournament's per-match fee wins over the ground's; else the ground fee for the type", () => {
     const ground = { practiceFee: 6000, tournamentFee: 7200 };
     assert.deepEqual(fee.resolveGroundFee(ground, "Practice"), { amount: 6000, source: "practice" });
     assert.deepEqual(fee.resolveGroundFee(ground, "Tournament"), { amount: 7200, source: "tournament-ground" });
     assert.deepEqual(fee.resolveGroundFee(ground, "Tournament", { amountPerMatch: 8400 }), { amount: 8400, source: "tournament" });
-    assert.deepEqual(fee.resolveGroundFee(ground, "Practice", { amountPerMatch: 8400 }), { amount: 6000, source: "practice" });
+    assert.deepEqual(fee.resolveGroundFee(ground, "Practice", { amountPerMatch: 8400 }), { amount: 8400, source: "tournament" });
+    assert.deepEqual(fee.resolveGroundFee(ground, "Tournament", { amountPerMatch: 0 }), { amount: 7200, source: "tournament-ground" });
     assert.deepEqual(fee.resolveGroundFee({}, "Practice"), { amount: 0, source: "none" });
+  });
+  it("per-player fee precedence: tournament fee → ground fee → manual (null)", () => {
+    const ground = { practiceFee: 6000, tournamentFee: 7200 };
+    const t = { amountPerMatch: 8400, perPlayerFee: 750 };
+    // 1. tournament per-player fee configured on the Tournaments page
+    assert.equal(fee.resolveFormFee({ ground, matchType: "Tournament", tournament: t }), 750);
+    // both ground and tournament have fees → tournament wins
+    assert.equal(fee.resolveFormFee({ ground, matchType: "Tournament", tournament: { amountPerMatch: 0, perPlayerFee: 750 } }), 750);
+    // tournament with only a per-match amount → calculated from it
+    assert.equal(fee.resolveFormFee({ ground, matchType: "Tournament", tournament: { amountPerMatch: 8400, perPlayerFee: 0 } }), 735);
+    // tournament with no fee → ground's tournament fee
+    assert.equal(fee.resolveFormFee({ ground, matchType: "Tournament", tournament: { amountPerMatch: 0, perPlayerFee: 0 } }), 630);
+    // no tournament → ground fee for the type
+    assert.equal(fee.resolveFormFee({ ground, matchType: "Practice" }), 525);
+    // nothing configured → manual
+    assert.equal(fee.resolveFormFee({ ground: {}, matchType: "Practice" }), null);
+    assert.equal(fee.resolveFormFee({ ground: null, matchType: "Tournament", tournament: { amountPerMatch: 0, perPlayerFee: 0 } }), null);
+  });
+  it("adjusting the margin recalculates from the per-match amount, even over a tournament fee", () => {
+    const t = { amountPerMatch: 8400, perPlayerFee: 750 };
+    assert.equal(fee.resolveFormFee({ ground: {}, matchType: "Tournament", tournament: t, marginPct: 10, fromMarginChange: true }), 770);
+    // tournament fee with no per-match amount: margin can't recalculate, fee kept
+    assert.equal(fee.resolveFormFee({ ground: {}, matchType: "Tournament", tournament: { amountPerMatch: 0, perPlayerFee: 750 }, marginPct: 10, fromMarginChange: true }), 750);
   });
 });
 
@@ -106,10 +130,18 @@ describe("Fee calculator component", () => {
     const html = render(React.createElement(MatchFeeCalculator, props({ defaultOpen: true, source: "tournament", fee: 700, tournamentPerPlayerFee: 700 })));
     assert.match(text(html), /Using the tournament's own per-player fee/);
   });
-  it("no configured ground fee → manual entry hint, no fake numbers", () => {
-    const html = render(React.createElement(MatchFeeCalculator, props({ defaultOpen: true, groundFeePerMatch: 0, source: "none", fee: "" })));
+  it("nothing configured → opens by itself with an editable fee and a manual-entry hint", () => {
+    const html = render(React.createElement(MatchFeeCalculator, props({ groundFeePerMatch: 0, source: "none", fee: "" })));
+    assert.ok(html.includes("match-fee-body"), "opens automatically");
     assert.match(text(html), /Not set/);
-    assert.match(text(html), /enter the fee manually/);
+    assert.match(text(html), /No tournament or ground fee is configured; enter the per-player fee manually/);
+    assert.ok(html.includes('data-testid="match-fee-input"'));
+  });
+  it("tournament per-player fee shown as its own row; no manual hint", () => {
+    const html = render(React.createElement(MatchFeeCalculator, props({ defaultOpen: true, groundFeePerMatch: 0, source: "none", fee: 750, tournamentPerPlayerFee: 750 })));
+    assert.match(text(html), /Tournament fee \(per player\) ₹750/);
+    assert.ok(!html.includes("match-fee-manual-hint"));
+    assert.match(html, /data-testid="match-fee-input"[^>]*value="750"|value="750"[^>]*data-testid="match-fee-input"/);
   });
 });
 
@@ -138,27 +170,72 @@ describe("Date picker", () => {
 });
 
 describe("Add / Edit Match form", () => {
-  it("sections: Match Details, Match Configuration, fee calculator, optional Links & Result", () => {
-    const order = ['title="Match Details"', 'title="Match Configuration"', "<MatchFeeCalculator", 'data-testid="match-form-optional"'].map((k) => modal.indexOf(k));
-    assert.ok(order.every((i) => i > 0));
-    assert.deepEqual([...order].sort((a, b) => a - b), order);
+  it("3-step wizard: Details → Schedule → Fee, one step shown at a time", () => {
+    assert.match(tab, /const MATCH_FORM_STEPS = \["Details", "Schedule", "Fee"\] as const;/);
+    const s1 = modal.indexOf("{formStep === 1 && (");
+    const s2 = modal.indexOf("{formStep === 2 && (");
+    const s3 = modal.indexOf("{formStep === 3 && (");
+    assert.ok(s1 > 0 && s2 > s1 && s3 > s2);
+    // step 1: tournament first, then ground and opponent
+    const step1 = modal.slice(s1, s2);
+    assert.ok(step1.indexOf('id="match-tournament"') < step1.indexOf('id="match-ground"'));
+    assert.ok(step1.indexOf('id="match-ground"') < step1.indexOf('id="match-opponent"'));
+    // step 2: date, time, type, format, jersey
+    const step2 = modal.slice(s2, s3);
+    for (const k of ["<MatchDatePicker", 'data-testid="match-time-presets"', 'testId="match-type-choice"', 'testId="match-format-choice"', 'testId="match-jersey-choice"']) {
+      assert.ok(step2.includes(k), k);
+    }
+    // step 3: summary, fee calculator, links & result, save
+    const step3 = modal.slice(s3);
+    for (const k of ['data-testid="match-form-summary"', "<MatchFeeCalculator", 'data-testid="match-form-optional"']) {
+      assert.ok(step3.includes(k), k);
+    }
+    assert.match(modal, /type="submit"\s+data-testid="match-form-submit"/);
+  });
+  it("navigation: Next validates, Back / header back go to the previous step, progress labels jump", () => {
+    assert.match(modal, /onClick=\{\(\) => goToFormStep\(\(formStep \+ 1\) as MatchFormStep\)\}\s*data-testid="match-form-next"/);
+    assert.match(modal, /formStep > 1 \? goToFormStep\(\(formStep - 1\) as MatchFormStep\) : closeMatchForm\(\)/);
+    assert.match(modal, /onClick=\{\(\) => goToFormStep\(st\)\}/);
+    assert.match(tab, /const problem = matchFormStepProblem\(st as MatchFormStep, formData\);/);
+    // Enter on steps 1-2 advances instead of saving
+    assert.match(tab, /if \(formStep < 3\) \{\s*goToFormStep\(\(formStep \+ 1\) as MatchFormStep\);\s*return;\s*\}/);
+  });
+  it("new / duplicate start at step 1; editing opens on step 3", () => {
+    const edit = tab.slice(tab.indexOf("const startEdit ="), tab.indexOf("const startDuplicate ="));
+    const dup = tab.slice(tab.indexOf("const startDuplicate ="), tab.indexOf("const userHasAdminPrivileges"));
+    assert.match(edit, /setFormStep\(3\);/);
+    assert.match(dup, /setFormStep\(1\);/);
+    assert.match(tab.slice(tab.indexOf("const resetForm ="), tab.indexOf("const startEdit =")), /setFormStep\(1\);/);
+  });
+  it("opponent is optional and saved as TBD when empty", () => {
+    const step1 = modal.slice(modal.indexOf("{formStep === 1 && ("), modal.indexOf("{formStep === 2 && ("));
+    const opp = step1.slice(step1.indexOf('id="match-opponent"') - 40, step1.indexOf('id="match-opponent"') + 300);
+    assert.ok(!/\brequired\b/.test(opp));
+    assert.match(tab, /opponent: formData\.opponent\.trim\(\) \|\| "TBD",/);
+  });
+  it("squad size is no longer in the form (existing/default value still saved)", () => {
+    assert.ok(!modal.includes("match-squad-size"));
+    assert.ok(!/Max Squad Size/.test(modal));
+    assert.match(tab, /maxSquadSize: match\.maxSquadSize \|\| 12,/);
+    assert.match(tab, /maxSquadSize: 12,/);
   });
   it("time: 7:00 AM / 12:00 PM presets; the time picker only appears for Other", () => {
     assert.match(modal, /\["07:00", "7:00 AM"\],\s*\["12:00", "12:00 PM"\],/);
-    assert.match(modal, /\{!isPresetTime && \(\s*<input\s+required\s+type="time"/);
+    assert.match(modal, /\{!isPresetTime && \(\s*<input\s+type="time"/);
     assert.match(tab, /const isPresetTime = formData\.time === "07:00" \|\| formData\.time === "12:00";/);
   });
-  it("format, type, squad size and jersey colour kept with the same options", () => {
+  it("format, type and jersey keep the same options", () => {
     assert.match(modal, /options=\{\["T20", "T30", "Other"\] as const\}/);
     assert.match(modal, /options=\{MATCH_TYPES\}/);
     assert.match(modal, /options=\{\["Scarlet Red", "Whites"\] as const\}/);
-    assert.match(modal, /id="match-squad-size"/);
   });
-  it("ground, type and margin changes recalculate with the current margin; tournament keeps its own fee", () => {
+  it("tournament first: fills ground, format, jersey and type; fee via the precedence rule", () => {
+    assert.match(tab, /const fee = resolveFormFee\(\{ ground, matchType: next\.matchType, tournament, marginPct, fromMarginChange \}\);\s*return fee === null \? next\.fee : fee;/);
+    assert.match(modal, /groundId: t\.groundId,\s*jerseyColor: t\.jerseyColor,\s*format: t\.format \|\| "T30",\s*matchType: "Tournament" as const,\s*\};\s*setFormData\(\{ \.\.\.next, fee: recalcFee\(next, feeMarginPct\) \}\);/);
     assert.match(modal, /groundId: e\.target\.value \};\s*setFormData\(\{ \.\.\.next, fee: recalcFee\(next, feeMarginPct\) \}\);/);
     assert.match(modal, /tournamentId: matchType === "Tournament" \? formData\.tournamentId : "",[\s\S]*fee: recalcFee\(next, feeMarginPct\)/);
-    assert.match(modal, /fee: t\.perPlayerFee,/);
-    assert.match(modal, /setFeeMarginPct\(margin\);\s*setFormData\(\{ \.\.\.formData, fee: recalcFee\(formData, margin\) \}\);/);
+    assert.match(modal, /const next = \{ \.\.\.formData, tournamentId: "" \};\s*setFormData\(\{ \.\.\.next, fee: recalcFee\(next, feeMarginPct\) \}\);/);
+    assert.match(modal, /setFeeMarginPct\(margin\);\s*setFormData\(\{ \.\.\.formData, fee: recalcFee\(formData, margin, true\) \}\);/);
   });
   it("editing keeps the saved fee until the admin changes something", () => {
     assert.match(tab, /fee: match\.fee === 0 \? "" : match\.fee,/);
@@ -178,9 +255,20 @@ describe("Add / Edit Match form", () => {
     }
     assert.match(tab, /const processedData = \{\s*\.\.\.formData,/);
   });
-  it("mobile sheet: scrollable, no fixed footer, 44–48px controls", () => {
+  it("mobile sheet: scrollable; footer sticks inside the sheet (never fixed over the page); 44–48px controls", () => {
     assert.match(modal, /max-h-\[100dvh\] sm:max-h-\[92vh\] overflow-y-auto/);
     assert.ok(!/fixed bottom-0/.test(modal));
+    assert.match(modal, /sticky bottom-0 z-10 bg-surface border-t/);
     assert.match(modal, /data-testid="match-form-submit"[\s\S]{0,80}min-h-\[48px\]/);
+  });
+});
+
+describe("Wizard step validation", () => {
+  // matchFormStepProblem lives in MatchesTab; check its rules by source and behaviour mirror
+  const src2 = fs.readFileSync(path.resolve("components/MatchesTab.tsx"), "utf-8");
+  it("step 1 needs a ground; step 2 needs a date and a time; step 3 none", () => {
+    assert.match(src2, /if \(step === 1 && !data\.groundId\) return "Select a ground to continue\.";/);
+    assert.match(src2, /if \(step === 2 && !data\.date\) return "Pick a match date to continue\.";/);
+    assert.match(src2, /if \(step === 2 && !\/\^\\d\{1,2\}:\\d\{2\}\/\.test\(data\.time \|\| ""\)\) return/);
   });
 });

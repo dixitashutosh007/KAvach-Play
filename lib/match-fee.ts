@@ -9,16 +9,18 @@
  * with a default margin of 5% (the former hard-coded 1.05). Nothing new is
  * introduced except that the margin can now be adjusted from the form.
  *
- * Fee sources (unchanged):
- *  - Practice:   ground.practiceFee
- *  - Tournament: ground.tournamentFee, or — when the match is linked to a
- *                tournament — tournament.amountPerMatch. A tournament may also
- *                carry its own per-player override (tournament.perPlayerFee),
- *                which the form keeps applying when that tournament is chosen.
+ * Fee precedence (owner decision 2026-11-23):
+ *  1. Linked tournament (configured on the Tournaments page): its per-player
+ *     fee (tournament.perPlayerFee) when set; otherwise calculated from its
+ *     per-match amount (tournament.amountPerMatch).
+ *  2. Ground fee for the match type: ground.tournamentFee for Tournament
+ *     matches, ground.practiceFee for Practice.
+ *  3. Nothing configured: the admin enters the fee manually.
+ * The per-player fee always stays editable in the form.
  *
  * The divisor is the club's fixed 12-player basis (not the squad size), as
  * before. The stored match.fee remains the single authoritative value; the
- * margin is a form control only (no new stored field).
+ * margin used is saved alongside it (match.feeMarginPct) for editing.
  */
 import type { Ground, Match, Tournament } from "@/lib/types";
 import { groundFeeForMatchType } from "@/lib/match-category";
@@ -51,7 +53,8 @@ export function resolveGroundFee(
   matchType: Match["matchType"] | string | null | undefined,
   tournament?: Pick<Tournament, "amountPerMatch"> | null,
 ): { amount: number; source: MatchFeeBreakdown["source"] } {
-  if (matchType === "Tournament" && tournament && Number(tournament.amountPerMatch) > 0) {
+  // A linked tournament's own fee takes precedence over the ground's.
+  if (tournament && Number(tournament.amountPerMatch) > 0) {
     return { amount: Number(tournament.amountPerMatch), source: "tournament" };
   }
   const amount = groundFeeForMatchType(ground, matchType);
@@ -71,4 +74,33 @@ export function computeMatchFee(groundFeePerMatch: number, marginPct: number = D
     marginAmount: fee - Math.round(base),
     feePerPlayer: fee,
   };
+}
+
+/**
+ * Per-player fee the form should apply for its current ground / type /
+ * tournament, following the precedence above. `null` = nothing configured
+ * (keep whatever the admin typed).
+ *
+ * `fromMarginChange`: the admin adjusted the margin, so recalculate from the
+ * per-match amount even when a tournament per-player fee exists.
+ */
+export function resolveFormFee({
+  ground,
+  matchType,
+  tournament,
+  marginPct = DEFAULT_MARGIN_PCT,
+  fromMarginChange = false,
+}: {
+  ground: Pick<Ground, "practiceFee" | "tournamentFee"> | null | undefined;
+  matchType: Match["matchType"] | string | null | undefined;
+  tournament?: Pick<Tournament, "amountPerMatch" | "perPlayerFee"> | null;
+  marginPct?: number;
+  fromMarginChange?: boolean;
+}): number | null {
+  const tournamentPerPlayer = Number(tournament?.perPlayerFee) || 0;
+  if (tournament && tournamentPerPlayer > 0 && !fromMarginChange) return tournamentPerPlayer;
+  const { amount } = resolveGroundFee(ground, matchType, tournament);
+  if (amount > 0) return computeMatchFee(amount, marginPct).feePerPlayer;
+  if (tournament && tournamentPerPlayer > 0) return tournamentPerPlayer;
+  return null;
 }

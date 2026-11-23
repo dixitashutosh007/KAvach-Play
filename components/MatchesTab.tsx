@@ -39,6 +39,7 @@ import {
   CalendarDays,
   Wallet,
   ExternalLink,
+  Trophy,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
@@ -71,8 +72,8 @@ import { MatchesLoadError } from "./matches/MatchesLoadError";
 import { MatchCardHeader, MatchCardTopBar, MatchCardStackedBody, MatchCornerTab } from "./matches/MatchCardHeader";
 import { getMatchCardSurfaceClass } from "./matches/PlayerMatchCard";
 import { MATCH_TYPES } from "@/lib/match-category";
-import { DEFAULT_MARGIN_PCT, clampMargin, computeMatchFee, resolveGroundFee } from "@/lib/match-fee";
-import { MatchDatePicker } from "./matches/MatchDatePicker";
+import { DEFAULT_MARGIN_PCT, clampMargin, computeMatchFee, resolveFormFee, resolveGroundFee } from "@/lib/match-fee";
+import { MatchDatePicker, formatPickerDate } from "./matches/MatchDatePicker";
 import { MatchFeeCalculator } from "./matches/MatchFeeCalculator";
 import { ChoiceGroup, FIELD_CLASS, FieldLabel, FormSection } from "./matches/MatchFormParts";
 import { AdminMatchDateList } from "./matches/AdminMatchDateList";
@@ -90,6 +91,21 @@ export const MATCH_VIEW_OPTIONS = [
   { value: "calendar", label: "Calendar View" },
 ] as const;
 export type MatchViewMode = (typeof MATCH_VIEW_OPTIONS)[number]["value"];
+
+/** Add / Edit Match wizard steps. */
+type MatchFormStep = 1 | 2 | 3;
+const MATCH_FORM_STEPS = ["Details", "Schedule", "Fee"] as const;
+
+/** What blocks leaving a wizard step (null = fine). Squad size is no longer in the form. */
+export function matchFormStepProblem(
+  step: MatchFormStep,
+  data: { groundId?: string; date?: string; time?: string },
+): string | null {
+  if (step === 1 && !data.groundId) return "Select a ground to continue.";
+  if (step === 2 && !data.date) return "Pick a match date to continue.";
+  if (step === 2 && !/^\d{1,2}:\d{2}/.test(data.time || "")) return "Choose a time, or enter one under Other.";
+  return null;
+}
 
 export function MatchesTab({
   store,
@@ -219,6 +235,9 @@ export function MatchesTab({
   // Margin for the fee calculator. A form control only (the match stores just
   // the resulting per-player fee, as before); starts at the 5% default.
   const [feeMarginPct, setFeeMarginPct] = useState<number>(DEFAULT_MARGIN_PCT);
+  // Add / Edit Match is a 3-step wizard: 1 Details, 2 Schedule & type, 3 Fee.
+  const [formStep, setFormStep] = useState<MatchFormStep>(1);
+  const [formStepError, setFormStepError] = useState<string | null>(null);
 
   const { user, hasAdminClaim } = useAuth();
   const currentUserObj = store.appUsers.find(u => u.id === user?.uid);
@@ -233,8 +252,15 @@ export function MatchesTab({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Enter on steps 1–2 moves forward instead of saving.
+    if (formStep < 3) {
+      goToFormStep((formStep + 1) as MatchFormStep);
+      return;
+    }
     const processedData = {
       ...formData,
+      // Opponent is optional; an empty one is saved as "TBD".
+      opponent: formData.opponent.trim() || "TBD",
       fee: Number(formData.fee) || 0,
       date: inputToDbDate(formData.date),
       // Remember the margin used, so editing reopens with it.
@@ -252,6 +278,8 @@ export function MatchesTab({
 
   const resetForm = () => {
     setFeeMarginPct(DEFAULT_MARGIN_PCT);
+    setFormStep(1);
+    setFormStepError(null);
     setFormData({
       groundId: store.grounds[0]?.id || "",
       format: "T30",
@@ -282,6 +310,9 @@ export function MatchesTab({
     // Reopen with the margin saved on the match (older matches: 5%). The saved
     // fee is kept as-is; it only recalculates when the admin changes something.
     setFeeMarginPct(match.feeMarginPct !== undefined ? clampMargin(match.feeMarginPct) : DEFAULT_MARGIN_PCT);
+    // Editing opens on the last step (summary + fee); earlier steps are one tap away.
+    setFormStep(3);
+    setFormStepError(null);
     setFormData({
       groundId: match.groundId,
       format: match.format,
@@ -312,6 +343,8 @@ export function MatchesTab({
 
   const startDuplicate = (match: Match) => {
     setFeeMarginPct(match.feeMarginPct !== undefined ? clampMargin(match.feeMarginPct) : DEFAULT_MARGIN_PCT);
+    setFormStep(1);
+    setFormStepError(null);
     setFormData({
       groundId: match.groundId,
       format: match.format,
@@ -386,12 +419,16 @@ export function MatchesTab({
     ? store.tournaments.find((t) => t.id === formData.tournamentId)
     : undefined;
   const formFeeSource = resolveGroundFee(formGround, formData.matchType, formTournament);
-  /** Recalculated standard fee for a candidate form state (keeps the current fee when no ground fee is configured). */
-  const recalcFee = (next: typeof formData, marginPct: number): number | "" => {
+  /**
+   * Per-player fee for a candidate form state. Precedence: linked tournament's
+   * fee (Tournaments page) → ground fee for the match type → keep the current
+   * (manually entered) fee. The fee field stays editable either way.
+   */
+  const recalcFee = (next: typeof formData, marginPct: number, fromMarginChange = false): number | "" => {
     const ground = store.grounds.find((g) => g.id === next.groundId);
     const tournament = next.tournamentId ? store.tournaments.find((t) => t.id === next.tournamentId) : undefined;
-    const { amount } = resolveGroundFee(ground, next.matchType, tournament);
-    return amount > 0 ? computeMatchFee(amount, marginPct).feePerPlayer : next.fee;
+    const fee = resolveFormFee({ ground, matchType: next.matchType, tournament, marginPct, fromMarginChange });
+    return fee === null ? next.fee : fee;
   };
   const isPresetTime = formData.time === "07:00" || formData.time === "12:00";
   const closeMatchForm = () => {
@@ -399,6 +436,25 @@ export function MatchesTab({
     setEditingId(null);
     resetForm();
   };
+  /** Moves between wizard steps; moving forward checks the steps in between. */
+  function goToFormStep(target: MatchFormStep) {
+    if (target > formStep) {
+      for (let st = formStep; st < target; st++) {
+        const problem = matchFormStepProblem(st as MatchFormStep, formData);
+        if (problem) {
+          setFormStep(st as MatchFormStep);
+          setFormStepError(problem);
+          return;
+        }
+      }
+    }
+    setFormStepError(null);
+    setFormStep(target);
+  }
+  const selectBtn = (active: boolean) =>
+    `flex-1 min-w-0 min-h-[44px] rounded-xl border text-sm font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+      active ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
+    }`;
 
   // Edit-match modal is hoisted so both the matches list AND the
   // per-match screen (below early-return) can render it. Previously,
@@ -412,326 +468,423 @@ export function MatchesTab({
       aria-modal="true"
       aria-labelledby="match-form-title"
     >
-      <div className="relative w-full sm:max-w-lg max-h-[100dvh] sm:max-h-[92vh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl bg-background shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-2.5 bg-surface border-b border-border">
-          <button
-            type="button"
-            onClick={closeMatchForm}
-            aria-label="Close"
-            className="w-11 h-11 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-hover hover:text-text-primary cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" aria-hidden="true" />
-          </button>
-          <h2 id="match-form-title" className="text-lg font-black font-heading text-text-primary">
-            {editingId ? "Edit Match" : "Add Match"}
-          </h2>
-        </div>
-        <form onSubmit={handleSubmit} data-testid="match-form" className="p-3 sm:p-4 flex flex-col gap-4">
-          {/* ── A. Match basics ───────────────────────────────────────── */}
-          <FormSection icon={<CalendarDays className="w-4 h-4" aria-hidden="true" />} title="Match Details" testId="match-form-basics">
-            <div>
-              <FieldLabel htmlFor="match-opponent" required>Opponent Team</FieldLabel>
-              <input
-                id="match-opponent"
-                required
-                type="text"
-                value={formData.opponent}
-                onChange={(e) => setFormData({ ...formData, opponent: e.target.value })}
-                className={FIELD_CLASS}
-                placeholder="e.g. Royal Challengers"
-              />
-            </div>
-
-            <div>
-              <FieldLabel required>Date</FieldLabel>
-              <MatchDatePicker
-                value={inputToDbDate(formData.date)}
-                onChange={(key) => setFormData({ ...formData, date: key })}
-              />
-            </div>
-
-            <div>
-              <FieldLabel required>Time</FieldLabel>
-              {/* 7:00 AM and 12:00 PM are the club's usual slots; Other opens a time picker. */}
-              <div role="radiogroup" aria-label="Match time" className="flex gap-2" data-testid="match-time-presets">
-                {([
-                  ["07:00", "7:00 AM"],
-                  ["12:00", "12:00 PM"],
-                ] as const).map(([t, label]) => (
+      <form
+        onSubmit={handleSubmit}
+        data-testid="match-form"
+        data-step={formStep}
+        className="relative w-full sm:max-w-lg max-h-[100dvh] sm:max-h-[92vh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl bg-background shadow-xl flex flex-col"
+      >
+        {/* Header: back goes to the previous step (closes on step 1) */}
+        <div className="sticky top-0 z-10 bg-surface border-b border-border">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => (formStep > 1 ? goToFormStep((formStep - 1) as MatchFormStep) : closeMatchForm())}
+              aria-label={formStep > 1 ? "Previous step" : "Close"}
+              data-testid="match-form-back"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-hover hover:text-text-primary cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+            </button>
+            <h2 id="match-form-title" className="flex-1 text-lg font-black font-heading text-text-primary">
+              {editingId ? "Edit Match" : "Add Match"}
+            </h2>
+            <button
+              type="button"
+              onClick={closeMatchForm}
+              aria-label="Close"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-text-muted hover:bg-surface-hover hover:text-text-primary cursor-pointer"
+            >
+              <X className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
+          {/* Progress: tap a step to jump (forward jumps validate first) */}
+          <div className="px-4 pb-3 flex flex-col gap-2">
+            <p className="text-xs font-semibold text-text-secondary">
+              Step {formStep} of 3 · <span className="text-text-primary">{MATCH_FORM_STEPS[formStep - 1]}</span>
+            </p>
+            <div className="grid grid-cols-3 gap-1.5" data-testid="match-form-progress">
+              {MATCH_FORM_STEPS.map((label, i) => {
+                const st = (i + 1) as MatchFormStep;
+                const reached = st <= formStep;
+                return (
                   <button
-                    key={t}
+                    key={label}
                     type="button"
-                    role="radio"
-                    aria-checked={formData.time === t}
-                    onClick={() => setFormData({ ...formData, time: t })}
-                    className={`flex-1 min-h-[44px] rounded-xl border text-sm font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                      formData.time === t ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
-                    }`}
+                    onClick={() => goToFormStep(st)}
+                    aria-current={st === formStep ? "step" : undefined}
+                    className="flex flex-col gap-1.5 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 rounded"
                   >
-                    {label}
+                    <span className={`h-1.5 rounded-full ${reached ? "bg-brand" : "bg-border"}`} />
+                    <span className={`text-[11px] font-bold ${reached ? "text-brand" : "text-text-muted"}`}>{label}</span>
                   </button>
-                ))}
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={!isPresetTime}
-                  onClick={() => setFormData({ ...formData, time: isPresetTime ? "" : formData.time })}
-                  className={`flex-1 min-h-[44px] rounded-xl border text-sm font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                    !isPresetTime ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
-                  }`}
-                >
-                  Other
-                </button>
-              </div>
-              {!isPresetTime && (
-                <input
-                  required
-                  type="time"
-                  aria-label="Custom match time"
-                  data-testid="match-time-input"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className={`${FIELD_CLASS} mt-2`}
-                />
-              )}
+                );
+              })}
             </div>
+          </div>
+        </div>
 
-            <div>
-              <FieldLabel htmlFor="match-ground" required>Ground</FieldLabel>
-              <div className="relative">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand" aria-hidden="true" />
-                <select
-                  id="match-ground"
-                  required
-                  value={formData.groundId}
-                  onChange={(e) => {
-                    const next = { ...formData, groundId: e.target.value };
-                    setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
-                  }}
-                  className={`${FIELD_CLASS} appearance-none pl-9 pr-9`}
-                >
-                  <option value="" disabled>Select a ground</option>
-                  {store.grounds.map((g) => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" aria-hidden="true" />
-              </div>
-            </div>
-          </FormSection>
+        <div className="flex-1 p-3 sm:p-4 flex flex-col gap-4">
+          {formStepError && (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800" data-testid="match-form-step-error">
+              {formStepError}
+            </p>
+          )}
 
-          {/* ── B. Match configuration ────────────────────────────────── */}
-          <FormSection icon={<Shield className="w-4 h-4" aria-hidden="true" />} title="Match Configuration" testId="match-form-config">
-            <div>
-              <FieldLabel required>Format</FieldLabel>
-              <ChoiceGroup
-                name="Format"
-                options={["T20", "T30", "Other"] as const}
-                value={formData.format}
-                onChange={(format) => setFormData({ ...formData, format })}
-                testId="match-format-choice"
-              />
-            </div>
-            <div>
-              <FieldLabel required>Match Type</FieldLabel>
-              <ChoiceGroup
-                name="Match Type"
-                options={MATCH_TYPES}
-                value={formData.matchType}
-                onChange={(matchType) => {
-                  // Switching away from Tournament wipes any linked
-                  // tournamentId — otherwise a Practice match would carry a
-                  // stale tournament link.
-                  const next = {
-                    ...formData,
-                    matchType,
-                    tournamentId: matchType === "Tournament" ? formData.tournamentId : "",
-                  };
-                  setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
-                }}
-                testId="match-type-choice"
-              />
-            </div>
-            {/* Tournament link: optional (autofills ground / jersey / format /
-                fee from the tournament, exactly as before). */}
-            <div>
-              <FieldLabel htmlFor="match-tournament">Tournament <span className="font-normal text-text-muted">(optional)</span></FieldLabel>
-              <select
-                id="match-tournament"
-                value={formData.tournamentId || ""}
-                onChange={(e) => {
-                  const tId = e.target.value;
-                  if (!tId) {
-                    setFormData({ ...formData, tournamentId: "" });
-                    return;
-                  }
-                  const t = store.tournaments.find((x) => x.id === tId);
-                  if (!t) {
-                    setFormData({ ...formData, tournamentId: tId });
-                    return;
-                  }
-                  setFormData({
-                    ...formData,
-                    tournamentId: tId,
-                    groundId: t.groundId,
-                    jerseyColor: t.jerseyColor,
-                    format: t.format || "T30",
-                    fee: t.perPlayerFee,
-                  });
-                }}
-                className={FIELD_CLASS}
-              >
-                <option value="">None</option>
-                {[...store.tournaments]
-                  .filter((t) => t.status === "Ongoing" || t.status === "Upcoming")
-                  .sort((a, b) => {
-                    const r = (a.status === "Ongoing" ? 0 : 1) - (b.status === "Ongoing" ? 0 : 1);
-                    if (r !== 0) return r;
-                    return (a.name || "").localeCompare(b.name || "");
-                  })
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} · {t.status} · ₹{t.perPlayerFee}/player
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <FieldLabel htmlFor="match-squad-size" required>Max Squad Size</FieldLabel>
-                <input
-                  id="match-squad-size"
-                  required
-                  type="number"
-                  min="1"
-                  inputMode="numeric"
-                  value={formData.maxSquadSize}
-                  onChange={(e) => setFormData({ ...formData, maxSquadSize: parseInt(e.target.value) || 12 })}
-                  className={FIELD_CLASS}
-                />
-              </div>
-              <div>
-                <FieldLabel required>Jersey Colour</FieldLabel>
-                <ChoiceGroup
-                  name="Jersey Colour"
-                  options={["Scarlet Red", "Whites"] as const}
-                  value={formData.jerseyColor}
-                  onChange={(jerseyColor) => setFormData({ ...formData, jerseyColor })}
-                  testId="match-jersey-choice"
-                  renderLabel={(c) => (
-                    <>
-                      <span className={`w-3 h-3 rounded-full shrink-0 ${c === "Scarlet Red" ? "bg-scarlet" : "bg-[#e5e5e5] border border-slate-300"}`} aria-hidden="true" />
-                      <span className="truncate">{c === "Scarlet Red" ? "Red" : "Whites"}</span>
-                    </>
+          {/* ── Step 1 · Match details ─────────────────────────────── */}
+          {formStep === 1 && (
+            <>
+              <FormSection icon={<Trophy className="w-4 h-4" aria-hidden="true" />} title="Tournament" testId="match-form-tournament">
+                <div>
+                  <FieldLabel htmlFor="match-tournament">
+                    Tournament <span className="font-normal text-text-muted">(optional — pick first)</span>
+                  </FieldLabel>
+                  <select
+                    id="match-tournament"
+                    value={formData.tournamentId || ""}
+                    onChange={(e) => {
+                      const tId = e.target.value;
+                      if (!tId) {
+                        // Unlinking falls back to the ground fee (or keeps a manual fee).
+                        const next = { ...formData, tournamentId: "" };
+                        setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
+                        return;
+                      }
+                      const t = store.tournaments.find((x) => x.id === tId);
+                      if (!t) {
+                        setFormData({ ...formData, tournamentId: tId });
+                        return;
+                      }
+                      // A tournament fills ground, format, jersey and type, and its
+                      // fee takes precedence over the ground fee.
+                      const next = {
+                        ...formData,
+                        tournamentId: tId,
+                        groundId: t.groundId,
+                        jerseyColor: t.jerseyColor,
+                        format: t.format || "T30",
+                        matchType: "Tournament" as const,
+                      };
+                      setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
+                    }}
+                    className={FIELD_CLASS}
+                  >
+                    <option value="">None</option>
+                    {[...store.tournaments]
+                      .filter((t) => t.status === "Ongoing" || t.status === "Upcoming")
+                      .sort((a, b) => {
+                        const r = (a.status === "Ongoing" ? 0 : 1) - (b.status === "Ongoing" ? 0 : 1);
+                        if (r !== 0) return r;
+                        return (a.name || "").localeCompare(b.name || "");
+                      })
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} · {t.status} · ₹{t.perPlayerFee}/player
+                        </option>
+                      ))}
+                  </select>
+                  {formTournament && (
+                    <p className="mt-2 text-xs font-semibold text-emerald-700" data-testid="match-form-tournament-filled">
+                      Ground, format, jersey and match fee filled from {formTournament.name}.
+                    </p>
                   )}
-                />
-              </div>
-            </div>
-          </FormSection>
+                </div>
+              </FormSection>
 
-          {/* ── C. Match fee (compact, collapsible) ───────────────────── */}
-          <MatchFeeCalculator
-            groundFeePerMatch={formFeeSource.amount}
-            source={formFeeSource.source}
-            marginPct={feeMarginPct}
-            onMarginChange={(pct) => {
-              const margin = clampMargin(pct);
-              setFeeMarginPct(margin);
-              setFormData({ ...formData, fee: recalcFee(formData, margin) });
-            }}
-            fee={formData.fee}
-            onFeeChange={(fee) => setFormData({ ...formData, fee })}
-            tournamentPerPlayerFee={formTournament?.perPlayerFee}
-          />
+              <FormSection icon={<CalendarDays className="w-4 h-4" aria-hidden="true" />} title="Match Details" testId="match-form-basics">
+                <div>
+                  <FieldLabel htmlFor="match-ground" required>Ground</FieldLabel>
+                  <div className="relative">
+                    <MapPin className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand" aria-hidden="true" />
+                    <select
+                      id="match-ground"
+                      value={formData.groundId}
+                      onChange={(e) => {
+                        const next = { ...formData, groundId: e.target.value };
+                        setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
+                      }}
+                      className={`${FIELD_CLASS} appearance-none pl-9 pr-9`}
+                    >
+                      <option value="" disabled>Select a ground</option>
+                      {store.grounds.map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" aria-hidden="true" />
+                  </div>
+                  {formTournament && formTournament.groundId === formData.groundId && (
+                    <p className="mt-1 text-[11px] font-bold text-brand">From tournament</p>
+                  )}
+                </div>
+                <div>
+                  <FieldLabel htmlFor="match-opponent">
+                    Opponent Team <span className="font-normal text-text-muted">(optional)</span>
+                  </FieldLabel>
+                  <input
+                    id="match-opponent"
+                    type="text"
+                    value={formData.opponent}
+                    onChange={(e) => setFormData({ ...formData, opponent: e.target.value })}
+                    className={FIELD_CLASS}
+                    placeholder="Leave empty to show TBD"
+                  />
+                  <p className="mt-1 text-[11px] text-text-secondary">If left empty, the match is saved as “vs TBD”.</p>
+                </div>
+              </FormSection>
+            </>
+          )}
 
-          {/* Tentative block only makes sense for FUTURE matches. */}
-          {(() => {
-            const dbDate = inputToDbDate(formData.date);
-            const parts = dbDate.split("-");
-            let matchDay: Date | null = null;
-            if (parts.length === 3) {
-              matchDay = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
-            }
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const isFuture = !!matchDay && matchDay.getTime() > today.getTime();
-            if (!isFuture) return null;
-            return (
-              <label className="flex items-center gap-3 min-h-[48px] rounded-2xl border border-orange-300/60 bg-orange-50 px-4 cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="tentative-block"
-                  checked={formData.isTentative || false}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      isTentative: e.target.checked,
-                      tentativelyBlockedBy: e.target.checked ? currentUserName : "",
-                    })
-                  }
-                  className="accent-orange-500 w-5 h-5 cursor-pointer"
-                />
-                <span className="text-sm font-bold text-orange-800">Tentatively block this slot</span>
-              </label>
-            );
-          })()}
-
-          {/* ── Optional match info: links and result ─────────────────── */}
-          <details className="group rounded-2xl border border-border bg-surface overflow-hidden" data-testid="match-form-optional">
-            <summary className="flex items-center justify-between min-h-[48px] px-4 cursor-pointer list-none text-sm font-black font-heading text-text-primary">
-              Links &amp; Result
-              <ChevronDown className="w-4 h-4 text-text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
-            </summary>
-            <div className="px-4 pb-4 flex flex-col gap-4">
+          {/* ── Step 2 · Schedule & type ───────────────────────────── */}
+          {formStep === 2 && (
+            <FormSection icon={<CalendarDays className="w-4 h-4" aria-hidden="true" />} title="Schedule & Type" testId="match-form-schedule">
               <div>
-                <FieldLabel htmlFor="match-url">Match URL</FieldLabel>
-                <input
-                  id="match-url"
-                  type="url"
-                  value={formData.matchUrl}
-                  onChange={(e) => setFormData({ ...formData, matchUrl: e.target.value })}
-                  className={FIELD_CLASS}
-                  placeholder="https://cricheroes.in/..."
+                <FieldLabel required>Date</FieldLabel>
+                <MatchDatePicker
+                  value={inputToDbDate(formData.date)}
+                  onChange={(key) => setFormData({ ...formData, date: key })}
+                  defaultOpen
                 />
               </div>
               <div>
-                <FieldLabel htmlFor="match-stream-url">Streaming URL</FieldLabel>
-                <input
-                  id="match-stream-url"
-                  type="url"
-                  value={formData.streamingUrl}
-                  onChange={(e) => setFormData({ ...formData, streamingUrl: e.target.value })}
-                  className={FIELD_CLASS}
-                  placeholder="https://youtube.com/..."
-                />
-              </div>
-              <div>
-                <FieldLabel>Result</FieldLabel>
-                {/* The result itself stays editable. Margin (runs / wickets),
-                    Player of the Match, Top Performers and Best Batsman /
-                    Bowler inputs were removed; any saved values are kept
-                    untouched on the match document. */}
-                <div role="radiogroup" aria-label="Result" className="flex flex-wrap gap-2" data-testid="match-result-choice">
-                  {(["Pending", "KAvach Won", "KAvach Lost", "Draw", "Tie", "Abandoned"] as const).map((res) => (
+                <FieldLabel required>Time</FieldLabel>
+                {/* 7:00 AM and 12:00 PM are the club's usual slots; Other opens a time picker. */}
+                <div role="radiogroup" aria-label="Match time" className="flex gap-2" data-testid="match-time-presets">
+                  {([
+                    ["07:00", "7:00 AM"],
+                    ["12:00", "12:00 PM"],
+                  ] as const).map(([t, label]) => (
                     <button
-                      key={res}
+                      key={t}
                       type="button"
                       role="radio"
-                      aria-checked={formData.result === res}
-                      onClick={() => setFormData({ ...formData, result: res })}
-                      className={`min-h-[40px] px-3 rounded-xl border text-xs font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                        formData.result === res ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
-                      }`}
+                      aria-checked={formData.time === t}
+                      onClick={() => setFormData({ ...formData, time: t })}
+                      className={selectBtn(formData.time === t)}
                     >
-                      {res}
+                      {label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!isPresetTime}
+                    onClick={() => setFormData({ ...formData, time: isPresetTime ? "" : formData.time })}
+                    className={selectBtn(!isPresetTime)}
+                  >
+                    Other
+                  </button>
+                </div>
+                {!isPresetTime && (
+                  <input
+                    type="time"
+                    aria-label="Custom match time"
+                    data-testid="match-time-input"
+                    value={formData.time}
+                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                    className={`${FIELD_CLASS} mt-2`}
+                  />
+                )}
+              </div>
+              <div>
+                <FieldLabel required>Match Type</FieldLabel>
+                <ChoiceGroup
+                  name="Match Type"
+                  options={MATCH_TYPES}
+                  value={formData.matchType}
+                  onChange={(matchType) => {
+                    // Switching away from Tournament wipes any linked
+                    // tournamentId — otherwise a Practice match would carry a
+                    // stale tournament link.
+                    const next = {
+                      ...formData,
+                      matchType,
+                      tournamentId: matchType === "Tournament" ? formData.tournamentId : "",
+                    };
+                    setFormData({ ...next, fee: recalcFee(next, feeMarginPct) });
+                  }}
+                  testId="match-type-choice"
+                />
+                {formTournament && (
+                  <p className="mt-1 text-[11px] text-text-secondary">Set to Tournament because {formTournament.name} is selected.</p>
+                )}
+              </div>
+              <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel required>Format</FieldLabel>
+                  <ChoiceGroup
+                    name="Format"
+                    options={["T20", "T30", "Other"] as const}
+                    value={formData.format}
+                    onChange={(format) => setFormData({ ...formData, format })}
+                    testId="match-format-choice"
+                  />
+                </div>
+                <div>
+                  <FieldLabel required>Jersey</FieldLabel>
+                  <ChoiceGroup
+                    name="Jersey Colour"
+                    options={["Scarlet Red", "Whites"] as const}
+                    value={formData.jerseyColor}
+                    onChange={(jerseyColor) => setFormData({ ...formData, jerseyColor })}
+                    testId="match-jersey-choice"
+                    renderLabel={(c) => (
+                      <>
+                        <span className={`w-3 h-3 rounded-full shrink-0 ${c === "Scarlet Red" ? "bg-scarlet" : "bg-[#e5e5e5] border border-slate-300"}`} aria-hidden="true" />
+                        <span className="truncate">{c === "Scarlet Red" ? "Red" : "Whites"}</span>
+                      </>
+                    )}
+                  />
                 </div>
               </div>
-            </div>
-          </details>
+            </FormSection>
+          )}
 
-          <div className="flex gap-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {/* ── Step 3 · Match fee ─────────────────────────────────── */}
+          {formStep === 3 && (
+            <>
+              <section className="rounded-2xl border border-border bg-surface px-4 py-3 flex flex-col gap-1.5" data-testid="match-form-summary">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white ${formData.matchType === "Tournament" ? "bg-violet-700" : "bg-teal-600"}`}>
+                    {formData.matchType}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md border border-brand/30 bg-brand-surface text-[10px] font-black text-brand">{formData.format}</span>
+                  <button
+                    type="button"
+                    onClick={() => goToFormStep(1)}
+                    className="ml-auto min-h-[32px] px-1 text-xs font-bold text-brand hover:underline cursor-pointer"
+                  >
+                    Edit details
+                  </button>
+                </div>
+                <p className="text-base font-black font-heading text-text-primary break-words">vs {formData.opponent.trim() || "TBD"}</p>
+                <p className="text-xs text-text-secondary">
+                  {[
+                    formatPickerDate(inputToDbDate(formData.date)),
+                    formData.time ? formatMatchDisplayTime(formData.time) : "",
+                    formGround?.name || "",
+                    formTournament?.name || "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </section>
+
+              <MatchFeeCalculator
+                groundFeePerMatch={formFeeSource.amount}
+                source={formFeeSource.source}
+                marginPct={feeMarginPct}
+                onMarginChange={(pct) => {
+                  const margin = clampMargin(pct);
+                  setFeeMarginPct(margin);
+                  setFormData({ ...formData, fee: recalcFee(formData, margin, true) });
+                }}
+                fee={formData.fee}
+                onFeeChange={(fee) => setFormData({ ...formData, fee })}
+                tournamentPerPlayerFee={formTournament?.perPlayerFee}
+                defaultOpen
+              />
+
+              {/* Tentative block only makes sense for FUTURE matches. */}
+              {(() => {
+                const dbDate = inputToDbDate(formData.date);
+                const parts = dbDate.split("-");
+                let matchDay: Date | null = null;
+                if (parts.length === 3) {
+                  matchDay = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
+                }
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const isFuture = !!matchDay && matchDay.getTime() > today.getTime();
+                if (!isFuture) return null;
+                return (
+                  <label className="flex items-center gap-3 min-h-[48px] rounded-2xl border border-orange-300/60 bg-orange-50 px-4 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="tentative-block"
+                      checked={formData.isTentative || false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          isTentative: e.target.checked,
+                          tentativelyBlockedBy: e.target.checked ? currentUserName : "",
+                        })
+                      }
+                      className="accent-orange-500 w-5 h-5 cursor-pointer"
+                    />
+                    <span className="text-sm font-bold text-orange-800">Tentatively block this slot</span>
+                  </label>
+                );
+              })()}
+
+              {/* Optional match info: links and result */}
+              <details className="group rounded-2xl border border-border bg-surface overflow-hidden" data-testid="match-form-optional">
+                <summary className="flex items-center justify-between min-h-[48px] px-4 cursor-pointer list-none text-sm font-black font-heading text-text-primary">
+                  Links &amp; Result
+                  <ChevronDown className="w-4 h-4 text-text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="px-4 pb-4 flex flex-col gap-4">
+                  <div>
+                    <FieldLabel htmlFor="match-url">Match URL</FieldLabel>
+                    <input
+                      id="match-url"
+                      type="url"
+                      value={formData.matchUrl}
+                      onChange={(e) => setFormData({ ...formData, matchUrl: e.target.value })}
+                      className={FIELD_CLASS}
+                      placeholder="https://cricheroes.in/..."
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel htmlFor="match-stream-url">Streaming URL</FieldLabel>
+                    <input
+                      id="match-stream-url"
+                      type="url"
+                      value={formData.streamingUrl}
+                      onChange={(e) => setFormData({ ...formData, streamingUrl: e.target.value })}
+                      className={FIELD_CLASS}
+                      placeholder="https://youtube.com/..."
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel>Result</FieldLabel>
+                    {/* The result itself stays editable. Margin (runs / wickets),
+                        Player of the Match, Top Performers and Best Batsman /
+                        Bowler inputs were removed; any saved values are kept
+                        untouched on the match document. */}
+                    <div role="radiogroup" aria-label="Result" className="flex flex-wrap gap-2" data-testid="match-result-choice">
+                      {(["Pending", "KAvach Won", "KAvach Lost", "Draw", "Tie", "Abandoned"] as const).map((res) => (
+                        <button
+                          key={res}
+                          type="button"
+                          role="radio"
+                          aria-checked={formData.result === res}
+                          onClick={() => setFormData({ ...formData, result: res })}
+                          className={`min-h-[40px] px-3 rounded-xl border text-xs font-bold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                            formData.result === res ? "bg-brand border-brand text-white" : "bg-surface border-border text-text-primary hover:border-brand/40"
+                          }`}
+                        >
+                          {res}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </>
+          )}
+        </div>
+
+        {/* Footer: in the form's own scroll container, so it never hides a field */}
+        <div className="sticky bottom-0 z-10 bg-surface border-t border-border px-3 sm:px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2">
+          {formStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => goToFormStep((formStep - 1) as MatchFormStep)}
+              className="min-h-[48px] px-5 rounded-xl border-2 border-brand/50 bg-surface text-sm font-black text-brand hover:bg-brand-surface cursor-pointer"
+            >
+              Back
+            </button>
+          ) : (
             <button
               type="button"
               onClick={closeMatchForm}
@@ -739,16 +892,27 @@ export function MatchesTab({
             >
               Cancel
             </button>
+          )}
+          {formStep < 3 ? (
+            <button
+              type="button"
+              onClick={() => goToFormStep((formStep + 1) as MatchFormStep)}
+              data-testid="match-form-next"
+              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
+            >
+              Next: {MATCH_FORM_STEPS[formStep as 1 | 2]}
+            </button>
+          ) : (
             <button
               type="submit"
               data-testid="match-form-submit"
               className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
             >
-              {editingId ? "Save Changes" : "Create Match"}
+              {editingId ? "Save Changes" : "Save Match"}
             </button>
-          </div>
-        </form>
-      </div>
+          )}
+        </div>
+      </form>
     </div>
   ) : null;
 
