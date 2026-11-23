@@ -9,7 +9,8 @@
  * - Enforces fail-closed account status verification: accounts with `status: "Disabled"` are rejected immediately.
  * - Enforces fail-closed database lookup: if the authoritative `/appUsers/{uid}` read fails due to a database error,
  *   privileged access is strictly denied (503 Service Unavailable) rather than silently assuming active status.
- * - All token verification for administrative access enforces `checkRevoked: true` to prevent stale token reuse.
+ * - All token verification (requireAuth, requireAdmin, requireRole) enforces `checkRevoked: true`, so revoked,
+ *   Firebase-disabled and deleted accounts are rejected immediately (R1). Auth-backend outages fail closed (503).
  * - Test bypass isolation: x-test-* identity headers are strictly locked behind KAVACH_TEST_AUTH_BYPASS="true"
  *   and NODE_ENV="test", and are permanently disabled in production runtimes.
  */
@@ -175,6 +176,41 @@ export async function getUserAccount(
 }
 
 /**
+ * Error codes firebase-admin uses when the Auth backend could not be reached or failed internally.
+ * These are not a verdict on the token, so they fail closed with 503 rather than 401.
+ */
+const AUTH_BACKEND_UNAVAILABLE_CODES = new Set([
+  "auth/internal-error",
+  "app/network-error",
+  "app/network-timeout",
+  "auth/network-request-failed",
+]);
+
+/**
+ * R1: maps a verifyIdToken() failure to a safe HTTP response, shared by every guard.
+ * The `error` text stays "Invalid or expired token." for all 401s (backward compatible);
+ * `code` lets the client tell a revoked/disabled/deleted session from a stale token.
+ * No token contents, uids or raw error messages are returned or logged.
+ */
+export function tokenVerificationFailure(err: unknown): NextResponse {
+  const code = typeof (err as any)?.code === "string" ? (err as any).code : "";
+  if (AUTH_BACKEND_UNAVAILABLE_CODES.has(code)) {
+    console.error(`[server-auth] Token verification unavailable (${code}); failing closed.`);
+    return NextResponse.json(
+      { error: "Unable to verify sign-in right now. Please try again.", code: "AUTH_UNAVAILABLE" },
+      { status: 503 },
+    );
+  }
+  const reason =
+    code === "auth/id-token-revoked" ? "TOKEN_REVOKED"
+    : code === "auth/user-disabled" ? "ACCOUNT_DISABLED"
+    : code === "auth/user-not-found" ? "ACCOUNT_NOT_FOUND"
+    : code === "auth/id-token-expired" ? "TOKEN_EXPIRED"
+    : "TOKEN_INVALID";
+  return NextResponse.json({ error: "Invalid or expired token.", code: reason }, { status: 401 });
+}
+
+/**
  * Verify the caller is any authenticated Firebase user with an active account.
  * Fail-closed: rejects if database error prevents confirming account status.
  */
@@ -236,15 +272,12 @@ export async function requireAuth(req: Request): Promise<AuthGuardResult> {
   const app = ensureAdminApp();
   let decoded: any;
   try {
-    decoded = await getAuth(app).verifyIdToken(token);
-  } catch {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Invalid or expired token." },
-        { status: 401 },
-      ),
-    };
+    // R1: every requireAuth caller is sensitive (payment initiation, account linking), so revocation,
+    // Firebase-disabled and deleted accounts are checked on every call. Sessions themselves are unaffected:
+    // the client SDK keeps users signed in and refreshes ID tokens silently.
+    decoded = await getAuth(app).verifyIdToken(token, true);
+  } catch (err) {
+    return { ok: false, response: tokenVerificationFailure(err) };
   }
 
   // Authoritatively confirm account status (fail-closed)
@@ -351,14 +384,8 @@ export async function requireAdmin(req: Request): Promise<AdminGuardResult> {
     // SEC-001: checkRevoked = true forces verification against Firebase backend
     // to reject revoked refresh tokens immediately for privileged admin routes.
     decoded = await getAuth(app).verifyIdToken(token, true);
-  } catch {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Invalid or expired token." },
-        { status: 401 },
-      ),
-    };
+  } catch (err) {
+    return { ok: false, response: tokenVerificationFailure(err) };
   }
 
   // Strict: verified admin custom claim is strictly required (SEC-001)
@@ -496,14 +523,8 @@ export async function requireRole(
   let decoded: any;
   try {
     decoded = await getAuth(app).verifyIdToken(token, true);
-  } catch {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Invalid or expired token." },
-        { status: 401 },
-      ),
-    };
+  } catch (err) {
+    return { ok: false, response: tokenVerificationFailure(err) };
   }
 
   // Authoritatively confirm account status and roles (fail-closed)

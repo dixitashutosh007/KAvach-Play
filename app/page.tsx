@@ -50,6 +50,7 @@ import {
   getDocFromServer,
 } from "firebase/firestore";
 import { db, auth, firestoreDatabaseId } from "@/lib/firebase";
+import { authedFetch } from "@/lib/authed-fetch";
 import { DEVELOPMENT_FIRESTORE_DATABASE_ID } from "@/lib/database-config";
 import { normalizeIndianMobile } from "@/lib/utils";
 import { resolvePlayerForUser, resolveMyPlayers } from "@/lib/player-identity";
@@ -602,22 +603,16 @@ export default function Home() {
     if (!user || !existingMatch) return;
     setIsRegistering(true);
     try {
-      const idToken = await user.getIdToken();
       // Phone logins link through the verified phone number; Google logins
       // through the Google-verified email. Identity always comes from the
       // verified ID token on the server — never from client-side writes.
+      // authedFetch attaches the ID token and refreshes it once on 401 (R1).
       const viaGoogle = !existingPlayerWithSamePhone && isGoogleLogin;
       const res = viaGoogle
-        ? await fetch("/api/player/link-google", {
+        ? await authedFetch("/api/player/link-google", { method: "POST" })
+        : await authedFetch("/api/player/link-account", {
             method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` },
-          })
-        : await fetch("/api/player/link-account", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${idToken}`,
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               playerId: existingMatch.id,
             }),

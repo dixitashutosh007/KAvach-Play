@@ -52,7 +52,7 @@ if (javaDir) {
   env.PATH = `${javaDir}${path.delimiter}${env.PATH || ""}`;
 }
 
-console.log("[emulator-runner] Starting Firebase Local Firestore Emulator...");
+console.log("[emulator-runner] Starting Firebase Local Firestore + Auth Emulators...");
 const testArgs = process.argv.slice(2);
 const target = testArgs.length ? testArgs.join(" ") : "tests/*emulator*.test.mjs tests/firestore-rules.test.mjs";
 const result = spawnSync(
@@ -61,7 +61,7 @@ const result = spawnSync(
     "firebase",
     "emulators:exec",
     "--only",
-    "firestore",
+    "firestore,auth",
     "--project",
     "demo-kavach-play",
     `node --test ${target}`,
