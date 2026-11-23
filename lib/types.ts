@@ -359,15 +359,60 @@ export type MatchPayment = {
   updatedAt?: any;
 };
 
+/**
+ * Finance Plan (stored in the existing `feePlans` collection; formerly "Match
+ * Fee Plan"). "Regular" is not stored: it is the absence of an active
+ * assignment. New fields are optional so existing plan documents stay valid.
+ */
 export type FeePlan = {
   id: string;
   name: string;
-  type: "fixed" | "monthly" | "sponsored";
+  type: "fixed" | "monthly" | "sponsored" | "percentage";
+  /** fixed: player contribution per match (₹). */
   feeAmount?: number;
+  /** monthly: subscription amount per period (₹). */
   monthlyAmount?: number;
+  /** percentage: discount on the actual match fee, 0–100. */
+  discountPct?: number;
+  /** monthly: how the subscription is allocated to matches. */
+  allocationPolicy?: "fixed_per_match" | "distribute";
+  /** monthly + fixed_per_match: player contribution allocated per match (₹). */
+  perMatchContribution?: number;
+  /** Optional window in which NEW assignments may start/run (YYYY-MM-DD). Never alters past matches. */
+  validFrom?: string;
+  validTo?: string;
+  description?: string;
   isActive?: boolean;
   createdAt?: any;
   updatedAt?: any;
+};
+
+/**
+ * A player's assignment to a Finance Plan for a date range
+ * (`financePlanAssignments`). Written only by the server API; never deleted —
+ * ending sets `endDate`, cancelling a not-yet-started one sets `cancelled`.
+ * `startDate: null` = carried over from the legacy `player.feePlanIds` list
+ * (in effect since before date tracking).
+ */
+export type FinancePlanAssignment = {
+  id: string;
+  playerId: string;
+  planId: string;
+  /** Plan name at assignment time (display / audit). */
+  planName: string;
+  /** Inclusive, YYYY-MM-DD; null = legacy (no recorded start). */
+  startDate: string | null;
+  /** Inclusive, YYYY-MM-DD; null = open-ended. */
+  endDate: string | null;
+  cancelled?: boolean;
+  legacy?: boolean;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt?: any;
+  endedBy?: string;
+  endedByName?: string;
+  endedAt?: any;
+  endReason?: string;
 };
 
 export type PostComment = {

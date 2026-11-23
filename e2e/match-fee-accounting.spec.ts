@@ -49,18 +49,19 @@ test.describe("Match Fee Accounting & Bifurcation E2E Tests", () => {
     }
   });
 
-  test("Finance Tab: Match Fee Plans subtab is correctly labeled and accessible", async ({ page }) => {
+  test("Finance Tab: Finance Plans subtab is correctly labeled and accessible", async ({ page }) => {
     await navigateToTab(page, "Finance");
     await page.waitForTimeout(2_000);
 
-    // Look for "Match Fee Plans" button
-    const plansBtn = page.getByRole("button", { name: /match fee plans/i });
+    // Formerly "Match Fee Plans"
+    const plansBtn = page.getByRole("button", { name: /finance plans/i });
     if (await plansBtn.isVisible().catch(() => false)) {
       await plansBtn.click();
       await page.waitForTimeout(1_000);
 
-      // Verify form header
-      await expect(page.getByText(/create match fee plan|saved match fee plans/i).first()).toBeVisible();
+      // Overview: heading and the built-in Regular plan row
+      await expect(page.getByTestId("finance-plans")).toBeVisible();
+      await expect(page.getByText(/^Regular$/).first()).toBeVisible();
     }
   });
 

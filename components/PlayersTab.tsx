@@ -25,6 +25,9 @@ import { useState } from "react";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
+import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
+import { PLAN_TYPE_LABEL, assignmentOn, legacyAssignmentsFor } from "@/lib/finance-plans";
+import { getClubCalendarDate } from "@/lib/utils";
 import { Player, MatchPayment, OtherFee } from "@/lib/types";
 import { formatDate, dbToInputDate, inputToDbDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
@@ -54,6 +57,21 @@ export function PlayersTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [showDisabled, setShowDisabled] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  // Current Finance Plan per player (admins only; read via the server API).
+  const { assignments: planAssignments, loading: plansLoading, error: plansError } = useFinancePlanAssignments(isAdmin);
+  // Only show plan info once it actually loaded (never a misleading "Regular").
+  const showPlans = isAdmin && !plansLoading && !plansError;
+  const planTodayKey = getClubCalendarDate().dateString;
+  const currentPlanFor = (player: Player) => {
+    const a = assignmentOn(
+      [...planAssignments.filter((x) => x.playerId === player.id), ...legacyAssignmentsFor(player, store.feePlans || [])],
+      player.id,
+      planTodayKey,
+    );
+    if (!a) return null;
+    const plan = (store.feePlans || []).find((p: any) => p.id === a.planId);
+    return { name: a.planName, type: plan?.type, until: a.endDate, legacy: !!a.legacy };
+  };
   const [viewMode, setViewMode] = useState<"list" | "table">("list");
 
   // Standalone Invite Player modal (invite anyone by name + phone)
@@ -389,6 +407,16 @@ export function PlayersTab({
                         </span>
                       )}
                     </div>
+                    {showPlans && (() => {
+                      const fp = currentPlanFor(player);
+                      return (
+                        <p className="mt-0.5 text-[11px] text-text-secondary" data-testid={`roster-finance-plan-${player.id}`}>
+                          <span className="font-bold text-text-primary">{fp ? fp.name : "Regular"}</span>
+                          {fp?.type ? ` · ${PLAN_TYPE_LABEL[fp.type] || fp.type}` : ""}
+                          {fp ? (fp.until ? ` · until ${fp.until}` : fp.legacy ? " · legacy, no end date" : " · no end date") : " · full match fee"}
+                        </p>
+                      );
+                    })()}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-secondary">
                       <span className="flex items-center gap-1">
                         <PhoneCall className="h-3 w-3 shrink-0" />

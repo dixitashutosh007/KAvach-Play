@@ -82,6 +82,7 @@ import { SquadPicker } from "./matches/SquadPicker";
 import { FeePlanApplyDialog } from "./matches/FeePlanApplyDialog";
 import { DetailsSection, MatchDetailsSummary } from "./matches/MatchDetailsSummary";
 import { buildFixedPlanApplication } from "@/lib/fee-plan-bulk";
+import { planContribution } from "@/lib/finance-plans";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
@@ -1801,7 +1802,19 @@ export function MatchPayments({
     setBifurcationModal((prev) => (prev ? { ...prev, isSubmitting: true } : null));
 
     try {
-      if (plan.type === "fixed") {
+      if (plan.type === "percentage") {
+        // Shared Finance Plan rule: discount rounded to the rupee is club sponsorship.
+        const { contribution, sponsorship } = planContribution(plan, standardFee);
+        await store.applyFeePlanToPayment(
+          match.id,
+          paymentId,
+          contribution,
+          plan.name,
+          sponsorship,
+          undefined,
+          "Unpaid",
+        );
+      } else if (plan.type === "fixed") {
         const feeAmount = plan.feeAmount ?? standardFee;
         const offset = Math.max(0, standardFee - feeAmount);
         await store.applyFeePlanToPayment(
@@ -2571,7 +2584,7 @@ export function MatchPayments({
                                         : "bg-green-500/15 text-green-400 border-green-500/25 hover:bg-green-500/25"
                                   }`}
                                 >
-                                  {plan.name} {plan.type === "fixed" ? `(₹${plan.feeAmount})` : plan.type === "sponsored" ? "(₹0)" : `(₹${plan.monthlyAmount}/mo)`}
+                                  {plan.name} {plan.type === "fixed" ? `(₹${plan.feeAmount})` : plan.type === "sponsored" ? "(₹0)" : plan.type === "percentage" ? `(${plan.discountPct ?? 0}% off)` : `(₹${plan.monthlyAmount}/mo)`}
                                 </button>
                               );
                             })}
@@ -3180,6 +3193,27 @@ export function MatchPayments({
                       <p>
                         The remaining <strong className="text-emerald-400 font-mono">₹{offset}</strong> is recorded as <span className="text-emerald-400 font-bold">Club Sponsored</span> for this match.
                       </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Scenario 1b: Percentage discount */}
+              {bifurcationModal.plan.type === "percentage" && (() => {
+                const { contribution, sponsorship } = planContribution(bifurcationModal.plan, bifurcationModal.standardFee);
+                return (
+                  <div className="bg-violet-50 border border-violet-200 rounded-xl p-3.5 space-y-2" data-testid="bifurcation-percentage">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-text-secondary">Standard Match Fee</span>
+                      <span className="font-mono font-semibold text-text-primary">₹{bifurcationModal.standardFee}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm border-t border-violet-200 pt-2 font-bold">
+                      <span className="text-violet-800">Player Due ({bifurcationModal.plan.discountPct ?? 0}% off)</span>
+                      <span className="font-mono text-violet-800 text-base">₹{contribution}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs border-t border-violet-200 pt-2">
+                      <span className="text-emerald-700">Club Sponsored (discount)</span>
+                      <span className="font-mono font-bold text-emerald-700">₹{sponsorship}</span>
                     </div>
                   </div>
                 );

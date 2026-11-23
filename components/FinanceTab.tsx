@@ -1065,7 +1065,7 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
             onClick={() => setFeeTab("feePlans")}
             className={`flex-1 text-[11px] font-bold uppercase py-2 rounded-md transition ${feeTab === "feePlans" ? "bg-amber-500/20 text-amber-400" : "text-text-muted hover:text-text-primary"}`}
           >
-            Match Fee Plans
+            Finance Plans
           </button>
       </div>
       {feeTab === "custom" ? (

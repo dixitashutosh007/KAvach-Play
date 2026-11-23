@@ -1,10 +1,46 @@
 import { useState } from "react";
+import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
+import { assignmentOn, assignmentStatus, describePlan, legacyAssignmentsFor } from "@/lib/finance-plans";
+import { getClubCalendarDate } from "@/lib/utils";
 import { useStore } from "@/hooks/useStore";
 import { Player, FeePlan } from "@/lib/types";
 import { dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthProviderBadges } from "@/components/AuthProviderBadges";
 import { useToast } from "@/components/ui/Toast";
+
+function PlayerFinancePlanSummary({ player, plans }: { player: Player; plans: FeePlan[] }) {
+  const { assignments, loading, error } = useFinancePlanAssignments(true);
+  const todayKey = getClubCalendarDate().dateString;
+  const all = [...assignments, ...legacyAssignmentsFor(player, plans)].filter((a) => a.playerId === player.id);
+  const current = assignmentOn(all, player.id, todayKey);
+  const upcoming = all.filter((a) => assignmentStatus(a, todayKey) === "scheduled");
+  const plan = current ? plans.find((p) => p.id === current.planId) : null;
+  return (
+    <div className="border border-border bg-surface rounded-xl p-4 space-y-1.5" data-testid="player-finance-plan">
+      <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Finance Plan</h4>
+      {loading ? (
+        <p className="text-xs text-text-muted">Loading…</p>
+      ) : error ? (
+        <p className="text-xs text-text-muted">{error}</p>
+      ) : current ? (
+        <p className="text-sm font-bold text-text-primary">
+          {current.planName}
+          <span className="ml-1 text-xs font-medium text-text-secondary">
+            {plan ? `· ${describePlan(plan)}` : ""} · {current.startDate ? `since ${current.startDate}` : "legacy"}
+            {current.endDate ? ` · until ${current.endDate}` : ""}
+          </span>
+        </p>
+      ) : (
+        <p className="text-sm font-bold text-text-primary">Regular <span className="text-xs font-medium text-text-secondary">· full match fee</span></p>
+      )}
+      {upcoming.length > 0 && (
+        <p className="text-xs text-blue-700">Scheduled: {upcoming.map((u) => `${u.planName} from ${u.startDate}`).join(", ")}</p>
+      )}
+      <p className="text-[11px] text-text-muted">Assign or end plans in Finance → Other Fees → Finance Plans.</p>
+    </div>
+  );
+}
 
 export function EditPlayerInline({
   player,
@@ -24,8 +60,6 @@ export function EditPlayerInline({
     (u) => u.id === player.id || (u.mobile && player.mobile && normalizeIndianMobile(u.mobile) === normalizeIndianMobile(player.mobile)),
   );
 
-  const activeFeePlans = store.feePlans.filter((fp: FeePlan) => fp.isActive !== false);
-  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>(player.feePlanIds || []);
 
   const [formData, setFormData] = useState({
     name: player.name || "",
@@ -84,7 +118,8 @@ export function EditPlayerInline({
         : undefined,
       totalRuns: totalRuns !== "" ? Number(totalRuns) : undefined,
       totalWickets: totalWickets !== "" ? Number(totalWickets) : undefined,
-      ...(isSuperAdmin ? { feePlanIds: selectedPlanIds.length > 0 ? selectedPlanIds : [] } : {}),
+      // Finance Plan assignments are managed in Finance → Finance Plans (dated,
+      // audited, server-side); this editor no longer writes player.feePlanIds.
     };
     await store.updatePlayer(player.id, updatedData);
     // isDesigner used to live here as a super-admin toggle but has
@@ -459,71 +494,8 @@ export function EditPlayerInline({
         </div>
       )}
 
-      {/* Match Fee Plans — Super Admin only */}
-      {isSuperAdmin && (
-        <div className="border border-amber-500/25 bg-amber-500/5 rounded-xl p-4 space-y-3">
-          <h4 className="text-xs font-bold text-amber-300 uppercase tracking-widest">
-            Match Fee Plans
-          </h4>
-          <p className="text-[10px] text-text-muted leading-relaxed">
-            Assign one or more match fee plans to override the standard match fee for this player.
-          </p>
-          {activeFeePlans.length === 0 ? (
-            <p className="text-[10px] text-text-muted italic">
-              No match fee plans created yet. Create plans in Finance → Match Fee Plans.
-              {store.feePlans.length > 0 && ` (${store.feePlans.length} plan(s) exist but are inactive)`}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {activeFeePlans.map((plan: FeePlan) => {
-                const isSelected = selectedPlanIds.includes(plan.id);
-                const desc =
-                  plan.type === "fixed"
-                    ? `₹${plan.feeAmount} / match`
-                    : plan.type === "monthly"
-                      ? `₹${plan.monthlyAmount} / month`
-                      : plan.type === "sponsored"
-                        ? "₹0 (Club Sponsored)"
-                        : "Proxy (another player pays)";
-                return (
-                  <label
-                    key={plan.id}
-                    className={`flex items-start gap-3 p-2 rounded border cursor-pointer hover:bg-surface-hover ${
-                      isSelected
-                        ? "bg-surface-hover border-amber-500/30"
-                        : "bg-surface-hover border-border"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedPlanIds([...selectedPlanIds, plan.id]);
-                        } else {
-                          setSelectedPlanIds(selectedPlanIds.filter((id) => id !== plan.id));
-                        }
-                      }}
-                      className="mt-0.5 w-4 h-4 rounded accent-amber-400"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-text-primary">
-                        {plan.name}
-                      </div>
-                      <div className="text-[10px] text-text-muted">{desc}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-          {activeFeePlans.length > 0 && selectedPlanIds.length === 0 && (
-            <p className="text-[10px] text-text-muted italic">
-              No plans assigned — standard match fee applies.
-            </p>
-          )}
-        </div>
-      )}
+      {/* Finance Plan — read-only here; managed in Finance → Finance Plans */}
+      <PlayerFinancePlanSummary player={player} plans={store.feePlans || []} />
 
       {/* Studio Membership Admin control */}
       <div className="border border-accent/25 bg-accent/5 rounded-xl p-4 space-y-4 relative overflow-hidden">
