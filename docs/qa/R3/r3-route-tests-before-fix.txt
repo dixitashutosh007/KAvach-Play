@@ -1,0 +1,26 @@
+# tests/r3-webhook-route.emulator.test.mjs run against PRE-FIX route + library
+# NOTE: several failures reflect the new response contract (outcome/code fields), not defects;
+# see r3-characterisation-before-fix.txt for the behavioural evidence.
+    not ok 1 - R3-01 valid payment.captured → 200 processed; intent paid; order fulfilled
+    not ok 2 - R3-02 duplicate delivery of the same event → 200 already_processed, no second fulfilment
+    not ok 3 - R3-03 same payment via a different event (order.paid after payment.captured) → 200 already_processed
+    not ok 4 - R3-04 concurrent duplicate deliveries (6 in parallel) → all 200, exactly one fulfilment
+    not ok 5 - R3-05 missing signature → 401, no state change
+    not ok 6 - R3-06 invalid signature → 401, no state change
+    ok 7 - R3-07 altered raw payload with the original signature → 401, no state change
+    not ok 8 - R3-08 malformed JSON with a valid signature → 400 MALFORMED_JSON (no parser text echoed)
+    not ok 9 - R3-09 event types we do not act on → 200 ignored
+    not ok 10 - R3-10 amount mismatch → 422 AMOUNT_MISMATCH; intent stays pending; nothing fulfilled; no internal values echoed
+    not ok 11 - R3-11 currency mismatch → 422 CURRENCY_MISMATCH; intent stays pending; nothing fulfilled; no internal values echoed
+    not ok 12 - R3-12 order id mismatch → 422 ORDER_MISMATCH; intent stays pending; nothing fulfilled; no internal values echoed
+    not ok 13 - R3-13 unknown intentId → 422 INTENT_NOT_FOUND
+    not ok 14 - R3-14 second, different payment captured for an already-paid intent → 422 CONFLICTING_PAYMENT; original payment kept
+    not ok 15 - R3-15 Firestore UNAVAILABLE / DEADLINE_EXCEEDED / contention ABORTED → 503 INFRASTRUCTURE; nothing fulfilled
+    not ok 16 - R3-16 recovery: the same event retried after a transient failure → 200 processed, once
+    not ok 17 - R3-17 player merge in progress → 503 MERGE_IN_PROGRESS; after the merge settles the retry succeeds
+    not ok 18 - R3-18 logs carry correlation id and reason codes but never the secret, signature or payer contact data
+not ok 1 - R3: webhook route error classification (Firestore emulator, real HMAC)
+# tests 18
+# pass 1
+# fail 17
+# skipped 0

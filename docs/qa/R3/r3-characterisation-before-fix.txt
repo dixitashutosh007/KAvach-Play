@@ -1,0 +1,3 @@
+# R3 characterisation of the PRE-FIX webhook route (base f759a74)
+# Real HMAC-signed requests to app/api/razorpay/webhook/route.ts POST against the Firestore emulator.
+# Infrastructure cases inject gRPC-coded errors from runTransaction.

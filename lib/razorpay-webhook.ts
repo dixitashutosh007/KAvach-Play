@@ -12,6 +12,64 @@ export interface WebhookEventDetails {
 }
 
 /**
+ * R3: webhook failure classification.
+ *
+ * Razorpay retries EVERY non-2xx response for 24 hours (exponential backoff) and may
+ * disable the webhook if failures persist. So the HTTP status is chosen by what the
+ * failure means, not by habit:
+ *  - WebhookPermanentError: retrying cannot help (data does not match the intent).
+ *    The event must be recorded for finance reconciliation and must never fulfil payment.
+ *  - WebhookRetryableError: a known temporary state (e.g. player merge in progress).
+ *  - Anything else (Firestore UNAVAILABLE / DEADLINE_EXCEEDED / ABORTED, network, unknown):
+ *    treated as retryable. Processing is idempotent, so a retry is safe; dropping is not.
+ */
+export type WebhookPermanentReason =
+  | "INTENT_NOT_FOUND"
+  | "INTENT_INVALID"
+  | "UNSUPPORTED_EVENT"
+  | "ORDER_MISMATCH"
+  | "PAYMENT_ID_INVALID"
+  | "PARTIAL_PAYMENT"
+  | "AMOUNT_INVALID"
+  | "AMOUNT_MISMATCH"
+  | "CURRENCY_MISMATCH"
+  | "CONFLICTING_PAYMENT"
+  | "MERGE_CHAIN_INVALID"
+  | "NO_INTENT_ID"
+  | "MALFORMED_EVENT";
+
+export type WebhookRetryableReason = "MERGE_IN_PROGRESS" | "INFRASTRUCTURE";
+
+export class WebhookPermanentError extends Error {
+  readonly reason: WebhookPermanentReason;
+  constructor(reason: WebhookPermanentReason, message: string) {
+    super(message);
+    this.name = "WebhookPermanentError";
+    this.reason = reason;
+  }
+}
+
+export class WebhookRetryableError extends Error {
+  readonly reason: WebhookRetryableReason;
+  constructor(reason: WebhookRetryableReason, message: string) {
+    super(message);
+    this.name = "WebhookRetryableError";
+    this.reason = reason;
+  }
+}
+
+export type WebhookFailureClass =
+  | { kind: "permanent"; reason: WebhookPermanentReason }
+  | { kind: "retryable"; reason: WebhookRetryableReason };
+
+/** Classifies any error thrown while processing a verified webhook event. Unknown → retryable. */
+export function classifyWebhookError(err: unknown): WebhookFailureClass {
+  if (err instanceof WebhookPermanentError) return { kind: "permanent", reason: err.reason };
+  if (err instanceof WebhookRetryableError) return { kind: "retryable", reason: err.reason };
+  return { kind: "retryable", reason: "INFRASTRUCTURE" };
+}
+
+/**
  * Extracts normalized transaction details from Razorpay webhook payload,
  * correctly handling event-specific structures for 'payment.captured' and 'order.paid'.
  */
@@ -97,26 +155,27 @@ export function extractWebhookEventDetails(payload: any): WebhookEventDetails | 
 export function validateWebhookTransaction(
   intent: any,
   details: WebhookEventDetails,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; reason?: WebhookPermanentReason } {
   if (!intent) {
-    return { ok: false, error: "Intent record is missing." };
+    return { ok: false, reason: "INTENT_NOT_FOUND", error: "Intent record is missing." };
   }
 
   // 1. Event verification
   if (details.event !== "payment.captured" && details.event !== "order.paid") {
-    return { ok: false, error: `Unsupported webhook event type: ${details.event}` };
+    return { ok: false, reason: "UNSUPPORTED_EVENT", error: `Unsupported webhook event type: ${details.event}` };
   }
 
   // 2. Order ID verification (both MUST be present and match)
   if (!intent.orderId || typeof intent.orderId !== "string" || !intent.orderId.trim()) {
-    return { ok: false, error: "Stored intent is missing a valid orderId." };
+    return { ok: false, reason: "INTENT_INVALID", error: "Stored intent is missing a valid orderId." };
   }
   if (!details.orderId || typeof details.orderId !== "string" || !details.orderId.trim()) {
-    return { ok: false, error: "Incoming webhook event is missing a valid orderId." };
+    return { ok: false, reason: "ORDER_MISMATCH", error: "Incoming webhook event is missing a valid orderId." };
   }
   if (details.orderId !== intent.orderId) {
     return {
       ok: false,
+      reason: "ORDER_MISMATCH",
       error: `Order ID mismatch: expected ${intent.orderId}, received ${details.orderId}`,
     };
   }
@@ -126,38 +185,41 @@ export function validateWebhookTransaction(
   if (!details.paymentId || !details.paymentId.startsWith("pay_") || details.paymentId.trim() === "pay_") {
     return {
       ok: false,
+      reason: "PAYMENT_ID_INVALID",
       error: `Missing or invalid payment ID (must start with 'pay_') for event '${details.event}'.`,
     };
   }
 
   // 4. Partial payment verification for order.paid
   if (details.event === "order.paid" && details.isFullyPaid === false) {
-    return { ok: false, error: "Partial payment detected: order is not fully paid." };
+    return { ok: false, reason: "PARTIAL_PAYMENT", error: "Partial payment detected: order is not fully paid." };
   }
 
   // 5. Amount verification
   if (!details.capturedPaise || details.capturedPaise <= 0 || isNaN(details.capturedPaise)) {
-    return { ok: false, error: "Missing or invalid captured amount." };
+    return { ok: false, reason: "AMOUNT_INVALID", error: "Missing or invalid captured amount." };
   }
   const expectedPaise = Math.round(Number(intent.amount) * 100);
   if (details.capturedPaise !== expectedPaise) {
     return {
       ok: false,
+      reason: "AMOUNT_MISMATCH",
       error: `Amount mismatch: expected ${expectedPaise} paise, received ${details.capturedPaise} paise`,
     };
   }
 
   // 6. Currency verification (Strict: no silent defaulting on stored intent or payload)
   if (!intent.currency || typeof intent.currency !== "string" || !intent.currency.trim()) {
-    return { ok: false, error: "Stored intent is missing a valid currency." };
+    return { ok: false, reason: "INTENT_INVALID", error: "Stored intent is missing a valid currency." };
   }
   if (!details.capturedCurrency) {
-    return { ok: false, error: "Missing currency in webhook payload." };
+    return { ok: false, reason: "CURRENCY_MISMATCH", error: "Missing currency in webhook payload." };
   }
   const expectedCurrency = intent.currency.trim().toUpperCase();
   if (details.capturedCurrency !== expectedCurrency) {
     return {
       ok: false,
+      reason: "CURRENCY_MISMATCH",
       error: `Currency mismatch: expected ${expectedCurrency}, received ${details.capturedCurrency}`,
     };
   }
@@ -186,7 +248,7 @@ export async function processWebhookIntentTransaction(
     // 1. Transactional read of intent
     const intentSnap = await transaction.get(intentRef);
     if (!intentSnap.exists) {
-      throw new Error(`Intent not found: ${details.intentId}`);
+      throw new WebhookPermanentError("INTENT_NOT_FOUND", `Intent not found: ${details.intentId}`);
     }
 
     const intent = intentSnap.data() || {};
@@ -194,7 +256,7 @@ export async function processWebhookIntentTransaction(
     // 2. Validate transaction against intent (FIN-003) - MUST validate before idempotency check
     const validation = validateWebhookTransaction(intent, details);
     if (!validation.ok) {
-      throw new Error(validation.error);
+      throw new WebhookPermanentError(validation.reason || "INTENT_INVALID", validation.error || "Webhook validation failed.");
     }
 
     // 3. Idempotency & Replay check: if already processed, enforce identical replay vs conflicting replay
@@ -203,7 +265,8 @@ export async function processWebhookIntentTransaction(
         intent.razorpayPaymentId &&
         String(intent.razorpayPaymentId).trim() !== String(details.paymentId).trim()
       ) {
-        throw new Error(
+        throw new WebhookPermanentError(
+          "CONFLICTING_PAYMENT",
           `Conflicting payment ID replay: intent was already fulfilled with payment ${intent.razorpayPaymentId}, received ${details.paymentId}`,
         );
       }
@@ -229,14 +292,14 @@ export async function processWebhookIntentTransaction(
 
       while (currentId) {
         if (visited.has(currentId)) {
-          throw new Error(`Invalid or cyclic merge chain detected involving player ${currentId}.`);
+          throw new WebhookPermanentError("MERGE_CHAIN_INVALID", `Invalid or cyclic merge chain detected involving player ${currentId}.`);
         }
         visited.add(currentId);
 
         const pSnap = await transaction.get(db.collection("players").doc(currentId));
         if (!pSnap.exists) {
           if (visited.size > 1) {
-            throw new Error(`Target keeper player ${currentId} in merge chain does not exist.`);
+            throw new WebhookPermanentError("MERGE_CHAIN_INVALID", `Target keeper player ${currentId} in merge chain does not exist.`);
           }
           resolvedPlayerMap[cleanId] = currentId;
           return currentId;
@@ -244,7 +307,7 @@ export async function processWebhookIntentTransaction(
 
         const pData = pSnap.data() || {};
         if (pData.mergeStatus === "in_progress") {
-          throw new Error(`Player ${currentId} merge is currently in progress; retry requested.`);
+          throw new WebhookRetryableError("MERGE_IN_PROGRESS", `Player ${currentId} merge is currently in progress; retry requested.`);
         }
 
         if (pData.mergedInto && typeof pData.mergedInto === "string" && pData.mergedInto.trim()) {

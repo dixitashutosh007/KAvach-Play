@@ -1,0 +1,24 @@
+# tests/r3-webhook-route.emulator.test.mjs AFTER R3 (commit 1 of R3+R5)
+    ok 1 - R3-01 valid payment.captured → 200 processed; intent paid; order fulfilled
+    ok 2 - R3-02 duplicate delivery of the same event → 200 already_processed, no second fulfilment
+    ok 3 - R3-03 same payment via a different event (order.paid after payment.captured) → 200 already_processed
+    ok 4 - R3-04 concurrent duplicate deliveries (6 in parallel) → all 200, exactly one fulfilment
+    ok 5 - R3-05 missing signature → 401, no state change
+    ok 6 - R3-06 invalid signature → 401, no state change
+    ok 7 - R3-07 altered raw payload with the original signature → 401, no state change
+    ok 8 - R3-08 malformed JSON with a valid signature → 400 MALFORMED_JSON (no parser text echoed)
+    ok 9 - R3-09 event types we do not act on → 200 ignored
+    ok 10 - R3-10 amount mismatch → 422 AMOUNT_MISMATCH; intent stays pending; nothing fulfilled; no internal values echoed
+    ok 11 - R3-11 currency mismatch → 422 CURRENCY_MISMATCH; intent stays pending; nothing fulfilled; no internal values echoed
+    ok 12 - R3-12 order id mismatch → 422 ORDER_MISMATCH; intent stays pending; nothing fulfilled; no internal values echoed
+    ok 13 - R3-13 unknown intentId → 422 INTENT_NOT_FOUND
+    ok 14 - R3-14 second, different payment captured for an already-paid intent → 422 CONFLICTING_PAYMENT; original payment kept
+    ok 15 - R3-15 Firestore UNAVAILABLE / DEADLINE_EXCEEDED / contention ABORTED → 503 INFRASTRUCTURE; nothing fulfilled
+    ok 16 - R3-16 recovery: the same event retried after a transient failure → 200 processed, once
+    ok 17 - R3-17 player merge in progress → 503 MERGE_IN_PROGRESS; after the merge settles the retry succeeds
+    ok 18 - R3-18 logs carry correlation id and reason codes but never the secret, signature or payer contact data
+ok 1 - R3: webhook route error classification (Firestore emulator, real HMAC)
+# tests 18
+# pass 18
+# fail 0
+# skipped 0
