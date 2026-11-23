@@ -173,7 +173,8 @@ export function validateWebhookTransaction(
 export async function processWebhookIntentTransaction(
   db: any,
   details: WebhookEventDetails,
-  rawPayload?: any,
+  // Retained for call-site compatibility; deliberately not persisted (R2-C).
+  _rawPayload?: unknown,
 ): Promise<{ success: boolean; alreadyProcessed?: boolean; error?: string }> {
   if (!details.intentId) {
     return { success: false, error: "Missing intentId in event details." };
@@ -519,11 +520,19 @@ export async function processWebhookIntentTransaction(
       });
     }
 
-    // Mark intent 'paid' atomically within the transaction
+    // Mark intent 'paid' atomically within the transaction.
+    // R2-C: persist only the verified gateway identifiers, never the raw payload
+    // (which carries payer email, phone, VPA and card details).
     transaction.update(intentRef, {
       status: "paid",
       razorpayPaymentId: details.paymentId,
-      rawPayload: rawPayload || null,
+      gatewayEvent: {
+        event: details.event,
+        orderId: details.orderId,
+        paymentId: details.paymentId,
+        amountPaise: details.capturedPaise,
+        currency: details.capturedCurrency,
+      },
       updatedAt: now,
     });
 

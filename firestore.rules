@@ -115,7 +115,10 @@ service cloud.firestore {
     }
 
     match /appUsers/{userId} {
-      allow read: if isSignedIn();
+      // R2-A: an account doc is readable by its owner; listing/reading other accounts is
+      // limited to active administrators (isAnyAdmin covers the Super Admin claim).
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
+      allow list: if isAnyAdmin();
       allow create: if !incoming().keys().hasAny(['playerId'])
         && (
           isSuperAdmin() || (
@@ -398,7 +401,9 @@ service cloud.firestore {
     }
 
     match /subscriptionHistory/{historyId} {
-      allow read: if isSignedIn();
+      // R2-C: membership history is readable by the member it belongs to and by active
+      // administrators. Player queries must filter on their own playerId.
+      allow read: if isAnyAdmin() || isSelf(resource.data.get('playerId', ''));
       allow create: if isStudioAdmin()
         && isValidSubscriptionHistory(incoming())
         && incoming().createdAt == request.time;

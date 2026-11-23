@@ -479,14 +479,23 @@ export default function Home() {
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
+  // R2-A/R2-C: mirrors the rules' isAnyAdmin(); a Designer-only account is an admin
+  // for navigation but may not read these collections, so it does not subscribe.
+  const canReadAccountRecords =
+    !!isAdminUser &&
+    (isSuperAdminUser ||
+      !!currentUserObj?.isStudioAdmin ||
+      !!currentUserObj?.isMatchAdmin ||
+      !!currentUserObj?.isFinanceAdmin ||
+      !!currentUserObj?.isClubAdmin);
   useEffect(() => {
     if (!store.isLoaded) return;
-    if (isAdminUser) {
+    if (canReadAccountRecords) {
       store.ensureAllAppUsers?.();
       store.ensureSubscriptionHistory?.();
     }
   }, [
-    isAdminUser,
+    canReadAccountRecords,
     store.isLoaded,
     store.ensureAllAppUsers,
     store.ensureSubscriptionHistory,
