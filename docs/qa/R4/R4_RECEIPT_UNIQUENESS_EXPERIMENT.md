@@ -1,65 +1,103 @@
-# R4 — Razorpay Receipt-Uniqueness Experiment: Procedure (results pending)
+# R4 — Razorpay Receipt-Uniqueness Experiment: Procedure (revision 2, results pending)
 
-**Status:** BLOCKED. The experiment has **not** been run against Razorpay. The owner declined to provide a test-mode key to the implementation session (2026-11-23). No conclusion about Razorpay behaviour is drawn here, and none should be drawn from documentation alone.
-**Purpose:** settle, with evidence, whether Razorpay's Orders API enforces `receipt` uniqueness for sequential and concurrent requests, and whether a timed-out request can leave an orphan order. This must be settled before R4 is designed.
-**Application code:** unchanged. The script below is QA tooling, not imported by the app.
+**Status:** NOT EXECUTED. Revision 2 addresses the independent review of revision 1 (`b52c963`) and **awaits independent review before the owner runs it**. No conclusion about Razorpay behaviour is drawn here, and none should be drawn from documentation alone; the statement that "receipt must be unique" is not treated as an atomic idempotency guarantee.
+**Application code:** unchanged. The script is QA tooling, not imported by the app. R4 is not implemented.
 
-## 1. How to run (owner or independent reviewer)
+## 1. How to run (owner, after review approval)
 
-Requirements: Node 18+, a Razorpay **TEST-mode** key (Key ID starts `rzp_test_`), and a machine you trust.
+Requirements: Node.js 18+, a Razorpay **TEST-mode** key (Key ID `rzp_test_…`), and a trusted machine. Never paste the key into any chat.
 
 ```bash
-RAZORPAY_TEST_KEY_ID=rzp_test_xxx RAZORPAY_TEST_KEY_SECRET=xxx node docs/qa/R4/receipt-uniqueness-experiment.mjs > r4-receipt-evidence.json
+# Step 1: plan only. Validates the key format and settings and prints the request budget. Sends nothing.
+RAZORPAY_TEST_KEY_ID=rzp_test_xxx RAZORPAY_TEST_KEY_SECRET=xxx node docs/qa/R4/receipt-uniqueness-experiment.mjs
 ```
 
-- The script refuses to run unless the Key ID starts with `rzp_test_`. It never prints the key ID or secret.
-- It creates about **13 orders of ₹1** in test mode. An order is not a payment: no money moves, and nothing needs to be paid. Unpaid test orders simply stay `created`.
-- Runtime is about 20 seconds. The human summary goes to the terminal (stderr); full JSON evidence goes to `r4-receipt-evidence.json`.
-- Optional settings: `R4_CONCURRENCY` (default 5), `R4_ABORT_MS` (default `5,50,150,400,1000`).
-- Share `r4-receipt-evidence.json` (and the summary). It contains order IDs, receipts, amounts, statuses, timestamps, HTTP statuses, Razorpay error bodies and request IDs. It contains no key, no customer data and no payment data.
+```bash
+# Step 2: execute. Evidence JSON goes to the file; the human summary goes to the terminal.
+R4_CONFIRM=execute RAZORPAY_TEST_KEY_ID=rzp_test_xxx RAZORPAY_TEST_KEY_SECRET=xxx node docs/qa/R4/receipt-uniqueness-experiment.mjs > r4-receipt-evidence.json
+```
+
+**Request budget with default settings** (concurrency 5; aborts 5/50/150/400/1000 ms):
+
+| | Count |
+|---|---|
+| Create requests (`POST /v1/orders`) | **at most 14** = E1 2 + E2 5 + E3 5 + E4 2 |
+| ₹1 test orders that can exist afterwards | **at most 14** (fewer if Razorpay rejects duplicates or an abort pre-empts a request) |
+| List requests (`GET /v1/orders`) | **at most 48** = 8 receipts × 2 rounds × 3 pages (normally 16) |
+
+Revision 1's documentation said "about 13"; the correct default maximum is 14. Settings are bounded: `R4_CONCURRENCY` 2–10; `R4_ABORT_MS` 1–6 values, each 1–10000 ms; total creates are hard-capped at 20. Runtime is about 20 s.
+
+Share `r4-receipt-evidence.json` and the terminal summary. Before sharing, glance at them: they should contain only order IDs, receipts, amounts, statuses, timestamps, HTTP statuses, Razorpay error codes and redacted descriptions, and request IDs.
 
 ## 2. Experiments
 
 | ID | Procedure | Question answered |
 |---|---|---|
-| E1 | Create order with receipt A; then create again with receipt A, same amount and currency | Are duplicate receipts rejected **sequentially**? With what HTTP status and error code? |
-| E2 | Fire N (default 5) creates with receipt B **simultaneously** | Are duplicates rejected **under concurrency**, i.e. is the check atomic? |
-| E3 | Create with receipt C_t, aborting the HTTP request client-side after t ms (5–1000 ms); later list orders by receipt | Can the caller see "timeout/unknown" while an order **exists** (orphan)? |
-| E4 | Create with receipt D and treat the response as lost; retry with receipt D exactly as a recovering server would | What does a recovering retry get: rejection, the same order, or a second order? |
-| E5 | For every receipt used, `GET /v1/orders?receipt=…` at about 3 s and about 15 s | Authoritative order count per receipt; does the count settle over time? |
+| E1 | Create with receipt A; then create again with receipt A (same amount and currency) | Are duplicate receipts rejected **sequentially**? Status and error code? |
+| E2 | `R4_CONCURRENCY` simultaneous creates with receipt B | Are duplicates rejected **under concurrency** (atomic)? |
+| E3 | For each t in `R4_ABORT_MS`: create with receipt C_t, aborting client-side after t ms | Can the caller face a **genuinely unknown outcome** while an order exists (orphan)? |
+| E4 | Create with receipt D; the response **is received and recorded**, then the caller **deliberately discards** it and retries with receipt D | What does a recovering retry get: rejection, the same order, or a second order? (Models caller-side "unknown"; network-level unknowns are E3.) |
+| E5 | For every receipt: paginated `GET /v1/orders?receipt=…` at about 3 s and about 15 s | Authoritative order count per receipt, and whether it settles |
 
-Captured per call: local send and receive timestamps, latency, HTTP status, Razorpay request ID (if the header is present), redacted order (`id, amount, amount_paid, amount_due, currency, receipt, status, attempts, created_at`) or Razorpay error body, or a client error such as `AbortError`.
-
-## 3. How to read the results (pre-registered, before seeing data)
+## 3. How to read the results (pre-registered, unchanged from revision 1)
 
 | Observed | Meaning | R4 implication |
 |---|---|---|
-| E1 second = 4xx **and** E2 exactly one 200 with the rest 4xx **and** E5 counts all 1 | Razorpay enforces uniqueness **atomically**, at least at the concurrency tested | The deterministic receipt already blocks duplicate gateway orders per obligation. R4 centres on handling the duplicate-receipt rejection: fetch the existing order by receipt and reuse it after validating amount, currency and status, instead of failing. Takeover of an expired `reserving` reservation must reconcile by receipt first. |
-| E1 second = 4xx but E2 shows **more than one 200**, or E5 count above 1 for B | Uniqueness is checked but **not atomic** under concurrency | Gateway cannot be relied on. R4 needs our side to prevent concurrent creates per obligation (the reservation already does this) **plus** reconcile-before-create on takeover **plus** obligation-level de-duplication in the webhook (a second paid order goes to R5 reconciliation, never double fulfilment). |
-| E1 second = **200 with a new order ID** | Receipt is **not** unique | Same as the row above; receipts are labels only. The existing multi-order reconciliation path is reachable in normal operation. |
-| E1 second = 200 with the **same** order ID | Receipt behaves as an idempotency key | Strongest case: duplicate creation is a no-op. Still reconcile on takeover; it then just returns the existing order. |
-| E3: caller `AbortError` and E5 count = 1 | **Orphan order confirmed**: the outcome was unknown to the caller, yet the order exists | The "unknown outcome → reconciliation_required → fetch by receipt" path is necessary, not theoretical. |
-| E3: caller `AbortError` and E5 count = 0 | The abort happened before Razorpay created the order | No orphan in that run; this does not disprove orphans. E4 is the deterministic case. |
-| E5 counts differ between 3 s and 15 s | Listing by receipt is **eventually consistent** | Reconciliation must not treat "0 found" as "no order exists"; it must re-check or hold. This is already the code's behaviour per the baseline (empty result keeps the reservation blocked). |
+| E1 second = 4xx **and** E2 exactly one 200 **and** all E5 counts `complete` and equal to 1 | Uniqueness enforced atomically (at the tested concurrency) | Deterministic receipt blocks duplicate gateway orders. R4 centres on handling the duplicate-receipt rejection by fetching and reusing the existing order after validating amount, currency and status. Takeover of an expired `reserving` reservation reconciles by receipt first |
+| E1 second = 4xx but E2 has >1 success, or E5 count >1 for B | Checked but **not atomic** | Our side must prevent concurrent creates (the reservation does), reconcile-before-create on takeover, and de-duplicate per obligation in the webhook (a second paid order goes to R5, never double fulfilment) |
+| E1 second = 200 with a **new** order ID | Receipt **not** unique | As the row above; multi-order reconciliation is reachable in normal operation |
+| E1 second = 200 with the **same** order ID | Receipt acts as an idempotency key | Duplicate create is a no-op; still reconcile on takeover |
+| E3 `aborted_by_timer`, no headers received, and E5 count = 1 (`complete`) | **Orphan confirmed** | "Unknown outcome → reconciliation_required → fetch by receipt" is necessary |
+| E3 `aborted_by_timer` and E5 count = 0 (`complete`) | The abort pre-empted creation in that run | Does **not** disprove orphans; inconclusive for that run |
+| E5 status `failed` or `incomplete` | Count **unknown** | Never read as zero; re-run that listing |
+| E5 counts differ between rounds | Listing eventually consistent | "0 found" must not mean "no order"; hold and re-check |
 
-**Not to be concluded from this experiment:**
-- A rejection at concurrency 5 does not prove atomicity at higher concurrency or across Razorpay regions.
-- Test-mode behaviour is assumed, but not proven, to match live mode.
-- The documentation's statement that "receipt must be unique" is **not** treated as an atomic idempotency guarantee (owner instruction).
+**Not concluded by this experiment:** atomicity above the tested concurrency or across regions; equivalence of test and live mode.
 
-## 4. Script verification (mechanics only, not evidence)
+## 4. Safety checklist (revision 2)
 
-The script was exercised against a **local mock gateway** in two modes: one that rejects duplicate receipts and one that allows them. This was only to verify that it:
-- refuses non-`rzp_test_` keys (exit 2)
-- never emits the key ID, secret or their base64 form
-- distinguishes the two behaviours in E1, E2 and E4
-- detects orphans in E3 (caller saw `AbortError` while an order existed)
+| # | Property | How it is enforced | Verified by (dry-run, §6) |
+|---|---|---|---|
+| 1 | Credentials can only go to `https://api.razorpay.com` | Origin is a constant; no override exists; the script **refuses to start** if `RAZORPAY_API_BASE` is set; `buildUrl()` re-checks the origin before every request | S1, S2, R3, X-* allow-list checks |
+| 2 | Only `POST /v1/orders` and `GET /v1/orders` | `ALLOWED` set checked in `buildUrl()`; query keys limited to `receipt`, `count`, `skip`; only 2 `fetch` call sites, both via `buildUrl()` | S3, S4, X-* allow-list and query-key checks |
+| 3 | Test mode only | Key ID must match `^rzp_test_[A-Za-z0-9]+$` | R1 |
+| 4 | Nothing sent until explicitly confirmed | Without `R4_CONFIRM=execute` the script prints the plan and exits | P1, P2 (0 requests) |
+| 5 | Bounded volume | Concurrency 2–10; 1–6 aborts of 1–10000 ms; total creates ≤ 20; per-run create and list budgets enforced at call time; maximums printed before execution | R4 (6 bad configs refused), P3, X-* creates ≤ declared max |
+| 6 | Credentials never output | The Basic-auth header lives only in the request closure. The final guard aborts output (exit 3) if the evidence contains the key ID, secret, Basic header, their base64 forms, `Basic <token>` or any `rzp_test_`/`rzp_live_` string. Stderr never prints credentials | X-* stdout/stderr leak checks |
+| 7 | No arbitrary response data | Orders: allow-listed, type-checked fields only (`id, receipt, amount, amount_paid, amount_due, currency, status, attempts, created_at`); `notes` and everything else dropped. Errors: `code` (pattern-checked) and a sanitised `description` (keys, emails, long tokens and long numbers redacted; 200 chars). Request IDs pattern-checked. Bodies over 256 KB are not parsed | X-enforce allow-listed error check; X-* leak checks (stub injects `notes.email`, `metadata`, a key in the description) |
+| 8 | Evidence integrity | Node version, script SHA-256, per-call send/receive/fail timestamps, per-listing request/completion timestamps, actual request counts | X-* timestamps/node check |
 
-**These mock runs say nothing about Razorpay** and are not stored as evidence.
+## 5. Changes in revision 2 (review findings → change)
 
-## 5. Next step
+| Finding | Change |
+|---|---|
+| 1 Destination override | `RAZORPAY_API_BASE` removed; origin hard-coded; presence of the variable is refused |
+| 2 Arbitrary error bodies | Error = `{ code, description }` only; HTTP status and request ID stored alongside |
+| 3 Credentials and metadata | Allow-listed order fields; final credential scan before output; Authorization never logged |
+| 4 Config bounds | Validated concurrency and abort lists; hard cap on total creates; budgets enforced at call time; plan printed first; `R4_CONFIRM=execute` required |
+| 5 Endpoint restriction | Method+path allowlist and query-key allowlist checked before every request |
+| 6 E3 abort vs network failure | Outcome `response_received` or `no_response`; `clientError.kind` is `aborted_by_timer`, `aborted_unexpectedly` or `network_error` (with cause code); `abortTimerFired` and `headersReceived` recorded. No claim that a request reached Razorpay unless E5 shows an order |
+| 7 E4 wording | First attempt recorded as **received**, marked `callerTreatment: "discarded"`; described as caller-side unknown, not loss |
+| 8 E5 robustness | HTTP status and collection shape validated; pagination via `skip` (up to 3 pages); `failed` or `incomplete` listings give `exactReceiptMatches: null` (never 0); detects an ignored receipt filter |
+| 9 Timestamps and version | Per-listing `requestedAt`/`completedAt`; `nodeVersion`; `scriptSha256` |
+| 10 Count | Documentation and summary state at most 14 creates (default) and the list maximum |
 
-1. Owner or reviewer runs the script with a test-mode key and shares `r4-receipt-evidence.json`.
-2. The implementation session analyses it against §3 and records results in this document.
-3. Independent review of the evidence.
-4. Only then is R4 designed and implemented.
+## 6. Dry-run validation (no Razorpay calls)
+
+`node docs/qa/R4/dry-run/dry-run.mjs` runs static checks, refusal cases (which exit before any request), plan-only mode, and three executed runs in which `globalThis.fetch` is replaced in-process by `docs/qa/R4/dry-run/fetch-stub.mjs`. The stub asserts every request's origin, path and method, and logs only whether an Authorization header was present, never its value. Modes:
+- `enforce`: duplicates rejected.
+- `allow`: duplicates created.
+- `faults`: a listing returns 500; a listing ignores the receipt filter; a listing needs pagination; an E3 request fails with a connection reset.
+
+**Result (2026-11-23, Node v22.23.5): 53/53 checks passed; Razorpay API calls made: 0.** Output: `docs/qa/R4/dry-run/dry-run-result.txt`.
+
+During validation, one check initially failed because the **stub** injected its network error after its simulated latency, so the 5 ms abort fired first. The script correctly recorded `aborted_by_timer`. The stub was corrected so the network-error path is genuinely exercised; the script did not change.
+
+The stub models assumptions about Razorpay's responses (error shape, collection shape, `skip` pagination). **It is not evidence about Razorpay.** In particular, whether `GET /v1/orders` honours the `receipt` filter is itself measured by the real run (`receiptFilterAppearsApplied`).
+
+## 7. Next steps
+
+1. Independent review of revision 2 (script, stub, dry-run result).
+2. Owner runs Step 1 (plan), then Step 2 (execute), and shares the evidence.
+3. Analysis against §3, recorded here, then independent review of the evidence.
+4. Only then is R4 designed.

@@ -1,0 +1,56 @@
+# node docs/qa/R4/dry-run/dry-run.mjs — 2026-11-23T15:06:45Z, Node v22.23.5
+PASS  S1 destination hard-coded
+PASS  S2 no destination override read from env
+PASS  S3 only fetch() call sites use buildUrl()
+PASS  S4 endpoint allowlist is exactly POST/GET /v1/orders
+PASS  R1 live key refused
+PASS  R2 missing secret refused
+PASS  R3 RAZORPAY_API_BASE refused
+PASS  R4 bad config R4_CONCURRENCY=50 refused
+PASS  R4 bad config R4_CONCURRENCY=1 refused
+PASS  R4 bad config R4_CONCURRENCY=abc refused
+PASS  R4 bad config R4_ABORT_MS=0 refused
+PASS  R4 bad config R4_ABORT_MS=1,2,3,4,5,6,7 refused
+PASS  R4 bad config R4_ABORT_MS=99999 refused
+PASS  P1 plan-only exits 0
+PASS  P2 plan-only sends zero requests
+PASS  P3 plan reports max 14 creates by default
+PASS  X-enforce exits 0
+PASS  X-enforce evidence is valid JSON
+PASS  X-enforce all requests allow-listed (origin, path, method)
+PASS  X-enforce only receipt/count/skip query keys
+PASS  X-enforce creates ≤ declared max (14)
+PASS  X-enforce no credential/PII/unlisted fields in stdout
+PASS  X-enforce no credential material in stderr
+PASS  X-enforce node version and per-count timestamps recorded
+PASS  X-enforce E4 first attempt recorded as received+discarded
+PASS  X-enforce E1 second rejected with allow-listed error only
+PASS  X-enforce E2 exactly one success
+PASS  X-allow exits 0
+PASS  X-allow evidence is valid JSON
+PASS  X-allow all requests allow-listed (origin, path, method)
+PASS  X-allow only receipt/count/skip query keys
+PASS  X-allow creates ≤ declared max (14)
+PASS  X-allow no credential/PII/unlisted fields in stdout
+PASS  X-allow no credential material in stderr
+PASS  X-allow node version and per-count timestamps recorded
+PASS  X-allow E4 first attempt recorded as received+discarded
+PASS  X-allow E1 second created a new order
+PASS  X-allow E5 E2 count = concurrency
+PASS  X-faults exits 0
+PASS  X-faults evidence is valid JSON
+PASS  X-faults all requests allow-listed (origin, path, method)
+PASS  X-faults only receipt/count/skip query keys
+PASS  X-faults creates ≤ declared max (14)
+PASS  X-faults no credential/PII/unlisted fields in stdout
+PASS  X-faults no credential material in stderr
+PASS  X-faults node version and per-count timestamps recorded
+PASS  X-faults E4 first attempt recorded as received+discarded
+PASS  X-faults failed listing is UNKNOWN, not zero
+PASS  X-faults ignored receipt filter detected
+PASS  X-faults pagination followed (>1 page)
+PASS  X-faults network error not misreported as abort
+PASS  X-faults real abort recorded with timer fired
+PASS  X-faults late abort timer did not fire; response received
+
+53/53 checks passed; Razorpay API calls made: 0 (fetch replaced in-process; refusal cases exit before any fetch).
