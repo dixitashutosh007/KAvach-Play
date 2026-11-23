@@ -77,20 +77,15 @@ R2-B is moved after the payment work because it requires a data migration and ow
 
 ---
 
-## 5. Owner decisions required
+## 5. Owner decisions
 
-1. **Branch.** `AGENTS.md §11` says remediation should not land on `mig-mov` directly unless the owner directs it. This brief names `mig-mov`. Confirm: commit to `mig-mov`, or to per-finding branches (`fix/r1-token-revocation`, …)?
-2. **R2-B field visibility.** Which roles may read each private field (`mobile`, `email`, `dob`, `bloodGroup`, `emergencyContact`, `locality`, sizes)? Proposed default:
-   - Self: all.
-   - Super Admin and Club Admin: all.
-   - Match Admin: `mobile` (match-day contact); `emergencyContact` only if you approve match-day safety use.
-   - Finance Admin: `mobile`, `email` (reminders/receipts); **no** `dob`/`bloodGroup`/`emergencyContact`.
-   - Studio Admin: `mobile`, `email`.
-   - Ordinary players: **none** of the private fields. This removes the visible mobile number from the player-facing directory and squad screens. That is a user-visible change; confirm.
-   - Sizes (`chestSize`/`waistSize`) are needed for merchandise; propose Club/Super Admin only.
-3. **R1 scope.** Apply revocation checks to all `requireAuth` callers (recommended: there are only three, and all are sensitive), or opt any out?
-
----
+| # | Decision | Status |
+|---|---|---|
+| 1 | **Branch:** remediation commits go directly to `mig-mov` (owner, 2026-11-23). This overrides the `AGENTS.md §11` default for this programme. | **Decided** |
+| 2 | **R1 scope:** apply revocation checks to all three `requireAuth` callers (order, link-account, link-google). The owner asked for an explanation (given in session); approval is pending. | **Pending** |
+| 3 | **R2-B:** "Players should not see other players' data" (owner, 2026-11-23). Ordinary players get **no** private fields of other players (`mobile`, `email`, `dob`, `bloodGroup`, `emergencyContact`, `locality`, sizes). This removes other players' mobile numbers from player-facing directory and squad screens. | **Decided** (principle) |
+| 3a | **R2-B public fields:** working assumption is that players still see name, photo, jersey name/number, playing role/styles, badges and stats, which the Directory, squads, leaderboard and match cards need. Owner to confirm. | **To confirm** |
+| 3b | **R2-B admin field access** under D-19 (Match Admin and Studio Admin retired → Club Admin). Proposed: Self, Super Admin and Club Admin: all fields. Finance Admin: `mobile`, `email` only (reminders/receipts), with no `dob`/`bloodGroup`/`emergencyContact`/sizes. Designer: none. | **To confirm** before R2-B design |
 
 ## 6. Additional observations (not new vulnerabilities; tracked here)
 
