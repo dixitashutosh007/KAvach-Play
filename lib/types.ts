@@ -204,6 +204,11 @@ export type Match = {
   // and deletes map back to the right event.
   googleEventId?: string;
   matchFeeBudget?: number;
+  /**
+   * Margin % used by the Add/Edit Match fee calculator when `fee` was set
+   * (default 5). Informational: `fee` stays the authoritative per-player fee.
+   */
+  feeMarginPct?: number;
   createdAt?: any;
   updatedAt?: any;
 };

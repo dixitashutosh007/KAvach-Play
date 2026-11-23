@@ -4,12 +4,12 @@
  * High-level component controlling the scheduling, managing, and viewing
  * of sporting matches. For Admins, it includes features to create/edit/score
  * matches, and manage the underlying grounds/locations. For standard Players,
- * it provides views to mark availability, see match history, and post comments.
+ * it provides views to mark availability and see match history.
  * It contains sub-components for assigning match outcomes and viewing venues.
  */
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
-import { Match, MatchComment, Player, FeePlan } from "@/lib/types";
+import { Match, Player, FeePlan } from "@/lib/types";
 import { isMatchBillable } from "@/lib/matchBillable";
 
 import {
@@ -37,6 +37,8 @@ import {
   Table2,
   ArrowLeft,
   CalendarDays,
+  Wallet,
+  ExternalLink,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatDate, dbToInputDate, inputToDbDate, normalizeIndianMobile, findExistingPlayer, computeLateFees } from "@/lib/utils";
@@ -75,6 +77,10 @@ import { MatchFeeCalculator } from "./matches/MatchFeeCalculator";
 import { ChoiceGroup, FIELD_CLASS, FieldLabel, FormSection } from "./matches/MatchFormParts";
 import { AdminMatchDateList } from "./matches/AdminMatchDateList";
 import { MatchPaymentPanel } from "./matches/MatchPaymentPanel";
+import { SquadPicker } from "./matches/SquadPicker";
+import { FeePlanApplyDialog } from "./matches/FeePlanApplyDialog";
+import { DetailsSection, MatchDetailsSummary } from "./matches/MatchDetailsSummary";
+import { buildFixedPlanApplication } from "@/lib/fee-plan-bulk";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
@@ -231,6 +237,8 @@ export function MatchesTab({
       ...formData,
       fee: Number(formData.fee) || 0,
       date: inputToDbDate(formData.date),
+      // Remember the margin used, so editing reopens with it.
+      feeMarginPct: clampMargin(feeMarginPct),
     };
     if (editingId) {
       store.updateMatch({ ...processedData, id: editingId } as Match);
@@ -271,9 +279,9 @@ export function MatchesTab({
   };
 
   const startEdit = (match: Match) => {
-    // The saved fee is kept as-is; the margin control only recalculates when
-    // the admin changes it (no margin is stored on existing matches).
-    setFeeMarginPct(DEFAULT_MARGIN_PCT);
+    // Reopen with the margin saved on the match (older matches: 5%). The saved
+    // fee is kept as-is; it only recalculates when the admin changes something.
+    setFeeMarginPct(match.feeMarginPct !== undefined ? clampMargin(match.feeMarginPct) : DEFAULT_MARGIN_PCT);
     setFormData({
       groundId: match.groundId,
       format: match.format,
@@ -303,7 +311,7 @@ export function MatchesTab({
   };
 
   const startDuplicate = (match: Match) => {
-    setFeeMarginPct(DEFAULT_MARGIN_PCT);
+    setFeeMarginPct(match.feeMarginPct !== undefined ? clampMargin(match.feeMarginPct) : DEFAULT_MARGIN_PCT);
     setFormData({
       groundId: match.groundId,
       format: match.format,
@@ -1544,12 +1552,12 @@ export function MatchPayments({
   const canArchive = diffDays >= 3;
 
   const [addingSquad, setAddingSquad] = useState(false);
-  const [addingNew, setAddingNew] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
-  const [newPlayerName, setNewPlayerName] = useState("");
-  const [newPlayerMobile, setNewPlayerMobile] = useState("");
   const [confirmSquadDuplicates, setConfirmSquadDuplicates] = useState(false);
+  // "Apply Fee Plans": preview + one-click application of fixed Match Fee Plans.
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
+  const [applyingPlans, setApplyingPlans] = useState(false);
   const [editingSquadPlayerId, setEditingSquadPlayerId] = useState<string | null>(null);
 
   const filteredPlayers = store.players.filter(
@@ -1562,9 +1570,6 @@ export function MatchPayments({
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [comments, setComments] = useState<MatchComment[]>([]);
-  const [newComment, setNewComment] = useState("");
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [feePayerPicker, setFeePayerPicker] = useState<{ paymentId: string; playerName: string; fee: number; search: string } | null>(null);
 
@@ -1821,64 +1826,8 @@ export function MatchPayments({
     }
   };
 
-  useEffect(() => {
-    const q = query(
-      collection(db, "matches", match.id, "comments"),
-      orderBy("createdAt", "asc"),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        setComments(
-          snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as MatchComment),
-        );
-      },
-      (err) =>
-        handleFirestoreError(
-          err,
-          OperationType.LIST,
-          `matches/${match.id}/comments`,
-        ),
-    );
-    return () => unsub();
-  }, [match.id]);
-
-  const handlePostComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim() || isSubmittingComment || !user) return;
-    setIsSubmittingComment(true);
-    try {
-      const id = crypto.randomUUID();
-      await setDoc(doc(db, "matches", match.id, "comments", id), {
-        id,
-        matchId: match.id,
-        playerId: user.uid,
-        playerName: appUser?.name || "Player",
-        text: newComment.trim(),
-        createdAt: serverTimestamp(),
-      });
-      setNewComment("");
-    } catch (err) {
-      console.error("Failed to post comment", err);
-    } finally {
-      setIsSubmittingComment(false);
-    }
-  };
-
-  const handleDeleteComment = async (commentId: string) => {
-    if (
-      !isAdmin &&
-      comments.find((c) => c.id === commentId)?.playerId !== user?.uid
-    )
-      return;
-    if (await confirmAction({ message: "Delete this comment?", destructive: true })) {
-      try {
-        await deleteDoc(doc(db, "matches", match.id, "comments", commentId));
-      } catch (err) {
-        console.error("Failed to delete comment", err);
-      }
-    }
-  };
+  // The match Discussion (comments) was removed from Match Details. Existing
+  // comment documents and their Firestore rules are left untouched.
 
   const handleAddToSquad = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1886,37 +1835,7 @@ export function MatchPayments({
     setIsSubmitting(true);
 
     try {
-      if (addingNew) {
-        const normalizedNewMobile = normalizeIndianMobile(newPlayerMobile);
-        const dupResult = findExistingPlayer(store.players, newPlayerMobile);
-        let pId = "";
-        if (dupResult) {
-          pId = dupResult.player.id;
-        } else {
-          pId =
-            (await store.addPlayer({
-              name: newPlayerName,
-              mobile: normalizedNewMobile,
-            })) || "";
-        }
-        if (pId) {
-          const existingPayment = matchPayments.find((p) => p.playerId === pId);
-          if (existingPayment) {
-            if (existingPayment.status === "Not Playing") {
-              await store.updatePaymentStatus(
-                existingPayment.id,
-                "Unpaid",
-                match.id,
-                "Confirmed"
-              );
-            } else {
-              toast("This player is already in the squad.");
-            }
-          } else {
-            await store.addPaymentStatus(match.id, pId, "Unpaid", "Confirmed");
-          }
-        }
-      } else {
+      {
         let duplicateIds: string[] = [];
         for (const pId of selectedPlayerIds) {
           const existingPayments = matchPayments.filter((p) => p.playerId === pId && p.status !== "Not Playing");
@@ -1953,10 +1872,7 @@ export function MatchPayments({
 
       setAddingSquad(false);
       setSelectedPlayerIds([]);
-      setAddingNew(false);
       setSearchQuery("");
-      setNewPlayerName("");
-      setNewPlayerMobile("");
       setConfirmSquadDuplicates(false);
     } catch (err) {
       console.error("Error adding to squad:", err);
@@ -1965,8 +1881,54 @@ export function MatchPayments({
     }
   };
 
+  // Fixed Match Fee Plans that can be applied to this squad right now, with
+  // the club-sponsored amounts (see lib/fee-plan-bulk).
+  const planApplication = buildFixedPlanApplication({
+    match,
+    payments: matchPayments,
+    players: store.players,
+    feePlans: store.feePlans || [],
+  });
+  const handleApplyFeePlans = async () => {
+    if (applyingPlans) return;
+    setApplyingPlans(true);
+    try {
+      // Same write as the per-player "fixed" plan action.
+      for (const item of planApplication.items) {
+        await store.applyFeePlanToPayment(
+          match.id,
+          item.paymentId,
+          item.planFee,
+          item.plan.name,
+          item.sponsored,
+          undefined,
+          "Unpaid",
+        );
+      }
+      toast(
+        `Applied Match Fee Plans to ${planApplication.items.length} player${planApplication.items.length === 1 ? "" : "s"} · club sponsors ₹${planApplication.totalSponsored.toLocaleString("en-IN")}`,
+        "success",
+      );
+      setPlanDialogOpen(false);
+    } catch (err) {
+      console.error("Failed to apply fee plans:", err);
+      toast("Some fee plans could not be applied. Please check the squad.", "error");
+    } finally {
+      setApplyingPlans(false);
+    }
+  };
+  const squadCount = matchPayments.filter((p) => p.status !== "Not Playing").length;
+
   return (
     <div className="space-y-4">
+      {planDialogOpen && (
+        <FeePlanApplyDialog
+          application={planApplication}
+          applying={applyingPlans}
+          onConfirm={handleApplyFeePlans}
+          onClose={() => setPlanDialogOpen(false)}
+        />
+      )}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <button
           onClick={onBack}
@@ -1983,18 +1945,11 @@ export function MatchPayments({
               <MessageSquare className="w-3.5 h-3.5" /> Remind Group
             </button>
           )}
-          {isAdmin && onEdit && (
-            <button
-              onClick={onEdit}
-              className="text-[11px] font-bold uppercase tracking-widest text-accent bg-accent/10 px-3 py-1.5 rounded-lg hover:bg-accent/20 transition"
-            >
-              Edit Match
-            </button>
-          )}
         </div>
       </div>
 
-      <div className="bg-surface rounded-xl p-4">
+      {/* Compact summary (Edit Match is a separate, clearly visible action) */}
+      <div className="rounded-2xl border border-border bg-surface p-4 flex flex-col gap-4" data-testid="match-details-card">
         {match.isTentative && isAdmin && (
           <div className="mb-4 bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg text-orange-400 text-sm font-bold flex items-center justify-between">
             <div className="flex items-center gap-2 animate-pulse">
@@ -2018,327 +1973,43 @@ export function MatchPayments({
             </button>
           </div>
         )}
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
-          <h2 className="text-xl font-bold">vs {match.opponent}</h2>
-          {isAdmin && canArchive && (
-            <label className="flex items-center gap-2 cursor-pointer bg-surface-hover border border-border px-3 py-1.5 rounded-lg hover:bg-surface-hover transition">
-              <input
-                type="checkbox"
-                checked={!!match.isArchived}
-                onChange={async (e) => {
-                  try {
-                    await store.updateMatch({ ...match, isArchived: e.target.checked });
-                  } catch(err) {
-                    console.error("Failed to update archive status", err);
-                  }
-                }}
-                className="accent-accent"
-              />
-              <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">Archived</span>
-            </label>
-          )}
-        </div>
-
-        <div className="flex gap-3 text-sm text-text-secondary mb-4 font-mono flex-wrap items-center">
-          <span>{formatDate(match.date)}</span>
-          <span>•</span>
-          <span>
-            {match.format} {match.matchType}
-          </span>
-          <span>•</span>
-          <span className="text-accent font-bold">Fee: ₹{match.fee}</span>
-          {match.isGroundFeePaid && (
-              <>
-                  <span>•</span>
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Ground Fee Paid (₹{match.groundFeePaidAmount})
-                  </span>
-              </>
-          )}
-        </div>
-
-        <div className={`grid ${isAdmin ? "grid-cols-3" : "grid-cols-1"} gap-2 mb-4`}>
-          <div className="bg-surface-hover border border-border rounded-lg p-3 text-center">
-            <p className="text-3xl font-light">{played}</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-text-muted mt-1">
-              Playing
-            </p>
-          </div>
-          {isAdmin && (
-            <>
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
-                <p className="text-3xl font-light text-accent">{paid}</p>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-400/70 mt-1">
-                  Paid
-                </p>
-              </div>
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
-                <p className="text-3xl font-light text-red-400">{unpaid}</p>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-red-400/70 mt-1">
-                  Unpaid
-                </p>
-              </div>
-            </>
-          )}
-        </div>
-
-        {(match.matchUrl ||
-          match.streamingUrl ||
-          (match.result && match.result !== "Pending")) && (
-          <div className="bg-surface-hover border border-border rounded-xl p-4 mb-4">
-            <h4 className="text-[10px] uppercase tracking-widest text-text-muted font-bold mb-3">
-              Match Details
-            </h4>
-
-            {(match.matchUrl || match.streamingUrl) && (
-              <div className="flex flex-wrap gap-4 mb-4">
-                {match.matchUrl && (
-                  <a
-                    href={match.matchUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-400 hover:text-blue-300 transition flex items-center gap-1 font-bold"
-                  >
-                    <span>🔗</span> View Match Center
-                  </a>
-                )}
-                {match.streamingUrl && (
-                  <a
-                    href={match.streamingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-red-400 hover:text-red-300 transition flex items-center gap-1 font-bold"
-                  >
-                    <span>▶️</span> Watch Live Stream
-                  </a>
-                )}
-              </div>
-            )}
-
-            {match.result && match.result !== "Pending" && (
-              <div className="pt-3 border-t border-border">
-                <p
-                  className={`font-bold text-sm mb-3 ${match.result === "KAvach Won" ? "text-accent" : match.result === "KAvach Lost" ? "text-red-400" : "text-text-secondary"}`}
-                >
-                  Result: {match.result}{" "}
-                  {match.resultMarginAmount
-                    ? `by ${match.resultMarginAmount} ${match.resultMarginType === "wickets" ? "wickets" : "runs"}`
-                    : ""}
-                </p>
-                {match.result === "KAvach Won" &&
-                  (match.potmId || match.playerOfTheMatch ||
-                    match.bestBatsman ||
-                    match.bestBowler || (match.topPerformerIds && match.topPerformerIds.length > 0)) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {(match.potmId || match.playerOfTheMatch) && (
-                        <div className="bg-surface-hover p-2 rounded-lg border border-border">
-                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
-                            POTM
-                          </span>
-                          <span className="font-bold text-xs">
-                            {match.potmId ? store.players.find(p => p.id === match.potmId)?.name : match.playerOfTheMatch}
-                          </span>
-                        </div>
-                      )}
-                      {match.bestBatsman && (
-                        <div className="bg-surface-hover p-2 rounded-lg border border-border">
-                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
-                            BEST BATSMAN
-                          </span>
-                          <span className="font-bold text-xs">
-                            {match.bestBatsman}
-                          </span>
-                        </div>
-                      )}
-                      {match.bestBowler && (
-                        <div className="bg-surface-hover p-2 rounded-lg border border-border">
-                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
-                            BEST BOWLER
-                          </span>
-                          <span className="font-bold text-xs">
-                            {match.bestBowler}
-                          </span>
-                        </div>
-                      )}
-                      {match.topPerformerIds && match.topPerformerIds.length > 0 && (
-                        <div className="sm:col-span-3 bg-surface-hover p-2 rounded-lg border border-border">
-                          <span className="text-text-muted font-mono text-[10px] block mb-0.5">
-                            TOP PERFORMERS
-                          </span>
-                          <span className="font-bold text-xs text-emerald-400">
-                            {match.topPerformerIds.map(id => store.players.find(p => p.id === id)?.name).filter(Boolean).join(", ")}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const groundName = store.grounds.find((g) => g.id === match.groundId)?.name || 'Unknown Ground';
-                      let text = `*Match Result*\n${formatDate(match.date)} | ${match.matchType} | ${groundName}\n\nKAvach vs ${match.opponent}\n*Result:* ${match.result}`;
-                      if (match.result === "KAvach Won" || match.result === "KAvach Lost") {
-                        if (match.resultMarginAmount) {
-                          text += ` by ${match.resultMarginAmount} ${match.resultMarginType === "wickets" ? "wickets" : "runs"}\n`;
-                        } else {
-                          text += `\n`;
-                        }
-                      } else {
-                        text += `\n`;
-                      }
-                      const potmStr = match.potmId ? store.players.find(p => p.id === match.potmId)?.name : match.playerOfTheMatch;
-                      if (potmStr) text += `*MVP:* ${potmStr}\n`;
-                      if (match.bestBatsman) text += `*Best Batsman:* ${match.bestBatsman}\n`;
-                      if (match.bestBowler) text += `*Best Bowler:* ${match.bestBowler}\n`;
-                      if (match.topPerformerIds && match.topPerformerIds.length > 0) {
-                        const tpStr = match.topPerformerIds.map(id => store.players.find(p => p.id === id)?.name).filter(Boolean).join(", ");
-                        if (tpStr) text += `*Top Performers:* ${tpStr}\n`;
-                      }
-                      navigator.clipboard.writeText(text);
-                      toast("WhatsApp Report Copied to Clipboard!", "success");
-                    }}
-                    className="mt-4 w-full flex justify-center items-center gap-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition border border-emerald-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-3 rounded-xl"
-                  >
-                    Share Result on WhatsApp
-                  </button>
-
-              </div>
-            )}
-          </div>
+        <MatchDetailsSummary
+          match={match}
+          ground={store.grounds.find((g) => g.id === match.groundId)}
+          tournamentName={match.tournamentId ? store.tournaments.find((t) => t.id === match.tournamentId)?.name : undefined}
+          playing={played}
+          paid={paid}
+          unpaid={unpaid}
+          showPaymentCounts={isAdmin}
+        />
+        {isAdmin && canArchive && (
+          <label className="flex items-center gap-2 cursor-pointer bg-surface-hover border border-border px-3 py-1.5 rounded-lg hover:bg-surface-hover transition">
+            <input
+              type="checkbox"
+              checked={!!match.isArchived}
+              onChange={async (e) => {
+                try {
+                  await store.updateMatch({ ...match, isArchived: e.target.checked });
+                } catch(err) {
+                  console.error("Failed to update archive status", err);
+                }
+              }}
+              className="accent-accent"
+            />
+            <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">Archived</span>
+          </label>
         )}
-
-        {isAdmin && (
-          <div className="bg-surface rounded-xl p-4 my-4 border border-emerald-500/20 bg-gradient-to-br from-emerald-950/20 to-black/40">
-            <div className="flex items-center justify-between pb-3 border-b border-border flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-bold uppercase tracking-widest text-text-primary">
-                  Match Fee Financial Bifurcation
-                </span>
-              </div>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-text-secondary bg-surface-hover px-2 py-0.5 rounded border border-border">
-                {financials.playingCount} Playing • ₹{match.fee}/each
-              </span>
-            </div>
-
-            {/* Financial breakdown metrics grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3">
-              {/* 1. Direct Collections */}
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
-                  Direct Collected
-                </p>
-                <p className="text-lg font-mono font-bold text-emerald-400 mt-0.5">
-                  ₹{financials.directCollected}
-                </p>
-                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                  {financials.directPaidCount} player(s) paid
-                </p>
-              </div>
-
-              {/* 2. Monthly Plans */}
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400/80">
-                  Monthly Plans
-                </p>
-                <p className="text-lg font-mono font-bold text-blue-400 mt-0.5">
-                  ₹{financials.monthlyPlanCovered}
-                </p>
-                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                  {financials.monthlyPaidCount} sub allocation(s)
-                </p>
-              </div>
-
-              {/* 3. Club Sponsored / Offset */}
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80">
-                  Club Sponsored
-                </p>
-                <p className="text-lg font-mono font-bold text-amber-400 mt-0.5">
-                  ₹{financials.clubSponsoredTotal}
-                </p>
-                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                  {financials.sponsoredCount} offset(s) absorbed
-                </p>
-              </div>
-
-              {/* 4. Pending Dues */}
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">
-                  Pending Dues
-                </p>
-                <p className="text-lg font-mono font-bold text-red-400 mt-0.5">
-                  ₹{financials.pendingDues}
-                </p>
-                <p className="text-[9px] text-text-muted mt-0.5 font-mono">
-                  {financials.unpaidCount} unpaid player(s)
-                </p>
-              </div>
-            </div>
-
-            {/* Bottom summary bar with full mathematical reconciliation */}
-            <div className="pt-2.5 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
-              <div className="flex items-center gap-3 text-text-secondary font-mono flex-wrap">
-                <span>
-                  Gross Match Value: <strong className="text-text-primary font-mono">₹{financials.grossValue}</strong>
-                </span>
-                <span>•</span>
-                <span>
-                  Total Accounted:{" "}
-                  <strong className={`font-mono ${financials.isBalanced ? "text-emerald-400" : "text-amber-400"}`}>
-                    ₹{financials.totalAccounted}
-                  </strong>
-                </span>
-                {match.matchFeeBudget ? (
-                  <>
-                    <span>•</span>
-                    <span>
-                      Budget: <strong className="text-text-primary font-mono">₹{match.matchFeeBudget}</strong>
-                    </span>
-                  </>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold shrink-0">
-                {financials.isBalanced ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 100% Accounted
-                  </span>
-                ) : (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5" /> ₹{Math.abs(financials.grossValue - financials.totalAccounted)} variance
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+        {isAdmin && onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            data-testid="details-edit-match"
+            className="w-full min-h-[48px] rounded-xl border-2 border-brand/60 bg-surface text-brand text-sm font-black inline-flex items-center justify-center gap-2 hover:bg-brand-surface cursor-pointer"
+          >
+            <Edit2 className="w-4 h-4" aria-hidden="true" />
+            Edit Match
+          </button>
         )}
-
-        {(() => {
-            const ground = store.grounds.find((g) => g.id === match.groundId);
-            if (!ground) return null;
-            return (
-              <div className="mt-4 pt-4 border-t border-border">
-                <a
-                  href={ground.mapUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-text-primary hover:text-accent transition group"
-                >
-                  <MapPin className="w-4 h-4 text-accent shrink-0" />
-                  <span className="group-hover:underline truncate">
-                    {ground.name}
-                  </span>
-                  <span className="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded font-bold uppercase ml-auto shrink-0 border border-accent/20">
-                    Get Directions
-                  </span>
-                </a>
-                <p className="text-[10px] text-text-muted mt-2 font-mono uppercase tracking-widest pl-6">
-                  Approx time to reach if you start now: 35-45 mins
-                </p>
-              </div>
-            );
-          })()}
       </div>
 
       {!isAdmin &&
@@ -2508,6 +2179,572 @@ export function MatchPayments({
         </div>
       )}
 
+      {isAdmin ? (
+        <div className="flex flex-col gap-3" data-testid="match-details-sections">
+          <DetailsSection icon={<Users className="w-5 h-5" />} title={`Squad (${played})`} testId="details-squad">
+      {isAdmin && (
+              <div className="bg-surface overflow-hidden">
+                <div className="px-4 py-2.5 bg-surface-hover border-b border-border flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary">Squad & Payments</span>
+                  {isAdmin && (
+                    <span className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPlanDialogOpen(true)}
+                        data-testid="apply-fee-plans"
+                        className="min-h-[36px] px-3 rounded-lg border border-brand/30 bg-surface text-xs font-bold text-brand hover:bg-brand-surface cursor-pointer"
+                      >
+                        Apply Fee Plans{planApplication.items.length > 0 ? ` (${planApplication.items.length})` : ""}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAddingSquad(!addingSquad)}
+                        data-testid="add-squad-players"
+                        className="min-h-[36px] px-3 rounded-lg bg-brand text-white text-xs font-bold hover:opacity-90 cursor-pointer"
+                      >
+                        {addingSquad ? "Close" : "+ Add Players"}
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {isAdmin && addingSquad && (
+                  <SquadPicker
+                    players={filteredPlayers}
+                    selectedIds={selectedPlayerIds}
+                    onToggle={(id) =>
+                      setSelectedPlayerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+                    }
+                    onSetSelected={setSelectedPlayerIds}
+                    search={searchQuery}
+                    onSearch={setSearchQuery}
+                    squadCount={squadCount}
+                    maxSquadSize={match.maxSquadSize}
+                    standardFee={match.fee}
+                    feePlans={store.feePlans || []}
+                    submitting={isSubmitting}
+                    confirmDuplicates={confirmSquadDuplicates}
+                    onSubmit={handleAddToSquad}
+                    onCancel={() => {
+                      setAddingSquad(false);
+                      setSelectedPlayerIds([]);
+                      setConfirmSquadDuplicates(false);
+                    }}
+                  />
+                )}
+
+                <div className="divide-y divide-border">
+                  {matchPayments.map((payment) => {
+                    const player = store.players.find(p => p.id === payment.playerId);
+                    if (!player || payment.status === "Not Playing") return null;
+
+                    const playerPlans = (player.feePlanIds || [])
+                      .map((id: string) => store.feePlans.find((fp: FeePlan) => fp.id === id))
+                      .filter((fp): fp is FeePlan => !!fp && fp.isActive !== false);
+                    const fee = getPlayerFee(payment);
+                    const hasOverride = payment.feeOverride !== undefined;
+
+                    return (
+                      <div
+                        key={payment.id}
+                        className="p-4 flex flex-col gap-2 hover:bg-surface-hover transition"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-text-primary truncate">
+                              {payment.guestName || player.name}
+                              {mePlayer && player.id === mePlayer.id && !payment.guestName && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-bold uppercase">
+                                  You
+                                </span>
+                              )}
+                              {hasOverride && (
+                                <span className="ml-2 font-mono text-[11px] text-amber-400">
+                                  ₹{fee}
+                                </span>
+                              )}
+                              {payment.feeOffsetAmount ? (
+                                <span className="ml-2 font-mono text-[10px] text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                  Offset ₹{payment.feeOffsetAmount}
+                                </span>
+                              ) : null}
+                            </p>
+                            {isAdmin && (
+                              <p className="text-xs font-mono text-text-muted mt-0.5">
+                                {player.mobile}
+                              </p>
+                            )}
+                            {payment.planTag && (
+                              <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>{payment.planTag}</span>
+                                {payment.manualMethod === "part_of_plan" && payment.feeCollectedAmount !== undefined && (
+                                  <span className="text-blue-400 font-mono text-[9px] lowercase font-normal">
+                                    (₹{payment.feeCollectedAmount} sub)
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                            {isAdmin ? (
+                              <>
+                                <select
+                                  value={payment.status}
+                                  onChange={async (e) => {
+                                    const newStatus = e.target.value;
+                                    await store.updatePaymentStatus(
+                                      payment.id,
+                                      newStatus as any,
+                                      match.id,
+                                      undefined,
+                                      newStatus === "Paid" ? "manual" : undefined,
+                                      newStatus === "Paid" ? (appUser?.name || "Admin") : undefined,
+                                    );
+                                    if (newStatus === "Paid") {
+                                      const exempted = store.otherFees.some(
+                                        (f: any) =>
+                                          f.playerId === payment.playerId &&
+                                          f.title?.startsWith("Late Fee Exemption:") &&
+                                          f.title?.includes(match.id) &&
+                                          f.status !== "Cancelled",
+                                      );
+                                      if (!exempted) {
+                                        const existingLateFee = store.otherFees.some(
+                                          (f: any) =>
+                                            f.playerId === payment.playerId &&
+                                            f.templateId === `latefee_${match.id}` &&
+                                            f.status !== "Cancelled",
+                                        );
+                                        if (!existingLateFee) {
+                                          const pLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
+                                          const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
+                                          for (const lf of fees) {
+                                            const feeId = await store.addOtherFee(payment.playerId, {
+                                              title: lf.label,
+                                              amount: lf.amount,
+                                              comment: "Auto-levied late fee penalty (admin marked paid)",
+                                              templateId: `latefee_${match.id}`,
+                                            });
+                                            if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }}
+                                  className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
+                                    payment.status === "Paid"
+                                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                      : payment.status === "Unpaid"
+                                        ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                        : "bg-surface-hover text-text-secondary border-border "
+                                  }`}
+                                >
+                                  <option value="Not Playing">Out</option>
+                                  <option value="Unpaid">Unpaid</option>
+                                  <option value="Paid">Paid</option>
+                                </select>
+
+                                {payment.status === "Unpaid" && (
+                                  <button
+                                    onClick={() =>
+                                      store.notifyPlayerPayment(player.id, match.id)
+                                    }
+                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap ml-2 h-[34px]"
+                                    title="Send WhatsApp Reminder"
+                                  >
+                                    Remind
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <span
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
+                                  payment.status === "Paid"
+                                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                    : "bg-red-500/20 text-red-400 border-red-500/30"
+                                }`}
+                              >
+                                {payment.status}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Admin fee actions: plan quick-apply, change fee payer, undo */}
+                        {isAdmin && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {/* Plan quick-apply for unpaid players without override */}
+                            {payment.status === "Unpaid" && !hasOverride && playerPlans.map((plan: FeePlan) => {
+                              return (
+                                <button
+                                  key={plan.id}
+                                  onClick={() => {
+                                    const feeAmount = plan.type === "fixed" ? (plan.feeAmount ?? match.fee) : 0;
+                                    const offset = plan.type === "sponsored" 
+                                      ? match.fee 
+                                      : plan.type === "fixed" 
+                                        ? Math.max(0, match.fee - feeAmount) 
+                                        : 0;
+                                    const actualFee = plan.type === "monthly" ? match.fee : 0;
+                                    setBifurcationModal({
+                                      paymentId: payment.id,
+                                      player,
+                                      plan,
+                                      standardFee: match.fee,
+                                      playerFeeInput: feeAmount,
+                                      offsetInput: offset,
+                                      actualFeeInput: actualFee,
+                                      isSubmitting: false,
+                                    });
+                                  }}
+                                  className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded transition border ${
+                                    plan.type === "fixed"
+                                      ? "bg-amber-500/15 text-amber-400 border-amber-500/25 hover:bg-amber-500/25"
+                                      : plan.type === "monthly"
+                                        ? "bg-blue-500/15 text-blue-400 border-blue-500/25 hover:bg-blue-500/25"
+                                        : "bg-green-500/15 text-green-400 border-green-500/25 hover:bg-green-500/25"
+                                  }`}
+                                >
+                                  {plan.name} {plan.type === "fixed" ? `(₹${plan.feeAmount})` : plan.type === "sponsored" ? "(₹0)" : `(₹${plan.monthlyAmount}/mo)`}
+                                </button>
+                              );
+                            })}
+
+                            {/* Dropdown for other active club plans not in playerPlans */}
+                            {payment.status === "Unpaid" && !hasOverride && (() => {
+                              const otherPlans = store.feePlans.filter(
+                                (fp: FeePlan) => fp.isActive !== false && !playerPlans.some((pp) => pp.id === fp.id)
+                              );
+                              if (otherPlans.length === 0) return null;
+                              return (
+                                <select
+                                  onChange={(e) => {
+                                    const selectedId = e.target.value;
+                                    if (!selectedId) return;
+                                    const selectedPlan = store.feePlans.find((fp: FeePlan) => fp.id === selectedId);
+                                    if (selectedPlan) {
+                                      const feeAmount = selectedPlan.type === "fixed" ? (selectedPlan.feeAmount ?? match.fee) : 0;
+                                      const offset = selectedPlan.type === "sponsored" 
+                                        ? match.fee 
+                                        : selectedPlan.type === "fixed" 
+                                          ? Math.max(0, match.fee - feeAmount) 
+                                          : 0;
+                                      const actualFee = selectedPlan.type === "monthly" ? match.fee : 0;
+                                      setBifurcationModal({
+                                        paymentId: payment.id,
+                                        player,
+                                        plan: selectedPlan,
+                                        standardFee: match.fee,
+                                        playerFeeInput: feeAmount,
+                                        offsetInput: offset,
+                                        actualFeeInput: actualFee,
+                                        isSubmitting: false,
+                                      });
+                                    }
+                                    e.target.value = "";
+                                  }}
+                                  className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition cursor-pointer [&>option]:bg-surface"
+                                  defaultValue=""
+                                >
+                                  <option value="" disabled>+ Match Fee Plan</option>
+                                  {otherPlans.map((op) => (
+                                    <option key={op.id} value={op.id}>
+                                      {op.name} ({op.type})
+                                    </option>
+                                  ))}
+                                </select>
+                              );
+                            })()}
+
+                            {/* Universal: Change Fee Payer (sponsorship) */}
+                            {payment.status === "Unpaid" && !payment.sponsoredBy && (
+                              <button
+                                onClick={() => setFeePayerPicker({ paymentId: payment.id, playerName: player.name, fee, search: "" })}
+                                className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
+                              >
+                                <ArrowRightLeft className="w-3 h-3" />
+                                Change Fee Payer
+                              </button>
+                            )}
+
+                            {/* Undo fee override / reset plan */}
+                            {(hasOverride || payment.feeOffsetAmount !== undefined || payment.planTag) && (
+                              <button
+                                onClick={async () => {
+                                  if (!await confirmAction({ message: `Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`, destructive: true })) return;
+                                  await store.clearFeeOverride(match.id, payment.id);
+                                }}
+                                className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition flex items-center gap-1"
+                                title="Reset fee to standard and clear all offsets"
+                              >
+                                <Undo2 className="w-3 h-3" />
+                                Reset Fee
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+          </DetailsSection>
+          <DetailsSection icon={<Wallet className="w-5 h-5" />} title="Payments" testId="details-payments">
+        {isAdmin && (
+              <div className="p-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-text-primary">
+                      Match Fee Financial Bifurcation
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-text-secondary bg-surface-hover px-2 py-0.5 rounded border border-border">
+                    {financials.playingCount} Playing • ₹{match.fee}/each
+                  </span>
+                </div>
+
+                {/* Financial breakdown metrics grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3">
+                  {/* 1. Direct Collections */}
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
+                      Direct Collected
+                    </p>
+                    <p className="text-lg font-mono font-bold text-emerald-400 mt-0.5">
+                      ₹{financials.directCollected}
+                    </p>
+                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
+                      {financials.directPaidCount} player(s) paid
+                    </p>
+                  </div>
+
+                  {/* 2. Monthly Plans */}
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400/80">
+                      Monthly Plans
+                    </p>
+                    <p className="text-lg font-mono font-bold text-blue-400 mt-0.5">
+                      ₹{financials.monthlyPlanCovered}
+                    </p>
+                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
+                      {financials.monthlyPaidCount} sub allocation(s)
+                    </p>
+                  </div>
+
+                  {/* 3. Club Sponsored / Offset */}
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80">
+                      Club Sponsored
+                    </p>
+                    <p className="text-lg font-mono font-bold text-amber-400 mt-0.5">
+                      ₹{financials.clubSponsoredTotal}
+                    </p>
+                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
+                      {financials.sponsoredCount} offset(s) absorbed
+                    </p>
+                  </div>
+
+                  {/* 4. Pending Dues */}
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">
+                      Pending Dues
+                    </p>
+                    <p className="text-lg font-mono font-bold text-red-400 mt-0.5">
+                      ₹{financials.pendingDues}
+                    </p>
+                    <p className="text-[9px] text-text-muted mt-0.5 font-mono">
+                      {financials.unpaidCount} unpaid player(s)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Bottom summary bar with full mathematical reconciliation */}
+                <div className="pt-2.5 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
+                  <div className="flex items-center gap-3 text-text-secondary font-mono flex-wrap">
+                    <span>
+                      Gross Match Value: <strong className="text-text-primary font-mono">₹{financials.grossValue}</strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      Total Accounted:{" "}
+                      <strong className={`font-mono ${financials.isBalanced ? "text-emerald-400" : "text-amber-400"}`}>
+                        ₹{financials.totalAccounted}
+                      </strong>
+                    </span>
+                    {match.matchFeeBudget ? (
+                      <>
+                        <span>•</span>
+                        <span>
+                          Budget: <strong className="text-text-primary font-mono">₹{match.matchFeeBudget}</strong>
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold shrink-0">
+                    {financials.isBalanced ? (
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> 100% Accounted
+                      </span>
+                    ) : (
+                      <span className="text-amber-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> ₹{Math.abs(financials.grossValue - financials.totalAccounted)} variance
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </DetailsSection>
+          <DetailsSection icon={<Info className="w-5 h-5" />} title="Match Info" testId="details-match-info">
+            <dl className="px-4 py-3 divide-y divide-border text-sm">
+              <div className="flex items-center justify-between gap-3 py-2">
+                <dt className="text-text-secondary">Match fee (per player)</dt>
+                <dd className="font-bold tabular-nums">
+                  ₹{match.fee}
+                  {match.feeMarginPct !== undefined && (
+                    <span className="ml-1 text-xs font-medium text-text-muted">({match.feeMarginPct}% margin)</span>
+                  )}
+                </dd>
+              </div>
+              {match.isGroundFeePaid && (
+                <div className="flex items-center justify-between gap-3 py-2">
+                  <dt className="text-text-secondary">Ground fee</dt>
+                  <dd className="font-bold text-emerald-700">Paid ₹{match.groundFeePaidAmount}</dd>
+                </div>
+              )}
+              {match.matchFeeBudget ? (
+                <div className="flex items-center justify-between gap-3 py-2">
+                  <dt className="text-text-secondary">Budget</dt>
+                  <dd className="font-bold tabular-nums">₹{match.matchFeeBudget}</dd>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between gap-3 py-2">
+                <dt className="text-text-secondary">Jersey</dt>
+                <dd className="font-bold">{match.jerseyColor}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-2">
+                <dt className="text-text-secondary">Max squad</dt>
+                <dd className="font-bold tabular-nums">{match.maxSquadSize}</dd>
+              </div>
+              {(match.matchUrl || match.streamingUrl) && (
+                <div className="flex items-center gap-4 py-2 flex-wrap">
+                  {match.matchUrl && (
+                    <a href={match.matchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
+                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Match Centre link
+                    </a>
+                  )}
+                  {match.streamingUrl && (
+                    <a href={match.streamingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
+                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Live stream
+                    </a>
+                  )}
+                </div>
+              )}
+            </dl>
+      {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
+              <div className="bg-surface overflow-hidden border-t border-border">
+                <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary">
+                  Player Availability
+                </div>
+
+              <div className="p-4 space-y-4">
+                {["Yes", "No"].map((avStat) => {
+                  const paymentsInStat = matchPayments.filter((pay) => {
+                    let effectiveAvailability = pay?.availability;
+                    
+                    if (!effectiveAvailability || effectiveAvailability === "Pending" || effectiveAvailability === "Confirmed" || effectiveAvailability === "Waitlist" || effectiveAvailability === "Tentative") {
+                      if (pay.status !== "Not Playing") {
+                        effectiveAvailability = "Yes";
+                      } else {
+                        return false; // Skip if not explicitly marked No
+                      }
+                    }
+                    
+                    return effectiveAvailability === avStat;
+                  });
+
+                  if (paymentsInStat.length === 0) return null;
+
+                  return (
+                    <div key={avStat}>
+                      <h4
+                        className={`text-[10px] font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${avStat === "Yes" ? "text-emerald-400" : "text-red-400"}`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${avStat === "Yes" ? "bg-emerald-400" : "bg-red-400"}`}
+                        />
+                        {avStat} ({paymentsInStat.length})
+                      </h4>
+                      <div className="flex flex-wrap gap-2 text-sm text-text-primary">
+                        {paymentsInStat.map((payment) => {
+                          const p = store.players.find(pl => pl.id === payment.playerId);
+                          if (!p) return null;
+                          const isPaid = payment.status === "Paid";
+                          return (
+                            <span
+                              key={payment.id}
+                              className={`bg-surface-hover border px-2 py-1 rounded inline-flex items-center gap-1.5 max-w-[250px] ${isAdmin && isPaid ? "border-emerald-500/30" : "border-border"}`}
+                            >
+                              <span className="truncate flex items-center gap-1">
+                                {payment.guestName || p.name}
+                                {isAdmin && isPaid && <span className="text-[9px] uppercase tracking-widest text-emerald-400 font-bold ml-1">Paid</span>}
+                              </span>
+                              {isAdmin && (
+                                <select
+                                  value={avStat}
+                                  onChange={async (e) => {
+                                    const newAv = e.target.value as any;
+                                    await store.updateMatchAvailability(
+                                      payment.id,
+                                      newAv,
+                                      match.id,
+                                    );
+                                    if (
+                                      newAv === "Yes" &&
+                                      payment.status === "Not Playing"
+                                    ) {
+                                      await store.updatePaymentStatus(
+                                        payment.id,
+                                        "Unpaid",
+                                        match.id,
+                                      );
+                                    } else if (
+                                      newAv === "No" &&
+                                      payment.status === "Unpaid"
+                                    ) {
+                                      await store.updatePaymentStatus(
+                                        payment.id,
+                                        "Not Playing",
+                                        match.id,
+                                      );
+                                    }
+                                  }}
+                                  className="text-[9px] uppercase font-bold bg-transparent text-text-muted hover:text-text-primary border-none outline-none cursor-pointer  appearance-none text-right"
+                                >
+                                  <option value="Yes">Yes</option>
+                                  <option value="No">No</option>
+                                </select>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            )}
+
+          </DetailsSection>
+        </div>
+      ) : (
+        <>
       {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
         <div className="bg-surface sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4 mb-4">
           <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary">
@@ -2603,399 +2840,7 @@ export function MatchPayments({
       </div>
       )}
 
-      {isAdmin && (
-        <div className="bg-surface sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))]">
-          <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center justify-between">
-            <span>Squad & Payments</span>
-            {isAdmin && (
-              <button
-                onClick={() => setAddingSquad(!addingSquad)}
-                className="text-accent underline hover:text-accent/80 text-[10px]"
-              >
-                + Add Player
-              </button>
-            )}
-          </div>
-
-          {isAdmin && addingSquad && (
-            <form
-              onSubmit={handleAddToSquad}
-              className="p-4 bg-surface-hover border-b border-border space-y-3"
-            >
-              <div className="flex bg-surface-hover rounded-lg p-1 border border-border mb-3">
-                <button
-                  type="button"
-                  onClick={() => setAddingNew(false)}
-                  className={`flex-1 text-[11px] font-bold uppercase py-1.5 rounded-md transition ${!addingNew ? "bg-surface-hover text-text-primary" : "text-text-muted"}`}
-                >
-                  Existing
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAddingNew(true)}
-                  className={`flex-1 text-[11px] font-bold uppercase py-1.5 rounded-md transition ${addingNew ? "bg-surface-hover text-text-primary" : "text-text-muted"}`}
-                >
-                  New
-                </button>
-              </div>
-
-              {!addingNew ? (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                    <input
-                      type="text"
-                      placeholder="Search players..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 rounded-md border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                  <div className="max-h-40 overflow-y-auto space-y-1 border border-border rounded-md p-1 bg-surface-hover custom-scrollbar">
-                    {filteredPlayers.length === 0 ? (
-                      <p className="text-center text-[10px] uppercase tracking-widest text-text-muted py-3">
-                        No players found
-                      </p>
-                    ) : (
-                      filteredPlayers.map((p) => (
-                        <label
-                          key={p.id}
-                          className={`flex items-center gap-2 p-2 rounded cursor-pointer ${selectedPlayerIds.includes(p.id) ? "bg-accent/10 border-accent/50" : "hover:bg-surface-hover border-transparent"} border transition`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedPlayerIds.includes(p.id)}
-                            onChange={(e) => {
-                              if (e.target.checked)
-                                setSelectedPlayerIds((prev) => [...prev, p.id]);
-                              else
-                                setSelectedPlayerIds((prev) =>
-                                  prev.filter((id) => id !== p.id),
-                                );
-                            }}
-                            className="hidden"
-                          />
-                          <div
-                            className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border transition ${selectedPlayerIds.includes(p.id) ? "bg-accent border-accent text-black" : "border-border"}`}
-                          >
-                            {selectedPlayerIds.includes(p.id) && (
-                              <Check className="w-3 h-3" />
-                            )}
-                          </div>
-                          <span className="text-sm font-medium">
-                            {p.name}{" "}
-                            {p.mobile && (
-                              <span className="text-[10px] text-text-muted font-mono inline-block ml-1">
-                                ({p.mobile})
-                              </span>
-                            )}
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
-                      Name
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      value={newPlayerName}
-                      onChange={(e) => setNewPlayerName(e.target.value)}
-                      className="w-full rounded-md border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-1 block">
-                      Mobile
-                    </label>
-                    <input
-                      required
-                      type="tel"
-                      value={newPlayerMobile}
-                      onChange={(e) => setNewPlayerMobile(e.target.value)}
-                      className="w-full rounded-md border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                disabled={
-                  isSubmitting || (!addingNew && selectedPlayerIds.length === 0)
-                }
-                type="submit"
-                className={`w-full ${confirmSquadDuplicates ? "bg-red-500 text-white" : "bg-accent text-text-accent"} font-bold text-sm py-2 rounded shadow transition disabled:opacity-50`}
-              >
-                {isSubmitting
-                  ? "Adding..."
-                  : confirmSquadDuplicates
-                  ? "Confirm Guest Assignment"
-                  : "Add to Squad"}
-              </button>
-            </form>
-          )}
-
-          <div className="divide-y divide-border">
-            {matchPayments.map((payment) => {
-              const player = store.players.find(p => p.id === payment.playerId);
-              if (!player || payment.status === "Not Playing") return null;
-
-              const playerPlans = (player.feePlanIds || [])
-                .map((id: string) => store.feePlans.find((fp: FeePlan) => fp.id === id))
-                .filter((fp): fp is FeePlan => !!fp && fp.isActive !== false);
-              const fee = getPlayerFee(payment);
-              const hasOverride = payment.feeOverride !== undefined;
-
-              return (
-                <div
-                  key={payment.id}
-                  className="p-4 flex flex-col gap-2 hover:bg-surface-hover transition"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-text-primary truncate">
-                        {payment.guestName || player.name}
-                        {mePlayer && player.id === mePlayer.id && !payment.guestName && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-bold uppercase">
-                            You
-                          </span>
-                        )}
-                        {hasOverride && (
-                          <span className="ml-2 font-mono text-[11px] text-amber-400">
-                            ₹{fee}
-                          </span>
-                        )}
-                        {payment.feeOffsetAmount ? (
-                          <span className="ml-2 font-mono text-[10px] text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                            Offset ₹{payment.feeOffsetAmount}
-                          </span>
-                        ) : null}
-                      </p>
-                      {isAdmin && (
-                        <p className="text-xs font-mono text-text-muted mt-0.5">
-                          {player.mobile}
-                        </p>
-                      )}
-                      {payment.planTag && (
-                        <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span>{payment.planTag}</span>
-                          {payment.manualMethod === "part_of_plan" && payment.feeCollectedAmount !== undefined && (
-                            <span className="text-blue-400 font-mono text-[9px] lowercase font-normal">
-                              (₹{payment.feeCollectedAmount} sub)
-                            </span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      {isAdmin ? (
-                        <>
-                          <select
-                            value={payment.status}
-                            onChange={async (e) => {
-                              const newStatus = e.target.value;
-                              await store.updatePaymentStatus(
-                                payment.id,
-                                newStatus as any,
-                                match.id,
-                                undefined,
-                                newStatus === "Paid" ? "manual" : undefined,
-                                newStatus === "Paid" ? (appUser?.name || "Admin") : undefined,
-                              );
-                              if (newStatus === "Paid") {
-                                const exempted = store.otherFees.some(
-                                  (f: any) =>
-                                    f.playerId === payment.playerId &&
-                                    f.title?.startsWith("Late Fee Exemption:") &&
-                                    f.title?.includes(match.id) &&
-                                    f.status !== "Cancelled",
-                                );
-                                if (!exempted) {
-                                  const existingLateFee = store.otherFees.some(
-                                    (f: any) =>
-                                      f.playerId === payment.playerId &&
-                                      f.templateId === `latefee_${match.id}` &&
-                                      f.status !== "Cancelled",
-                                  );
-                                  if (!existingLateFee) {
-                                    const pLabel = `vs ${match.opponent || "Match"} (${formatDate(match.date)})`;
-                                    const fees = computeLateFees(match.date, match.id, payment.playerId, pLabel);
-                                    for (const lf of fees) {
-                                      const feeId = await store.addOtherFee(payment.playerId, {
-                                        title: lf.label,
-                                        amount: lf.amount,
-                                        comment: "Auto-levied late fee penalty (admin marked paid)",
-                                        templateId: `latefee_${match.id}`,
-                                      });
-                                      if (feeId) await store.updateOtherFeeStatus(payment.playerId, feeId, "Paid", "manual");
-                                    }
-                                  }
-                                }
-                              }
-                            }}
-                            className={`text-[12px] font-bold uppercase tracking-widest rounded-md border py-2 px-2 focus:outline-none ${
-                              payment.status === "Paid"
-                                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                : payment.status === "Unpaid"
-                                  ? "bg-red-500/20 text-red-400 border-red-500/30"
-                                  : "bg-surface-hover text-text-secondary border-border "
-                            }`}
-                          >
-                            <option value="Not Playing">Out</option>
-                            <option value="Unpaid">Unpaid</option>
-                            <option value="Paid">Paid</option>
-                          </select>
-
-                          {payment.status === "Unpaid" && (
-                            <button
-                              onClick={() =>
-                                store.notifyPlayerPayment(player.id, match.id)
-                              }
-                              className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap ml-2 h-[34px]"
-                              title="Send WhatsApp Reminder"
-                            >
-                              Remind
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
-                            payment.status === "Paid"
-                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                              : "bg-red-500/20 text-red-400 border-red-500/30"
-                          }`}
-                        >
-                          {payment.status}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Admin fee actions: plan quick-apply, change fee payer, undo */}
-                  {isAdmin && (
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                      {/* Plan quick-apply for unpaid players without override */}
-                      {payment.status === "Unpaid" && !hasOverride && playerPlans.map((plan: FeePlan) => {
-                        return (
-                          <button
-                            key={plan.id}
-                            onClick={() => {
-                              const feeAmount = plan.type === "fixed" ? (plan.feeAmount ?? match.fee) : 0;
-                              const offset = plan.type === "sponsored" 
-                                ? match.fee 
-                                : plan.type === "fixed" 
-                                  ? Math.max(0, match.fee - feeAmount) 
-                                  : 0;
-                              const actualFee = plan.type === "monthly" ? match.fee : 0;
-                              setBifurcationModal({
-                                paymentId: payment.id,
-                                player,
-                                plan,
-                                standardFee: match.fee,
-                                playerFeeInput: feeAmount,
-                                offsetInput: offset,
-                                actualFeeInput: actualFee,
-                                isSubmitting: false,
-                              });
-                            }}
-                            className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded transition border ${
-                              plan.type === "fixed"
-                                ? "bg-amber-500/15 text-amber-400 border-amber-500/25 hover:bg-amber-500/25"
-                                : plan.type === "monthly"
-                                  ? "bg-blue-500/15 text-blue-400 border-blue-500/25 hover:bg-blue-500/25"
-                                  : "bg-green-500/15 text-green-400 border-green-500/25 hover:bg-green-500/25"
-                            }`}
-                          >
-                            {plan.name} {plan.type === "fixed" ? `(₹${plan.feeAmount})` : plan.type === "sponsored" ? "(₹0)" : `(₹${plan.monthlyAmount}/mo)`}
-                          </button>
-                        );
-                      })}
-
-                      {/* Dropdown for other active club plans not in playerPlans */}
-                      {payment.status === "Unpaid" && !hasOverride && (() => {
-                        const otherPlans = store.feePlans.filter(
-                          (fp: FeePlan) => fp.isActive !== false && !playerPlans.some((pp) => pp.id === fp.id)
-                        );
-                        if (otherPlans.length === 0) return null;
-                        return (
-                          <select
-                            onChange={(e) => {
-                              const selectedId = e.target.value;
-                              if (!selectedId) return;
-                              const selectedPlan = store.feePlans.find((fp: FeePlan) => fp.id === selectedId);
-                              if (selectedPlan) {
-                                const feeAmount = selectedPlan.type === "fixed" ? (selectedPlan.feeAmount ?? match.fee) : 0;
-                                const offset = selectedPlan.type === "sponsored" 
-                                  ? match.fee 
-                                  : selectedPlan.type === "fixed" 
-                                    ? Math.max(0, match.fee - feeAmount) 
-                                    : 0;
-                                const actualFee = selectedPlan.type === "monthly" ? match.fee : 0;
-                                setBifurcationModal({
-                                  paymentId: payment.id,
-                                  player,
-                                  plan: selectedPlan,
-                                  standardFee: match.fee,
-                                  playerFeeInput: feeAmount,
-                                  offsetInput: offset,
-                                  actualFeeInput: actualFee,
-                                  isSubmitting: false,
-                                });
-                              }
-                              e.target.value = "";
-                            }}
-                            className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition cursor-pointer [&>option]:bg-surface"
-                            defaultValue=""
-                          >
-                            <option value="" disabled>+ Match Fee Plan</option>
-                            {otherPlans.map((op) => (
-                              <option key={op.id} value={op.id}>
-                                {op.name} ({op.type})
-                              </option>
-                            ))}
-                          </select>
-                        );
-                      })()}
-
-                      {/* Universal: Change Fee Payer (sponsorship) */}
-                      {payment.status === "Unpaid" && !payment.sponsoredBy && (
-                        <button
-                          onClick={() => setFeePayerPicker({ paymentId: payment.id, playerName: player.name, fee, search: "" })}
-                          className="text-[9px] font-bold uppercase tracking-widest bg-purple-500/15 text-purple-400 border border-purple-500/25 px-2 py-1 rounded hover:bg-purple-500/25 transition flex items-center gap-1"
-                        >
-                          <ArrowRightLeft className="w-3 h-3" />
-                          Change Fee Payer
-                        </button>
-                      )}
-
-                      {/* Undo fee override / reset plan */}
-                      {(hasOverride || payment.feeOffsetAmount !== undefined || payment.planTag) && (
-                        <button
-                          onClick={async () => {
-                            if (!await confirmAction({ message: `Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`, destructive: true })) return;
-                            await store.clearFeeOverride(match.id, payment.id);
-                          }}
-                          className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition flex items-center gap-1"
-                          title="Reset fee to standard and clear all offsets"
-                        >
-                          <Undo2 className="w-3 h-3" />
-                          Reset Fee
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        </>
       )}
 
       {/* Fee Payer Picker Modal */}
@@ -3312,82 +3157,6 @@ export function MatchPayments({
           </div>
         </div>
       )}
-
-      {/* Match Comments Section */}
-      <div className="bg-surface sm:rounded-xl overflow-hidden -mx-4 sm:mx-0 pr-[calc(env(safe-area-inset-right))] pl-[calc(env(safe-area-inset-left))] mt-4">
-        <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center gap-2">
-          <MessageSquare className="w-4 h-4" /> Discussion
-        </div>
-
-        <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
-          {comments.length === 0 ? (
-            <div className="text-center text-xs text-text-muted italic py-4">
-              No comments yet. Start the discussion!
-            </div>
-          ) : (
-            comments.map((comment) => (
-              <div
-                key={comment.id}
-                className={`flex flex-col ${comment.playerId === user?.uid ? "items-end" : "items-start"}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2 ${comment.playerId === user?.uid ? "bg-accent text-text-accent rounded-tr-sm" : "bg-surface-hover text-text-primary rounded-tl-sm"}`}
-                >
-                  <div className="flex justify-between items-baseline gap-3 mb-1">
-                    <span className="text-[10px] font-bold opacity-70 truncate">
-                      {comment.playerId === user?.uid
-                        ? "You"
-                        : comment.playerName}
-                    </span>
-                    <span className="text-[9px] opacity-50 shrink-0">
-                      {comment.createdAt?.seconds
-                        ? new Date(
-                            comment.createdAt.seconds * 1000,
-                          ).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "..."}
-                    </span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap break-words leading-snug">
-                    {comment.text}
-                  </p>
-                </div>
-                {(isAdmin || comment.playerId === user?.uid) && (
-                  <button
-                    onClick={() => handleDeleteComment(comment.id)}
-                    className="text-[10px] text-text-muted hover:text-red-400 font-bold uppercase tracking-widest mt-1 mr-1 ml-1 transition"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        <form
-          onSubmit={handlePostComment}
-          className="p-3 bg-surface-hover border-t border-border flex gap-2"
-        >
-          <input
-            type="text"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Discuss logistics, rides..."
-            className="flex-1 bg-surface-hover border border-border rounded-full px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent transition"
-            maxLength={1000}
-          />
-          <button
-            type="submit"
-            disabled={!newComment.trim() || isSubmittingComment}
-            className="bg-accent text-text-accent px-4 py-2 rounded-full font-bold text-sm hover:bg-accent/90 transition disabled:opacity-50 shrink-0 flex items-center justify-center min-w-[70px]"
-          >
-            {isSubmittingComment ? "..." : "Send"}
-          </button>
-        </form>
-      </div>
 
       {/* Group Remind Modal */}
       {isGroupRemindModalOpen && (
