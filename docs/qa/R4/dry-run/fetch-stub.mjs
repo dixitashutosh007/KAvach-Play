@@ -24,7 +24,7 @@ globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
   const method = (init.method || "GET").toUpperCase();
   const ok = url.origin === "https://api.razorpay.com" && url.pathname === "/v1/orders" && (method === "POST" || method === "GET");
-  log({ method, origin: url.origin, path: url.pathname, queryKeys: [...url.searchParams.keys()], hasAuth: !!new Headers(init.headers).get("authorization"), allowed: ok });
+  log({ method, origin: url.origin, path: url.pathname, queryKeys: [...url.searchParams.keys()], hasAuth: !!new Headers(init.headers).get("authorization"), redirect: init.redirect ?? null, allowed: ok });
   if (!ok) throw new Error("STUB: disallowed request");
   // Injected connection failure happens immediately (before latency), so it is not pre-empted by the abort timer.
   if (MODE === "faults" && method === "POST" && JSON.parse(init.body).receipt.endsWith("-E3-5")) {

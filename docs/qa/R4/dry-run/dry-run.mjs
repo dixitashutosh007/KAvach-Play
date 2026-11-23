@@ -37,6 +37,24 @@ check("S1 destination hard-coded", /const API_ORIGIN = "https:\/\/api\.razorpay\
 check("S2 no destination override read from env", !/process\.env\.RAZORPAY_API_BASE\s*\|\|/.test(src) && !/API_BASE\s*=/.test(src));
 check("S3 only fetch() call sites use buildUrl()", (src.match(/await fetch\(/g) || []).length === 2 && (src.match(/await fetch\(url/g) || []).length === 2);
 check("S4 endpoint allowlist is exactly POST/GET /v1/orders", /new Set\(\[`POST \$\{ORDERS_PATH\}`, `GET \$\{ORDERS_PATH\}`\]\)/.test(src));
+const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, ""); // comments removed
+check("S5 both fetch() calls set redirect: \"error\" (code only, comments excluded)", (code.match(/redirect: "error"/g) || []).length === 2 && !/redirect: "(follow|manual)"/.test(code));
+
+// N1: Node's real fetch refuses to follow a redirect when redirect: "error" (local loopback server only; no Razorpay)
+{
+  const http = await import("node:http");
+  const hits = { target: 0 };
+  const srv = http.createServer((req, res) => {
+    if (req.url === "/target") { hits.target += 1; res.end("followed"); return; }
+    res.writeHead(302, { location: "/target" }); res.end();
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const port = srv.address().port;
+  let threw = false;
+  try { await fetch(`http://127.0.0.1:${port}/start`, { method: "POST", body: "{}", redirect: "error" }); } catch { threw = true; }
+  srv.close();
+  check("N1 real Node fetch with redirect: \"error\" throws on 302 and never requests the redirect target", threw && hits.target === 0, `threw=${threw} targetHits=${hits.target}`);
+}
 
 // Refusals (no stub: any network attempt would be real, so these must exit before fetching)
 check("R1 live key refused", run({ RAZORPAY_TEST_KEY_ID: "rzp_live_X1", RAZORPAY_TEST_KEY_SECRET: "s" }).code === 2);
@@ -64,6 +82,7 @@ for (const mode of ["enforce", "allow", "faults"]) {
   check(`${tag} evidence is valid JSON`, !!ev);
   if (!ev) continue;
   check(`${tag} all requests allow-listed (origin, path, method)`, r.calls.every((c) => c.allowed && c.origin === "https://api.razorpay.com" && c.path === "/v1/orders"));
+  check(`${tag} every request sets redirect: "error"`, r.calls.length > 0 && r.calls.every((c) => c.redirect === "error"));
   check(`${tag} only receipt/count/skip query keys`, r.calls.every((c) => c.queryKeys.every((k) => ["receipt", "count", "skip"].includes(k))));
   const posts = r.calls.filter((c) => c.method === "POST").length;
   check(`${tag} creates ≤ declared max (${ev.maxCreateRequests})`, posts <= ev.maxCreateRequests && posts === ev.requestsSent.creates, `posts=${posts}`);

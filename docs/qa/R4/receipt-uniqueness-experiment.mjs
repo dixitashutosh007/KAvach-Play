@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R4 evidence: does Razorpay enforce `receipt` uniqueness on the Orders API?  (revision 2)
+ * R4 evidence: does Razorpay enforce `receipt` uniqueness on the Orders API?  (revision 3)
  *
  * QA tooling only; not imported by the application. Creates a small, bounded number of
  * ₹1 Razorpay TEST-MODE orders. Orders are not payments: no money moves.
@@ -14,6 +14,7 @@
  *
  * Safety properties (see docs/qa/R4/R4_RECEIPT_UNIQUENESS_EXPERIMENT.md §4):
  *  - Destination is hard-coded to https://api.razorpay.com; there is no override.
+ *  - Redirects are never followed (fetch redirect: "error" on every request).
  *  - Only POST /v1/orders and GET /v1/orders are permitted (enforced before every request).
  *  - Key id must start with rzp_test_; credentials are never written to stdout/stderr/evidence.
  *  - Evidence is built only from allow-listed, type-checked fields; response bodies are never
@@ -212,6 +213,7 @@ async function createOrder(receipt, abortMs) {
       headers: { Authorization: AUTH_HEADER, "Content-Type": "application/json" },
       body: JSON.stringify({ amount: AMOUNT_PAISE, currency: CURRENCY, receipt }),
       signal: ac?.signal,
+      redirect: "error", // never follow a redirect (credentials must not leave api.razorpay.com)
     });
     headersAt = isoNow();
     httpStatus = res.status;
@@ -255,7 +257,7 @@ async function countByReceipt(receipt) {
     const url = buildUrl("GET", ORDERS_PATH, { receipt, count: LIST_PAGE_SIZE, skip: page * LIST_PAGE_SIZE });
     let res;
     try {
-      res = await fetch(url, { method: "GET", headers: { Authorization: AUTH_HEADER } });
+      res = await fetch(url, { method: "GET", headers: { Authorization: AUTH_HEADER }, redirect: "error" });
     } catch (err) {
       status = "failed";
       error = { reason: "network_error", ...classifyClientError(err, false) };
@@ -293,7 +295,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── experiments ─────────────────────────────────────────────────────────────
 const evidence = {
-  schema: "kavach-r4-receipt-evidence/v2",
+  schema: "kavach-r4-receipt-evidence/v3",
   ...plan,
   nodeVersion: process.version,
   scriptSha256,

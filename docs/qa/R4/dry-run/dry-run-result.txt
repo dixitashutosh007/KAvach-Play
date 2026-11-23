@@ -1,8 +1,10 @@
-# node docs/qa/R4/dry-run/dry-run.mjs — 2026-11-23T15:06:45Z, Node v22.23.5
+# node docs/qa/R4/dry-run/dry-run.mjs (revision 3), 2026-11-23T15:21:34Z, Node v22.23.5
 PASS  S1 destination hard-coded
 PASS  S2 no destination override read from env
 PASS  S3 only fetch() call sites use buildUrl()
 PASS  S4 endpoint allowlist is exactly POST/GET /v1/orders
+PASS  S5 both fetch() calls set redirect: "error" (code only, comments excluded)
+PASS  N1 real Node fetch with redirect: "error" throws on 302 and never requests the redirect target
 PASS  R1 live key refused
 PASS  R2 missing secret refused
 PASS  R3 RAZORPAY_API_BASE refused
@@ -18,6 +20,7 @@ PASS  P3 plan reports max 14 creates by default
 PASS  X-enforce exits 0
 PASS  X-enforce evidence is valid JSON
 PASS  X-enforce all requests allow-listed (origin, path, method)
+PASS  X-enforce every request sets redirect: "error"
 PASS  X-enforce only receipt/count/skip query keys
 PASS  X-enforce creates ≤ declared max (14)
 PASS  X-enforce no credential/PII/unlisted fields in stdout
@@ -29,6 +32,7 @@ PASS  X-enforce E2 exactly one success
 PASS  X-allow exits 0
 PASS  X-allow evidence is valid JSON
 PASS  X-allow all requests allow-listed (origin, path, method)
+PASS  X-allow every request sets redirect: "error"
 PASS  X-allow only receipt/count/skip query keys
 PASS  X-allow creates ≤ declared max (14)
 PASS  X-allow no credential/PII/unlisted fields in stdout
@@ -40,6 +44,7 @@ PASS  X-allow E5 E2 count = concurrency
 PASS  X-faults exits 0
 PASS  X-faults evidence is valid JSON
 PASS  X-faults all requests allow-listed (origin, path, method)
+PASS  X-faults every request sets redirect: "error"
 PASS  X-faults only receipt/count/skip query keys
 PASS  X-faults creates ≤ declared max (14)
 PASS  X-faults no credential/PII/unlisted fields in stdout
@@ -53,4 +58,4 @@ PASS  X-faults network error not misreported as abort
 PASS  X-faults real abort recorded with timer fired
 PASS  X-faults late abort timer did not fire; response received
 
-53/53 checks passed; Razorpay API calls made: 0 (fetch replaced in-process; refusal cases exit before any fetch).
+58/58 checks passed; Razorpay API calls made: 0 (fetch replaced in-process; refusal cases exit before any fetch).
