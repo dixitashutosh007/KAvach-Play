@@ -5,15 +5,15 @@
  *
  * Existing club players only (no new-player creation here). Shows a live
  * "squad after adding / max" count, a capacity warning, search, select-all for
- * the visible list, and each player's fee: Regular (the match fee) or their
- * assigned Match Fee Plan. Fixed plans are applied afterwards with the
- * "Apply Fee Plans" action (see FeePlanApplyDialog), which shows the club
- * sponsorship before anything is written.
+ * the visible list, and each player's fee: Regular (the match fee) or the
+ * Finance Plan they are on for the MATCH DATE. Plans are applied afterwards
+ * with the "Finance Plans" action (see FeePlanApplyDialog), which shows the
+ * server's breakdown and club sponsorship before anything is written.
  */
 import React from "react";
 import { Check, Search, Users, AlertTriangle } from "lucide-react";
-import type { FeePlan, Player } from "@/lib/types";
-import { previewPlayerFee } from "@/lib/fee-plan-bulk";
+import type { FeePlan, FinancePlanAssignment, Player } from "@/lib/types";
+import { previewPlayerPlan } from "@/lib/match-plan-application";
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
@@ -27,7 +27,9 @@ export function SquadPicker({
   squadCount,
   maxSquadSize,
   standardFee,
+  matchDate,
   feePlans,
+  assignments,
   submitting,
   confirmDuplicates,
   onSubmit,
@@ -44,7 +46,10 @@ export function SquadPicker({
   squadCount: number;
   maxSquadSize: number;
   standardFee: number;
+  /** Match date "YYYY-MM-DD": plans are evaluated on this date. */
+  matchDate: string;
   feePlans: FeePlan[];
+  assignments: FinancePlanAssignment[];
   submitting: boolean;
   confirmDuplicates: boolean;
   onSubmit: (e: React.FormEvent) => void;
@@ -61,8 +66,8 @@ export function SquadPicker({
   const selectedPreview = selectedIds
     .map((id) => players.find((p) => p.id === id))
     .filter((p): p is Player => !!p)
-    .map((p) => previewPlayerFee(p, feePlans, standardFee));
-  const onFixedPlan = selectedPreview.filter((x) => x.kind === "fixed");
+    .map((p) => previewPlayerPlan(p, feePlans, assignments, matchDate, standardFee));
+  const onFixedPlan = selectedPreview.filter((x) => x.kind !== "regular");
   const sponsorPreview = onFixedPlan.reduce((s, x) => s + x.sponsored, 0);
 
   return (
@@ -133,7 +138,7 @@ export function SquadPicker({
         ) : (
           players.map((p) => {
             const isSel = selected.has(p.id);
-            const fee = previewPlayerFee(p, feePlans, standardFee);
+            const fee = previewPlayerPlan(p, feePlans, assignments, matchDate, standardFee);
             return (
               <li key={p.id}>
                 <button
@@ -156,17 +161,17 @@ export function SquadPicker({
                   <span className="min-w-0 flex-1 text-sm font-bold text-text-primary truncate">{p.name}</span>
                   <span
                     className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                      fee.kind === "fixed"
+                      fee.kind === "plan"
                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                         : fee.kind === "regular"
                           ? "bg-surface-hover text-text-secondary border-border"
                           : "bg-blue-50 text-blue-700 border-blue-200"
                     }`}
-                    title={fee.kind === "other" || fee.kind === "multiple" ? "Apply this plan per player after adding" : undefined}
+                    title={fee.kind === "pending" ? "Subscription allocated when the period closes" : undefined}
                   >
                     {fee.label}
                   </span>
-                  <span className="w-14 shrink-0 text-right text-sm font-black tabular-nums text-text-primary">{inr(fee.fee)}</span>
+                  <span className="w-14 shrink-0 text-right text-sm font-black tabular-nums text-text-primary">{fee.kind === "pending" ? "Sub" : inr(fee.fee)}</span>
                 </button>
               </li>
             );
@@ -176,8 +181,8 @@ export function SquadPicker({
 
       {onFixedPlan.length > 0 && (
         <p className="text-xs text-text-secondary" data-testid="squad-plan-preview">
-          {onFixedPlan.length} selected {onFixedPlan.length === 1 ? "player is" : "players are"} on a Match Fee Plan · club sponsors{" "}
-          <strong className="text-emerald-700">{inr(sponsorPreview)}</strong> once you tap <strong>Apply Fee Plans</strong>.
+          {onFixedPlan.length} selected {onFixedPlan.length === 1 ? "player is" : "players are"} on a Finance Plan · club sponsors{" "}
+          <strong className="text-emerald-700">{inr(sponsorPreview)}</strong> once you tap <strong>Finance Plans</strong>.
         </p>
       )}
 

@@ -9,7 +9,7 @@
  */
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
-import { Match, Player, FeePlan } from "@/lib/types";
+import { Match, MatchPayment } from "@/lib/types";
 import { isMatchBillable } from "@/lib/matchBillable";
 
 import {
@@ -22,14 +22,12 @@ import {
   Users,
   MapPin,
   Search,
-  Check,
   CheckCircle2,
   MessageSquare,
   Trash2,
   X,
   Undo2,
   ArrowRightLeft,
-  RefreshCw,
   AlertCircle,
   Shield,
   Info,
@@ -81,8 +79,10 @@ import { MatchPaymentPanel } from "./matches/MatchPaymentPanel";
 import { SquadPicker } from "./matches/SquadPicker";
 import { FeePlanApplyDialog } from "./matches/FeePlanApplyDialog";
 import { DetailsSection, MatchDetailsSummary } from "./matches/MatchDetailsSummary";
-import { buildFixedPlanApplication } from "@/lib/fee-plan-bulk";
-import { planContribution } from "@/lib/finance-plans";
+import { FeeOverrideSheet } from "./matches/FeeOverrideSheet";
+import { buildMatchPlanApplication, isOverridable } from "@/lib/match-plan-application";
+import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
+import { callMatchPlans } from "@/hooks/useMatchFinancePlans";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
@@ -271,7 +271,21 @@ export function MatchesTab({
       feeMarginPct: clampMargin(feeMarginPct),
     };
     if (editingId) {
-      store.updateMatch({ ...processedData, id: editingId } as Match);
+      const before = store.matches.find((m) => m.id === editingId);
+      const matchId = editingId;
+      const feeOrDateChanged = !!before && (Number(before.fee) !== processedData.fee || before.date !== processedData.date);
+      Promise.resolve(store.updateMatch({ ...processedData, id: editingId } as Match)).then(async () => {
+        // Keep automatically applied Finance Plans in step with the new fee /
+        // date. Only payments still exactly as the last automatic application
+        // left them change; paid, overridden or hand-edited ones never do.
+        if (!feeOrDateChanged) return;
+        const r = await callMatchPlans({ action: "apply", matchId, scope: "refresh" });
+        if (r.ok && "written" in r.data && r.data.written) {
+          toast(`Finance Plans updated for ${r.data.written} player${r.data.written === 1 ? "" : "s"} after the fee/date change`, "success");
+        } else if (!r.ok && r.status !== 403 && r.status !== 409) {
+          toast("Match saved, but Finance Plans could not be updated. Open the match and use Finance Plans.", "error");
+        }
+      });
       setEditingId(null);
     } else {
       store.addMatch(processedData);
@@ -1656,10 +1670,14 @@ export function MatchPayments({
       store.players.some((pl) => pl.id === p.playerId),
   );
   const isAdmin = persona === "admin" && isMatchAdmin !== false;
-  const { user } = useAuth();
+  const { user, hasAdminClaim } = useAuth();
 
   // Link to AppUser
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
+  // Finance Plans: Match/Finance/Super Admins apply plans; only Finance/Super
+  // Admins override a fee. The server re-checks both (/api/finance/match-plans).
+  const canOverrideFees = isAdmin && Boolean(hasAdminClaim || appUser?.isFinanceAdmin);
+  const canApplyPlans = isAdmin && Boolean(hasAdminClaim || appUser?.isFinanceAdmin || appUser?.isMatchAdmin);
   const mePlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
   const myPayment = mePlayer
     ? matchPayments.find((p) => p.playerId === mePlayer.id)
@@ -1766,9 +1784,10 @@ export function MatchPayments({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [confirmSquadDuplicates, setConfirmSquadDuplicates] = useState(false);
-  // "Apply Fee Plans": preview + one-click application of fixed Match Fee Plans.
+  // "Apply Finance Plans": server-computed breakdown + application.
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
-  const [applyingPlans, setApplyingPlans] = useState(false);
+  const [overrideFor, setOverrideFor] = useState<{ payment: MatchPayment; playerName: string } | null>(null);
+  const { assignments: planAssignments } = useFinancePlanAssignments(isAdmin);
   const [editingSquadPlayerId, setEditingSquadPlayerId] = useState<string | null>(null);
 
   const filteredPlayers = store.players.filter(
@@ -1783,86 +1802,6 @@ export function MatchPayments({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [feePayerPicker, setFeePayerPicker] = useState<{ paymentId: string; playerName: string; fee: number; search: string } | null>(null);
-
-  // Plan Bifurcation Modal State
-  const [bifurcationModal, setBifurcationModal] = useState<{
-    paymentId: string;
-    player: Player;
-    plan: FeePlan;
-    standardFee: number;
-    playerFeeInput: number;
-    offsetInput: number;
-    actualFeeInput: number;
-    isSubmitting: boolean;
-  } | null>(null);
-
-  const handleConfirmPlanBifurcation = async () => {
-    if (!bifurcationModal) return;
-    const { paymentId, plan, standardFee, offsetInput, actualFeeInput } = bifurcationModal;
-    setBifurcationModal((prev) => (prev ? { ...prev, isSubmitting: true } : null));
-
-    try {
-      if (plan.type === "percentage") {
-        // Shared Finance Plan rule: discount rounded to the rupee is club sponsorship.
-        const { contribution, sponsorship } = planContribution(plan, standardFee);
-        await store.applyFeePlanToPayment(
-          match.id,
-          paymentId,
-          contribution,
-          plan.name,
-          sponsorship,
-          undefined,
-          "Unpaid",
-        );
-      } else if (plan.type === "fixed") {
-        const feeAmount = plan.feeAmount ?? standardFee;
-        const offset = Math.max(0, standardFee - feeAmount);
-        await store.applyFeePlanToPayment(
-          match.id,
-          paymentId,
-          feeAmount,
-          plan.name,
-          offset,
-          undefined,
-          "Unpaid",
-        );
-      } else if (plan.type === "monthly") {
-        const actualFee = Number(actualFeeInput) || 0;
-        const offset = Number(offsetInput) || 0;
-        await store.applyFeePlanToPayment(
-          match.id,
-          paymentId,
-          0,
-          `${plan.name} (Subscription)`,
-          offset,
-          actualFee,
-          "Paid",
-          "manual",
-          "part_of_plan",
-          appUser?.name || "Admin",
-        );
-      } else if (plan.type === "sponsored") {
-        await store.applyFeePlanToPayment(
-          match.id,
-          paymentId,
-          0,
-          plan.name,
-          standardFee,
-          0,
-          "Paid",
-          "manual",
-          "club_sponsored",
-          appUser?.name || "Admin",
-        );
-      }
-      setBifurcationModal(null);
-    } catch (err) {
-      console.error("Failed to apply plan bifurcation:", err);
-      toast("Failed to apply fee plan. Please try again.", "error");
-      setBifurcationModal((prev) => (prev ? { ...prev, isSubmitting: false } : null));
-    }
-  };
-  
 
   useEffect(() => {
     // Dynamically load Razorpay SDK
@@ -2067,52 +2006,47 @@ export function MatchPayments({
     }
   };
 
-  // Fixed Match Fee Plans that can be applied to this squad right now, with
-  // the club-sponsored amounts (see lib/fee-plan-bulk).
-  const planApplication = buildFixedPlanApplication({
+  // Finance Plans that would change for this squad (same rules as the server;
+  // used for the button count only — the dialog shows the server's breakdown).
+  const planApplication = buildMatchPlanApplication({
     match,
     payments: matchPayments,
     players: store.players,
-    feePlans: store.feePlans || [],
+    plans: store.feePlans || [],
+    assignments: planAssignments,
   });
-  const handleApplyFeePlans = async () => {
-    if (applyingPlans) return;
-    setApplyingPlans(true);
-    try {
-      // Same write as the per-player "fixed" plan action.
-      for (const item of planApplication.items) {
-        await store.applyFeePlanToPayment(
-          match.id,
-          item.paymentId,
-          item.planFee,
-          item.plan.name,
-          item.sponsored,
-          undefined,
-          "Unpaid",
-        );
-      }
-      toast(
-        `Applied Match Fee Plans to ${planApplication.items.length} player${planApplication.items.length === 1 ? "" : "s"} · club sponsors ₹${planApplication.totalSponsored.toLocaleString("en-IN")}`,
-        "success",
-      );
-      setPlanDialogOpen(false);
-    } catch (err) {
-      console.error("Failed to apply fee plans:", err);
-      toast("Some fee plans could not be applied. Please check the squad.", "error");
-    } finally {
-      setApplyingPlans(false);
-    }
-  };
   const squadCount = matchPayments.filter((p) => p.status !== "Not Playing").length;
 
   return (
     <div className="space-y-4">
       {planDialogOpen && (
         <FeePlanApplyDialog
-          application={planApplication}
-          applying={applyingPlans}
-          onConfirm={handleApplyFeePlans}
+          matchId={match.id}
+          canApply={canApplyPlans}
           onClose={() => setPlanDialogOpen(false)}
+          onApplied={(written, sponsorship) => {
+            setPlanDialogOpen(false);
+            toast(
+              written
+                ? `Finance Plans applied to ${written} player${written === 1 ? "" : "s"} · club sponsors ₹${sponsorship.toLocaleString("en-IN")} for this match`
+                : "Nothing needed changing",
+              "success",
+            );
+          }}
+        />
+      )}
+      {overrideFor && (
+        <FeeOverrideSheet
+          matchId={match.id}
+          payment={overrideFor.payment}
+          playerName={overrideFor.playerName}
+          matchFee={match.fee}
+          plans={store.feePlans || []}
+          onClose={() => setOverrideFor(null)}
+          onDone={(msg) => {
+            setOverrideFor(null);
+            toast(msg, "success");
+          }}
         />
       )}
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2372,7 +2306,7 @@ export function MatchPayments({
                         data-testid="apply-fee-plans"
                         className="min-h-[36px] px-3 rounded-lg border border-brand/30 bg-surface text-xs font-bold text-brand hover:bg-brand-surface cursor-pointer"
                       >
-                        Apply Fee Plans{planApplication.items.length > 0 ? ` (${planApplication.items.length})` : ""}
+                        Finance Plans{canApplyPlans && planApplication.changes.length > 0 ? ` (${planApplication.changes.length})` : ""}
                       </button>
                       <button
                         type="button"
@@ -2399,7 +2333,9 @@ export function MatchPayments({
                     squadCount={squadCount}
                     maxSquadSize={match.maxSquadSize}
                     standardFee={match.fee}
+                    matchDate={match.date}
                     feePlans={store.feePlans || []}
+                    assignments={planAssignments}
                     submitting={isSubmitting}
                     confirmDuplicates={confirmSquadDuplicates}
                     onSubmit={handleAddToSquad}
@@ -2416,10 +2352,8 @@ export function MatchPayments({
                     const player = store.players.find(p => p.id === payment.playerId);
                     if (!player || payment.status === "Not Playing") return null;
 
-                    const playerPlans = (player.feePlanIds || [])
-                      .map((id: string) => store.feePlans.find((fp: FeePlan) => fp.id === id))
-                      .filter((fp): fp is FeePlan => !!fp && fp.isActive !== false);
                     const fee = getPlayerFee(payment);
+                    const snap = payment.financeSnapshot;
                     const hasOverride = payment.feeOverride !== undefined;
 
                     return (
@@ -2552,88 +2486,24 @@ export function MatchPayments({
                         {/* Admin fee actions: plan quick-apply, change fee payer, undo */}
                         {isAdmin && (
                           <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                            {/* Plan quick-apply for unpaid players without override */}
-                            {payment.status === "Unpaid" && !hasOverride && playerPlans.map((plan: FeePlan) => {
-                              return (
-                                <button
-                                  key={plan.id}
-                                  onClick={() => {
-                                    const feeAmount = plan.type === "fixed" ? (plan.feeAmount ?? match.fee) : 0;
-                                    const offset = plan.type === "sponsored" 
-                                      ? match.fee 
-                                      : plan.type === "fixed" 
-                                        ? Math.max(0, match.fee - feeAmount) 
-                                        : 0;
-                                    const actualFee = plan.type === "monthly" ? match.fee : 0;
-                                    setBifurcationModal({
-                                      paymentId: payment.id,
-                                      player,
-                                      plan,
-                                      standardFee: match.fee,
-                                      playerFeeInput: feeAmount,
-                                      offsetInput: offset,
-                                      actualFeeInput: actualFee,
-                                      isSubmitting: false,
-                                    });
-                                  }}
-                                  className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded transition border ${
-                                    plan.type === "fixed"
-                                      ? "bg-amber-500/15 text-amber-400 border-amber-500/25 hover:bg-amber-500/25"
-                                      : plan.type === "monthly"
-                                        ? "bg-blue-500/15 text-blue-400 border-blue-500/25 hover:bg-blue-500/25"
-                                        : "bg-green-500/15 text-green-400 border-green-500/25 hover:bg-green-500/25"
-                                  }`}
-                                >
-                                  {plan.name} {plan.type === "fixed" ? `(₹${plan.feeAmount})` : plan.type === "sponsored" ? "(₹0)" : plan.type === "percentage" ? `(${plan.discountPct ?? 0}% off)` : `(₹${plan.monthlyAmount}/mo)`}
-                                </button>
-                              );
-                            })}
-
-                            {/* Dropdown for other active club plans not in playerPlans */}
-                            {payment.status === "Unpaid" && !hasOverride && (() => {
-                              const otherPlans = store.feePlans.filter(
-                                (fp: FeePlan) => fp.isActive !== false && !playerPlans.some((pp) => pp.id === fp.id)
-                              );
-                              if (otherPlans.length === 0) return null;
-                              return (
-                                <select
-                                  onChange={(e) => {
-                                    const selectedId = e.target.value;
-                                    if (!selectedId) return;
-                                    const selectedPlan = store.feePlans.find((fp: FeePlan) => fp.id === selectedId);
-                                    if (selectedPlan) {
-                                      const feeAmount = selectedPlan.type === "fixed" ? (selectedPlan.feeAmount ?? match.fee) : 0;
-                                      const offset = selectedPlan.type === "sponsored" 
-                                        ? match.fee 
-                                        : selectedPlan.type === "fixed" 
-                                          ? Math.max(0, match.fee - feeAmount) 
-                                          : 0;
-                                      const actualFee = selectedPlan.type === "monthly" ? match.fee : 0;
-                                      setBifurcationModal({
-                                        paymentId: payment.id,
-                                        player,
-                                        plan: selectedPlan,
-                                        standardFee: match.fee,
-                                        playerFeeInput: feeAmount,
-                                        offsetInput: offset,
-                                        actualFeeInput: actualFee,
-                                        isSubmitting: false,
-                                      });
-                                    }
-                                    e.target.value = "";
-                                  }}
-                                  className="text-[9px] font-bold uppercase tracking-widest bg-surface-hover text-text-secondary border border-white/15 px-2 py-1 rounded hover:bg-surface-hover hover:text-text-primary transition cursor-pointer [&>option]:bg-surface"
-                                  defaultValue=""
-                                >
-                                  <option value="" disabled>+ Match Fee Plan</option>
-                                  {otherPlans.map((op) => (
-                                    <option key={op.id} value={op.id}>
-                                      {op.name} ({op.type})
-                                    </option>
-                                  ))}
-                                </select>
-                              );
-                            })()}
+                            {/* Finance Plans: how this fee was worked out, and the audited override (Finance/Super Admin) */}
+                            {snap && (
+                              <span className="text-[11px] text-text-secondary" data-testid={`finance-snapshot-${payment.id}`}>
+                                {snap.source === "override" ? "Override" : snap.planName}
+                                {` · player ₹${snap.contribution} · club ₹${snap.sponsorship}`}
+                                {snap.override?.reason ? ` · “${snap.override.reason}”` : ""}
+                              </span>
+                            )}
+                            {canOverrideFees && isOverridable(payment) && (
+                              <button
+                                type="button"
+                                onClick={() => setOverrideFor({ payment, playerName: payment.guestName || player.name })}
+                                data-testid={`adjust-fee-${payment.id}`}
+                                className="min-h-[32px] text-[10px] font-bold uppercase tracking-widest bg-surface text-brand border border-brand/30 px-2 py-1 rounded hover:bg-brand-surface transition"
+                              >
+                                Adjust fee
+                              </button>
+                            )}
 
                             {/* Universal: Change Fee Payer (sponsorship) */}
                             {payment.status === "Unpaid" && !payment.sponsoredBy && (
@@ -2647,7 +2517,7 @@ export function MatchPayments({
                             )}
 
                             {/* Undo fee override / reset plan */}
-                            {(hasOverride || payment.feeOffsetAmount !== undefined || payment.planTag) && (
+                            {payment.sponsoredBy && (
                               <button
                                 onClick={async () => {
                                   if (!await confirmAction({ message: `Reset ${payment.guestName || player.name}'s fee back to standard ₹${match.fee} and clear all plan offsets?`, destructive: true })) return;
@@ -3110,252 +2980,6 @@ export function MatchPayments({
         </div>
       )}
 
-      {/* Plan Confirmation & Bifurcation Modal */}
-      {bifurcationModal && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => !bifurcationModal.isSubmitting && setBifurcationModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-surface rounded-2xl border border-border overflow-hidden shadow-2xl space-y-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="p-4 bg-surface-hover border-b border-border flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                      bifurcationModal.plan.type === "fixed"
-                        ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                        : bifurcationModal.plan.type === "monthly"
-                          ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                          : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                    }`}
-                  >
-                    {bifurcationModal.plan.type === "fixed"
-                      ? "Fixed / Flat Fee"
-                      : bifurcationModal.plan.type === "monthly"
-                        ? "Monthly Subscription"
-                        : "Club Sponsored"}
-                  </span>
-                  <span className="text-[11px] font-mono text-text-muted">
-                    Match: ₹{bifurcationModal.standardFee}
-                  </span>
-                </div>
-                <h3 className="font-bold text-text-primary text-base mt-1">
-                  Apply &ldquo;{bifurcationModal.plan.name}&rdquo;
-                </h3>
-                <p className="text-xs text-text-secondary">
-                  Player: <strong className="text-text-primary">{bifurcationModal.player.name}</strong>
-                </p>
-              </div>
-              <button
-                disabled={bifurcationModal.isSubmitting}
-                onClick={() => setBifurcationModal(null)}
-                className="p-1.5 hover:bg-surface-hover rounded-full transition text-text-muted hover:text-text-primary disabled:opacity-50"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-5 space-y-4 text-sm">
-              {/* Scenario 1: Fixed / Flat Fee */}
-              {bifurcationModal.plan.type === "fixed" && (() => {
-                const feeAmount = bifurcationModal.plan.feeAmount ?? bifurcationModal.standardFee;
-                const offset = Math.max(0, bifurcationModal.standardFee - feeAmount);
-                return (
-                  <div className="space-y-4">
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-text-secondary">Standard Match Fee</span>
-                        <span className="font-mono font-semibold text-text-primary">₹{bifurcationModal.standardFee}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm border-t border-amber-500/20 pt-2 font-bold">
-                        <span className="text-amber-300">Player Due ({bifurcationModal.plan.name})</span>
-                        <span className="font-mono text-amber-400 text-base">₹{feeAmount}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs border-t border-amber-500/20 pt-2">
-                        <span className="text-emerald-400">Club Sponsored (Offset)</span>
-                        <span className="font-mono font-bold text-emerald-400">₹{offset}</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-surface-hover border border-border rounded-lg p-3 text-xs text-text-secondary space-y-1.5">
-                      <p className="flex items-center gap-1.5 text-text-primary font-medium">
-                        <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        Accountability Notice:
-                      </p>
-                      <p>
-                        The player will see <strong className="text-amber-300 font-mono">₹{feeAmount}</strong> due in the portal and remain marked as <span className="text-red-400 font-bold uppercase text-[10px]">Unpaid</span> until received.
-                      </p>
-                      <p>
-                        The remaining <strong className="text-emerald-400 font-mono">₹{offset}</strong> is recorded as <span className="text-emerald-400 font-bold">Club Sponsored</span> for this match.
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Scenario 1b: Percentage discount */}
-              {bifurcationModal.plan.type === "percentage" && (() => {
-                const { contribution, sponsorship } = planContribution(bifurcationModal.plan, bifurcationModal.standardFee);
-                return (
-                  <div className="bg-violet-50 border border-violet-200 rounded-xl p-3.5 space-y-2" data-testid="bifurcation-percentage">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-text-secondary">Standard Match Fee</span>
-                      <span className="font-mono font-semibold text-text-primary">₹{bifurcationModal.standardFee}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm border-t border-violet-200 pt-2 font-bold">
-                      <span className="text-violet-800">Player Due ({bifurcationModal.plan.discountPct ?? 0}% off)</span>
-                      <span className="font-mono text-violet-800 text-base">₹{contribution}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs border-t border-violet-200 pt-2">
-                      <span className="text-emerald-700">Club Sponsored (discount)</span>
-                      <span className="font-mono font-bold text-emerald-700">₹{sponsorship}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Scenario 2: Monthly Subscription */}
-              {bifurcationModal.plan.type === "monthly" && (
-                <div className="space-y-4">
-                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 space-y-1.5 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-text-secondary">Subscription Plan</span>
-                      <span className="font-bold text-blue-300">{bifurcationModal.plan.name}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-text-secondary">Subscription Amount</span>
-                      <span className="font-mono text-text-primary">₹{bifurcationModal.plan.monthlyAmount ?? 0}/month</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-text-secondary">Standard Match Fee</span>
-                      <span className="font-mono font-bold text-text-primary">₹{bifurcationModal.standardFee}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 bg-surface-hover border border-border rounded-xl p-3.5">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Fee Allocation for this Match:
-                    </p>
-                    <div>
-                      <label className="text-xs text-text-primary font-medium block mb-1">
-                        Actual Fee Covered from Subscription (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={bifurcationModal.actualFeeInput}
-                        onChange={(e) => {
-                          const val = Number(e.target.value) || 0;
-                          const autoOffset = Math.max(0, bifurcationModal.standardFee - val);
-                          setBifurcationModal((prev) =>
-                            prev ? { ...prev, actualFeeInput: val, offsetInput: autoOffset } : null
-                          );
-                        }}
-                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-text-primary font-medium block mb-1">
-                        Club Sponsored / Offset Portion (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={bifurcationModal.offsetInput}
-                        onChange={(e) => {
-                          const val = Number(e.target.value) || 0;
-                          setBifurcationModal((prev) =>
-                            prev ? { ...prev, offsetInput: val } : null
-                          );
-                        }}
-                        className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-surface-hover border border-border rounded-lg p-3 text-xs text-text-secondary space-y-1.5">
-                    <p className="flex items-center gap-1.5 text-text-primary font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      Status upon Confirmation:
-                    </p>
-                    <p>
-                      Player will be automatically marked as <span className="text-emerald-400 font-bold uppercase text-[10px]">Paid</span> (Part of Monthly Plan).
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Scenario 3: 100% Club Sponsored */}
-              {bifurcationModal.plan.type === "sponsored" && (
-                <div className="space-y-4">
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-text-secondary">Standard Match Fee</span>
-                      <span className="font-mono font-semibold text-text-primary">₹{bifurcationModal.standardFee}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm border-t border-emerald-500/20 pt-2 font-bold">
-                      <span className="text-emerald-400">Total Club Sponsored</span>
-                      <span className="font-mono text-emerald-400 text-base">₹{bifurcationModal.standardFee}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs border-t border-emerald-500/20 pt-2">
-                      <span className="text-text-secondary">Player Liability</span>
-                      <span className="font-mono font-bold text-text-primary">₹0</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-surface-hover border border-border rounded-lg p-3 text-xs text-text-secondary space-y-1.5">
-                    <p className="flex items-center gap-1.5 text-text-primary font-medium">
-                      <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      Confirmation Notice:
-                    </p>
-                    <p>
-                      The entire <strong className="text-emerald-400 font-mono">₹{bifurcationModal.standardFee}</strong> will be absorbed by the club.
-                    </p>
-                    <p>
-                      Player will be immediately marked as <span className="text-emerald-400 font-bold uppercase text-[10px]">Paid</span>.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-surface-hover border-t border-border flex items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={bifurcationModal.isSubmitting}
-                onClick={() => setBifurcationModal(null)}
-                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-text-secondary hover:text-text-primary hover:bg-surface-hover transition disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={bifurcationModal.isSubmitting}
-                onClick={handleConfirmPlanBifurcation}
-                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-accent text-text-accent hover:bg-accent/90 transition shadow disabled:opacity-50 flex items-center gap-1.5 font-bold"
-              >
-                {bifurcationModal.isSubmitting ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Applying...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    Confirm & Apply Plan
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
 
     </div>

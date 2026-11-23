@@ -199,8 +199,9 @@ describe("UI wiring", () => {
     assert.match(pt, /const showPlans = isAdmin && !plansLoading && !plansError;/);
     assert.match(pt, /data-testid=\{`roster-finance-plan-\$\{player\.id\}`\}/);
   });
-  it("percentage plans apply via the shared rule in Match Details", () => {
-    const mt = src("components/MatchesTab.tsx");
-    assert.match(mt, /if \(plan\.type === "percentage"\) \{[\s\S]*?const \{ contribution, sponsorship \} = planContribution\(plan, standardFee\);/);
+  it("Match Details applies every plan type through the shared rule on the server (Stage 3)", () => {
+    const mpa = src("lib/match-plan-application.ts");
+    assert.match(mpa, /const calc = planContribution\(plan, fee\);/);
+    assert.ok(!/applyFeePlanToPayment/.test(src("components/MatchesTab.tsx")));
   });
 });

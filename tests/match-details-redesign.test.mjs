@@ -92,9 +92,9 @@ describe("Match Details screen (admin)", () => {
     assert.deepEqual([...order].sort((a, b) => a - b), order);
     assert.match(details, /title=\{`Squad \(\$\{played\}\)`\}/);
   });
-  it("squad keeps add players, Apply Fee Plans and per-player payment actions", () => {
+  it("squad keeps add players, Finance Plans and per-player payment actions", () => {
     const squad = details.slice(details.indexOf('testId="details-squad"'), details.indexOf('testId="details-payments"'));
-    for (const k of ['data-testid="apply-fee-plans"', "<SquadPicker", "Plan quick-apply", "Change Fee Payer", "clearFeeOverride"]) {
+    for (const k of ['data-testid="apply-fee-plans"', "<SquadPicker", "Adjust fee", "Change Fee Payer", "clearFeeOverride"]) {
       assert.ok(squad.includes(k), k);
     }
   });

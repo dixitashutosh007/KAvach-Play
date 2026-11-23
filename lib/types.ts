@@ -354,6 +354,12 @@ export type MatchPayment = {
   availabilityNote?: string;
   feeOverride?: number;
   planTag?: string;
+  /**
+   * How this payment's fee was worked out (Finance Plans): plan, assignment,
+   * match date/fee, contribution, sponsorship, override reason. Written only
+   * by `/api/finance/match-plans`. See lib/match-plan-application.
+   */
+  financeSnapshot?: import("./match-plan-application").FinanceSnapshot;
   sponsoredBy?: string;
   sponsoring?: string;
   updatedAt?: any;
