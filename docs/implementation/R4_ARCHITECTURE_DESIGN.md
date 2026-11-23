@@ -1,716 +1,753 @@
-# R4 — Razorpay Order Concurrency, Ambiguous Outcomes and Duplicate Payments: Architecture Design (revision 4)
+# R4 — Razorpay Order Concurrency, Ambiguous Outcomes and Duplicate Payments: Architecture Design (revision 5)
 
-**Status:** DESIGN ONLY, for independent review. **Not approved for implementation** (§13). Revision 4 resolves findings B6, B7 and B8 from the review of revision 3 (`7317e1d`) and corrects the contradictions found in the cross-cutting review (§0.2). No application code, Firestore rules, tests, test configuration, data or deployment was changed. No Razorpay call was made.
-**Branch / base:** `mig-mov` @ `7317e1d`
+**Status:** DESIGN ONLY, for independent review. **Not approved for implementation** (§14). Revision 5 resolves findings B9–B14 from the review of revision 4 (`f131e42`) and re-checks all state machines for contradictions (§13). No application code, Firestore rules, tests, test configuration or data changed. No Razorpay call, migration or deployment.
+**Branch / base:** `mig-mov` @ `f131e42`
 **Date:** 2026-11-23
 
 **Evidence base:**
 - Run `r4mwtfrkta4202`: `docs/qa/R4/evidence/R4_EXPERIMENT_RESULTS_AND_ANALYSIS.md`.
-- Delayed re-check: `docs/qa/R4/evidence/supplemental-e5-recheck/E5_RECHECK_RESULTS.md`.
+- Re-check: `docs/qa/R4/evidence/supplemental-e5-recheck/E5_RECHECK_RESULTS.md`.
 
-**Resolution matrix:** §14.
+**B9–B14 resolution matrix:** §15.
 
 ---
 
-## 0. Revision 4 summary, evidence and guarantees
+## 0. Summary, evidence and guarantees
 
-### 0.1 Change summary
+### 0.1 Revision 5 summary
 
-| Area | Revision 3 | Revision 4 |
+| Finding | Revision 4 | Revision 5 |
 |---|---|---|
-| **Claim model (B6)** | Claim states `open / held / retained_exposed / settled`. Claims mirrored settlement; reversals set the claim to `open` | The claim describes **only online orders**, never settlement. It is a **holder** plus a **retained-orders set** plus an **anomaly flag** (§2.2). Settlement, reversal, sponsorship and waiver **never** change the claim except to retain orders. An order once exposed (or paid) is retained until one of exactly **three** release conditions (§2.6) |
-| **Reversals (B6)** | Claim reopened on reversal | Per-workflow matrix of obligation / claim / attempt / payability / replacement / authorisation / audit (§2.7). Reversal never releases a claim |
-| **`apply_reviewed_payment` (B7)** | Basic preconditions | Full validation decision table (identity, order, capture, amount, currency, refunds, prior allocation, player identity, anomalies); exact-amount rule; no partial payments; finance-attested allocation for unbound payments with a separate immutable allocation record; idempotency by `requestId` (§4.6) |
-| **Terminal attempts (B8)** | REJECT_DUPLICATE moved "any attempt without `firstPaymentId`" to CLOSED_UNAPPLIED, which could rewrite SUPERSEDED / FAILED_NO_ORDER | An explicit eligibility table: only listed **non-terminal** states may become CLOSED_UNAPPLIED; terminal attempts receive **events only**; a payment against FAILED_NO_ORDER raises a classification anomaly (§2.3, §4.3) |
-| **`ANOMALY_MULTIPLE` (B8)** | Attempt state only; resolution unspecified | Defined as **both** an attempt state (multiple orders for one attempt's receipt) and a claim **anomaly flag** (multiple possibly-payable orders for one obligation), with owner, transitions, Finance resolution and blocking guarantees (§2.4) |
-| Admin actions | Idempotency implicit | Uniform `requestId` idempotency, retry and failure conventions (§4.0) |
-| Cross-cutting | – | Contradictions fixed (§0.2) |
+| **B14** exposure evidence | `exposedAt` unset was treated as "never exposed" | Fail-closed **exposure classification** per order: `NEVER_EXPOSED_PROVEN`, `EXPOSURE_UNKNOWN`, `EXPOSED_PROVEN`, built on a **write-ahead response-authorisation marker** that is the only gateway to any client response (§2.8). Everything that previously used `exposedAt` now uses the classification |
+| **B9** late orders | `orderIdLate` written on the attempt (conflicted with terminal immutability); claim effect unspecified | Order-lifecycle stages defined (§2.8.1). Late or discovered orders are recorded on **`gatewayOrders`** (not the attempt) plus an appended attempt event, and **retained on the claim whenever exposure cannot be disproven**. Exact write sets, idempotency and conflicts for six cases (§4.4) |
+| **B10** override | `overrideActive` flag; lifecycle unspecified | `claimOverrides/{ov_…}` record with states `AUTHORISED → BOUND → CONSUMED` (+ `EXPIRED`, `REVOKED`, `RELEASED`). **Exactly one replacement attempt**, consumed on entering CREATING. CAS-fenced binding; a new override needs a new approval (§2.6, §4.8) |
+| **B11** reviewed payments vs terminal attempts | §4.6 allowed RETIRED → PAID and implied terminal changes | **`apply_reviewed_payment` never changes any attempt or intent state.** It writes allocation, payment application, obligation settlement (`basis: reviewed`) and appended events only. Per-state table (§4.6.3). RETIRED → PAID removed |
+| **B12** refund accounting | Optional `obligationKey`; payment-level net | **Deterministic per-obligation refund ledger** with reservation-on-initiation, mandatory mapping for allocated bundles, per-obligation and aggregate net, six enforced constraints, rejection when the mapping is not deterministic (§2.5.2) |
+| **B13** sponsorship amounts | Restore `feeOverride` and `sponsoring` | Amounts as **base amount + append-only adjustments** (`obligationAdjustments`); reversal = compensating adjustment, never value restoration; legacy guard; both versions CAS-checked (§2.7.2) |
 
-### 0.2 Contradictions found in revision 3 and corrected
+### 0.2 Contradictions removed (in addition to revision 4's X1–X7)
 
-| # | Revision 3 text | Problem | Revision 4 |
+| # | Revision 4 | Problem | Revision 5 |
 |---|---|---|---|
-| X1 | §2.2: claim `settled` mirrors the obligation | Mixed coordination with financial truth (I11); allowed reopening on reversal | Claim has no settlement state (§2.2) |
-| X2 | §2.6 R-M / R-S / R-W: "claim → `open`" | Could expose a second order while an old exposed order is payable (B6) | Claim untouched by reversals (§2.7) |
-| X3 | §2.6 R-G: "claim → `open` (unpaid)" | The paid order may still accept payment (G3 unverified) | Paid order retained (§2.7) |
-| X4 | §4.6: "every claim → `settled`" in `apply_reviewed_payment` | Same as X1 | Claim retains the payment's order (§4.6) |
-| X5 | §4.5: manual settle with acknowledgement → "`retained_exposed`, then settled" | Retention overwritten | Retention persists (§4.5) |
-| X6 | §4.3: "attempt has no `firstPaymentId` → CLOSED_UNAPPLIED" | Matched SUPERSEDED / FAILED_NO_ORDER (B8) | Eligibility table (§2.3) |
-| X7 | §2.2 release rule: "or after a reversal that makes the obligation unpaid" | Contradicted retention | Removed; only §2.6 conditions |
+| X8 | §2.3 "SUPERSEDED requires `exposedAt` unset" | Unset ≠ never exposed (B14) | Requires `NEVER_EXPOSED_PROVEN` (§2.8) |
+| X9 | §4.6 step 5: RETIRED / eligible → PAID on review | Conflicted with first-outcome immutability; an attempt that has a payment is already CLOSED_UNAPPLIED (terminal) | Removed; reviewed application never touches attempt state (§4.6) |
+| X10 | §4.6 step 6: intent `pending` → `paid` on review | Rewrote the intent based on a later human decision | Intent unchanged; event only (§4.6) |
+| X11 | Revision 3/4 "`orderIdLate` on terminal attempt" | Wrote a terminal attempt document | Recorded on `gatewayOrders` + attempt event (§4.4) |
+| X12 | §2.4 adopt: "every other anomaly order was never exposed (no `exposedAt`)" | Same as X8 | Uses classification (§2.4) |
+| X13 | §2.2 HELD_OVERRIDE derived from a boolean flag | No consumption; reusable bypass | Bound to a one-time override record (§2.6) |
+| X14 | §2.3 ACTIVATION_FAILED "order ID already on the attempt" even when persistence failed | Ambiguous | Persistence and activation split into two transactions (§2.8.1) |
 
-### 0.3 Evidence and principle (unchanged)
+### 0.3 Evidence (unchanged)
 
-- **F1:** duplicate receipts accepted (sequential and concurrent).
-- **F2:** receipt listing eventually consistent (> 20 s, ≤ about 5 min 40 s in one run).
+- **F1:** duplicate receipts accepted.
+- **F2:** receipt listing eventually consistent.
 - **F3:** orphan orders confirmed.
-- **F4 (unverified):** live mode; fetch-by-ID; payments per order; a second payment on a paid order; order cancellation or expiry; refund webhooks and partial refunds; which create errors prove non-creation.
+- **F4 (unverified):** live mode, fetch-by-ID, payments-per-order, a second payment on a paid order, cancellation or expiry, refund webhooks, non-creation errors.
 
-**Firestore state cannot make a Razorpay order unpayable. The system cannot prevent a payer from being charged more than once in every case.**
+**Firestore cannot make a Razorpay order unpayable.**
 
 ### 0.4 Guarantees
 
-- **G-A (single application):** per obligation per settlement cycle, no more than one payment is applied.
-- **G-B (accounting):** every captured payment has exactly one immutable accounting record. Every payment not applied is classified and routed to review. Refund lifecycle is tracked separately from capture and application; *initiated is never refunded*.
-- **G-C (single exposure):** an obligation never gains a second possibly-payable order unless an earlier exposed order is proven unpayable (release condition 2, unavailable until verified) or an authorised `expose_replacement` override is recorded (disabled by default).
-- **G-D (no automatic re-creation):** after an ambiguous attempt, a new order is never created automatically.
+- **G-A:** ≤ 1 payment applied per obligation per settlement cycle.
+- **G-B:** one immutable accounting record per captured payment; every unapplied payment is classified and reviewed; refunds are accounted per obligation; *initiated ≠ processed*.
+- **G-C:** no obligation gains a second possibly-payable order unless a prior order is gateway-verified unpayable (disabled until verified) or a **one-time** authorised override is consumed (disabled by default).
+- **G-D:** no automatic re-creation after an ambiguous attempt.
+- **G-E (new): an order is treated as never exposed only with proof.** Every uncertain order is retained.
 
 ---
 
-## 1. Current-state architecture (verified; unchanged from revision 3)
+## 1. Current-state architecture (verified; unchanged)
 
-- **Order creation:** `app/api/razorpay/order/route.ts` `POST`:
-  - `requireAuth` (`:38`);
-  - `derivePayableAmount` (`:82` → `lib/razorpay-order.ts:1283`, server late fees `:1347`);
-  - `acquirePaymentReservation` (`:100` → `:313`) with request-shape keys (`generateReservationKey`, `:9`) and the expired-`reserving` **takeover** (`:361–436`);
-  - create path `:484–555` (persist-before-expose holds);
-  - failures `:557–600`;
-  - `reconcileAmbiguousReservation` (`:656`; Branch A `:698`, Branch B `:852`, zero-match `:1010` stays blocked; stale comment `:653`; no resolution tool).
-- **Online fulfilment:** `lib/razorpay-webhook.ts` `processWebhookIntentTransaction` (`:235`):
-  - per-intent idempotency (`:263–275`);
-  - branches `:419` / `:457` / `:516` / `:569`; late fees `lf_${intentId}` (`:370`); reservation `isPaid` (`:602`);
-  - **no obligation-state check**;
-  - R5 dead-letter written in a separate transaction (`app/api/razorpay/webhook/route.ts:58`).
-- **Manual settlement:** client-side via `hooks/useStore.ts`:
-  - `updatePaymentStatus` (≈`:1800`), `applyFeePlanToPayment` (≈`:2155`), `assignProxyPayment` and its clear path (≈`:2225–2365`; two records), otherFees writes, `updateMerchOrder` (`:2765`);
-  - Studio expiry editors;
+- **Order creation:** `app/api/razorpay/order/route.ts`:
+  - `requireAuth` `:38`, `derivePayableAmount` `:82` (`lib/razorpay-order.ts:1283`; late fees `:1347`);
+  - request-shape keys `generateReservationKey` `:9`; `acquirePaymentReservation` `:313` with expired-`reserving` takeover `:361–436`;
+  - create path `:484–555`; failures `:557–600`;
+  - `reconcileAmbiguousReservation` `:656` (A `:698`, B `:852`, zero-match `:1010` blocked; stale comment `:653`; no resolution tool).
+- **Online fulfilment:** `lib/razorpay-webhook.ts` `processWebhookIntentTransaction` `:235`:
+  - per-intent idempotency `:263–275`; branches `:419` / `:457` / `:516` / `:569`; late fees `lf_${intentId}` `:370`; reservation `isPaid` `:602`;
+  - no obligation check;
+  - dead-letter in a separate transaction (`app/api/razorpay/webhook/route.ts:58`).
+- **Manual settlement:** client-side (`hooks/useStore.ts`):
+  - `updatePaymentStatus` ≈`:1800`; `applyFeePlanToPayment` ≈`:2155`;
+  - sponsorship `assignProxyPayment` and clear path ≈`:2225–2365` (**sponsorship overwrites the sponsor's `feeOverride`, sets `sponsoring`; the clear path deletes them**);
+  - otherFees; `updateMerchOrder` `:2765`; Studio expiry editors;
   - allowed by Finance-admin rules and `isMatchAdminPaymentUpdate` (`firestore.rules:279`).
-- **Duplicate-application paths D1–D5 and suspected Q8:** as in revision 3 §1.4.
-  - **D1:** request-shape keys.
-  - **D2:** manual vs online.
-  - **D3:** waived, abandoned or sponsored paid online.
-  - **D4:** expired-`reserving` takeover.
-  - **D5:** adopt-after-takeover mismatch.
+- **Paths D1–D5 and suspected Q8:** as in revision 3 §1.4.
 
 ---
 
 ## 2. Entities and state machines
 
-| Entity | Role | Authoritative for | Never used for |
-|---|---|---|---|
-| **Obligation** (match payment, other fee, `lateFeeObligations`, `subscriptionPeriods`, `merchOrders`) | Financial truth | Settlement state, `settlementVersion`, settlement events | Order exposure |
-| **Claim** (`paymentObligationClaims`) | Online-order coordination | Which attempt may expose an order; which exposed or paid orders may still be payable; anomaly | Settlement |
-| **Attempt** (`paymentAttempts`) | One gateway `orders.create` | Order identity, exposure, first payment | Settlement |
-| **Gateway payment** (`gatewayPayments`) | Captured money | Capture identity, application, allocations, refunds, anomalies | Order exposure |
-
-### 2.1 Obligation settlement state machine
-
-| State | Meaning |
+| Entity | Authoritative for |
 |---|---|
-| `unpaid` | Owed |
-| `settled_gateway` | Settled by an applied gateway payment (`gatewayPaymentId`, `allocationId`) |
-| `settled_manual` | Settled by cash or UPI |
-| `sponsored` | Settled by sponsorship (linked to the sponsor's obligation) |
-| `waived` | No obligation |
-| `reversal_pending` | `settled_gateway` with a gateway reversal in progress (still settled) |
+| Obligation (match payment, other fee, `lateFeeObligations`, `subscriptionPeriods`, `merchOrders`) | Settlement state, amount components (§2.7.2), `settlementVersion`, settlement events |
+| Claim (`paymentObligationClaims`) | Online-order coordination: holder, retained orders, anomaly, bound override |
+| Attempt (`paymentAttempts`) | One gateway `orders.create`; its own order's lifecycle and exposure marker |
+| Gateway order link (`gatewayOrders`) | Every known gateway order: owning attempt, discovery source, **exposure classification** |
+| Gateway payment (`gatewayPayments`) | Captured money: identity, application, allocation, refunds, anomalies |
+| Override (`claimOverrides`) | One-time authorisation for one replacement attempt |
+| Adjustment (`obligationAdjustments`) | Append-only amount changes (sponsorship and others) |
 
-| From → To | Action (§4) | Actor |
-|---|---|---|
-| unpaid → settled_gateway | webhook APPLY (§4.3); `apply_reviewed_payment` (§4.6) | system; Finance / Super |
-| unpaid → settled_manual | `settle_manual` | Finance / Super; Club Admin (match fees only, Q11) |
-| unpaid → sponsored | `mark_sponsored` | Finance / Super |
-| unpaid → waived | `waive`; abandoned-match reconciliation | Finance / Super; system |
-| settled_manual → unpaid | `reverse_manual_settlement` (R-M) | Finance / Super |
-| sponsored → unpaid | `reverse_sponsorship` (R-S) | Finance / Super |
-| waived → unpaid | `reverse_waiver` (R-W) | Finance / Super |
-| settled_gateway → reversal_pending | `initiate_gateway_reversal` (R-G1) | Finance / Super |
-| reversal_pending → unpaid / waived | `complete_gateway_reversal` (R-G2) | Finance / Super |
-| reversal_pending → settled_gateway | `cancel_gateway_reversal` (R-G3) | Finance / Super |
-| settled_gateway → unpaid (direct) | **Forbidden** | – |
-| any → any other | **Forbidden** | – |
+### 2.1 Obligation settlement state machine (unchanged from revision 4, plus `basis`)
 
-Every transition is one transaction:
-- compare-and-set on `settlementVersion` (+1);
-- an append-only `settlementEvents/{id}` row (`type`, `from`, `to`, `actor`, `reason`, `refs`);
-- `auditLogs` for human actors.
+- **States:** `unpaid`, `settled_gateway` (basis `webhook` | `reviewed`), `settled_manual`, `sponsored`, `waived`, `reversal_pending`.
+- **Transitions:** as in revision 4 §2.1. Direct `settled_gateway` → `unpaid` is forbidden.
+- Every transition is one transaction: CAS on `settlementVersion` (+1), an append-only settlement event, and `auditLogs` for humans.
+- **No obligation transition releases a claim.**
 
-**No obligation transition writes the claim**, except the explicit retention steps named in §4.3, §4.5 and §4.6 (adding retained orders and clearing a holder that has been retired).
+### 2.2 Claim model
 
-### 2.2 Claim model (B6): `paymentObligationClaims/{cl_…}`
-
-**Fields:**
+Fields:
 - `canonicalKey`
 - `holderAttemptId | null`, `holderFence`
-- `retainedOrders[]`: each `{orderId, attemptId, reason: "exposed_retired" | "paid_applied" | "anomaly_found", since}`
-- `anomaly: false | {attemptIds[], orderIds[], since}`
-- `overrideActive: false | {byRequestId, since}`
+- `retainedOrders[]`: `{orderId, attemptId, reason: exposed_retired | paid_applied | paid_rejected | exposure_unknown | anomaly_found, exposureClass, since}`
+- `anomaly: false | {attemptIds[], orderIds[], since, source}`
+- `boundOverrideId | null`
 - `version`
+- append-only `events`
 
-Every change also appends a `paymentObligationClaims/{id}/events/{eventId}` row (append-only; the audit trail of the array). `retainedOrders` is bounded: it is only added to by exposure or payment, at most a handful per obligation. It is **never removed from**, except by release condition 2 (§2.6).
+| Derived state | Condition | Order creation |
+|---|---|---|
+| OPEN | no holder, no retained, no anomaly | new attempt allowed |
+| HELD | holder, no retained, no anomaly, no bound override | none; the holder's ACTIVE order is returned after revalidation, else 409 |
+| RETAINED | no holder, retained ≥ 1, no anomaly | none (409 `ONLINE_PAYMENT_UNAVAILABLE`), unless an `AUTHORISED` override exists (§2.6) |
+| HELD_OVERRIDE | holder = the override's bound attempt, retained ≥ 1, no anomaly | none; the holder's ACTIVE order is returned after revalidation, else 409 |
+| ANOMALY | anomaly set | none (409 `PAYMENT_UNDER_REVIEW`); overrides cannot be bound |
 
-**Derived claim states (what callers act on):**
+**Retention-while-held rule:** if an order with class `EXPOSURE_UNKNOWN` or `EXPOSED_PROVEN` must be retained on a claim whose holder is a *different* attempt (any state), the transaction also sets the **anomaly** flag (two possibly-payable orders). This holds unless the holder is the override-bound replacement and the retained order predates the override.
 
-| Derived state | Condition | New order creation | Request for this obligation returns |
-|---|---|---|---|
-| `OPEN` | no holder, no retained orders, no anomaly | **Allowed** (new attempt) | new order |
-| `HELD` | holder set, no retained orders, no anomaly | Not allowed | the holder's order if the holder is ACTIVE and revalidates (§2.3.1); else 409 `PAYMENT_BEING_VERIFIED` |
-| `RETAINED` | no holder, ≥ 1 retained order, no anomaly | **Not allowed** | 409 `ONLINE_PAYMENT_UNAVAILABLE` ("contact the club") |
-| `HELD_OVERRIDE` | holder set, ≥ 1 retained order, `overrideActive` | Not allowed | the holder's order (revalidated) |
-| `ANOMALY` | `anomaly` set (any holder or retained) | **Not allowed** | 409 `PAYMENT_UNDER_REVIEW` |
+### 2.3 Attempt state machine
 
-### 2.3 Attempt state machine (B8): `paymentAttempts/{att_…}`
+- **Non-terminal:** CLAIMED, CREATING, ORDER_RECEIVED, ACTIVATION_FAILED, ACTIVE, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, ANOMALY_MULTIPLE, RETIRED.
+- **Terminal:** PAID, CLOSED_UNAPPLIED, SUPERSEDED, FAILED_NO_ORDER.
 
-**States:**
-- Non-terminal: `CLAIMED`, `CREATING`, `ORDER_RECEIVED`, `ACTIVATION_FAILED`, `ACTIVE`, `OUTCOME_UNKNOWN`, `RECONCILING`, `RECOVERED`, `ANOMALY_MULTIPLE`, `RETIRED`.
-- **Terminal:** `PAID`, `CLOSED_UNAPPLIED`, `SUPERSEDED`, `FAILED_NO_ORDER`.
-
-**Terminal rule:** a terminal attempt's `state`, `firstPaymentId` and `exposedAt` are **never written again**. Later events about it (late order response, captured payment, duplicate delivery) append rows to `paymentAttempts/{id}/events` only.
+**Terminal rule (I8):** once terminal, the attempt document's fields `state`, `fenceVersion`, `gatewayOrderId`, `exposure`, `firstPaymentId` and `obligationKeys` are **never written**. All later facts (late order, late payment, review decision) are recorded on `gatewayOrders`, `gatewayPayments`, the claim, and as **appended** `paymentAttempts/{id}/events` rows.
 
 | From | To | Trigger | Actor |
 |---|---|---|---|
-| CLAIMED | CREATING | create about to be sent | system |
-| CREATING | ORDER_RECEIVED | 2xx with valid `order.id` | system |
-| CREATING | FAILED_NO_ORDER | **only** a complete HTTP 400 `BAD_REQUEST_ERROR` validation body or a complete HTTP 401 auth-failure body (pending G6) | system |
-| CREATING | OUTCOME_UNKNOWN | 408, 409, 429, 5xx, timeout, reset, TLS or proxy error, partial or unparsable body, 2xx without order, crash (lease expiry observed), lease lost after send, **anything unclassified** | system |
-| ORDER_RECEIVED | ACTIVE | order ID persisted + `gatewayOrders` create + claims activated; sets `exposedAt` on return | system |
-| ORDER_RECEIVED | ACTIVATION_FAILED | persistence or activation transaction failed (order ID already on the attempt) | system |
-| ACTIVATION_FAILED, RECOVERED | ACTIVE | revalidation succeeds (§2.3.1) | system or Finance `reconcile` |
-| OUTCOME_UNKNOWN | RECONCILING | `reconcile` starts (fenced) | Finance / worker |
-| RECONCILING | RECOVERED | exactly 1 order with this receipt, fetch-validated | system |
-| RECONCILING | OUTCOME_UNKNOWN | 0 found, or lookup failed (**0 is not absence**) | system |
-| RECONCILING | ANOMALY_MULTIPLE | > 1 order with this attempt's receipt (§2.4) | system |
+| CLAIMED | CREATING | create about to be sent (fenced; consumes a bound override, §2.6) | system |
+| CLAIMED | SUPERSEDED | `supersede` (§4.8) | Finance / Super |
+| CREATING | ORDER_RECEIVED | 2xx with valid `order.id` (in memory) | system |
+| CREATING | FAILED_NO_ORDER | complete HTTP 400 `BAD_REQUEST_ERROR` or 401 body only (pending G6) | system |
+| CREATING | OUTCOME_UNKNOWN | any other outcome, incl. crash or lease expiry observed by another reader (**the observer bumps the fence**) | system |
+| ORDER_RECEIVED | (persisted: `gatewayOrderId` set) | **Persist transaction P** (§2.8.1) | system |
+| ORDER_RECEIVED (persisted) | ACTIVE | **Activation transaction A** commits the response-authorisation marker (§2.8.1) | system |
+| ORDER_RECEIVED (persisted) | ACTIVATION_FAILED | transaction A failed (marker **not** committed) | system |
+| ORDER_RECEIVED (not persisted) | OUTCOME_UNKNOWN | transaction P failed after retries; lease expiry observed (order exists, unrecorded) | system |
+| ACTIVATION_FAILED, RECOVERED | ACTIVE | revalidation + activation transaction A (§2.3.1) | system / Finance `reconcile` |
+| OUTCOME_UNKNOWN | RECONCILING | `reconcile` | Finance / worker |
+| OUTCOME_UNKNOWN | RECOVERED | late response recorded by the original process **while the attempt is non-terminal** (§4.4 case L1) | system |
+| RECONCILING | RECOVERED / OUTCOME_UNKNOWN / ANOMALY_MULTIPLE | 1 found / 0 or lookup failed / > 1 | system |
 | ANOMALY_MULTIPLE | RECOVERED / SUPERSEDED / RETIRED | `resolve_anomaly` (§2.4) | Finance / Super |
-| ACTIVE | PAID | first captured payment APPLIED | system |
-| ACTIVE | RETIRED | `retire_exposed`; manual settle / sponsor / waive with acknowledgement; `apply_reviewed_payment` with `retireConflictingAttempt` | Finance / Super (+ Club for `settle_manual` match fee) |
-| RETIRED | PAID | `apply_reviewed_payment` applies a payment made on this attempt's order (§4.6) | Finance / Super |
-| CLAIMED, CREATING, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, ACTIVATION_FAILED (all with `exposedAt` unset) | SUPERSEDED | `supersede` (§4.7) | Finance / Super |
-| **eligible** (see below) | CLOSED_UNAPPLIED | first captured payment for this attempt rejected (§4.3) | system |
-| ACTIVE (`exposedAt` set) | SUPERSEDED | **Forbidden** (exposed attempts are retired) | – |
+| ACTIVE | PAID | first captured payment applied (webhook) | system |
+| ACTIVE | RETIRED | `retire_exposed`; manual settle / sponsor / waive with acknowledgement; abandonment; `apply_reviewed_payment` with `retireConflictingAttempt` | Finance / Super (Club for match-fee `settle_manual`); system |
+| CREATING, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, ACTIVATION_FAILED | SUPERSEDED | `supersede`, **only if the attempt's exposure class is `NEVER_EXPOSED_PROVEN`** (§2.8) | Finance / Super |
+| eligible (below) | CLOSED_UNAPPLIED | first captured payment for this attempt rejected | system |
+| ACTIVE, RETIRED (marker committed) | SUPERSEDED | **Forbidden** | – |
 | any terminal | any | **Forbidden** | – |
+| RETIRED | PAID | **Forbidden** (removed in revision 5, X9) | – |
 
-**CLOSED_UNAPPLIED eligibility** (first captured payment rejected):
+**CLOSED_UNAPPLIED eligibility:** ACTIVE, RETIRED, ACTIVATION_FAILED, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, with `firstPaymentId` unset. In the same transaction: `firstPaymentId`; `gatewayOrderId` if unset and the order is linked to this attempt.
+- ANOMALY_MULTIPLE → unchanged (event).
+- Terminal → unchanged (event).
 
-| Attempt state when its first captured payment is rejected | Result |
+#### 2.3.1 Revalidation (unchanged; precedes every activation transaction A on a non-fresh path)
+
+1. Claim holder is this attempt at its fence; no anomaly.
+2. Obligations `unpaid` at the expected versions.
+3. Payer binding unchanged.
+4. Amount = fresh payable (§2.7.2); currency matches.
+5. Order fetched by ID (G1) matches amount, currency and `notes.attemptId`, with status `created` / `attempted`.
+
+### 2.4 `ANOMALY_MULTIPLE` lifecycle (B14 applied)
+
+- **Definition:** as in revision 4. (a) An attempt state: more than one order for one attempt's receipt. (b) A claim anomaly flag: more than one possibly-payable order for one obligation, including via the retention-while-held rule (§2.2).
+- **Blocking:** creation (§4.1), automatic application (§4.2 R6), override binding (§2.6) and reviewed application (§4.6 V15) are all refused while an anomaly is set.
+
+`resolve_anomaly` (Finance / Super; `requestId`; one transaction; events + audit):
+
+| Option | Preconditions (fail-closed) | Effect |
+|---|---|---|
+| `adopt {orderId}` | `orderId` ∈ anomaly orders; fetch-validated (G1); **every other anomaly order is `NEVER_EXPOSED_PROVEN`** | Attempt → RECOVERED → (revalidate, transaction A) ACTIVE; anomaly cleared; other orders recorded as orphans in claim events (not retained). If any other order is `EXPOSURE_UNKNOWN` / `EXPOSED_PROVEN` → **409 `OTHER_ORDERS_POSSIBLY_EXPOSED`** (use `retain_all`) |
+| `supersede_all` | **Every** anomaly order and the attempt are `NEVER_EXPOSED_PROVEN` | Attempt → SUPERSEDED; anomaly cleared; holder cleared (release condition 1). Otherwise **409** |
+| `retain_all` | Always allowed | Each order: `NEVER_EXPOSED_PROVEN` → orphan event only; otherwise → `retainedOrders` (`anomaly_found`, with class). Attempt → RETIRED if its marker was committed, else SUPERSEDED (only if `NEVER_EXPOSED_PROVEN`), else RETIRED (fail-closed). Anomaly cleared; holder cleared |
+
+### 2.5 Gateway payments, allocations and refunds
+
+#### 2.5.1 Payment and allocation
+
+- **`gatewayPayments/{paymentId}`** (`create()`); immutable identity: `paymentId`, `orderId`, `amountPaise`, `currency`, `captureState`, `intentId?`, `attemptId?`, `boundPlayerId?`, `capturedAt`, `firstEventId`.
+- **Application:** `applied | rejected_duplicate | unmatched | reversed | partially_reversed`; changes are recorded as payment events.
+- **Allocation:** `allocations/alloc_<paymentId>` (`create()`, **immutable**; ≤ 1 per payment). Fields: `lines[]: {obligationKey, allocatedPaise}`, `basis: webhook_intent | webhook_attempt | reviewed_bound | reviewed_finance_attested`, `decidedBy`, `reason?`, `requestId?`, `targetPlayerId`, `payerIdentityEvidence?`, `at`.
+  - **Constraint:** Σ `allocatedPaise` == net captured at allocation time (§2.5.2), and each `allocatedPaise` == that obligation's payable amount at that time.
+- **Per-line reversal:** `allocations/alloc_<paymentId>/lineReversals/{obligationKey-hash}` (`create()`, once per line).
+
+#### 2.5.2 Deterministic refund ledger (B12)
+
+**Rows:** `gatewayPayments/{id}/refunds/{refundId}`, doc ID = Razorpay refund ID (`rfnd_…`), `create()`, so a refund can never be recorded twice.
+- Fields: `amountPaise`, `mapping` (see below), `state: initiated | processed | failed`, `evidence`, timestamps.
+- State changes once: `initiated` → `processed` | `failed`.
+
+**Mapping (`mapping` field):**
+
+| Payment situation | Required mapping | Rule |
+|---|---|---|
+| Not allocated (`rejected_duplicate`, `unmatched`) | `{type: "payment"}` | Reduces payment-level net only |
+| Allocated, single line | `{type: "line", obligationKey}`, implied if omitted | Deterministic |
+| Allocated, multiple lines | **`{type: "line", obligationKey}` or `{type: "split", lines: [{obligationKey, amountPaise}]}`, mandatory** | A refund on an allocated bundle **without** an explicit per-line mapping is **rejected (400 `REFUND_MAPPING_REQUIRED`)**. Finance must decide which obligations the refund relates to |
+
+**Derived amounts** (recomputed **from all rows** inside every transaction that reads or changes refunds, never incrementally):
+
+| Quantity | Definition |
 |---|---|
-| ACTIVE, RETIRED, ACTIVATION_FAILED, OUTCOME_UNKNOWN, RECONCILING, RECOVERED (and `firstPaymentId` unset) | → **CLOSED_UNAPPLIED**; `firstPaymentId` = this payment; `orderIdLate` / `gatewayOrderId` recorded if missing |
-| ANOMALY_MULTIPLE | **State unchanged** (Finance must resolve, §2.4); event `payment_during_anomaly` |
-| PAID, CLOSED_UNAPPLIED, SUPERSEDED, FAILED_NO_ORDER | **State unchanged**; event only (§4.3) |
+| `captured` | `amountPaise` |
+| `reservedTotal` | Σ amounts of rows in `initiated` ∪ `processed` (failed excluded) |
+| `processedTotal` | Σ amounts of `processed` rows |
+| `netCaptured` | `captured − processedTotal` |
+| `line.reserved(k)` | Σ mapped amounts to line k in `initiated` ∪ `processed` |
+| `line.processed(k)` | Σ mapped amounts to line k in `processed` |
+| `line.net(k)` | `allocatedPaise(k) − line.processed(k)` |
+| `aggregateNetAllocated` | Σ `line.net(k)` |
+| `pendingCount` | number of `initiated` rows |
 
-#### 2.3.1 Revalidation before (re-)exposure (unchanged)
+**Enforced constraints** (checked when a row is created and on every transition; violation → 409, no write):
 
-One transaction; all must hold:
-1. the claim holder is this attempt at its fence, and the claim has no anomaly;
-2. every obligation is `unpaid` at the expected `settlementVersion`;
-3. the payer binding is unchanged (`userId`; player not merged or disabled; obligation owned by that player);
-4. the amount equals a fresh `derivePayableAmount()`, and the currency matches;
-5. the order fetched by ID (G1) has matching amount, currency and `notes.attemptId`, and status `created` or `attempted`.
-
-Failure → not exposed; Finance (`supersede` if never exposed, else `retire_exposed`).
-
-### 2.4 `ANOMALY_MULTIPLE` lifecycle (B8)
-
-**Definition.** It is **both**:
-- **(a) an attempt state:** the attempt's own receipt maps to more than one gateway order (should be impossible with one create per attempt; indicates a bug, external creation or a gateway defect);
-- **(b) a claim anomaly flag:** the obligation has more than one possibly-payable order that is not covered by an active override.
-
-Sources of (b):
-- (a) on the holder attempt;
-- reconciliation or webhook finding a payment or order for the obligation linked to an attempt that is neither the holder nor already retained;
-- migration finding more than one legacy order for one obligation (§8).
-
-**Owner and holder:** the claim keeps `holderAttemptId` (unchanged) and records `anomaly.attemptIds` and `anomaly.orderIds`. Each discovered order is linked in `gatewayOrders/{orderId}` (`create()`; an existing link is kept, and a conflicting link → B5 identity anomaly).
-
-**Blocking:**
-- `claimObligations` (§4.1) returns 409 `PAYMENT_UNDER_REVIEW` for any claim with an anomaly. **There is no other order-creation path** (legacy creation goes through the same non-flaggable guard, §8).
-- Webhook payments for obligations whose claim has an anomaly → `REJECT_DUPLICATE` (`ANOMALY_PENDING`) → review (§4.2 R6). They are never auto-applied.
-
-**Resolution:** `resolve_anomaly` (Finance / Super; §4.7):
-
-| Option | Preconditions | Attempt transition | Claim transition |
-|---|---|---|---|
-| `adopt {orderId}` | `orderId` ∈ anomaly orders; fetch-validated (G1); **every other anomaly order was never exposed** (no `exposedAt` on its attempt and not returned by any response) | → RECOVERED → revalidate → ACTIVE | anomaly cleared; other orders recorded in `retainedOrders` with `anomaly_found` **only if** they could have been exposed; never-exposed orphans recorded in claim events only |
-| `supersede_all` | **No** anomaly order was ever exposed | → SUPERSEDED | anomaly cleared; holder cleared; derived OPEN (release condition 1) |
-| `retain_all` | Any anomaly order was or may have been exposed | → RETIRED (if exposed) or SUPERSEDED (if never exposed) | anomaly cleared; all possibly-exposed orders → `retainedOrders` (`anomaly_found`); derived RETAINED |
-
-**Audit:** claim event + attempt event + `auditLogs`. **Idempotency:** `requestId` (§4.0). **Failure:** 409 if preconditions fail, with no partial change.
-
-### 2.5 Gateway payment, allocations and refunds
-
-- **`gatewayPayments/{paymentId}`**, created with `create()`.
-- **Immutable identity:** `paymentId`, `orderId`, `amountPaise`, `currency`, `captureState: "captured"`, `intentId?`, `attemptId?`, `boundPlayerId?` (from the intent), `capturedAt`, `firstEventId`.
-- **Application** ∈ `applied | rejected_duplicate | unmatched | reversed`, set at creation. It is changed later only by `apply_reviewed_payment` (→ `applied`) and `complete_gateway_reversal` (→ `reversed`); each change appends a payment event and keeps the prior value in the event.
-- **Allocations (B7):** `gatewayPayments/{id}/allocations/{alloc_<paymentId>}`, created with `create()`, so **at most one allocation per payment**. Fields:
-  - `obligationKeys[]`, `perObligationPaise[]`, `basis: "intent_bound" | "attempt_bound" | "finance_attested"`
-  - `decidedBy` (`system` | uid), `reason`, `requestId`, `at`
-  - `targetPlayerId`, `payerIdentityEvidence` (finance-attested only).
-  - The webhook APPLY writes the allocation with basis `intent_bound` / `attempt_bound`.
-- **Refunds:** `gatewayPayments/{id}/refunds/{refundId}` (append-only rows) `{amountPaise, state: initiated|processed|failed, obligationKey?, evidence, timestamps}`.
-  - Summary on the payment: `refundInitiatedPaise`, `refundProcessedPaise`, `refundPendingCount`, `refundStatus` ∈ `not_required | required | partially_refunded | refunded | intervention_required`.
-  - Invariant: Σ non-failed refund rows ≤ `amountPaise`.
-  - `processed` only with evidence (G5-dependent webhook, or a Finance dashboard record).
-  - **`initiated` never counts as refunded.**
-- **Anomalies:** `gatewayPayments/{id}/anomalies/{an_<hash>}` (B5).
-
-### 2.6 Exposure and claim-release rules (B6)
-
-**Adding to `retainedOrders`** (always together with a claim event):
-
-| Event | Retained entry |
+| # | Constraint |
 |---|---|
-| An ACTIVE holder is retired (`retire_exposed`; manual settle, sponsor or waive with acknowledgement; `apply_reviewed_payment` with `retireConflictingAttempt`) | `{orderId: holder's, reason: "exposed_retired"}`; holder cleared |
-| Any payment is **applied** to the obligation (webhook APPLY or `apply_reviewed_payment`) | `{orderId: the payment's order, reason: "paid_applied"}`; holder cleared if it was that attempt. *Rationale: whether a paid order can accept another payment is unverified (G3)* |
-| `resolve_anomaly retain_all` / `adopt` | possibly-exposed anomaly orders, `reason: "anomaly_found"` |
+| C1 | `reservedTotal ≤ captured`: total refunds, including initiated, never exceed captured |
+| C2 | For each line k: `line.reserved(k) ≤ allocatedPaise(k)`. The net allocation to an obligation never exceeds what it owed, and a refund can't reduce a line below zero |
+| C3 | `aggregateNetAllocated ≤ netCaptured`. For allocated payments, every processed refund is line-mapped, so this holds with equality; payment-level rows on an allocated payment are rejected (table above) |
+| C4 | A row mapped to line k changes only `line.*(k)`; other lines' figures are untouched (mapping is explicit and immutable) |
+| C5 | No double counting: one row per Razorpay refund ID (`create()`); one state change per row; totals recomputed from rows |
+| C6 | `initiated` is never `processed`: only `processed` rows reduce `net`; `initiated` rows reserve capacity (C1/C2) and block actions that need certainty (§4.6 V9, R-G2) |
 
-**Releasing a claim (removing retained orders or clearing a holder so that new order creation becomes possible) is permitted ONLY when:**
+**Lifecycle effects:**
+- **Multiple partial refunds:** additional rows, each C1–C5 checked.
+- **Failed refund:** the row → `failed`; its reservation is released (excluded from `reserved*`); the payment summary becomes `intervention_required` until Finance records a follow-up.
+- **Per-line reversal (R-G2):** allowed for line k only when `line.processed(k) == allocatedPaise(k)` and no `initiated` row maps to k. It creates `lineReversals/{k}`. Payment application → `partially_reversed`, or `reversed` when all lines are reversed.
+- **Non-deterministic mapping** (e.g. a refund recorded in the dashboard without knowing which item it relates to): reject the record; the payment stays `intervention_required` for Finance reconciliation.
 
-| # | Condition | Mechanism | Status |
-|---|---|---|---|
-| 1 | **The order was never exposed** | Holder attempt in a never-exposed state → `supersede` (§4.7), or FAILED_NO_ORDER, or `resolve_anomaly supersede_all`. Never-exposed orders are **never added** to `retainedOrders` in the first place | Available |
-| 2 | **The gateway confirms the order cannot be paid**, by a reliable, documented verification | `verify_orders_unpayable {orderIds}` (Finance / Super). Requires a reviewer-approved, evidence-backed gateway rule (G3: a paid order cannot accept another payment; and/or G7: order cancelled or expired) **and** a per-order fetch-by-ID check at action time recorded as evidence | **Disabled** until G1 + G3/G7 are verified and the rule is approved (Q17) |
-| 3 | **Authorised `expose_replacement` override** | Finance / Super; `reason` (≥ 20 chars), `acknowledgeTwoPayableOrders: true`, `requestId`; sets `overrideActive`; a new attempt may become holder **while retained orders stay retained** (claim → HELD_OVERRIDE) | **Disabled by default** (Q13); enabling requires a written Finance policy |
+**Summary fields on the payment** (cache, rewritten in the same transaction from rows): `refundReservedPaise`, `refundProcessedPaise`, `netCapturedPaise`, `refundPendingCount`, `refundStatus` ∈ `not_required | required | partially_refunded | refunded | intervention_required`.
 
-**Nothing else releases a claim.** In particular: obligation reversal, waiver, sponsorship, manual settlement, refunds (including full processed refunds), and time do not.
+### 2.6 Claim release and the one-time override (B10)
 
-### 2.7 Reversal workflow matrix (B6)
+**Retention** (adding to `retainedOrders`) happens whenever an order's exposure class is `EXPOSURE_UNKNOWN` or `EXPOSED_PROVEN` and it is not the current holder's own ACTIVE order (§2.8, §4.4). Paid orders are retained (`paid_applied` / `paid_rejected`).
 
-Common to all reversals:
-- Finance or Super Admin only;
-- `reason` required; `requestId` (§4.0);
-- one transaction;
-- compare-and-set on `settlementVersion`;
-- an append-only settlement event that references the original event;
-- `auditLogs`;
-- original settlement, payment and allocation records preserved.
+**Release is permitted only by:**
+1. **`NEVER_EXPOSED_PROVEN`** for the order or attempt (§2.8): `supersede`, FAILED_NO_ORDER, `resolve_anomaly supersede_all`. Such orders are never retained.
+2. **Gateway-verified unpayable** (`verify_orders_unpayable`): **disabled** until G1 + G3/G7 are verified and the rule approved (Q17).
+3. **One-time override (consumed):** described below.
 
-**No reversal releases or clears a claim, and no reversal writes an attempt state.**
+#### 2.6.1 Override record: `claimOverrides/{ov_<uuid>}`
 
-| Workflow | Obligation transition | Claim transition | Existing attempt transition | Exposed order remains payable? | Replacement order permitted after reversal? | Authorisation + audit |
+- **Fields:** `obligationKeys[]` (exactly the claims of one obligation or one bundle), `reason` (≥ 20 chars), `acknowledgeTwoPayableOrders: true`, `authorisedBy`, `requestId`, `state`, `boundAttemptId?`, `expiresAt` (authorisation + 24 h, Q22), `retainedOrdersAtAuthorisation[]` (snapshot), append-only `events`.
+- **Feature flag:** `expose_replacement` disabled by default (Q13). When disabled, authorisation returns 403 `OVERRIDE_DISABLED`.
+
+| State | Meaning | Next |
+|---|---|---|
+| `AUTHORISED` | Approved; not yet used | `BOUND` (a replacement attempt claims it); `EXPIRED` (lazily, at first read after `expiresAt`); `REVOKED` (Finance) |
+| `BOUND` | A replacement attempt (CLAIMED) holds the claims under this override | `CONSUMED` (the attempt enters CREATING); `RELEASED` (the bound attempt is SUPERSEDED **from CLAIMED**, i.e. no create was ever sent) |
+| `RELEASED` | Bound attempt never sent a create | `BOUND` again (same override, still before `expiresAt`) |
+| `CONSUMED` | The one permitted replacement create was sent (or may have been) | terminal |
+| `EXPIRED`, `REVOKED` | Unused | terminal |
+
+**Rules:**
+
+| Question | Rule |
+|---|---|
+| How the replacement acquires the holder | In `claimObligations` (§4.1), one transaction: all claims RETAINED, no anomaly; override `AUTHORISED` (or `RELEASED`), not expired, and covering exactly these obligation keys; CAS override `state` → `BOUND`, `boundAttemptId` = new attempt; each claim `holderAttemptId` = new attempt, `boundOverrideId` = override; attempt CLAIMED with `overrideId` |
+| When consumed | In the **same transaction** that moves the bound attempt CLAIMED → CREATING (before `orders.create` is sent). From then on an order may exist, so the override can never be reused |
+| Exactly one replacement order creation | Yes. A `BOUND` / `CONSUMED` override admits only `boundAttemptId`; a `CONSUMED` override admits nothing further |
+| Concurrent requests | Both transactions CAS the override state and claim holders; exactly one commits `BOUND`; the other re-reads and sees HELD_OVERRIDE (another attempt) → returns that attempt's ACTIVE order or 409 `PAYMENT_BEING_VERIFIED` |
+| Timeout / unknown outcome | Attempt → OUTCOME_UNKNOWN; override stays `CONSUMED`; claim HELD_OVERRIDE with a non-ACTIVE holder → 409 for new requests; normal reconciliation. **No second replacement** |
+| Create succeeded, persistence (transaction P) failed | Attempt → OUTCOME_UNKNOWN after lease expiry; order unrecorded; later discovery → `NEVER_EXPOSED_PROVEN` (no marker) → orphan event; override `CONSUMED`. If activation transaction A failed → ACTIVATION_FAILED → revalidate → ACTIVE, or `supersede` (`NEVER_EXPOSED_PROVEN`) |
+| Retry | The client retries the order request → claim HELD_OVERRIDE → the same attempt's ACTIVE order is returned after revalidation, or 409. Never a new attempt |
+| Old retained orders | **Permanently recorded**; never removed by the override. The replacement's own order, when the replacement attempt leaves the holder role (PAID, RETIRED, SUPERSEDED), is added to `retainedOrders` per §2.8, and `boundOverrideId` is cleared |
+| Another replacement | Requires a **new** override record (new approval, new `requestId`, new reason and acknowledgement) |
+| Not a general bypass | Binding is refused while there's an anomaly, for different obligation keys, after expiry or revocation, or when consumed. An override never changes retained orders, settlement, or another obligation |
+
+### 2.7 Reversal workflows
+
+#### 2.7.1 Matrix (revision 4 §2.7 retained; amounts per §2.7.2)
+
+| Workflow | Obligation | Claim | Attempt | Exposed order payable? | Replacement allowed? | Role + audit |
 |---|---|---|---|---|---|---|
-| **R-M** `reverse_manual_settlement` | `settled_manual` → `unpaid` | **None** (event `reversal_observed`). If the claim was RETAINED (an order was exposed when cash was taken, §4.5) it **stays RETAINED** | None (the retired attempt stays RETIRED; terminal attempts unchanged) | **Yes**, if a retained order exists; a payment on it → REJECT_DUPLICATE (`ATTEMPT_RETIRED`) → review; Finance may `apply_reviewed_payment` | Only if the claim is OPEN (no order was ever exposed). If RETAINED → **no**, except via release condition 2 or 3 | Finance / Super; settlement event `manual_settlement_reversed`; claim event; audit |
-| **R-G1** `initiate_gateway_reversal` | `settled_gateway` → `reversal_pending` | None (paid order already retained, `paid_applied`) | None (PAID is terminal) | **Unverified (G3)**; treated as possibly payable | No (obligation not unpaid) | Precondition: ≥ 1 refund row `initiated` for this payment earmarked to the obligation; payment event `reversal_initiated`; audit |
-| **R-G2** `complete_gateway_reversal` | `reversal_pending` → `unpaid` or `waived` (Finance chooses, reason) | **None**: the paid order **stays retained** | None | Treated as possibly payable (G3); any payment on it → REJECT_DUPLICATE (`ADDITIONAL_PAYMENT_FOR_ATTEMPT`) → review | **No**, except release condition 2 (when G3 is verified) or 3. The obligation can be settled manually | Precondition: processed refunds earmarked to this obligation ≥ its allocated amount (**processed, not initiated**); allocation → `reversed`; payment event; settlement event `gateway_settlement_reversed`; audit |
-| **R-G3** `cancel_gateway_reversal` | `reversal_pending` → `settled_gateway` | None | None | as above | No | Refund failed or abandoned; events; audit |
-| **R-S** `reverse_sponsorship` | Sponsored obligation `sponsored` → `unpaid`; the sponsor's obligation amount restored (`feeOverride`, `sponsoring` cleared). Both in one transaction | **None** on either claim. Precondition: **the sponsor's claim is OPEN** (no holder, no retained, no anomaly), because restoring its amount would invalidate any order exposed at the old amount; else 409 `SPONSOR_HAS_ONLINE_ORDER` | None | The sponsored player's claim: if RETAINED (an order was exposed before sponsorship) it stays RETAINED and payable → review if paid | Sponsored obligation: only if its claim is OPEN; else release condition 2 or 3 | Precondition: the sponsor's obligation `unpaid` (else 409 `SPONSOR_ALREADY_PAID`, Q15); two cross-referenced settlement events; audit |
-| **R-W** `reverse_waiver` | `waived` → `unpaid` | **None**; RETAINED stays RETAINED | None | Yes if retained; payment → review | Only if the claim is OPEN; else condition 2 or 3 | Precondition: if waived by abandonment, the match is no longer abandoned; settlement event `waiver_reversed`; audit |
+| R-M `reverse_manual_settlement` | `settled_manual` → `unpaid` | none (event) | none | yes if retained → payment → review | only if claim OPEN; else release condition 2 or 3 | Finance / Super; settlement event; audit |
+| R-G1 `initiate_gateway_reversal {obligationKey}` | `settled_gateway` → `reversal_pending` | none | none (PAID terminal) | treated as payable (G3) | no | requires ≥ 1 `initiated` or `processed` refund row mapped to that line |
+| R-G2 `complete_gateway_reversal {obligationKey, to: unpaid\|waived}` | `reversal_pending` → `unpaid` / `waived` | none (paid order stays retained) | none | treated as payable | only release condition 2 or 3 | requires `line.processed(k) == allocatedPaise(k)` and no `initiated` row mapped to k (§2.5.2); creates `lineReversals/{k}` |
+| R-G3 `cancel_gateway_reversal` | `reversal_pending` → `settled_gateway` | none | none | – | no | refund failed or abandoned |
+| R-S `reverse_sponsorship` | §2.7.2 | none on either claim | none | sponsored claim RETAINED stays | only if the sponsored claim is OPEN | §2.7.2 |
+| R-W `reverse_waiver` | `waived` → `unpaid` | none | none | yes if retained | only if claim OPEN | abandonment guard |
 
-**Consequence:** a reversal can make an obligation `unpaid` while online payment stays unavailable (RETAINED). The payer then pays by cash (`settle_manual`), or Finance applies a later payment on the retained order through review. **A reversal never creates a second payable order.**
+#### 2.7.2 Amounts and sponsorship (B13)
+
+**Amount model** (all obligations whose amount can change: match fees, other fees):
+
+| Component | Representation |
+|---|---|
+| **Base amount** | `amountBasePaise`: the fee from the fee plan / template / override decision. Changed only by `set_base_amount` (Finance, with event; this is today's `feeOverride` semantics) |
+| **Adjustments** | `obligationAdjustments/{adj_<uuid>}`, append-only: `{obligationKey, type: sponsorship_add \| sponsorship_remove \| other, amountPaise (signed), sponsorshipId?, compensatesAdjId?, by, reason, requestId, at}` |
+| **Payable amount** | `amountBasePaise + Σ adjustments(obligationKey)`, computed server-side (used by `derivePayableAmount`, revalidation and allocation) |
+| **Sponsorship record** | `sponsorships/{sp_<uuid>}`: `{sponsoredKey, sponsorKey, amountPaise, state: active \| reversed, createdAdjIds, reversedAdjIds, sponsoredVersionAtCreate, sponsorVersionAtCreate}` |
+
+**`mark_sponsored {sponsoredKey, sponsorKey}`** (Finance / Super; `requestId`; one transaction):
+
+| Item | Rule |
+|---|---|
+| Preconditions | Sponsored obligation `unpaid` at its expected version; **sponsor obligation `unpaid` at its expected version**; **sponsor claim OPEN** (no holder, no retained, no anomaly), because a sponsor order exposed at the old amount must not exist; sponsored claim: OPEN or RETAINED (retained stays), or HELD by ACTIVE only with `acknowledgeOpenOnlinePayment` (→ RETIRED + retained); not HELD by a non-ACTIVE attempt; no anomaly on either |
+| Amount | `X` = the sponsored obligation's **current payable amount** |
+| Writes | `sponsorships/{sp}` (active, X); adjustment `sponsorship_add +X` on the sponsor; sponsored obligation → `sponsored` (`sponsorshipId`), version +1; sponsor version +1; two settlement events cross-referencing `sponsorshipId` and each other; claim events; audit |
+| Failure | 409 with a code, no writes |
+| Idempotency | `requestId`; one active sponsorship per sponsored obligation (CAS on its version) |
+
+**`reverse_sponsorship {sponsorshipId}`** (Finance / Super; `requestId`; one transaction):
+
+| Item | Rule |
+|---|---|
+| Preconditions | Sponsorship `active`; sponsored obligation `sponsored` with this `sponsorshipId`; **sponsor obligation `unpaid`** (else 409 `SPONSOR_ALREADY_PAID`, Q15); **sponsor claim OPEN** (else 409 `SPONSOR_HAS_ONLINE_ORDER`); no anomaly; both expected versions match |
+| Amount handling | A **compensating adjustment** `sponsorship_remove −X` on the sponsor (references the original adjustment). **Nothing is restored from a snapshot**, so intervening base-amount changes on either obligation are preserved. The sponsored obligation's payable amount after reversal is its **current** base + adjustments |
+| Writes | Adjustment; sponsorship → `reversed`; sponsored obligation → `unpaid` (version +1); sponsor version +1; two settlement events cross-referenced; claim events (no claim state change); audit |
+| Intervening changes | Sponsor or sponsored base amount changed after sponsorship: allowed; the result is base(current) + remaining adjustments (recorded in the events: before and after payable for both). Sponsor **settled** in between: 409 (above). Sponsored obligation's settlement changed (not `sponsored` with this ID): 409 `SPONSORSHIP_STATE_CHANGED` |
+| Legacy sponsorships (pre-R4, `feeOverride` overwritten, `sponsoring` set) | Migration records each as a sponsorship with `legacy: true`, the sponsor's then-current `feeOverride` and the sponsored amount, **without** splitting base and adjustment. `reverse_sponsorship` on a legacy record requires the sponsor's **current** `feeOverride` == the recorded value (no intervening change); else 409 `LEGACY_SPONSOR_AMOUNT_CHANGED` → Finance uses `set_base_amount` explicitly (audited). Never an automatic restore |
+| Idempotency | `requestId`; sponsorship state CAS (`active` → `reversed` once) |
+
+---
+
+## 2.8 Exposure classification (B14) and order lifecycle (B9)
+
+### 2.8.1 Order lifecycle stages and evidence
+
+| Stage | Recorded as | Durable? |
+|---|---|---|
+| S1 Gateway order created | Not observable by us until S2 or later discovery | – |
+| S2 Order ID received by the server | In memory only | No |
+| S3 Order ID persisted | **Transaction P:** attempt `gatewayOrderId` (attempt non-terminal, fence valid) + `gatewayOrders/{orderId}` `create()` `{attemptId, source: "create_response", exposureClass: NEVER_EXPOSED_PROVEN}` + event | Yes |
+| S4 **Response authorised (write-ahead marker)** | **Transaction A:** revalidate; attempt → ACTIVE; `exposure.markerAt`; `gatewayOrders/{orderId}.exposureClass` → `EXPOSURE_UNKNOWN`; claim holder confirmed; event `response_authorised`. **This is the only code path permitted to place a gateway order ID in any HTTP response** | Yes |
+| S5 Response sent to the client | Not reliably observable (a crash may occur during or after send) | – |
+| S6 Exposure proven | `gatewayOrders/{orderId}.exposureClass` → `EXPOSED_PROVEN` via (a) a signed captured payment on the order, or (b) the client checkout acknowledgement `POST /api/razorpay/order/ack {orderId}` (authenticated payer; idempotent; optional evidence, Q23) | Yes |
+
+**Response gateway invariant (I17):** the server returns an order ID to a client **only** after transaction A for that order has committed, and only on that request or on a later revalidated reuse of the same ACTIVE attempt. Transaction A requires the attempt to be non-terminal with a valid fence. Every fence bump (OUTCOME_UNKNOWN observation, supersede, retire, anomaly) is itself transactional, so either A committed before the bump (the marker exists) or A cannot commit afterwards.
+
+### 2.8.2 Classification (stored on `gatewayOrders/{orderId}.exposureClass`; monotonic: may only move up)
+
+| Class | Condition (fail-closed) |
+|---|---|
+| `NEVER_EXPOSED_PROVEN` | The order is linked to an R4 attempt **and** no `response_authorised` marker (transaction A) was ever committed for it **and** the attempt's fence has been bumped, or the attempt is terminal, so transaction A can no longer commit |
+| `EXPOSURE_UNKNOWN` | A marker was committed (response may or may not have been sent or received); **or** the order belongs to a **legacy** (pre-R4) reservation or intent (no marker mechanism); **or** the order cannot be linked to an R4 attempt; **or** the fence condition above cannot be established |
+| `EXPOSED_PROVEN` | A signed captured payment on the order, or an authenticated client acknowledgement |
+
+**Transitions:** `NEVER_EXPOSED_PROVEN → EXPOSURE_UNKNOWN → EXPOSED_PROVEN` only. A payment on a `NEVER_EXPOSED_PROVEN` order moves it to `EXPOSED_PROVEN` (it was paid, so it was reachable, e.g. a leaked ID) and triggers retention (§4.4 case L4).
+
+**Where the classification is used** (fail-closed: anything not `NEVER_EXPOSED_PROVEN` is retained or blocks release):
+
+| Use | Rule |
+|---|---|
+| `supersede` | Allowed only if the attempt's order (if any) is `NEVER_EXPOSED_PROVEN` and no marker exists on the attempt |
+| `resolve_anomaly adopt` / `supersede_all` / `retain_all` | §2.4 |
+| Late responses and discovered orders | §4.4 |
+| Retire / settle with acknowledgement | The retired order's class is `EXPOSURE_UNKNOWN` or higher, so it is retained |
+| Rollback and legacy migration | Legacy orders → `EXPOSURE_UNKNOWN` → retained (§8) |
+
+### 2.8.3 Crash windows
+
+| Crash point | Marker committed? | Class | Claim effect |
+|---|---|---|---|
+| Before transaction P | no | order unrecorded; on discovery → `NEVER_EXPOSED_PROVEN` (if the attempt's fence is bumped or it is terminal) | orphan event, not retained |
+| After P, before A | no | `NEVER_EXPOSED_PROVEN` (after fence bump) | not retained; `supersede` allowed |
+| After A commits, before the response is constructed | yes | `EXPOSURE_UNKNOWN` | retained if it leaves the holder role |
+| During send | yes | `EXPOSURE_UNKNOWN` | retained |
+| After send | yes | `EXPOSURE_UNKNOWN` (or `EXPOSED_PROVEN` after ack or payment) | retained |
 
 ---
 
 ## 3. Data model and identifiers
 
-Revision 3 §3 is retained, with these changes.
+Revision 4 §3 is retained; changes and additions:
 
-- **Collections** (all server-only; `allow write: if false`):
-  - `paymentAttempts` (+ `events`)
-  - `paymentObligationClaims` (+ `events`; model §2.2)
-  - `gatewayOrders`
-  - `gatewayPayments` (+ `allocations`, `refunds`, `anomalies`, `events`)
-  - `lateFeeObligations`, `subscriptionPeriods` (+ `settlementEvents`)
-  - `adminRequests` (§4.0)
-- **Read access:** Finance or Super Admin for attempts, payments and their subcollections, claims (read-only, for reconciliation screens), settlement events and admin requests. `gatewayOrders` is deny-all.
-- **Canonical keys and doc IDs:** segments matching `^[A-Za-z0-9_\-]{1,128}$` or encoded as `b64:`; doc ID = prefix + base64url(SHA-256(key)); stored key compared on read; a collision → anomaly, fail closed.
-
-| Obligation | Canonical key | Record |
-|---|---|---|
-| Match fee | `match|{matchId}|{paymentDocId}` | `matches/{m}/payments/{p}` |
-| Other fee | `fee|{playerId}|{feeId}` | `players/{p}/otherFees/{f}` |
-| Late fee | `latefee|{playerId}|{matchId}|{templateId}` | `lateFeeObligations/{lfo_…}` (+ display mirror `otherFees/{lfo_…}`; legacy `lf_${intentId}` via dry-run backfill; pre-backfill ambiguity → review) |
-| Subscription period | `sub|{playerId}|{planId}|{periodStart}` | `subscriptionPeriods/{sp_…}` |
-| Merchandise | `merch|{merchOrderId}` (server-minted) | `merchOrders/{id}` |
-
-**Uniqueness:**
-
-| Constraint | Mechanism |
+| Collection | Notes |
 |---|---|
-| One attempt per gateway order ID | `gatewayOrders/{orderId}` `create()` |
-| One accounting record per payment ID | `gatewayPayments/{paymentId}` `create()` |
-| One allocation per payment | `allocations/alloc_<paymentId>` `create()` |
-| One holder per claim | compare-and-set on `holderFence` |
-| One settlement per obligation per cycle | `settlementVersion` compare-and-set |
-| One gateway create per attempt | CREATING entered once (fenced) |
-| One result per admin request | `adminRequests/{requestId}` `create()` |
+| `paymentAttempts` (+ `events`) | `exposure {markerAt?}` replaces `exposedAt`; `overrideId?`. **No `orderIdLate`** (late orders live on `gatewayOrders`) |
+| `gatewayOrders/{orderId}` | `{attemptId?, intentId?, obligationKeys[], source: create_response \| late_response \| reconcile \| webhook \| finance_attach \| legacy_migration, exposureClass, exposureEvidence[], firstSeenAt}`. `create()`; class monotonic; an existing link with a different `attemptId` → IDENTITY anomaly (§4.4) |
+| `paymentObligationClaims` (+ `events`) | §2.2 fields |
+| `claimOverrides/{ov_…}` (+ `events`) | §2.6.1 |
+| `gatewayPayments` (+ `allocations`/`lineReversals`, `refunds`, `anomalies`, `events`) | §2.5 |
+| `obligationAdjustments`, `sponsorships` | §2.7.2 |
+| `lateFeeObligations`, `subscriptionPeriods`, `merchOrders` (server-minted IDs) | unchanged |
+| `adminRequests/{requestId}` | admin idempotency |
+| `orderAcks/{orderId}_{uid}` | client acknowledgement (S6b), `create()` |
 
-- **Bundles:** at most 20 obligations per payment, all of one player. Footprint as in revision 3 §3.5, plus one claim-event write and one allocation per obligation (≤ about 130 writes worst case). The footprint is asserted in tests and fails closed. Platform limits were not re-verified here.
+All of these are server-written only (`allow write: if false`). Finance / Super read access applies to attempts, claims, orders, payments (+ subcollections), overrides, adjustments, sponsorships and admin requests.
+
+**Canonical keys and IDs** (unchanged): validated or `b64:`-encoded segments; doc ID = prefix + base64url(SHA-256); collision detection fails closed.
+
+**Uniqueness (additions):**
+- one override binding per override (CAS);
+- one consumption per override;
+- one refund row per Razorpay refund ID;
+- one line reversal per (payment, obligation);
+- one active sponsorship per sponsored obligation;
+- one acknowledgement per (order, uid).
+
+**Bundles:** ≤ 20 obligations, one player. Transaction footprint asserted (≤ about 150 writes worst case including adjustments and refund recomputation); fail closed above it.
 
 ---
 
-## 4. Rules: preconditions, actors, writes, transitions, audit, failure, retry, idempotency
+## 4. Rules
 
-### 4.0 Conventions for every rule
+### 4.0 Conventions (unchanged)
 
-- **Transactions:** Firestore Admin SDK; all reads before writes; contention retried by the SDK; on exhaustion the route returns **503 `{retryable: true}`** and **no partial write is visible**.
-- **Admin idempotency:** every admin action carries a client-generated `requestId` (UUID v4).
-  - The transaction `create()`s `adminRequests/{requestId}` with `{action, payloadHash, actor, result}`.
-  - Same `requestId` + same `payloadHash` → the stored result is returned (200, `idempotentReplay: true`), with no writes.
-  - Same `requestId` + different payload → 409 `REQUEST_ID_REUSED`.
-- **Webhook idempotency:** keyed on `gatewayPayments/{paymentId}` (and anomaly IDs). Status: 2xx only after commit; 503 on failure; **401** bad signature; **400** malformed JSON (R3).
-- **Audit:** human actions → `auditLogs` (via `writeServerAudit`) **plus** domain events, in the same transaction. System actions → domain events.
-- **Failure codes:**
-  - 400 input invalid;
-  - 401 / 403 authentication or role;
-  - 404 not found;
-  - **409 precondition** (body `{code}`, no writes);
-  - 503 retryable.
+- Admin Firestore transactions read before they write.
+- Contention: SDK retry; on exhaustion **503 `{retryable: true}`** with no partial effect.
+- Admin `requestId` idempotency via `adminRequests` (same payload → replay 200; different → 409 `REQUEST_ID_REUSED`).
+- Webhook idempotency via `gatewayPayments` / anomaly / `gatewayOrders` `create()`; 2xx only after commit; 401 bad signature; 400 malformed JSON.
+- Audit: domain events always; `auditLogs` for humans, in the same transaction.
+- Failure: 400 / 401 / 403 / 404 / 409 (code, no writes) / 503.
 
-### 4.1 Order route: `claimObligations` + create
+### 4.1 Order route
 
-| Item | Rule |
+| Step | Rule |
 |---|---|
-| Actor | Authenticated player (R1 guard); only their own obligations (L5) |
-| Preconditions | 1–20 obligations, one player; each obligation `unpaid`; each claim derived **OPEN** (new attempt) or **HELD** by this payer's ACTIVE attempt with an identical obligation set and amount (reuse) |
-| Reads | All obligation records + claims (+ holder attempts) |
-| Writes (new) | Attempt CLAIMED (`obligationKeys`, `claimIds`, amount); each claim `holderAttemptId`, `holderFence` +1, claim event; late-fee obligations, subscription periods and merch orders minted if absent |
-| Outcomes | settled → 409 `ALREADY_PAID`; RETAINED → 409 `ONLINE_PAYMENT_UNAVAILABLE`; ANOMALY → 409 `PAYMENT_UNDER_REVIEW`; HELD by another or non-ACTIVE attempt → 409 `PAYMENT_BEING_VERIFIED`; HELD reuse → revalidate (§2.3.1) → order, or 409; > 20 → 400 |
-| Then | CREATING written **before** `orders.create({receipt: attemptId, notes: {intentId, attemptId}})`; response → persist + `gatewayOrders` create → ACTIVE + `exposedAt` → return. Failures classified per §2.3. **Expired-`reserving` takeover removed** |
-| Retry and idempotency | A repeat request finds HELD → returns the same order (reuse) or 409. It never creates twice |
+| Claim (transaction) | ≤ 20 obligations, one player, all `unpaid`. Each claim: **OPEN** → new attempt (holder); **RETAINED** with a bindable override covering exactly these keys → bind (§2.6.1); **HELD / HELD_OVERRIDE** by this payer's ACTIVE attempt with an identical set and amount → revalidate and reuse; otherwise 409 (`ONLINE_PAYMENT_UNAVAILABLE`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_BEING_VERIFIED`, `ALREADY_PAID`) |
+| CREATING (transaction) | fenced; consumes a bound override; then `orders.create({receipt: attemptId, notes: {intentId, attemptId}})` |
+| Response | Transaction P (persist), then transaction A (marker), then return the order (§2.8.1) |
+| Failures | §2.3 classification |
+| Legacy | expired-`reserving` takeover removed |
+| Idempotency | the claim holder makes repeats return the same order or 409 |
 
-### 4.2 `decidePaymentApplication(attempt, obligations, paymentEvent)` (pure; evaluated in order)
+### 4.2 Decision function `decidePaymentApplication` (revision 4 rules R1–R10 retained; R11 added)
 
-| Rule | Condition | Decision |
-|---|---|---|
-| R1 | `gatewayPayments/{paymentId}` exists and immutable identity matches | `REPLAY` |
-| R2 | exists and any identity field conflicts | `IDENTITY_CONFLICT` |
-| R3 | No binding (unknown intent or attempt, no `intentId`) or contradiction (order, amount, currency vs intent or attempt) | `REJECT_INVALID` |
-| R4 | Attempt **FAILED_NO_ORDER** | `REJECT_DUPLICATE` (`FAILED_NO_ORDER_CONTRADICTED`) + classification anomaly |
-| R5 | Attempt **SUPERSEDED** / **RETIRED** | `REJECT_DUPLICATE` (`ATTEMPT_SUPERSEDED` / `ATTEMPT_RETIRED`) |
-| R6 | Attempt **ANOMALY_MULTIPLE**, or any claim with an anomaly | `REJECT_DUPLICATE` (`ANOMALY_PENDING`) |
-| R7 | Attempt PAID or CLOSED_UNAPPLIED (has `firstPaymentId`), or intent `paid` / `paid_unapplied` with a different payment | `REJECT_DUPLICATE` (`ADDITIONAL_PAYMENT_FOR_ATTEMPT`) |
-| R8 | Any obligation not `unpaid`; or the claim holder ≠ this attempt; or the attempt is not the holder (incl. HELD_OVERRIDE, where a different attempt holds); or legacy late-fee ambiguity | `REJECT_DUPLICATE` (per-obligation reasons) |
-| R9 | Amount ≠ current payable sum for the attempt's obligations (e.g. fee changed after exposure) | `REJECT_DUPLICATE` (`AMOUNT_NO_LONGER_MATCHES`) |
-| R10 | Otherwise | `APPLY` |
+- **R1:** REPLAY on matching identity.
+- **R2:** IDENTITY_CONFLICT.
+- **R3:** REJECT_INVALID.
+- **R4:** FAILED_NO_ORDER → REJECT_DUPLICATE + classification anomaly.
+- **R5:** SUPERSEDED / RETIRED → REJECT_DUPLICATE.
+- **R6:** anomaly (attempt or claim) → REJECT_DUPLICATE.
+- **R7:** attempt has `firstPaymentId` → REJECT_DUPLICATE.
+- **R8:** obligation not `unpaid`, or holder ≠ attempt → REJECT_DUPLICATE.
+- **R9:** amount ≠ current payable → REJECT_DUPLICATE.
+- **R10:** APPLY.
+- **New R11 (evaluated before R3):** order not linked in `gatewayOrders` → link-or-classify per §4.4 L4 first, then evaluate.
 
-**All or nothing:** one failing obligation rejects the whole payment.
+### 4.3 Webhook write sets
 
-### 4.3 Webhook transaction write sets (B2 + B8)
+Revision 4 §4.3 is retained, with these changes:
+- Every decision that records a payment for a linked order also **raises that order's `exposureClass` to `EXPOSED_PROVEN`** (event `exposure_proven_by_payment`).
+- **APPLY:** claim holder cleared; order → `retainedOrders` (`paid_applied`).
+- **REJECT_DUPLICATE:** order → `retainedOrders` (`paid_rejected`) on every claim of the bound obligations, applying the retention-while-held rule (§2.2).
+- The CLOSED_UNAPPLIED eligibility table (§2.3) governs attempt changes; terminal attempts get events only.
+- Allocation (APPLY): `alloc_<paymentId>` with basis `webhook_attempt` / `webhook_intent`; lines = the obligations' payable amounts; Σ = captured (else R9 had already rejected).
 
-| Decision | Writes (single transaction) | Attempt / intent effect | Response |
+### 4.4 Late responses and discovered orders (B9)
+
+**Common transaction LR** (one transaction per order; idempotency key = `gatewayOrders/{orderId}`):
+1. Read `gatewayOrders/{orderId}`, the attempt, its claims (+ holders), and any override.
+2. **Link:** absent → `create()` `{attemptId, source, exposureClass}`. Present with the same `attemptId` → no write (idempotent). Present with a **different** `attemptId` → `gatewayPayments`-independent **order identity anomaly** (claim anomaly flag + high-severity dead-letter `order_identity_conflict`), no other writes.
+3. **Classify** per §2.8.2.
+4. **Claim effect:** if the class ≠ `NEVER_EXPOSED_PROVEN` and the order is not the current holder's own ACTIVE order → add to `retainedOrders` with its class (retention-while-held rule may set the anomaly). If `NEVER_EXPOSED_PROVEN` → claim event `orphan_order_recorded` only.
+5. **Attempt:** non-terminal and own fence valid → as per the case; terminal → **appended event only**.
+6. Audit: events; a human-triggered reconcile also writes `auditLogs`.
+7. Response to the original HTTP request (late response cases): **409 `ORDER_NOT_AVAILABLE`, never the order ID** (the I17 marker was not committed by this request).
+
+| Case | Attempt state when the order is learned | Class | Claim effect | Attempt effect | Payable-order outcome |
+|---|---|---|---|---|---|
+| **L1** Late response, attempt OUTCOME_UNKNOWN, fence bumped by an observer | non-terminal | `NEVER_EXPOSED_PROVEN` (no marker; fence bumped) | holder unchanged (same attempt); no retention | → **RECOVERED** with `gatewayOrderId` (non-terminal, so allowed; the observer's fence is used) | Exposure only after revalidation + transaction A via `reconcile`; the original request gets 409 |
+| **L2** Late response after `supersede` (attempt was `NEVER_EXPOSED_PROVEN`) | SUPERSEDED (terminal) | `NEVER_EXPOSED_PROVEN` | orphan event; **no retention** (the claim may have a new holder) | event `order_late_after_supersede` only | none; if ever paid → L4 |
+| **L3** Late response after another terminal state: PAID / CLOSED_UNAPPLIED (a different order was used) or FAILED_NO_ORDER | terminal | `NEVER_EXPOSED_PROVEN` (marker can only exist for the attempt's own activated order) | orphan event; FAILED_NO_ORDER → also a **classification anomaly** (high; G6 rule contradicted) | event only | none |
+| **L4** Captured payment on an order not yet linked | any or none | → `EXPOSED_PROVEN` | attempt resolvable via `notes.attemptId` / intent → link + retain (`paid_*`) on that attempt's obligations' claims (retention-while-held rule). **Not resolvable** → no claim known → payment `unmatched` (REJECT_INVALID), dead-letter | per §4.3 (terminal → event only) | retained; payment decided by §4.2 |
+| **L5** Duplicate late response / duplicate payment event | – | unchanged (monotonic) | none (link exists, same `attemptId` → no write; event deduped by `eventId` = hash(orderId, source, gateway event id)) | none | none |
+| **L6** Reconciliation discovers an order after the attempt was superseded | SUPERSEDED | per §2.8.2: `NEVER_EXPOSED_PROVEN` if no marker + terminal | orphan event, no retention; if the class is not provable (e.g. legacy) → `EXPOSURE_UNKNOWN` → **retained** (+ anomaly if the claim is held) | event only | none, or retained |
+
+**Never:** a late response or discovery moves a terminal attempt to any state, sets ACTIVE without transaction A, returns an order ID in a response without transaction A, or releases a claim.
+
+### 4.5 Manual settlement endpoint (revision 4 §4.5 retained; amounts per §2.7.2)
+
+| Action | Role | Preconditions | Writes | Claim |
+|---|---|---|---|---|
+| `settle_manual` | Finance / Super; Club (match fees) | `unpaid` at version; no anomaly; not HELD by a non-ACTIVE attempt; HELD by ACTIVE → `acknowledgeOpenOnlinePayment` | `settled_manual`; event; audit | acknowledged → holder RETIRED; order retained (class ≥ `EXPOSURE_UNKNOWN`) |
+| `mark_sponsored` / `reverse_sponsorship` | Finance / Super | §2.7.2 | §2.7.2 | §2.7.2 |
+| `waive` (Finance / system abandonment) | Finance / Super; system | as `settle_manual`; abandonment retires the ACTIVE holder automatically | `waived`; event; audit | as above |
+| `set_base_amount {amountPaise, reason}` | Finance / Super | `unpaid` at version; claim OPEN or RETAINED (**not HELD**: an ACTIVE order at the old amount must be retired first) | base change; event; audit | none |
+| R-M, R-W | Finance / Super | §2.7.1 | §2.7.1 | none |
+
+All use `requestId`; failure 409 with no writes; contention 503.
+
+### 4.6 `apply_reviewed_payment` (B7 retained; B11 and B12 applied)
+
+#### 4.6.1 Validation (revision 4 V1–V17, with these refinements)
+
+- **V8–V11 (B12):** compute §2.5.2 from refund rows.
+  - `refundPendingCount > 0` → 409 `REFUND_IN_PROGRESS`.
+  - `netCaptured == 0` → 409 `ALREADY_REFUNDED`.
+  - Target lines: each target obligation's **current payable amount** (§2.7.2). The **sum must equal `netCaptured`** exactly; lower → 409 `AMOUNT_LOWER`; higher → 409 `AMOUNT_HIGHER`.
+  - Only `{type: payment}` refund rows can exist on an unallocated payment, so the mapping is deterministic. Anything else → 409 `REFUND_MAPPING_NOT_DETERMINISTIC`.
+- **V15 (B11):** reject if the claim **or** the bound attempt is ANOMALY_MULTIPLE, **or** the payment or its order has an open identity or classification anomaly → 409 `ANOMALY_PENDING`.
+- **V18 (new):** the bound attempt is **FAILED_NO_ORDER** with an unacknowledged classification anomaly → 409 `CLASSIFICATION_ANOMALY_OPEN` (Finance must first record `acknowledge_classification_anomaly`, audited).
+
+#### 4.6.2 Writes on success (one transaction; **no attempt or intent state change**)
+
+1. `allocations/alloc_<paymentId>` `create()`: lines (payable amounts), basis `reviewed_bound` / `reviewed_finance_attested`, `decidedBy`, reason, `requestId`, `targetPlayerId`, evidence. The payment's immutable identity is untouched.
+2. Payment application → `applied` (event records the previous `rejected_duplicate` / `unmatched`); refund summary recomputed.
+3. Each target obligation → `settled_gateway` with `basis: "reviewed"`, `gatewayPaymentId`, `allocationId`; version +1; settlement event.
+4. Claims: the payment's order (class `EXPOSED_PROVEN`) stays or is added in `retainedOrders` (`paid_applied`); if `retireConflictingAttempt`, the conflicting ACTIVE attempt → RETIRED, its order retained; holder cleared if the holder was the payment's attempt or the retired one; claim events.
+5. **Bound attempt: state unchanged; event `reviewed_payment_applied {paymentId, allocationId}` appended.**
+6. **Bound intent: state unchanged; event `reviewed_settlement_recorded` appended.**
+7. `adminRequests`, `auditLogs`.
+
+#### 4.6.3 Per-state handling of the bound attempt (B11)
+
+| Bound attempt state | Allowed? | Attempt write | Intent write |
 |---|---|---|---|
-| REPLAY | none | none | 200 `already_processed` |
-| IDENTITY_CONFLICT | `anomalies/{an_<hash(event identity)>}` `create()` (exists → no write); dead-letter `anom_<paymentId>_<hash>` (`identity_conflict`, severity high); event on the bound attempt (if any) | **No state change** | 200 `recorded_for_investigation`; 503 if the write fails |
-| REJECT_INVALID | usable `paymentId` → `gatewayPayments` `create()` `unmatched`, refund `required`; dead-letter; event on the bound attempt (if any). No usable ID → dead-letter only | **No state change** | 200 after commit |
-| REJECT_DUPLICATE | `gatewayPayments` `create()` `rejected_duplicate` (reasons, bound intent and attempt), refund `required`; dead-letter `duplicate_payment`; attempt event `captured_payment_rejected` (+ `payment_during_anomaly` / `failed_no_order_contradicted` where applicable); R4 additionally creates a high-severity classification anomaly | **Only if** the attempt is in the CLOSED_UNAPPLIED-eligible set (§2.3): attempt → CLOSED_UNAPPLIED (`firstPaymentId`); intent `pending` → `paid_unapplied`. **Otherwise** (terminal, or ANOMALY_MULTIPLE): **no attempt or intent state change** | 200 after commit |
-| APPLY | obligations → `settled_gateway` (+ events, `settlementVersion` +1, legacy fields); allocation `alloc_<paymentId>` (`attempt_bound` / `intent_bound`); `gatewayPayments` `create()` `applied`, refund `not_required`; `gatewayOrders` `create()` if absent; claim: holder cleared, order → `retainedOrders` (`paid_applied`), claim event; attempt → PAID (`firstPaymentId`); intent → `paid`; side effects (late-fee mirror, subscription expiry, merch Paid) | attempt PAID, intent paid | 200 after commit |
+| CLOSED_UNAPPLIED (this was its first payment) | yes | **event only** | event only (stays `paid_unapplied`) |
+| PAID (additional payment) | yes, if the target obligations are `unpaid` (e.g. after R-G2) and V1–V18 pass | event only | event only (stays `paid`) |
+| SUPERSEDED (late payment on an orphan) | yes, if V1–V18 pass | event only | event only (stays `pending`) |
+| FAILED_NO_ORDER | only after `acknowledge_classification_anomaly` (V18) | event only | event only |
+| RETIRED | **not reachable**: any captured payment on a RETIRED attempt's order already moved it to CLOSED_UNAPPLIED (§2.3); a RETIRED attempt with no payment has nothing to review | – | – |
+| ANOMALY_MULTIPLE | **no** (V15) | – | – |
+| Non-terminal other (ACTIVE, UNKNOWN, …) bound to a reviewable payment | not reachable (first payment moves it to CLOSED_UNAPPLIED or PAID) | – | – |
+| **No attempt** (unmatched, unbound) | yes, only with `finance_attested` (V14) | none | none |
 
-**Retry:** a 503 is retried by Razorpay; on retry R1 gives REPLAY (if committed) or the decision is re-evaluated (if not committed).
-**Idempotency:** `create()` on `gatewayPayments` and anomaly IDs. Two concurrent deliveries → one commits, the other retries → REPLAY.
+### 4.7 Refund actions (B12)
 
-### 4.4 Order identity recovery (unchanged)
+| Action | Role | Preconditions | Writes | Failure | Idempotency |
+|---|---|---|---|---|---|
+| `record_refund_initiated {paymentId, refundId, amountPaise, mapping}` | Finance / Super | mapping per §2.5.2 table; C1, C2 hold after adding | refund row `create()` (`initiated`); summary recomputed; payment event; audit | 400 `REFUND_MAPPING_REQUIRED`; 409 `REFUND_EXCEEDS_CAPTURED` / `REFUND_EXCEEDS_LINE`; 409 `REFUND_ID_EXISTS` (different payload) | row ID = refund ID; same payload → replay |
+| `record_refund_outcome {refundId, processed\|failed, evidence}` | Finance / Super; refund webhook (after G5) | row `initiated` | row → `processed` / `failed`; summary; event; audit | 409 `REFUND_NOT_PENDING` | state CAS; same outcome → replay |
+| R-G1 / R-G2 / R-G3 | Finance / Super | §2.7.1 | §2.7.1 | 409 | `requestId` |
 
-If the attempt lacks `gatewayOrderId`, and `notes.attemptId` / `notes.intentId`, amount and currency match → `gatewayOrders` `create()` **before** the decision. A conflicting link → IDENTITY_CONFLICT.
+### 4.8 Attempt, claim and override actions
 
-### 4.5 Manual settlement endpoint (`/api/finance/settlements`, Phase 1B)
-
-| Action | Actor | Preconditions | Writes | Claim effect |
+| Action | Role | Preconditions | Writes / transitions | Audit |
 |---|---|---|---|---|
-| `settle_manual {method, amountPaise}` | Finance / Super; Club Admin (match fees only) | obligation `unpaid` at version; claim not ANOMALY; claim not HELD by a non-ACTIVE attempt (409 `ONLINE_OUTCOME_UNKNOWN`); claim HELD by ACTIVE → requires `acknowledgeOpenOnlinePayment` (else 409 `OPEN_ONLINE_ORDER`) | obligation → `settled_manual`; settlement event; audit | If acknowledged: holder attempt → RETIRED (event); its order → `retainedOrders` (`exposed_retired`); holder cleared. **Retention persists after settlement and after any reversal** |
-| `mark_sponsored {sponsorObligation}` | Finance / Super | as `settle_manual` for the sponsored obligation; **sponsor's claim OPEN** and sponsor obligation `unpaid` (its amount changes) | both obligations (one transaction); two events; audit | as above for the sponsored obligation's claim; sponsor's claim untouched |
-| `waive {reason}` | Finance / Super; system (abandonment) | as `settle_manual` (system abandonment path: an ACTIVE holder is retired automatically with event `retired_by_abandonment`) | obligation → `waived`; events; audit | as above |
-| `reverse_manual_settlement`, `reverse_sponsorship`, `reverse_waiver` | Finance / Super | §2.7 | §2.7 | **none** |
-| `apply_fee_plan_status`, `set_merch_payment_status`, `set_studio_period` | as §9 | same claim checks as `settle_manual` when settling | per action | as above |
-
-**Failure:** 409 with a code, no writes. **Retry:** same `requestId` → replay. **Coordination with the webhook:** the same obligation record (`settlementVersion`) and claim, inside transactions. No trigger is used for concurrency control.
-
-### 4.6 `apply_reviewed_payment` (B7)
-
-- **Actor:** Finance Admin or Super Admin.
-- **Request:** `{requestId, paymentId, targetObligationKeys[], expectedSettlementVersions[], allocationBasis, reason, confirmUnverifiedPayer?, payerIdentityEvidence?, retireConflictingAttempt?}`.
-- **Reads (one transaction):**
-  - `gatewayPayments/{paymentId}` + `allocations` + `refunds` + `anomalies`;
-  - `gatewayOrders/{orderId}` → its attempt;
-  - the bound intent;
-  - every target obligation + claim + holder attempt.
-
-**Validation decision table** (evaluated in order; first failure → 409 with `code`, **no writes**):
-
-| # | Condition | Outcome |
-|---|---|---|
-| V1 | `gatewayPayments/{paymentId}` missing | 404 `PAYMENT_NOT_FOUND` (payments enter only via the signed webhook) |
-| V2 | **Payment ID exists with different immutable attributes**: any open entry in `anomalies`, or the request's expected `orderId`/amount/currency differ from the stored identity | 409 `PAYMENT_IDENTITY_CONFLICT`; must be investigated first |
-| V3 | `captureState` ≠ `captured` | 409 `NOT_CAPTURED` |
-| V4 | Application is `applied` (or `reversed`), or allocation `alloc_<paymentId>` exists, **already allocated to another obligation or to these** | Same `requestId` → idempotent replay (200). Otherwise 409 `ALREADY_ALLOCATED` (includes "allocated to another obligation") |
-| V5 | Application not in {`rejected_duplicate`, `unmatched`} | 409 `NOT_REVIEWABLE` |
-| V6 | **Order ID:** the payment's `orderId` is linked in `gatewayOrders` to an attempt whose `obligationKeys` ≠ `targetObligationKeys` (exact set) | 409 `TARGET_DIFFERS_FROM_ORDER` (no cross-obligation reallocation of an order-bound payment in R4; Q18) |
-| V7 | **Currency** ≠ every target obligation's currency (`INR`) | 409 `CURRENCY_MISMATCH` |
-| V8 | **Refund fully processed** (`refundProcessedPaise == amountPaise`) | 409 `ALREADY_REFUNDED` |
-| V9 | **Refund initiated, completion unknown** (`refundPendingCount > 0`) | 409 `REFUND_IN_PROGRESS` (initiated ≠ refunded; wait for the outcome) |
-| V10 | **Net amount** = `amountPaise − refundProcessedPaise` (partial refund processed counts; failed refunds count 0) | used in V11 |
-| V11 | **Amount:** net amount **equals** Σ current payable amounts of the target obligations | proceed |
-| | net **lower** than the obligation sum (underpayment; includes a partial refund that leaves less) | 409 `AMOUNT_LOWER`. **Partial payments are not supported**: never applied; stays in review (refund or Finance arranges the remainder manually; Q19) |
-| | net **higher** than the obligation sum (overpayment) | 409 `AMOUNT_HIGHER`. Finance must first record a refund of the excess and have it **processed**; the net then equals the sum and the action can be repeated (new `requestId`) |
-| V12 | Target obligations not all `unpaid` at `expectedSettlementVersions`, or not all one player, or more than 20 | 409 `OBLIGATION_STATE_CHANGED` / `MIXED_PLAYERS` / 400 |
-| V13 | **Player identity bound** (payment has `boundPlayerId` via intent or attempt): target player ≠ `boundPlayerId` | 409 `PAYMENT_BELONGS_TO_DIFFERENT_PLAYER` (no cross-player allocation in R4; Q18) |
-| V14 | **Player identity unavailable** (`unmatched` with no bound intent or attempt) | Allowed **only** with `allocationBasis: "finance_attested"`, `confirmUnverifiedPayer: true`, `reason` (≥ 20 chars) and `payerIdentityEvidence` (free text reference: what was checked, e.g. payer confirmation; no PII beyond what Finance already holds; Q20 decides whether a second approver is required). Otherwise 409 `PAYER_UNVERIFIED`. **Never inferred from a guess**: the server requires these fields and records them |
-| V15 | Any target claim has an anomaly | 409 `ANOMALY_PENDING` (resolve first, §2.4) |
-| V16 | A target claim is HELD by a **different ACTIVE** attempt | 409 `CONFLICTING_ACTIVE_ORDER` unless `retireConflictingAttempt: true` |
-| V17 | A target claim is HELD by a non-ACTIVE, non-terminal attempt (UNKNOWN, RECONCILING, RECOVERED, ACTIVATION_FAILED) | 409 `ONLINE_OUTCOME_UNKNOWN` |
-
-**Writes on success (one transaction):**
-1. `allocations/alloc_<paymentId>` `create()`: obligation keys, per-obligation amounts, basis, `decidedBy`, reason, `requestId`, `targetPlayerId`, evidence. This is **separate from** the immutable payment identity, which is not modified.
-2. Payment application `rejected_duplicate` / `unmatched` → `applied`; refund status → `not_required` if no refund is processed, else `partially_refunded`. Payment event recording the previous application value.
-3. Each obligation → `settled_gateway` (`gatewayPaymentId`, `allocationId`), `settlementVersion` +1, settlement event.
-4. Each claim: if `retireConflictingAttempt`, the conflicting attempt → RETIRED (event) and its order → `retainedOrders` (`exposed_retired`); the payment's order → `retainedOrders` (`paid_applied`); holder cleared; claim event.
-5. Payment's attempt (if bound):
-   - RETIRED or other CLOSED_UNAPPLIED-eligible with `firstPaymentId` unset → **PAID** (`firstPaymentId`);
-   - CLOSED_UNAPPLIED whose `firstPaymentId` is this payment → **unchanged** (terminal; event `applied_after_review`);
-   - other terminal → unchanged (event only).
-6. Bound intent: `pending` or `paid_unapplied` with `firstPaymentId` = this payment → event only, **state unchanged** (the first outcome is immutable); `pending` → `paid`.
-7. `adminRequests/{requestId}`, `auditLogs`.
-
-**Failure:** 409 / 400 per the table, no writes. **Retry:** contention → 503; client repeats with the same `requestId` → replay or re-evaluation. **Idempotency:** `adminRequests` + `alloc_<paymentId>` `create()`. Duplicate webhook delivery of the same payment after allocation → R1 REPLAY (identity unchanged).
-
-### 4.7 Other Finance actions (`/api/finance/payment-attempts`)
-
-| Action | Actor | Preconditions | Transitions and writes | Audit |
-|---|---|---|---|---|
-| `reconcile {attemptId}` | Finance / Super / worker | attempt non-terminal | per §2.3 (fetch-by-ID if the order is known; receipt lookup only after the settle delay, Q4; 0 → stays UNKNOWN) | attempt event (+ audit if human) |
-| `attach_order {attemptId, orderId}` | Finance / Super | attempt UNKNOWN / RECONCILING; order fetch-validated (G1); `gatewayOrders` create succeeds | → RECOVERED → revalidate → ACTIVE, or stays RECOVERED | events + audit |
-| `supersede {attemptId}` | Finance / Super | attempt never exposed (§2.3 list, `exposedAt` unset) | → SUPERSEDED; claim holder cleared (release condition 1) if it was holder | events + audit |
-| `retire_exposed {attemptId}` | Finance / Super | attempt ACTIVE | → RETIRED; claim: order → retained (`exposed_retired`), holder cleared | events + audit |
+| `reconcile` | Finance / Super / worker | attempt non-terminal | §2.3; discovered orders via transaction LR (§4.4) | events (+ audit) |
+| `attach_order` | Finance / Super | attempt UNKNOWN / RECONCILING; fetch-validated; transaction LR link succeeds with the same `attemptId` | → RECOVERED → (revalidate + A) ACTIVE | events + audit |
+| `supersede` | Finance / Super | attempt in the listed non-exposed states **and** `NEVER_EXPOSED_PROVEN` (§2.8) | → SUPERSEDED; fence bump; holder cleared; if bound to an override and the attempt was CLAIMED → override `RELEASED` | events + audit |
+| `retire_exposed` | Finance / Super | attempt ACTIVE | → RETIRED; order retained; holder cleared; override binding cleared | events + audit |
 | `resolve_anomaly` | Finance / Super | §2.4 | §2.4 | events + audit |
-| `verify_orders_unpayable {orderIds}` | Finance / Super | **Disabled** until G1 + G3/G7 verified and the rule approved (Q17); then: each order fetched and shown unpayable by the approved rule | removes those orders from `retainedOrders` (release condition 2); evidence stored in a claim event | events + audit |
-| `expose_replacement {obligationKeys}` | Finance / Super | **Disabled by default** (Q13); `reason` ≥ 20 chars; `acknowledgeTwoPayableOrders: true`; claim RETAINED (not ANOMALY) | `overrideActive` set; a new attempt may claim the obligation (→ HELD_OVERRIDE); retained orders **stay** | claim event + audit |
-| `record_refund_initiated {paymentId, refundId, amountPaise, obligationKey?}` | Finance / Super | Σ non-failed rows + amount ≤ captured | refund row `initiated`; summary recomputed | events + audit |
-| `record_refund_outcome {refundId, processed|failed, evidence}` | Finance / Super (or the refund webhook after G5) | row `initiated` | row → processed / failed; summary | events + audit |
-| `initiate_gateway_reversal`, `complete_gateway_reversal`, `cancel_gateway_reversal` | Finance / Super | §2.7 | §2.7 | §2.7 |
+| `authorise_override` (`expose_replacement`) | Finance / Super | flag enabled; claims RETAINED; no anomaly; reason; acknowledgement | `claimOverrides` `AUTHORISED` (snapshot of retained orders) | events + audit |
+| `revoke_override` | Finance / Super | override `AUTHORISED` / `RELEASED` | → `REVOKED` | events + audit |
+| `verify_orders_unpayable` | Finance / Super | **disabled** (Q17) | – | – |
+| `acknowledge_classification_anomaly` | Finance / Super | open classification anomaly | anomaly → acknowledged (reason) | events + audit |
 
-All of these use `requestId` idempotency, 409 on a failed precondition with no writes, and 503 on contention.
+All use `requestId`, 409 on failed preconditions with no writes, and 503 on contention.
 
 ---
 
-## 5. Failure and concurrency matrix
-
-**Guarantee wording:** *no more than one payment is applied to an obligation per settlement cycle; every additional captured payment is separately recorded and routed to refund review; refund completion is tracked separately and only on evidence.*
+## 5. Failure and concurrency matrix (revision 4 rows retained; additions and changes)
 
 | # | Case | Expected result | Second payable order? |
 |---|---|---|---|
-| 1 | Timeout before or after the gateway; crash before persistence; lease expiry in flight | OUTCOME_UNKNOWN, blocked; recovery only via `reconcile` / `attach_order`; else `supersede` (never exposed) | No |
-| 2 | Late response after `supersede` | Record-only `orderIdLate`; never exposed; payment → R5 review | No |
-| 3 | Supersede of an exposed order | Refused; `retire_exposed` keeps the order retained | No |
-| 4 | New request while a retained order exists | 409 `ONLINE_PAYMENT_UNAVAILABLE` | No |
-| 5 | **R-M while an exposed order remains payable** | Obligation unpaid; claim stays RETAINED; online 409; payment on the old order → review | **No** |
-| 6 | **R-S while an exposed order remains payable** | Sponsored obligation unpaid; claim stays RETAINED; sponsor precondition enforced | **No** |
-| 7 | **R-W while an exposed order remains payable** | As case 5 | **No** |
-| 8 | **R-G (refund processed) while the original order remains exposed** | Obligation unpaid or waived only after a processed refund; paid order stays retained; online 409 | **No** |
-| 9 | Replacement attempted without override | 409 (override disabled, or missing acknowledgement) | **No** |
-| 10 | Replacement with authorised override | HELD_OVERRIDE; two payable orders **recorded**; any second payment → review | Yes, **recorded and authorised** |
-| 11 | Two payments on one intent / one order; second payment after the first applied | First APPLY; second REJECT_DUPLICATE; first intent and attempt unchanged | – |
-| 12 | Duplicate delivery of an applied or rejected payment | REPLAY | – |
-| 13 | Same payment ID, different identity | IDENTITY_CONFLICT; original untouched | – |
-| 14 | Late captured payment for **SUPERSEDED** | REJECT_DUPLICATE (`ATTEMPT_SUPERSEDED`); attempt stays SUPERSEDED (event only) | – |
-| 15 | Late captured payment for **FAILED_NO_ORDER** | REJECT_DUPLICATE (`FAILED_NO_ORDER_CONTRADICTED`) + classification anomaly; attempt stays FAILED_NO_ORDER | – |
-| 16 | Multiple orders found for one attempt or obligation | ANOMALY_MULTIPLE / claim anomaly; all creation 409; payments → review until `resolve_anomaly` | No |
-| 17 | Manual cash ↔ webhook (both orderings) | One settles; the other REJECT_DUPLICATE or 409 | – |
-| 18 | `apply_reviewed_payment` ↔ webhook (both orderings) | Serialised; single application | – |
-| 19 | `apply_reviewed_payment` validation failures (V1–V17) | Exact 409 / 404 / 400 codes; no writes | – |
-| 20 | Reversal ↔ webhook (both orderings) | Single application per cycle; claim never released | No |
-| 21 | Refund initiated, completion unknown | Not refunded; blocks `apply_reviewed_payment` (V9) and R-G2 | – |
-| 22 | Waived, abandoned or sponsored after exposure | Holder retired (acknowledgement or system abandonment); payment → review | No |
-| 23 | Bundle > 20; mixed players | 400 / 409 | – |
-| 24 | Rollback with HELD / RETAINED / ANOMALY claims or unknown attempts | Legacy creation blocked (§8) | No |
+| 25 | Late response, attempt UNKNOWN (L1) | RECOVERED; the original request gets 409; exposure only after revalidation + A | No |
+| 26 | Late response after supersede (L2) | Orphan recorded; not retained; attempt stays SUPERSEDED | No (never exposed) |
+| 27 | Late response after PAID / CLOSED_UNAPPLIED / FAILED_NO_ORDER (L3) | Orphan; attempt unchanged; FAILED_NO_ORDER → classification anomaly | No |
+| 28 | Payment on an unlinked order (L4), resolvable / not resolvable | Linked + retained + decided / `unmatched` | – |
+| 29 | Duplicate late response or event (L5) | No writes | No |
+| 30 | Reconcile finds an order after supersede (L6) | Orphan or retained per class | No |
+| 31 | Crash before P / after P before A / after A / during send / after send | `NEVER` / `NEVER` / `UNKNOWN` / `UNKNOWN` / `UNKNOWN` (`PROVEN` after ack or payment) | No |
+| 32 | Override: sequential use | One BOUND → CONSUMED; next request returns the same order or 409 | Only the one authorised |
+| 33 | Override: concurrent binding | One wins; the loser gets the winner's order or 409 | Only one |
+| 34 | Override: timeout / persistence failure / crash | CONSUMED; no second replacement; reconcile path | Only one |
+| 35 | Override: bound attempt superseded from CLAIMED | RELEASED; rebind allowed before expiry | – |
+| 36 | Override expired, revoked or consumed, then a new request | 409 `ONLINE_PAYMENT_UNAVAILABLE` | No |
+| 37 | Reviewed payment for CLOSED_UNAPPLIED / PAID / SUPERSEDED / FAILED_NO_ORDER / unmatched | Attempt and intent unchanged; allocation + settlement recorded | – |
+| 38 | Bundle refund without mapping | 400 `REFUND_MAPPING_REQUIRED` | – |
+| 39 | Refund exceeding a line or the captured amount | 409 | – |
+| 40 | Refund initiated then failed | Reservation released; `intervention_required` | – |
+| 41 | Sponsorship reversal after an intervening base change | Compensating adjustment; current base preserved | – |
+| 42 | Sponsorship reversal with sponsor paid / sponsor order exposed / sponsored state changed / legacy amount changed | 409 with the specific code | No |
 
 ---
 
-## 6. Invariants
+## 6. Invariants (revision 4 I1–I16 retained; changes and additions)
 
 | # | Invariant |
 |---|---|
-| I1 | Single application per obligation per settlement cycle |
-| I2 | Accounting: one immutable `gatewayPayments` per payment ID; application ∈ {applied, rejected_duplicate, unmatched, reversed}; ≤ 1 allocation per payment; Σ non-failed refunds ≤ captured; processed only with evidence; **initiated ≠ refunded** |
-| I3 | **Exposure (B6):** an exposed or paid order is added to `retainedOrders` and removed only by release condition 2. A claim allows new creation only when derived OPEN, or under a recorded override (HELD_OVERRIDE) |
-| I4 | No automatic re-creation; `supersede` only for never-exposed attempts |
-| I5 | Zero is not absence |
-| I6 | Fencing on all claim and attempt writes |
-| I7 | All R4 records server-written; no client-writable attempt, claim, payment, allocation, refund or settlement data |
-| I8 | **Terminal immutability (B8):** PAID, CLOSED_UNAPPLIED, SUPERSEDED and FAILED_NO_ORDER attempts never change `state`, `firstPaymentId` or `exposedAt`; an intent's first terminal state never changes; later events are appended only |
-| I9 | Identity integrity: an existing payment record is never overwritten; a conflict → anomaly |
-| I10 | No silent reversal: `settled_gateway` → `unpaid` / `waived` only after a processed refund ≥ allocation; history preserved |
-| I11 | **Entity separation:** obligation = settlement; claim = online orders; attempt = one create; payment = money. **No obligation transition releases a claim** |
-| I12 | Atomic audit: events (+ `auditLogs` for humans) in the same transaction |
-| I13 | No secrets or PII; `payerIdentityEvidence` is a reference, not raw payer data |
-| I14 | Bounded transactions (≤ 20 obligations; footprint asserted) |
-| I15 | **Anomaly blocking:** while a claim has an anomaly, no order creation and no automatic application succeeds |
-| I16 | **Allocation provenance:** every applied payment has exactly one allocation with basis and decider; finance-attested allocations carry a reason and evidence and are never created without `confirmUnverifiedPayer` |
+| I3 (revised) | An order whose class is not `NEVER_EXPOSED_PROVEN`, and which is not the current holder's own ACTIVE order, is in `retainedOrders`; it is removed only by release condition 2. New creation requires derived OPEN, or a bindable one-time override |
+| I8 (revised) | Terminal attempts: `state`, `fenceVersion`, `gatewayOrderId`, `exposure`, `firstPaymentId` and `obligationKeys` are never written; intents never change state after their first terminal state; reviewed application changes neither |
+| I17 | **Response gateway:** no order ID leaves the server without a committed transaction-A marker for that order on a non-terminal, fence-valid attempt |
+| I18 | **Exposure monotonicity and fail-closed:** `exposureClass` only moves up; only `NEVER_EXPOSED_PROVEN` permits release or supersede; legacy and unlinkable orders are never `NEVER_EXPOSED_PROVEN` |
+| I19 | **One-time override:** an override is bound to at most one attempt that reaches CREATING; once `CONSUMED`, `EXPIRED` or `REVOKED` it admits nothing; overrides never alter retained orders or bypass an anomaly |
+| I20 | **Refund ledger:** C1–C6 (§2.5.2) |
+| I21 | **Allocation exactness:** each allocation line equals the obligation's payable amount at allocation; Σ lines = net captured at allocation; per-line reversal requires that line's processed refunds = its allocation |
+| I22 | **Amounts:** payable = base + Σ append-only adjustments; no workflow restores an amount from a snapshot; sponsorship reversal is a compensating adjustment |
 
 ---
 
-## 7. Test matrix (mandatory)
+## 7. Test matrix
 
-**Conventions:**
-- **Layers:** unit (pure functions and transition tables), emulator transaction, route integration (real handlers + deterministic gateway stub with release handles and injected clock), gateway contract (fixtures F1–F3; G1–G7 when verified), regression (all existing suites).
-- **Races:** both orderings (→ / ←), repeated N times with seeds, through real route handlers.
-- **Every row asserts:** HTTP code; obligation, claim, attempt and payment states; claim `retainedOrders`; **stub orders created and orders exposed**; event and audit rows.
-
-**Carried from revision 3, adjusted:**
-- T1–T7, T8–T13 (B2, B5), T14–T17 (B1), T19–T26, as in revision 3.
-- Adjustments: T18 (reversals) and T20 (`apply_reviewed_payment`) are superseded by the B6 and B7 rows below.
-- Assertions that previously expected a claim to be `settled` or `open` after settlement or reversal now expect §2.2 derived states.
-
-**New and replacement rows:**
+Revision 4 rows B6-1…B8-8 and the revision 3 rows are retained. All races run in both orderings, N repetitions, through real route handlers with a deterministic gateway stub (release handles, crash injection points P / A / send) and an injected clock. Every row asserts states, retained orders, exposure classes, **stub orders created and orders returned to clients**, and events / audit.
 
 | # | Scenario | Must show |
 |---|---|---|
-| **B6-1** | Manual settlement (acknowledged) while ACTIVE → R-M | Attempt RETIRED; claim RETAINED after settlement **and after reversal**; obligation unpaid; new online request 409; **stub orders created = 1, exposed = 1** |
-| **B6-2** | Sponsorship over an exposed order → R-S | As B6-1; sponsor precondition: sponsor claim not OPEN → 409; sponsor paid → 409 |
-| **B6-3** | Waiver (manual and by abandonment) over an exposed order → R-W | As B6-1; abandonment guard |
-| **B6-4** | Gateway-settled → refund initiated → R-G1 → refund **processed** → R-G2 | Claim RETAINED (`paid_applied`) throughout; R-G2 refused while only initiated; online 409 after R-G2; a payment on the original order → REJECT_DUPLICATE |
-| **B6-5** | Replacement without override (override disabled; enabled but missing acknowledgement or short reason) | 403 / 409; no attempt created; stub orders unchanged |
-| **B6-6** | Replacement with authorised override and acknowledgement | HELD_OVERRIDE; retained orders unchanged; new order exposed; audit + claim event; a payment on the old order → review; one payment on the new order → APPLY |
-| **B6-7** | R-M where no order was ever exposed (cash only) | Claim OPEN after reversal; new online order allowed (control case) |
-| **B6-8** | Each reversal ↔ webhook (both orderings) | Single application; claim never released |
-| **B7-1** | Exact amount, intent-bound | Applied; allocation `intent_bound`; claim retains the order; attempt PAID |
-| **B7-2** | Lower amount | 409 `AMOUNT_LOWER`; no writes |
-| **B7-3** | Higher amount; then excess refund recorded **processed**; retry with new `requestId` | 409 `AMOUNT_HIGHER`, then success; net = sum |
-| **B7-4** | Currency mismatch | 409 `CURRENCY_MISMATCH` |
-| **B7-5** | Fully refunded | 409 `ALREADY_REFUNDED` |
-| **B7-6** | Partial refund processed leaving net = sum / net < sum | success / 409 `AMOUNT_LOWER` |
-| **B7-7** | Refund initiated, outcome unknown | 409 `REFUND_IN_PROGRESS` |
-| **B7-8** | Already allocated to another obligation; same `requestId` replay; different `requestId` | 409 `ALREADY_ALLOCATED`; replay 200 with no writes |
-| **B7-9** | Unmatched (no payer identity) without / with `finance_attested` + confirmation + reason + evidence | 409 `PAYER_UNVERIFIED` / success with a separate allocation record; payment identity unchanged |
-| **B7-10** | Bound to a different player | 409 `PAYMENT_BELONGS_TO_DIFFERENT_PLAYER` |
-| **B7-11** | Payment ID with a conflicting identity anomaly | 409 `PAYMENT_IDENTITY_CONFLICT` |
-| **B7-12** | Order-bound payment targeting a different obligation set | 409 `TARGET_DIFFERS_FROM_ORDER` |
-| **B7-13** | Not captured; not reviewable (already applied) | 409 `NOT_CAPTURED` / `ALREADY_ALLOCATED` |
-| **B7-14** | Conflicting ACTIVE holder without / with `retireConflictingAttempt` | 409 / success with the conflicting attempt RETIRED and both orders retained |
-| **B7-15** | Duplicate webhook delivery of the payment **after** allocation; contention 503 then retry with the same `requestId` | REPLAY with no writes; replay result identical |
-| **B8-1** | Late captured payment for SUPERSEDED | REJECT_DUPLICATE; attempt **remains SUPERSEDED**; event appended; intent unchanged |
-| **B8-2** | Late captured payment for FAILED_NO_ORDER | REJECT_DUPLICATE + classification anomaly; attempt **remains FAILED_NO_ORDER** |
-| **B8-3** | Duplicate event for an already-PAID attempt (same payment, and a different payment) | REPLAY / REJECT_DUPLICATE; attempt PAID, `firstPaymentId` unchanged |
-| **B8-4** | Duplicate payment on a paid obligation via a different attempt | REJECT_DUPLICATE; original settlement, allocation and attempt unchanged |
-| **B8-5** | Multiple gateway orders discovered (one attempt receipt; and across attempts for one obligation) | ANOMALY_MULTIPLE / claim anomaly; creation 409; payment during anomaly → review, attempt state unchanged |
-| **B8-6** | `resolve_anomaly` adopt / supersede_all / retain_all, each with violated preconditions | Exact transitions per §2.4; violations 409, no writes |
-| **B8-7** | Repeated delivery of the same late event (B8-1/B8-2 payment delivered 3×, including concurrently) | One `gatewayPayments` record, one dead-letter, one anomaly; repeats REPLAY |
-| **B8-8** | CLOSED_UNAPPLIED eligibility table (each listed state) | Eligible → CLOSED_UNAPPLIED; ANOMALY_MULTIPLE and terminal → unchanged |
+| **B9-1** | L1: late response after an observer marks UNKNOWN | Original request 409 (no order ID); attempt RECOVERED; class `NEVER_EXPOSED_PROVEN`; exposure only after `reconcile` (revalidate + A) |
+| **B9-2** | L2: late response after `supersede` (both orderings with supersede) | Supersede-first: orphan, not retained, attempt SUPERSEDED unchanged. Response-first: A commits → ACTIVE → supersede refused |
+| **B9-3** | L3: late response after PAID / CLOSED_UNAPPLIED / FAILED_NO_ORDER | Attempt field set byte-identical; event appended; FAILED_NO_ORDER → classification anomaly |
+| **B9-4** | L4: payment on an unlinked order (resolvable; unresolvable) | Linked + `EXPOSED_PROVEN` + retained (+ anomaly if held by another) / `unmatched` |
+| **B9-5** | L5: same late response 3× (incl. concurrent); same payment 3× | Single link, single event, no state change on repeats |
+| **B9-6** | L6: reconcile after supersede, R4 order vs legacy order | Orphan vs retained (`EXPOSURE_UNKNOWN`) |
+| **B9-7** | Late response never restores a terminal attempt to ACTIVE (fuzz over all terminal states) | Invariant holds |
+| **B10-1** | Override sequential: authorise → bind → CREATING → ACTIVE → second request | `CONSUMED`; second request returns the same order; no new attempt |
+| **B10-2** | Override concurrent binding (2–6 parallel requests) | Exactly one `BOUND`; others get the same order or 409; stub creates = 1 |
+| **B10-3** | Override with gateway timeout | `CONSUMED`; attempt UNKNOWN; new request 409; no second create |
+| **B10-4** | Override, create OK, transaction P fails / transaction A fails / crash after A | P-fail: UNKNOWN, later orphan `NEVER`; A-fail: ACTIVATION_FAILED; crash after A: `UNKNOWN`, retained when it leaves the holder role; never a second override use |
+| **B10-5** | Override bound attempt superseded from CLAIMED, then rebound | `RELEASED` → `BOUND`; then `CONSUMED` |
+| **B10-6** | Override expired / revoked / consumed / anomaly present / different keys | Binding refused with code |
+| **B10-7** | Second replacement requires a new override | Without: 409; with a new authorised override: allowed once |
+| **B10-8** | Retry of the order request during override CREATING | Same attempt; 409 or the same order |
+| **B11-1** | Reviewed payment, bound CLOSED_UNAPPLIED | Applied; attempt CLOSED_UNAPPLIED unchanged; intent `paid_unapplied` unchanged; events appended |
+| **B11-2** | Reviewed payment, bound PAID (after R-G2 made the obligation unpaid) | Applied; attempt PAID with `firstPaymentId` unchanged |
+| **B11-3** | Reviewed payment, bound SUPERSEDED | Applied; attempt unchanged; intent `pending` unchanged |
+| **B11-4** | Reviewed payment, FAILED_NO_ORDER without / with acknowledgement | 409 `CLASSIFICATION_ANOMALY_OPEN` / applied; attempt unchanged |
+| **B11-5** | Reviewed payment, ANOMALY_MULTIPLE attempt or claim | 409 `ANOMALY_PENDING` |
+| **B11-6** | Reviewed payment, unmatched, no attempt | `finance_attested` path only |
+| **B11-7** | Byte-level terminal immutability check after every B11 path | Attempt and intent docs unchanged except none; events appended |
+| **B12-1** | Bundle of 3 applied; refund mapped to line 2 (partial), processed | Line 2 net reduced; lines 1 and 3 unchanged; aggregate correct |
+| **B12-2** | Bundle refund without mapping | 400 `REFUND_MAPPING_REQUIRED` |
+| **B12-3** | Split refund across lines; over-line amount | Accepted / 409 `REFUND_EXCEEDS_LINE` |
+| **B12-4** | Multiple partial refunds up to the captured amount; one more | Accepted until C1; then 409 |
+| **B12-5** | Initiated refund counts as reserved but not processed; then failed | Blocks R-G2 / apply; then released; `intervention_required` |
+| **B12-6** | Same refund ID recorded twice (same / different payload) | Replay / 409 `REFUND_ID_EXISTS` |
+| **B12-7** | Per-line reversal only when that line is fully processed; others still applied | `partially_reversed`; others unchanged |
+| **B12-8** | `apply_reviewed_payment` on an unallocated payment with payment-level partial refunds | Net exact match required |
+| **B13-1** | Sponsor then reverse, no intervening change | Payables back to base(current) + 0 |
+| **B13-2** | Base change on the sponsor between sponsor and reverse | New base preserved; compensating adjustment |
+| **B13-3** | Base change on the sponsored obligation in between | Sponsored payable = new base after reversal |
+| **B13-4** | Sponsor paid in between / sponsor order exposed / sponsored settlement changed | 409 `SPONSOR_ALREADY_PAID` / `SPONSOR_HAS_ONLINE_ORDER` / `SPONSORSHIP_STATE_CHANGED` |
+| **B13-5** | Legacy sponsorship reverse with unchanged / changed `feeOverride` | Allowed / 409 `LEGACY_SPONSOR_AMOUNT_CHANGED` |
+| **B13-6** | Concurrent reverse ↔ sponsor payment (both orderings) | One wins; no amount restored over a settled obligation |
+| **B14-1** | Crash before transaction P | Discovered order `NEVER_EXPOSED_PROVEN`; `supersede` allowed |
+| **B14-2** | Crash after P, before A | `NEVER_EXPOSED_PROVEN` (after fence bump); `supersede` allowed |
+| **B14-3** | Crash after A, before response construction | `EXPOSURE_UNKNOWN`; `supersede` refused; retained on retire |
+| **B14-4** | Crash during send | `EXPOSURE_UNKNOWN`; retained |
+| **B14-5** | Crash after send (with and without client ack) | `UNKNOWN` / `EXPOSED_PROVEN`; retained |
+| **B14-6** | `resolve_anomaly` adopt / supersede_all / retain_all with a mix of classes | Refusals and retention per §2.4 |
+| **B14-7** | Legacy migration orders | `EXPOSURE_UNKNOWN` → retained; never released by `supersede` |
+| **B14-8** | I17 check: every code path returning an order ID | Static and route test: no path returns an order ID without a committed marker |
 
 ---
 
 ## 8. Migration, compatibility and rollback
 
-Revision 3 §8 is retained, with these changes.
-- **Legacy reservations:** an `active` reservation with an exposed order → synthetic ACTIVE attempt **and** a claim holder. A legacy **paid** reservation → the paid order is added to `retainedOrders` (`paid_applied`). More than one legacy order for one obligation (D1 history) → claim anomaly.
-- **Non-flaggable guard:** after Phase 2, every creation path, legacy included, refuses obligations whose claim is HELD, RETAINED, HELD_OVERRIDE or ANOMALY, or whose attempts are non-terminal. Rollback of flags never bypasses it. The Phase 1A decision function stays on.
-- The late-fee backfill stays dry-run first, and production writes need owner approval.
+Revision 4 §8 is retained, plus:
+- **Legacy orders** (from `paymentReservations` or `razorpayIntents.orderId`) are linked in `gatewayOrders` with `source: legacy_migration` and **`EXPOSURE_UNKNOWN`** → retained on their obligations' claims. More than one per obligation → claim anomaly.
+- **Legacy sponsorships** → `sponsorships` with `legacy: true` (§2.7.2).
+- **Base amounts:** `amountBasePaise` = current effective fee for non-sponsored obligations; for legacy sponsors, the overwritten `feeOverride` is kept as base with `legacy` marking.
+- **Rollback:** the non-flaggable guard (claims, attempts, overrides, anomaly) applies to every creation path. The response-gateway invariant I17 is code-level and stays. The Phase 1A decision stays on.
+- **The late-fee backfill and all migration steps:** dry run first, with an owner-approved report before any production write.
 
 ---
 
-## 9. Role mapping (Q11, explicit)
+## 9. Role mapping (revision 4 §9 retained, plus)
 
 | Action | Super | Finance | Club | Designer | Player |
 |---|---|---|---|---|---|
-| Pay own obligation online | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `settle_manual` match fee | ✓ | ✓ | ✓ | ✗ | ✗ |
-| `settle_manual` other / late fee; `mark_sponsored`; `waive`; all reversals | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `set_studio_period` | ✓ | ✓ | ✓ | ✗ | ✗ |
-| `set_merch_payment_status` | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `reconcile`, `attach_order`, `supersede`, `retire_exposed`, `resolve_anomaly` | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `apply_reviewed_payment`, refund records, gateway reversal | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `expose_replacement` (when enabled) | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `verify_orders_unpayable` (when enabled) | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Read attempts, claims, payments, refunds, anomalies | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `set_base_amount` | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `authorise_override`, `revoke_override` | ✓ | ✓ (if enabled) | ✗ | ✗ | ✗ |
+| `acknowledge_classification_anomaly` | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Order acknowledgement (`/order/ack`) | own orders | own orders | own orders | own orders | own orders |
 
 ---
 
 ## 10. Unresolved questions and assumptions
 
-| # | Question / assumption | Recommendation | Owner of decision |
+| # | Question | Recommendation | Decision by |
 |---|---|---|---|
-| Q2 | Second payment for the same subscription period | Review (refund) | Owner |
-| Q3 | Automatic unblock after OUTCOME_UNKNOWN | No | Owner (confirm) |
-| Q4 | Settle delay and back-off | ≥ 10 min, 30 min, 2 h, 24 h | Owner |
-| Q5 | Payer-facing wording for every 409 code | Owner to approve copy | Owner |
-| Q6 | Manual settlement while ACTIVE | 409 unless acknowledged (retire + retain) | Owner |
-| Q7 | Refund execution | Manual via the dashboard; recorded | Owner |
-| Q11 | Role mapping | §9 | **Owner to confirm** |
-| Q12 | Phase 1B workflow switch-over | Approve | **Owner** |
-| Q13 | Enable `expose_replacement` at all | **Disabled**; enable only with a written policy | **Owner** |
-| Q14 | Partial refund of an applied payment | Keeps the obligation settled | Owner |
-| Q15 | Reverse sponsorship after the sponsor paid | Out of scope; 409 | Owner |
-| Q16 | Bundle limit 20 | Confirm against data | Owner |
-| **Q17** | Rule for release condition 2 | Only after G1 + G3/G7 evidence and reviewer approval | Reviewer + owner |
-| **Q18** | Cross-obligation or cross-player reallocation of an order-bound payment | Not in R4 (refund instead) | Owner |
-| **Q19** | Partial payments | **Not supported**; underpayment stays in review | Owner |
-| **Q20** | Second approver for `finance_attested` allocations | Recommended: Super Admin confirmation, or two distinct Finance users | **Owner** |
-| **Q21** | Reversal of a subscription period (expiry recomputation) and merch fulfilment after reversal | Expiry recomputed from remaining settled periods; merch fulfilment unchanged, flagged | Owner |
+| Q2–Q7, Q11, Q12, Q14–Q16, Q18–Q21 | as in revision 4 | unchanged | Owner |
+| Q13 | Enable `expose_replacement` | Disabled; if enabled, a one-time override per §2.6 | **Owner** |
+| Q17 | Release condition 2 rule | After G1 + G3/G7 evidence | Reviewer + owner |
+| **Q22** | Override authorisation expiry | 24 h | Owner |
+| **Q23** | Client checkout acknowledgement (S6b) | Optional; useful evidence but not required for safety (UNKNOWN is already retained) | Owner |
+| **Q24** | Who may change base amounts while an order is RETAINED (amount mismatch → later payments reviewed) | Finance / Super only; warn | Owner |
+| **Q25** | Second approver for overrides | Recommended (Super Admin confirmation) | **Owner** |
 
-**Assumptions** (to be verified, not relied upon for safety):
-- **A1:** Razorpay `orders.create` 400 / 401 validation bodies prove non-creation (G6). Until verified, FAILED_NO_ORDER is limited to those; a contradiction raises an anomaly (§4.2 R4).
-- **A2:** Retained orders are treated as payable (G3, G7 unverified). This is safe but costs availability.
-- **A3:** Test mode behaves as live (not verified).
+**Assumptions** (not relied upon for safety):
+- **A1:** 400 / 401 create bodies prove non-creation (G6). A contradiction is detected (L3, R4).
+- **A2:** retained orders are treated as payable (G3 / G7).
+- **A3:** test mode = live.
+- **A4:** Firestore transactions serialise conflicting writes to the same documents (platform guarantee relied upon for I17 and fencing).
 
-**Gateway checks** (reviewer approval; test mode only; none assumed):
-- **G1:** fetch by ID.
-- **G2:** payments per order.
-- **G3:** a second payment on a paid order.
-- **G4:** time-window listing.
-- **G5:** refund webhooks and partial or multiple refunds.
-- **G6:** non-creation errors.
-- **G7:** order cancellation or expiry.
+**Gateway checks:** G1–G7 (unchanged; none performed; none assumed).
 
 ---
 
-## 11. Phased implementation plan and dependencies
+## 11. Phased implementation plan and dependencies (revision 4 §11, extended)
 
-Unchanged from revision 3 §11, with these scope additions:
-
-| Phase | Additions in revision 4 |
+| Phase | Revision 5 additions |
 |---|---|
-| 1A | Claim model fields needed by the decision (`retainedOrders`, anomaly) are created **read-compatibly** (missing claim = OPEN); R4–R10 decision rules; terminal immutability; allocations; tests B8-1…B8-4, B8-7, B8-8, B6-4 (decision part) |
-| 1B | Retention on manual settle, sponsor or waive with acknowledgement; reversals never touching claims; tests B6-1…B6-3, B6-7, B6-8 |
-| 2 | Derived claim states, the anomaly flag, legacy anomaly detection; tests B8-5 |
-| 4 | `supersede` / `retire_exposed` / `expose_replacement` (disabled); tests B6-5, B6-6 |
-| 5 | `apply_reviewed_payment` (§4.6), `resolve_anomaly`, refund records, R-G; `verify_orders_unpayable` stays **disabled**; tests B7-1…B7-15, B8-6 |
+| 1A | `gatewayOrders` with exposure class; retention-on-payment; R11; refund ledger read model (for decisions); allocation lines; B9-4, B9-5, B11 (decision parts), B12-1 |
+| 1B | Amount model (base + adjustments), `mark_sponsored` / `reverse_sponsorship` (§2.7.2), `set_base_amount`; B13-1…B13-6 |
+| 2 | Derived claim states incl. retention-while-held anomaly; legacy order linking (`EXPOSURE_UNKNOWN`); B14-7 |
+| 3 | Transactions P and A, the response-authorisation marker, I17, crash-window handling; B14-1…B14-5, B14-8 |
+| 4 | Transaction LR (late responses, L1–L6), `supersede` with classification, `retire_exposed`, `claimOverrides` lifecycle (disabled); B9-1…B9-3, B9-6, B9-7, B10-1…B10-8 |
+| 5 | `apply_reviewed_payment` (no attempt or intent writes), refund actions and ledger constraints, R-G per line, `resolve_anomaly`, classification-anomaly acknowledgement; B11-1…B11-7, B12-2…B12-8, B14-6 |
 
-**Full D1/D2/D3 financial-integrity coverage is claimed only after 1A and 1B.**
+**Full D1/D2/D3 coverage is claimed only after 1A and 1B.**
 
 ---
 
-## 12. Cross-cutting consistency check (performed for revision 4)
+## 12. (reserved; numbering kept stable for cross-references)
+
+---
+
+## 13. Cross-cutting consistency check (revision 5)
 
 | Area | Check | Result |
 |---|---|---|
-| Obligation ↔ claim | Does any obligation transition write the claim other than retention? | Only retention (§4.3, §4.5, §4.6) and anomaly; fixed X1–X5 |
-| Claim ↔ attempt | Is a claim holder always a non-terminal attempt? | Yes; holder cleared when the attempt becomes PAID, RETIRED, SUPERSEDED or FAILED_NO_ORDER |
-| Attempt ↔ payment | Do later payments change terminal attempts? | No (I8); fixed X6 |
-| Payment ↔ refund | Is "initiated" ever treated as refunded? | No: V9, R-G2, I2 |
-| Manual ↔ online | Same coordination records? | Yes (obligation version + claim) |
-| Sponsorship | Two-record atomicity and sponsor's exposed orders | R-S / `mark_sponsored` require the sponsor's claim OPEN |
-| Waiver / abandonment | System waiver with an ACTIVE holder | Holder retired automatically (event), retained |
-| Late fees | Separate obligation, claim and attempt? | Yes (`lateFeeObligations`) |
-| Subscription | Period identity; renewals not blocked; reversal | Period-scoped; Q21 |
-| Merchandise | Server-minted IDs; repeat purchases | Yes |
-| Bundles | All-or-nothing across decision, allocation, retention | Yes; ≤ 20, one player |
-| Webhook ↔ dead-letter | Every non-applied payment has a dead-letter and payment record | Yes (§4.3) |
-| Finance ↔ audit | Every human action: `requestId`, events, `auditLogs` | Yes (§4.0) |
-| Revision 3 corrections | B1–B5 and C1–C6 preserved? | Yes. B1 strengthened (retention extended to paid orders and reversals); C1 replaced by §4.6; no safety invariant weakened |
+| Claim holder lifecycle | Is the holder always a non-terminal attempt, cleared on PAID / RETIRED / SUPERSEDED / FAILED_NO_ORDER / CLOSED_UNAPPLIED? | Yes (§2.2, §2.3, §4.3, §4.8) |
+| Override lifecycle | Single use; fenced; no anomaly bypass; retained orders untouched | Yes (§2.6.1, I19) |
+| Attempt terminal immutability | Any write path to a terminal attempt document? | None: late orders → `gatewayOrders`; reviews → events (X9, X11, I8) |
+| Intent terminal immutability | Reviewed application changes the intent? | No (X10) |
+| Payment allocation | One immutable allocation; lines exact; per-line reversals separate | Yes (§2.5.1, I21) |
+| Refund accounting | Per-line, deterministic, recomputed, C1–C6 | Yes (§2.5.2, I20) |
+| Sponsorship reversal | No snapshot restore; both versions CAS; legacy guard | Yes (§2.7.2, I22) |
+| Anomaly resolution | Uses proven exposure only | Yes (§2.4, X12) |
+| Exposure evidence | A single gateway (transaction A); monotonic classes; legacy fail-closed | Yes (§2.8, I17, I18) |
+| Reconciliation and dead-letter | Every unapplied payment has a payment record + dead-letter; every discovered order is linked and classified | Yes (§4.3, §4.4) |
+| Migration and rollback | Legacy orders `UNKNOWN`; guard non-flaggable | Yes (§8) |
+| Earlier safeguards | Revision 3/4 B1–B8 and C1–C6 preserved; no invariant weakened. B7's RETIRED → PAID removed (stricter) | Yes |
 
 ---
 
-## 13. NOT approved for implementation
+## 14. NOT approved for implementation
 
-- **Everything in this document.** No phase may start until the independent reviewer approves revision 4 **and** the owner gives explicit approval.
-- In particular, even after design approval, the following each need **separate** approval:
-  - Phase 1A and Phase 1B, individually;
-  - the late-fee backfill against production (dry-run report first);
-  - Firestore rules deployment (only via `main`; affects both databases);
-  - enabling `expose_replacement` (Q13);
-  - enabling `verify_orders_unpayable` (Q17, after G1 + G3/G7 evidence);
-  - any gateway check G1–G7 (test mode);
+- **Everything in this document.** No phase (1A, 1B, 2–7) may start until the independent reviewer approves revision 5 **and** the owner gives explicit approval for that phase.
+- **Separately approval-gated, even after design approval:**
+  - the late-fee backfill and all migrations (dry-run report first);
+  - Firestore rules deployment (only via `main`; both databases);
+  - enabling `expose_replacement` (Q13, Q22, Q25);
+  - enabling `verify_orders_unpayable` (Q17);
+  - the client acknowledgement endpoint (Q23);
   - the Phase 1B client switch-over (Q12);
+  - any gateway check G1–G7;
   - any production deployment.
-- **No implementation of R2-B, R6 or any other workstream is implied.**
+- **No other workstream** (R2-B, R6, UX) is implied.
 
 ---
 
-## 14. Resolution matrix: B6 / B7 / B8
+## 15. Resolution matrix: B9–B14
 
 | Requirement | Resolution | Section |
 |---|---|---|
-| **B6** Separate obligation status, claim status and order/attempt status | Four-entity table; claim has no settlement state; derived claim states | §2 intro, §2.2, I11 |
-| B6 Reversal must not implicitly release a claim | No reversal writes a claim; release only by three conditions | §2.6, §2.7, I3, I11 |
-| B6 Preserve `retained_exposed` unless verified unpayable | Retention on retire, on paid, on anomaly; condition 2 disabled until verified | §2.6 |
-| B6 Release only when never exposed / gateway-verified / override | Exactly three conditions, with mechanisms and status | §2.6, §4.7 |
-| B6 Override disabled by default, with reason, acknowledgement and audit | `expose_replacement`, Q13 | §2.6, §4.7, Q13 |
-| B6 Per-workflow obligation / claim / attempt / payability / replacement / authorisation / audit | Reversal matrix | §2.7 |
-| B6 Tests: R-M, R-S, R-W, R-G with exposed order; replacement without / with override | B6-1 … B6-8 | §7 |
-| **B7** Validate payment ID and immutable identity; order ID; capture; amount; currency; refunds; prior allocation; target and player identity | V1–V17 | §4.6 |
-| B7 Equal / lower / higher amount; currency mismatch; refunded; partial refund; initiated-unknown; allocated elsewhere; identity unavailable; different player; conflicting identity | V2, V4, V7–V11, V13, V14 | §4.6 |
-| B7 No allocation by guess; explicit confirmation, reason and immutable audit; original identity kept separate | `finance_attested` basis; separate `allocations` record; Q20 | §2.5, §4.6 V14, I16 |
-| B7 Partial payments | Not supported; underpayment stays in review; overpayment requires a processed excess refund | §4.6 V11, Q19 |
-| B7 `refund_initiated` ≠ refunded | V9, R-G2, I2 | §4.6, §2.7, §6 |
-| B7 Tests incl. retries and duplicate delivery after allocation | B7-1 … B7-15 | §7 |
-| **B8** SUPERSEDED and FAILED_NO_ORDER remain terminal; late or duplicate events append only | Terminal rule; R4 / R5; write-set table | §2.3, §4.2, §4.3, I8 |
-| B8 Only eligible non-terminal attempts → CLOSED_UNAPPLIED | Eligibility table | §2.3 |
-| B8 Preserve the original paid intent and attempt; record the duplicate independently | REJECT_DUPLICATE write set; I8 | §4.3 |
-| B8 `ANOMALY_MULTIPLE`: attempt vs claim, owner, transitions, Finance resolution, no bypass | Lifecycle, `resolve_anomaly`, blocking, I15 | §2.4, §4.1, §4.2 R6, §8 |
-| B8 Tests | B8-1 … B8-8 | §7 |
-| Cross-cutting review | Contradictions X1–X7 fixed; consistency table | §0.2, §12 |
-| Unresolved questions and NOT-approved section | Q2–Q21, A1–A3, G1–G7; explicit list | §10, §13 |
+| **B9** Exact claim writes: late response after UNKNOWN / after supersede / after terminal; payment on an unlinked order; duplicates; reconcile after supersede | Transaction LR + cases L1–L6 | §4.4 |
+| B9 Terminal stays terminal, yet the order is recorded | Recorded on `gatewayOrders` + claim + attempt event; attempt untouched | §2.3, §4.4, I8 |
+| B9 Distinguish created / received / persisted / response sent / proven / uncertain | Stages S1–S6 | §2.8.1 |
+| B9 Retain whenever exposure can't be disproven | Retention rule + fail-closed classes | §2.6, §2.8.2 |
+| B9 Transaction boundaries, idempotency, audit, conflicts | LR keyed on `gatewayOrders/{orderId}`; event dedupe key; identity conflict → anomaly | §4.4 |
+| B9 Never restore a terminal attempt to ACTIVE or create another payable order | Explicit "Never" list; I17 | §4.4, §6 |
+| **B10** Holder acquisition; consumption; exactly one; concurrency; timeout; persistence failure; old retained orders kept; new approval for another; not a bypass | Override record and state machine; rules table | §2.6.1, §4.8, I19, B10-1…8 |
+| **B11** CLOSED_UNAPPLIED vs reviewed payment conflict | Reviewed application never changes attempt or intent state | §4.6.2, X9, X10 |
+| B11 Per-state handling (CLOSED_UNAPPLIED, SUPERSEDED, FAILED_NO_ORDER, PAID, RETIRED, no attempt) | Table | §4.6.3 |
+| B11 No bypass of attempt or claim anomaly restrictions | V15 extended, V18 added | §4.6.1 |
+| B11 Tests for terminal immutability on every path | B11-1…B11-7 | §7 |
+| **B12** Captured; per-obligation allocation; refund mapping; per-obligation net; aggregate net; unmapped refunds; multiple partial; initiated; failed | Refund ledger | §2.5.2 |
+| B12 Constraints 1–6 | C1–C6 | §2.5.2, I20 |
+| B12 Reject when not deterministic | `REFUND_MAPPING_REQUIRED`, `REFUND_MAPPING_NOT_DETERMINISTIC` | §2.5.2, §4.6.1 |
+| B12 Bundle-level tests | B12-1…B12-8 | §7 |
+| **B13** Original amount; amount after sponsorship; sponsor reference; override representation; restored amount; both versions; intervening changes; sponsor paid or exposed order; audit links | Base + adjustments; sponsorship record; compensating reversal; legacy guard | §2.7.2, I22 |
+| B13 No overwrite of intervening adjustments | No snapshot restore | §2.7.2 |
+| B13 Tests | B13-1…B13-6 | §7 |
+| **B14** NEVER_EXPOSED_PROVEN / EXPOSURE_UNKNOWN / EXPOSED_PROVEN | Classes, conditions, monotonicity | §2.8.2, I18 |
+| B14 Never-exposed only with reliable evidence | Write-ahead marker + response gateway + fence | §2.8.1, I17 |
+| B14 Uncertain windows → retained | Crash-window table | §2.8.3 |
+| B14 Apply to adopt / supersede_all / retain_all / supersede / late responses / rollback and migration | Each rule updated | §2.4, §4.4, §4.8, §8 |
+| B14 Crash tests (before response, after construction, during send, after send) | B14-1…B14-5 (+ 6–8) | §7 |
+| Cross-cutting review | X8–X14; consistency table | §0.2, §13 |
