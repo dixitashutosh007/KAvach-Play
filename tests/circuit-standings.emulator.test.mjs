@@ -1,8 +1,9 @@
 /**
  * Circuit Standings (`tests/circuit-standings.emulator.test.mjs`).
+ * The club's own rank and total in each of the four circuits.
  *
  * Production code exercised against the Firestore emulator:
- *   - app/api/admin/circuit-standings/route.ts  (CRUD, roles, validation, audit)
+ *   - app/api/admin/circuit-standings/route.ts  (set / update / clear, roles, validation, audit)
  *   - firestore.rules circuitStandings          (signed-in read; no client writes)
  * Caller identity via the KAVACH_TEST_AUTH_BYPASS headers (x-test-uid / x-test-roles).
  *
@@ -44,10 +45,6 @@ describe("Circuit Standings — server API", { skip }, () => {
       saved[l] = console[l];
       console[l] = () => {};
     }
-    await db.doc("players/p_arun").set({ name: "Arun", authUid: "u_arun" });
-    await db.doc("players/p_bala").set({ name: "Bala", authUid: "u_bala" });
-    await db.doc("players/p_off").set({ name: "Gone", disabled: true });
-    await db.doc("players/p_merged").set({ name: "Old", mergedInto: "p_arun" });
   });
   after(() => Object.assign(console, saved));
 
@@ -60,110 +57,90 @@ describe("Circuit Standings — server API", { skip }, () => {
     const res = await route[method](new Request("http://localhost/api/admin/circuit-standings", { method, headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
     return { status: res.status, json: await res.json() };
   };
-  const rec = (over = {}) => ({ circuit: "india-wins", playerId: "p_arun", rank: 1, value: 42, asOf: "2026-11-20", ...over });
-  const get = async (id) => {
-    const s = await db.doc(`circuitStandings/${id}`).get();
+  const get = async (c) => {
+    const s = await db.doc(`circuitStandings/${c}`).get();
     return s.exists ? s.data() : null;
   };
   const count = async () => (await db.collection("circuitStandings").count().get()).data().count;
-  const audits = async (entityId) => (await db.collection("auditLogs").where("entity", "==", "circuit_standing").where("entityId", "==", entityId).get()).docs.map((d) => d.data());
+  const audits = async (c) => (await db.collection("auditLogs").where("entity", "==", "circuit_standing").where("entityId", "==", c).get()).docs.map((d) => d.data());
 
   it("CS-01 unauthenticated 401; player, Finance Admin and retired Match Admin get 403 on every method; nothing written", async () => {
-    for (const m of ["POST", "PUT", "DELETE"]) {
-      const body = m === "DELETE" ? { id: "india-wins__p_arun" } : m === "PUT" ? { id: "india-wins__p_arun", ...rec() } : rec();
+    for (const [m, body] of [["PUT", { circuit: "india-wins", rank: 20, value: 500 }], ["DELETE", { circuit: "india-wins" }]]) {
       assert.equal((await call(m, body, null)).status, 401, m);
       for (const who of [PLAYER, FIN, LEGACY]) assert.equal((await call(m, body, who)).status, 403, `${m} ${JSON.stringify(who)}`);
     }
     assert.equal(await count(), 0);
   });
 
-  it("CS-02 Club Admin creates a standing; server snapshots the player's name and audits it", async () => {
-    const r = await call("POST", rec());
-    assert.equal(r.status, 201, JSON.stringify(r.json));
-    assert.equal(r.json.id, "india-wins__p_arun");
-    const d = await get("india-wins__p_arun");
-    assert.equal(d.playerName, "Arun");
-    assert.deepEqual({ circuit: d.circuit, playerId: d.playerId, rank: d.rank, value: d.value, asOf: d.asOf }, rec());
-    assert.equal(d.updatedBy, "u_club");
-    const a = await audits("india-wins__p_arun");
-    assert.equal(a.length, 1);
-    assert.equal(a[0].action, "created");
-    assert.equal(a[0].actorId, "u_club");
-  });
-
-  it("CS-03 one record per (circuit, player): a second create is 409; the same player in another circuit is fine", async () => {
-    const r = await call("POST", rec({ rank: 3 }));
-    assert.equal(r.status, 409);
-    assert.equal((await get("india-wins__p_arun")).rank, 1);
-    assert.equal((await call("POST", rec({ circuit: "india-played", value: 120 }), SUPER)).status, 201);
-  });
-
-  it("CS-04 validation: bad fields, unknown/forged fields, future dates, missing/inactive/merged players are rejected", async () => {
-    const before = await count();
-    const cases = [
-      rec({ circuit: "delhi-wins" }),
-      rec({ rank: 0 }),
-      rec({ value: -2 }),
-      rec({ value: "350+" }),
-      rec({ asOf: "2999-01-01" }),
-      rec({ asOf: "2026-02-30" }),
-      { ...rec(), playerName: "Forged Name" },
-      { ...rec(), updatedBy: "someone" },
+  it("CS-02 Club Admin and Super Admin set all four standings (owner's examples); each is audited", async () => {
+    const rows = [
+      [CLUB, { circuit: "india-wins", rank: 20, value: 500 }],
+      [CLUB, { circuit: "india-played", rank: 15, value: 700 }],
+      [SUPER, { circuit: "bangalore-wins", rank: 4, value: 115 }],
+      [SUPER, { circuit: "bangalore-played", rank: 4, value: 200 }],
     ];
-    for (const c of cases) assert.equal((await call("POST", c)).status, 400, JSON.stringify(c));
-    assert.equal((await call("POST", "{not json")).status, 400);
-    for (const playerId of ["p_missing", "p_off", "p_merged"]) {
-      const r = await call("POST", rec({ circuit: "bangalore-wins", playerId }));
-      assert.equal(r.status, 400, playerId);
+    for (const [who, body] of rows) {
+      const r = await call("PUT", body, who);
+      assert.equal(r.status, 200, JSON.stringify(r.json));
+      assert.equal(r.json.changed, true);
+      const d = await get(body.circuit);
+      assert.deepEqual({ circuit: d.circuit, rank: d.rank, value: d.value }, body);
+      assert.equal(d.updatedBy, who.uid);
+      const a = await audits(body.circuit);
+      assert.equal(a.length, 1);
+      assert.equal(a[0].action, "created");
     }
-    assert.equal(await count(), before);
+    assert.equal(await count(), 4);
   });
 
-  it("CS-05 edit: rank/value/date change in place and is audited with old → new values; unchanged edit is a no-op", async () => {
-    const r = await call("PUT", { id: "india-wins__p_arun", ...rec({ rank: 2, value: 45 }) });
-    assert.equal(r.status, 200, JSON.stringify(r.json));
-    assert.equal(r.json.changed, true);
-    const d = await get("india-wins__p_arun");
-    assert.equal(d.rank, 2);
-    assert.equal(d.value, 45);
-    const a = (await audits("india-wins__p_arun")).find((x) => x.action === "updated");
+  it("CS-03 edit updates in place with old → new values audited; the same values are a no-op", async () => {
+    const r = await call("PUT", { circuit: "india-wins", rank: 18, value: 512 });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await get("india-wins").then((d) => [d.rank, d.value]), [18, 512]);
+    const a = (await audits("india-wins")).find((x) => x.action === "updated");
     assert.deepEqual(
       a.changes.map((c) => [c.field, c.oldValue, c.newValue]),
       [
-        ["rank", "1", "2"],
-        ["value", "42", "45"],
+        ["rank", "20", "18"],
+        ["value", "500", "512"],
       ],
     );
-    const again = await call("PUT", { id: "india-wins__p_arun", ...rec({ rank: 2, value: 45 }) }, SUPER);
-    assert.equal(again.json.changed, false);
+    assert.equal((await call("PUT", { circuit: "india-wins", rank: 18, value: 512 })).json.changed, false);
+    assert.equal((await audits("india-wins")).length, 2);
+    assert.equal(await count(), 4);
   });
 
-  it("CS-06 edit that changes the player moves the record; moving onto an existing (circuit, player) is 409", async () => {
-    const r = await call("PUT", { id: "india-wins__p_arun", ...rec({ playerId: "p_bala", rank: 2, value: 45 }) });
-    assert.equal(r.status, 200, JSON.stringify(r.json));
-    assert.equal(r.json.id, "india-wins__p_bala");
-    assert.equal(await get("india-wins__p_arun"), null);
-    assert.equal((await get("india-wins__p_bala")).playerName, "Bala");
-    // india-played__p_arun exists (CS-03): moving Bala's record onto it is refused, nothing changes.
-    const clash = await call("PUT", { id: "india-wins__p_bala", ...rec({ circuit: "india-played", playerId: "p_arun", value: 1 }) });
-    assert.equal(clash.status, 409);
-    assert.ok(await get("india-wins__p_bala"));
-    assert.equal((await get("india-played__p_arun")).value, 120);
-    assert.equal((await call("PUT", { id: "india-wins__nobody", ...rec() })).status, 404);
-    assert.equal((await call("PUT", { id: "../players/p_arun", ...rec() })).status, 400);
+  it("CS-04 validation: bad numbers, unknown circuit, player or extra fields are rejected; nothing changes", async () => {
+    const cases = [
+      { circuit: "delhi-wins", rank: 1, value: 1 },
+      { circuit: "india-wins", rank: 0, value: 1 },
+      { circuit: "india-wins", rank: 2, value: -1 },
+      { circuit: "india-wins", rank: 2, value: "500+" },
+      { circuit: "india-wins", rank: "20th", value: 5 },
+      { circuit: "india-wins", rank: 2 },
+      { circuit: "india-wins", rank: 2, value: 5, playerId: "p1" },
+      { circuit: "india-wins", rank: 2, value: 5, updatedBy: "x" },
+    ];
+    for (const c of cases) assert.equal((await call("PUT", c)).status, 400, JSON.stringify(c));
+    assert.equal((await call("PUT", "{not json")).status, 400);
+    assert.equal((await call("DELETE", { circuit: "../players/x" })).status, 400);
+    assert.equal((await call("DELETE", { circuit: "india-wins", extra: 1 })).status, 400);
+    assert.deepEqual(await get("india-wins").then((d) => [d.rank, d.value]), [18, 512]);
   });
 
-  it("CS-07 delete: Club/Super only, audited, 404 when already gone; the player record is untouched", async () => {
-    assert.equal((await call("DELETE", { id: "india-wins__p_bala" }, FIN)).status, 403);
-    assert.ok(await get("india-wins__p_bala"));
-    const r = await call("DELETE", { id: "india-wins__p_bala" }, SUPER);
+  it("CS-05 clear: Finance denied; Club/Super clear it, audited; 404 when already cleared; others untouched", async () => {
+    assert.equal((await call("DELETE", { circuit: "bangalore-wins" }, FIN)).status, 403);
+    assert.ok(await get("bangalore-wins"));
+    const r = await call("DELETE", { circuit: "bangalore-wins" }, SUPER);
     assert.equal(r.status, 200);
-    assert.equal(await get("india-wins__p_bala"), null);
-    assert.equal((await call("DELETE", { id: "india-wins__p_bala" })).status, 404);
-    assert.equal((await call("DELETE", { id: "india-played__p_arun", extra: 1 })).status, 400);
-    const a = (await audits("india-wins__p_bala")).find((x) => x.action === "deleted");
+    assert.equal(await get("bangalore-wins"), null);
+    assert.equal((await call("DELETE", { circuit: "bangalore-wins" })).status, 404);
+    const a = (await audits("bangalore-wins")).find((x) => x.action === "deleted");
     assert.equal(a.actorId, "u_super");
-    assert.equal((await db.doc("players/p_bala").get()).data().name, "Bala");
+    assert.equal(await count(), 3);
+    // Setting it again re-creates it.
+    assert.equal((await call("PUT", { circuit: "bangalore-wins", rank: 4, value: 115 })).status, 200);
+    assert.equal(await count(), 4);
   });
 });
 
@@ -183,7 +160,7 @@ describe("Circuit Standings — Firestore rules", { skip }, () => {
       await setDoc(doc(d, "appUsers/p_uid"), { name: "P", playerId: "p1", role: "player" });
       await setDoc(doc(d, "appUsers/fin_uid"), { name: "Fin", role: "player", isFinanceAdmin: true });
       await setDoc(doc(d, "appUsers/club_uid"), { name: "Club", role: "player", isClubAdmin: true });
-      await setDoc(doc(d, "circuitStandings/india-wins__p1"), { circuit: "india-wins", playerId: "p1", playerName: "P", rank: 1, value: 10, asOf: "2026-11-01" });
+      await setDoc(doc(d, "circuitStandings/india-wins"), { circuit: "india-wins", rank: 20, value: 500 });
     });
   });
   after(async () => {
@@ -194,19 +171,19 @@ describe("Circuit Standings — Firestore rules", { skip }, () => {
     const { doc, getDoc, collection, getDocs } = await import("firebase/firestore");
     for (const [uid, claims] of [["p_uid"], ["fin_uid"], ["club_uid"], ["super_uid", { admin: true }]]) {
       const d = testEnv.authenticatedContext(uid, claims).firestore();
-      await rut.assertSucceeds(getDoc(doc(d, "circuitStandings/india-wins__p1")));
+      await rut.assertSucceeds(getDoc(doc(d, "circuitStandings/india-wins")));
       await rut.assertSucceeds(getDocs(collection(d, "circuitStandings")));
     }
-    await rut.assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), "circuitStandings/india-wins__p1")));
+    await rut.assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), "circuitStandings/india-wins")));
   });
 
   it("CS-R2 no client can create, edit or delete standings directly — not even Club or Super Admin", async () => {
     const { doc, setDoc, updateDoc, deleteDoc } = await import("firebase/firestore");
     for (const [uid, claims] of [["p_uid"], ["fin_uid"], ["club_uid"], ["super_uid", { admin: true }]]) {
       const d = testEnv.authenticatedContext(uid, claims).firestore();
-      await rut.assertFails(setDoc(doc(d, "circuitStandings/india-played__p1"), { circuit: "india-played", playerId: "p1", playerName: "P", rank: 1, value: 5, asOf: "2026-11-01" }));
-      await rut.assertFails(updateDoc(doc(d, "circuitStandings/india-wins__p1"), { rank: 9 }));
-      await rut.assertFails(deleteDoc(doc(d, "circuitStandings/india-wins__p1")));
+      await rut.assertFails(setDoc(doc(d, "circuitStandings/india-played"), { circuit: "india-played", rank: 1, value: 5 }));
+      await rut.assertFails(updateDoc(doc(d, "circuitStandings/india-wins"), { rank: 1 }));
+      await rut.assertFails(deleteDoc(doc(d, "circuitStandings/india-wins")));
     }
   });
 });

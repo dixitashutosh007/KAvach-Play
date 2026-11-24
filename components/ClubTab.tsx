@@ -184,7 +184,7 @@ export function ClubTab({
       {show("leaderboard") && isClubAdmin && (
         <div className="space-y-6">
           <ClubStatisticsAdmin />
-          <CircuitStandingsAdmin store={store} />
+          <CircuitStandingsAdmin />
           <LeaderboardTab store={store} persona="admin" />
         </div>
       )}
