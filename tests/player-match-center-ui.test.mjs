@@ -571,7 +571,9 @@ describe("Player Match Center UI/UX Refinement Test Suite", () => {
           onSelectMatch: () => {},
         })
       );
-      assert.ok(!next.includes("bg-soft-blush"));
+      // The card's own surface (root element), not the corner tab inside it.
+      const rootClass = next.match(/^<div[^>]*class="([^"]*)"/)[1];
+      assert.ok(!rootClass.includes("bg-soft-blush"), rootClass);
     });
 
     it("15f. Alternation is deterministic by rendered index in every Match Center list", () => {

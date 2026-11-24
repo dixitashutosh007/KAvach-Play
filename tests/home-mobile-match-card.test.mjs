@@ -176,9 +176,12 @@ describe("Scope protection", () => {
     assert.ok(!html.includes("payment-status-m1"));
     assert.ok(!/UNPAID|₹698/.test(text(html)));
     assert.ok(!html.includes("match-card-compact-m1"));
-    assert.ok(!html.includes("match-card-chips-m1"));
     assert.ok(!html.includes('data-layout="home"'));
-    assert.ok(html.includes('data-testid="format-badge-m1"'), "standard format badge kept");
+    assert.ok(html.includes('data-testid="format-badge-m1"'), "standard format badge kept (desktop)");
+    // Weekend-ops refinement (owner request): on phones the format + jersey sit in
+    // the top-right corner tab, and the identity-column chips are hidden there.
+    assert.match(html, /data-testid="match-card-chips-m1" class="[^"]*md:hidden/);
+    assert.match(html, /data-testid="match-card-title-row-m1"|max-md:hidden/);
   });
 
   it("Admin Match Center keeps its own payment/balance rendering (file not using the Home layout)", () => {
