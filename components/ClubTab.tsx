@@ -27,6 +27,7 @@ const LeaderboardTab = dynamic(() => import("@/components/LeaderboardTab").then(
 const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
 const StudioAdminTab = dynamic(() => import("@/components/StudioAdminTab").then(m => ({ default: m.StudioAdminTab })), { ssr: false });
 const ClubStatisticsAdmin = dynamic(() => import("@/components/ClubStatisticsAdmin").then(m => ({ default: m.ClubStatisticsAdmin })), { ssr: false });
+const CircuitStandingsAdmin = dynamic(() => import("@/components/club/CircuitStandingsAdmin").then(m => ({ default: m.CircuitStandingsAdmin })), { ssr: false });
 const AdminAnnouncementsManager = dynamic(() => import("@/components/home/AdminAnnouncementsManager").then(m => ({ default: m.AdminAnnouncementsManager })), { ssr: false });
 
 const SECTION_ICONS: Record<ClubSection, typeof Users> = {
@@ -183,6 +184,7 @@ export function ClubTab({
       {show("leaderboard") && isClubAdmin && (
         <div className="space-y-6">
           <ClubStatisticsAdmin />
+          <CircuitStandingsAdmin store={store} />
           <LeaderboardTab store={store} persona="admin" />
         </div>
       )}

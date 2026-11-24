@@ -10,14 +10,17 @@
  * Full lists (announcements, Pulse, polls, leaderboard, badges, directory) open
  * as secondary screens on demand ("View More" / tiles).
  *
- * Circuit standings (India / Bangalore, most wins / most played) have no data
- * source in the application yet, so they show an explicit "not available" state
- * rather than invented numbers.
+ * Circuit standings (India / Bangalore, most wins / most played) come from the
+ * admin-maintained `circuitStandings` records (Admin Club → Club Stats). The card
+ * shows each circuit's leader; the Stats chip lists every ranked player. A circuit
+ * without records shows "Not available" — nothing is invented.
  */
 import { useMemo, useState } from "react";
 import { Trophy, Award, BarChart3, Activity, Megaphone, ChevronRight, Users, Medal, ShoppingBag } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { useClubStats } from "@/hooks/useClubStats";
+import { useCircuitStandings } from "@/hooks/useCircuitStandings";
+import { CIRCUITS, standingsFor, formatStandingValue, formatAsOf, type CircuitStanding } from "@/lib/circuit-standings";
 import { useRecentAnnouncements, usePulsePreview } from "@/hooks/useClubData";
 import { computeWinRate, formatWinRate } from "@/lib/club-stats";
 import { CLUB_ANNOUNCEMENT_PREVIEW, CLUB_PULSE_PREVIEW } from "@/lib/club-feed";
@@ -25,13 +28,6 @@ import { rankLeaderboard, countBadgesByPlayer } from "@/lib/leaderboard";
 import { getAnnouncementDisplay } from "@/components/home/announcementDisplay";
 
 type Section = "all" | "announcements" | "pulse" | "stats";
-
-const CIRCUIT_STANDINGS = [
-  { key: "india-wins", scope: "India", metric: "Most Wins" },
-  { key: "india-played", scope: "India", metric: "Most Played" },
-  { key: "bangalore-wins", scope: "Bangalore", metric: "Most Wins" },
-  { key: "bangalore-played", scope: "Bangalore", metric: "Most Played" },
-] as const;
 
 export function PlayerClubTab({
   store,
@@ -85,6 +81,8 @@ export function PlayerClubTab({
       </div>
 
       {show("stats") && <ClubAtAGlance />}
+
+      {section === "stats" && <CircuitStandingsFull />}
 
       {section === "all" && tiles.length > 0 && (
         <div className="grid grid-cols-4 gap-2" data-testid="club-tiles">
@@ -177,10 +175,12 @@ function SectionHeader({ icon: Icon, title, hint, action, onAction, testId }: { 
   );
 }
 
-/** Club totals (admin-maintained) + circuit standings (no data source yet). */
+/** Club totals (admin-maintained) + circuit standings (admin-maintained `circuitStandings`). */
 export function ClubAtAGlance() {
   const { stats, loading, error } = useClubStats();
   const rate = stats ? computeWinRate(stats.matchesPlayed, stats.matchesWon) : null;
+  const circuit = useCircuitStandings();
+  const latestAsOf = circuit.standings.reduce<string | null>((m, s) => (m === null || s.asOf > m ? s.asOf : m), null);
   return (
     <section data-testid="club-at-a-glance" className="rounded-2xl overflow-hidden border border-border bg-surface" aria-labelledby="club-glance-title">
       <div className="bg-[#171C26] text-white px-4 py-4">
@@ -211,19 +211,81 @@ export function ClubAtAGlance() {
       <div className="px-4 py-3" data-testid="club-circuit-standings">
         <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">Circuit standings</p>
         <ul className="grid grid-cols-2 gap-x-3 gap-y-2">
-          {CIRCUIT_STANDINGS.map((s) => (
-            <li key={s.key} className="flex items-start gap-2 min-w-0">
-              <Medal className="w-5 h-5 text-muted-gold shrink-0" aria-hidden="true" />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-text-primary leading-tight">{s.scope}</span>
-                <span className="block text-xs text-text-secondary leading-tight">{s.metric}</span>
-                <span className="block text-[11px] text-text-muted leading-tight">Not available</span>
-              </span>
-            </li>
-          ))}
+          {CIRCUITS.map((c) => {
+            const leader = standingsFor(circuit.standings, c.key)[0];
+            return (
+              <li key={c.key} className="flex items-start gap-2 min-w-0" data-testid={`club-circuit-${c.key}`}>
+                <Medal className="w-5 h-5 text-muted-gold shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-text-primary leading-tight">{c.scope}</span>
+                  <span className="block text-xs text-text-secondary leading-tight">{c.metric}</span>
+                  {leader ? (
+                    <span className="block min-w-0" data-testid={`club-circuit-${c.key}-leader`}>
+                      <span className="block text-[11px] font-semibold text-text-primary leading-tight truncate">
+                        #{leader.rank} {leader.playerName}
+                      </span>
+                      <span className="block text-[11px] text-text-secondary leading-tight">{formatStandingValue(c.key, leader.value)}</span>
+                    </span>
+                  ) : (
+                    <span className="block text-[11px] text-text-muted leading-tight">{circuit.loading ? "Loading…" : "Not available"}</span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
         </ul>
-        <p className="mt-2 text-xs text-text-secondary">Circuit rankings will appear here once a verified ranking source is connected.</p>
+        <p className="mt-2 text-xs text-text-secondary" data-testid="club-circuit-note">
+          {latestAsOf
+            ? `Circuit standings as of ${formatAsOf(latestAsOf)}.`
+            : circuit.error
+              ? "Circuit standings couldn't be loaded right now."
+              : "Circuit standings will appear here once the club publishes them."}
+        </p>
       </div>
+    </section>
+  );
+}
+
+/** Stats chip: every ranked player in each circuit (same records as the card). */
+function CircuitStandingsFull() {
+  const { standings, loading, error } = useCircuitStandings();
+  return (
+    <section className="flex flex-col gap-2" data-testid="club-circuit-standings-full" aria-labelledby="club-circuit-full-title">
+      <h2 id="club-circuit-full-title" className="flex items-center gap-2 text-base font-bold text-text-primary">
+        <Medal className="w-5 h-5 text-scarlet" aria-hidden="true" />
+        Circuit Standings
+      </h2>
+      {loading ? (
+        <SkeletonRows count={2} />
+      ) : error ? (
+        <StateCard text="Circuit standings couldn't be loaded right now." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {CIRCUITS.map((c) => {
+            const rows: CircuitStanding[] = standingsFor(standings, c.key);
+            return (
+              <div key={c.key} className="rounded-2xl bg-surface border border-border p-3 min-w-0" data-testid={`club-circuit-full-${c.key}`}>
+                <p className="text-sm font-bold text-text-primary">
+                  {c.scope} <span className="font-semibold text-text-secondary">· {c.metric}</span>
+                </p>
+                {rows.length === 0 ? (
+                  <p className="mt-1 text-xs text-text-muted">Not available</p>
+                ) : (
+                  <ol className="mt-2 flex flex-col gap-1.5">
+                    {rows.map((r) => (
+                      <li key={r.id} className="flex items-center gap-2 text-sm min-w-0">
+                        <span className="w-8 shrink-0 text-xs font-black text-scarlet tabular-nums">#{r.rank}</span>
+                        <span className="flex-1 min-w-0 truncate text-text-primary">{r.playerName}</span>
+                        <span className="shrink-0 text-xs text-text-secondary tabular-nums">{formatStandingValue(c.key, r.value)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

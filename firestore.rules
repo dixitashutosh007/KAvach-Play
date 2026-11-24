@@ -712,6 +712,15 @@ service cloud.firestore {
       }
     }
 
+    // Circuit Standings (Admin Club → Club Stats): readable by signed-in members
+    // for the Player Club card. Written ONLY by /api/admin/circuit-standings
+    // (Club Admin / Super Admin, validated and audited via the Admin SDK); no
+    // client — player, Finance Admin, Club Admin or Super Admin — writes directly.
+    match /circuitStandings/{standingId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // Shop products: managed by Club Admin / Super Admin only (owner decision,
     // Club Shop brief 2026-11-24). Finance Admins do not manage the Shop.
     match /merchandises/{merchId} {
