@@ -607,11 +607,11 @@ A failed binding check never blocks recording the fact; it leaves the request pe
 
 | Item | Rule |
 |---|---|
-| Actor | System on the owning payer's order request (§4.1), or Finance / Super |
+| Actor | System on the owning payer's order request (§4.1), or Finance / Super (**Q30: owner approved**) |
 | Preconditions | Attempt RECOVERED or ACTIVATION_FAILED, with a known `gatewayOrderId`; the claim holder is this attempt at its fence; no anomaly; revalidation §2.3.1 passes (obligations unpaid at version, payer binding, amount = current payable, order fetched by ID matches; G1) |
 | Transaction writes | **Transaction A** (§2.8.1): attempt → ACTIVE, marker `responseAuthorisedAt`; `gatewayOrders` application exposure → `APPLICATION_EXPOSURE_UNKNOWN`; events. Claims unchanged (holder's own order) |
 | Result | The **same** order is returned to the payer; no new order |
-| Revalidation fails | 409 `ORDER_REVALIDATION_FAILED` (e.g. amount changed); attempt state unchanged; Finance options: wait (if transient), or `abandon_attempt` (O2, retains the order) |
+| Revalidation fails | 409 `ORDER_REVALIDATION_FAILED` (e.g. amount changed); attempt state unchanged; the claim and its order stay held by the attempt for Finance review (no release, no replacement order); Finance options: wait (if transient), or `abandon_attempt` (O2, retains the order) |
 | Retry / idempotency | Repeated payer requests re-run O3; once ACTIVE they take the normal reuse path |
 
 ### O4 `retire_exposed {attemptId}`: exposed attempts (unchanged)
@@ -1124,7 +1124,7 @@ Revision 4 §8 is retained, plus:
 **Gateway checks** G1–G7: none performed; none assumed.
 
 **Revision 7 questions:**
-- **Q30:** Should the payer's own order request trigger `reactivate_attempt` for a RECOVERED or ACTIVATION_FAILED holder (recommended, for availability), or only Finance?
+- **Q30: RESOLVED — OWNER APPROVED (2026-11-24).** A payer's own order request automatically triggers `reactivate_attempt` (§2.10 O3) when their existing attempt is RECOVERED or ACTIVATION_FAILED. Reactivation reuses the **same** existing Razorpay order and never creates a replacement order. Mandatory server-side revalidation (§2.3.1) is unchanged. If revalidation fails, the response is 409 `ORDER_REVALIDATION_FAILED`, the attempt is left unchanged, and the claim and order stay retained for Finance review. Finance / Super Admin may also invoke reactivation. *This approves the Q30 behaviour only; it is not approval to implement any phase (§14).*
 - **Q31:** When RF finds the obligation version changed (check 7), is cancel + re-request the required Finance path (recommended), or should Finance be able to re-bind the request to the current version (not recommended)?
 - **Q32:** Wording for 409 `ORDER_REVALIDATION_FAILED` and `REVERSAL_PENDING`.
 
@@ -1196,7 +1196,7 @@ Revision 4 §8 is retained, plus:
 
 ## 14. NOT approved for implementation
 
-- **Everything in this document.** No phase (1A, 1B, 2–7) may start until the independent reviewer approves revision 6 **and** the owner gives explicit approval for that specific phase.
+- **Everything in this document.** No phase (1A, 1B, 2–7) may start until the independent reviewer approves revision 7 **and** the owner gives explicit approval for that specific phase. The owner's approval of Q30 (§10) is a behavioural decision only and does **not** approve Phase 1A, Phase 1B or any other phase.
 - **Recorded owner recommendations (Q13, Q20, Q22–Q25) are not approvals** and enable nothing.
 - **Separately approval-gated, even after design approval:**
   - enabling FAILED_NO_ORDER (Q26, G6);
