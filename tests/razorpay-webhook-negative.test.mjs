@@ -294,6 +294,8 @@ describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
         doc: (docId) => {
           const key = `${col}/${docId}`;
           return {
+            id: docId,
+            path: key,
             ref: { id: docId, path: key },
             get: async () => ({
               exists: store.has(key),
@@ -307,6 +309,10 @@ describe("FIN-003: Strict Razorpay Webhook Negative Tests", () => {
           get: async (ref) => ref.get(),
           set: (ref, val) => store.set(ref.path, val),
           update: (ref, val) => store.set(ref.path, { ...(store.get(ref.path) || {}), ...val }),
+          create: (ref, val) => {
+            if (store.has(ref.path)) throw Object.assign(new Error("ALREADY_EXISTS"), { code: 6 });
+            store.set(ref.path, val);
+          },
         };
         return await txFn(tx);
       },

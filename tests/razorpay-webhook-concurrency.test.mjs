@@ -171,6 +171,8 @@ describe("FIN-002: Concurrency-Safe Transactional Processing", () => {
           ref: { path, id },
         }),
         collection: (subCol) => ({
+          path: `${path}/${subCol}`,
+          isCollection: true,
           doc: (subId) => createDocRef(`${path}/${subCol}/${subId}`),
         }),
       };
@@ -179,6 +181,8 @@ describe("FIN-002: Concurrency-Safe Transactional Processing", () => {
     return {
       storage,
       collection: (col) => ({
+        path: col,
+        isCollection: true,
         doc: (id) => createDocRef(`${col}/${id}`),
       }),
       runTransaction: async (updateFunction) => {
@@ -194,6 +198,14 @@ describe("FIN-002: Concurrency-Safe Transactional Processing", () => {
           const transactionContext = {
             get: async (ref) => {
               const path = ref.path;
+              // B2: the transaction also reads collections (e.g. a player's otherFees).
+              if (ref.isCollection) {
+                const prefix = `${path}/`;
+                const docs = [...storage.entries()]
+                  .filter(([k]) => k.startsWith(prefix) && !k.slice(prefix.length).includes("/"))
+                  .map(([k, v]) => ({ id: k.slice(prefix.length), data: () => v }));
+                return { docs, size: docs.length, empty: docs.length === 0 };
+              }
               const exists = storage.has(path);
               return {
                 exists,
@@ -206,6 +218,10 @@ describe("FIN-002: Concurrency-Safe Transactional Processing", () => {
               storage.set(ref.path, { ...current, ...data });
             },
             set: (ref, data) => {
+              storage.set(ref.path, data);
+            },
+            create: (ref, data) => {
+              if (storage.has(ref.path)) throw Object.assign(new Error("ALREADY_EXISTS"), { code: 6 });
               storage.set(ref.path, data);
             },
           };
@@ -221,11 +237,15 @@ describe("FIN-002: Concurrency-Safe Transactional Processing", () => {
   it("handles duplicate deliveries idempotently without re-executing writes", async () => {
     const mockDb = createTransactionalMockDb();
     const intentId = "intent_test_dup";
+    // B2: the obligation documents must exist; a missing obligation is held, never skipped.
+    mockDb.storage.set("matches/m1", { fee: 400 });
+    mockDb.storage.set("matches/m1/payments/p1", { status: "Unpaid", playerId: "player_1" });
     mockDb.storage.set(`razorpayIntents/${intentId}`, {
       status: "pending",
       type: "match",
       matchId: "m1",
       paymentId: "p1",
+      playerId: "player_1",
       amount: 400,
       currency: "INR",
       orderId: "order_dup_1",
@@ -259,11 +279,15 @@ describe("FIN-002: Concurrency-Safe Transactional Processing", () => {
   it("safely handles concurrent simultaneous webhook events (race condition)", async () => {
     const mockDb = createTransactionalMockDb();
     const intentId = "intent_race_1";
+    // B2: the obligation documents must exist; a missing obligation is held, never skipped.
+    mockDb.storage.set("matches/m1", { fee: 350 });
+    mockDb.storage.set("matches/m1/payments/p1", { status: "Unpaid", playerId: "player_1" });
     mockDb.storage.set(`razorpayIntents/${intentId}`, {
       status: "pending",
       type: "match",
       matchId: "m1",
       paymentId: "p1",
+      playerId: "player_1",
       amount: 500,
       currency: "INR",
       orderId: "order_race_1",

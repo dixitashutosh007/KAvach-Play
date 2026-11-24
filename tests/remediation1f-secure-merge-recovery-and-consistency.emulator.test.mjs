@@ -53,6 +53,25 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/**
+ * B2 fixture helper: production match intents always carry matchId, paymentId and playerId, and
+ * B2 never silently skips a missing obligation. Older fixtures here seeded "match" intents with
+ * late-fee items only; this completes them with a real match obligation (fee = amount − late fees,
+ * payer = the late-fee player) without changing what each scenario asserts.
+ */
+async function seedMatchObligationFor(db, intentId, { createDocs = true } = {}) {
+  const ref = db.collection("razorpayIntents").doc(intentId);
+  const intent = (await ref.get()).data();
+  const late = (intent.lateFeeItems || []).reduce((acc, lf) => acc + Number(lf.amount || 0), 0);
+  const payer = intent.playerId || intent.lateFeeItems?.[0]?.playerId;
+  const matchId = `m_${intentId}`;
+  if (createDocs) {
+    await db.collection("matches").doc(matchId).set({ fee: Number(intent.amount) - late });
+    await db.collection("matches").doc(matchId).collection("payments").doc("pm").set({ playerId: payer, status: "Unpaid" });
+  }
+  await ref.update({ matchId, paymentId: "pm", playerId: payer });
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rulesPath = path.resolve(__dirname, "../firestore.rules");
@@ -2321,6 +2340,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
         },
       ],
     });
+    await seedMatchObligationFor(db, intentId);
 
     const eventDetails = {
       event: "payment.captured",
@@ -3064,6 +3084,9 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
         },
       ],
     });
+    // Scenario 83 only needs the payer: the merge-in-progress check precedes every obligation read,
+    // and an extra payment row for the loser would change the concurrent merge operation under test.
+    await seedMatchObligationFor(db, intentId, { createDocs: false });
 
     const eventDetails = {
       event: "payment.captured",
@@ -3333,6 +3356,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
         },
       ],
     });
+    await seedMatchObligationFor(db, intentId);
 
     const eventDetails = {
       event: "payment.captured",
@@ -3421,6 +3445,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
         },
       ],
     });
+    await seedMatchObligationFor(db, intentMulti);
 
     const resMulti = await processWebhookIntentTransaction(db, {
       event: "payment.captured",
@@ -3463,6 +3488,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
       status: "created",
       lateFeeItems: [{ playerId: pC1, amount: 50, label: "Cycle Fee", templateId: "tpl_cyc_85" }],
     });
+    await seedMatchObligationFor(db, intentCycle);
 
     await assert.rejects(
       async () => {
@@ -3497,6 +3523,7 @@ describe("Security Remediation 1F: Secure Identity Merge, Financial Integrity & 
       status: "created",
       lateFeeItems: [{ playerId: pM1, amount: 50, label: "Missing Keeper Fee", templateId: "tpl_mis_85" }],
     });
+    await seedMatchObligationFor(db, intentMiss);
 
     await assert.rejects(
       async () => {

@@ -434,12 +434,13 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
   describe("Scenario 9 & 10: Webhook Replay & Transaction Processing", () => {
     it("identical webhook replay is idempotent on already-paid intent", async () => {
       const mockDb = {
-        collection: () => ({
-          doc: (id) => ({ id }),
+        // B2: the transaction now reads several documents; return the intent only for its own path.
+        collection: (col) => ({
+          doc: (id) => ({ id, col }),
         }),
         runTransaction: async (updateFn) => {
           const fakeTx = {
-            get: async () => ({
+            get: async (ref) => ref.col !== "razorpayIntents" ? { exists: false, data: () => undefined } : ({
               exists: true,
               data: () => ({
                 status: "paid",
@@ -451,6 +452,7 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
             }),
             update: () => {},
             set: () => {},
+            create: () => {},
           };
           return await updateFn(fakeTx);
         },
@@ -473,12 +475,13 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
 
     it("REJECTS conflicting payment ID replay even when intent is already marked paid", async () => {
       const mockDb = {
-        collection: () => ({
-          doc: (id) => ({ id }),
+        // B2: the transaction now reads several documents; return the intent only for its own path.
+        collection: (col) => ({
+          doc: (id) => ({ id, col }),
         }),
         runTransaction: async (updateFn) => {
           const fakeTx = {
-            get: async () => ({
+            get: async (ref) => ref.col !== "razorpayIntents" ? { exists: false, data: () => undefined } : ({
               exists: true,
               data: () => ({
                 status: "paid",
@@ -490,6 +493,7 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
             }),
             update: () => {},
             set: () => {},
+            create: () => {},
           };
           return await updateFn(fakeTx);
         },
@@ -513,12 +517,13 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
 
     it("REJECTS conflicting amount even when intent is already marked paid", async () => {
       const mockDb = {
-        collection: () => ({
-          doc: (id) => ({ id }),
+        // B2: the transaction now reads several documents; return the intent only for its own path.
+        collection: (col) => ({
+          doc: (id) => ({ id, col }),
         }),
         runTransaction: async (updateFn) => {
           const fakeTx = {
-            get: async () => ({
+            get: async (ref) => ref.col !== "razorpayIntents" ? { exists: false, data: () => undefined } : ({
               exists: true,
               data: () => ({
                 status: "paid",
@@ -530,6 +535,7 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
             }),
             update: () => {},
             set: () => {},
+            create: () => {},
           };
           return await updateFn(fakeTx);
         },
@@ -553,12 +559,13 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
 
     it("REJECTS conflicting currency even when intent is already marked paid", async () => {
       const mockDb = {
-        collection: () => ({
-          doc: (id) => ({ id }),
+        // B2: the transaction now reads several documents; return the intent only for its own path.
+        collection: (col) => ({
+          doc: (id) => ({ id, col }),
         }),
         runTransaction: async (updateFn) => {
           const fakeTx = {
-            get: async () => ({
+            get: async (ref) => ref.col !== "razorpayIntents" ? { exists: false, data: () => undefined } : ({
               exists: true,
               data: () => ({
                 status: "paid",
@@ -570,6 +577,7 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
             }),
             update: () => {},
             set: () => {},
+            create: () => {},
           };
           return await updateFn(fakeTx);
         },

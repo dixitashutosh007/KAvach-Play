@@ -248,7 +248,9 @@ describe("B1: PX-1 merchandise order identity + FIN-004 (Firestore emulator)", {
     assert.equal(o.orderStatus, "Ready to Place Order");
   });
 
-  it("B1-09 a pre-existing mo_{intentId} is never overwritten: MERCH_ORDER_EXISTS recorded, 200, intent stays pending", async () => {
+  // B2 (§15): an existing mo_{intentId} classifies as SETTLED, so the capture is recorded as a
+  // duplicate (registry rejected_duplicate, intent paid_unapplied); the order is still never touched.
+  it("B1-09 a pre-existing mo_{intentId} is never overwritten: MERCH_ORDER_EXISTS recorded as duplicate, 200", async () => {
     const { intentId, order, pay } = await seedIntent({ playerId: "p9", merchId: "m9", price: 650 });
     const existing = { id: `mo_${intentId}`, playerId: "p9", paymentStatus: "Unpaid", note: "pre-existing" };
     await db.collection("merchOrders").doc(`mo_${intentId}`).set(existing);
@@ -256,7 +258,8 @@ describe("B1: PX-1 merchandise order identity + FIN-004 (Firestore emulator)", {
     assert.equal(r.status, 200);
     assert.equal(r.json.code, "MERCH_ORDER_EXISTS");
     assert.deepEqual((await getDocData("merchOrders", `mo_${intentId}`)).data(), existing);
-    assert.equal((await getDocData("razorpayIntents", intentId)).data().status, "pending");
+    assert.equal((await getDocData("razorpayIntents", intentId)).data().status, "paid_unapplied");
+    assert.equal((await getDocData("gatewayPayments", pay)).data().application, "rejected_duplicate");
     const dl = (await getDocData("webhookDeadLetters", `pay_${pay}`)).data();
     assert.equal(dl.reason, "MERCH_ORDER_EXISTS");
     assert.equal(dl.classification, "data_integrity");

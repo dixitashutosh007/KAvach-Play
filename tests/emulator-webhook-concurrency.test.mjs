@@ -73,6 +73,7 @@ describe("FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
       type: "match",
       matchId: "m_race_1",
       paymentId: "p_race_1",
+      playerId: "player_race_1",
       amount: 500,
       currency: "INR",
       orderId: "order_emulator_race_1",
@@ -81,6 +82,8 @@ describe("FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
       ],
     });
 
+    // B2: the match and its payer must exist; a missing obligation is held, never skipped.
+    await db.collection("matches").doc("m_race_1").set({ fee: 350 });
     await db.collection("matches").doc("m_race_1").collection("payments").doc("p_race_1").set({
       playerId: "player_race_1",
       status: "Unpaid",

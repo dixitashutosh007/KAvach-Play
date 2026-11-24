@@ -274,8 +274,10 @@ describe("R3: webhook route error classification (Firestore emulator, real HMAC)
     const playerId = uid("p_merge");
     const matchId = uid("m");
     await db.collection("players").doc(playerId).set({ name: "Merging", mergeStatus: "in_progress" });
+    // B2: complete obligation fixture (match fee 500, payer recorded on the intent).
+    await db.collection("matches").doc(matchId).set({ fee: 500 });
     await db.collection("matches").doc(matchId).collection("payments").doc("pm1").set({ playerId, status: "Unpaid", amount: 500 });
-    const t = await seedIntent({ type: "match", matchId, paymentId: "pm1", orderPayload: null });
+    const t = await seedIntent({ type: "match", matchId, paymentId: "pm1", playerId, orderPayload: null });
     const r = await send(capturedEvent(t.intentId, t));
     assert.equal(r.status, 503);
     assert.equal(r.json.code, "MERGE_IN_PROGRESS");

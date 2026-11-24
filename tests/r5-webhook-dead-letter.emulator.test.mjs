@@ -150,16 +150,23 @@ describe("R5: webhook dead-letter recording and finance reconciliation", { skip 
     assert.equal((await db.collection("razorpayIntents").doc(t.intentId).get()).data().status, "pending");
   });
 
-  it("R5-04 duplicate unmatched event → same single record, deliveryCount 2, both event ids kept", async () => {
+  // B2: a redelivery of an already-recorded payment is absorbed by the gatewayPayments registry
+  // (REPLAY, zero writes). The dead-letter keeps its first sighting; it is never duplicated.
+  it("R5-04 duplicate unmatched event → one dead-letter and one registry record; the redelivery is a zero-write replay", async () => {
     const pay = `pay_${uid("DUP")}`;
     const order = `order_${uid("O")}`;
     const before = await dlCount();
-    await sendWebhook(evt({ order, pay }), { eventId: "evt_R5dupA" });
-    await sendWebhook(evt({ order, pay, event: "order.paid" }), { eventId: "evt_R5dupB" });
+    const first = await sendWebhook(evt({ order, pay }), { eventId: "evt_R5dupA" });
+    const second = await sendWebhook(evt({ order, pay }), { eventId: "evt_R5dupB" });
+    assert.equal(first.json.code, "NO_INTENT_ID");
+    assert.equal(second.status, 200);
+    assert.equal(second.json.outcome, "already_processed");
     assert.equal(await dlCount(), before + 1);
     const rec = await dl(`pay_${pay}`);
-    assert.equal(rec.deliveryCount, 2);
-    assert.deepEqual(rec.eventIds, ["evt_R5dupA", "evt_R5dupB"]);
+    assert.equal(rec.deliveryCount, 1);
+    assert.deepEqual(rec.eventIds, ["evt_R5dupA"]);
+    const reg = (await db.collection("gatewayPayments").doc(pay).get()).data();
+    assert.equal(reg.application, "unmatched");
   });
 
   it("R5-05 amount mismatch → recorded, intent pending, nothing fulfilled", async () => {
@@ -220,7 +227,9 @@ describe("R5: webhook dead-letter recording and finance reconciliation", { skip 
     try {
       const r = await sendWebhook(evt({ order: "order_STOREDOWN", pay: `pay_${uid("DOWN")}` }));
       assert.equal(r.status, 503);
-      assert.equal(r.json.code, "DEAD_LETTER_WRITE_FAILED");
+      // B2: the record is written inside the payment transaction, so a store outage surfaces as
+      // the transaction's retryable INFRASTRUCTURE failure (still 503, never 200, nothing recorded).
+      assert.equal(r.json.code, "INFRASTRUCTURE");
     } finally {
       serverDb.setServerDbForTesting(db);
     }
@@ -264,7 +273,9 @@ describe("R5: webhook dead-letter recording and finance reconciliation", { skip 
     const rec = await dl(`pay_${pay}`);
     assert.equal(rec.status, "resolved");
     assert.equal(rec.resolution, "linked_to_obligation");
-    assert.equal(rec.deliveryCount, 2);
+    // B2: the redelivery is a zero-write REPLAY of the registry record.
+    assert.equal(r.json.outcome, "already_processed");
+    assert.equal(rec.deliveryCount, 1);
   });
 
   it("R5-13 unauthorised callers: unauthenticated 401; player, Club Admin and Designer 403 (list and resolve)", async () => {

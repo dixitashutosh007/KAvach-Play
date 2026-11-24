@@ -1,5 +1,19 @@
 import crypto from "crypto";
 import { computeLateFees } from "./utils.ts";
+import { currentExpiryOf, isLateFeeExemption, isRecordedLateFee, toPaise } from "./payment-decision.ts";
+import { resolveRenewalSubject } from "./razorpay-webhook.ts";
+
+/**
+ * B2 interim late-fee guard (§18): a late fee is offered only while nothing is recorded for
+ * (player, match): no recorded late fee and no exemption. Same predicate as the dues screens.
+ */
+async function lateFeeAlreadyRecordedOrExempt(db: any, playerId: string, matchId: string): Promise<boolean> {
+  const qs = await db.collection("players").doc(playerId).collection("otherFees").get();
+  return qs.docs.some((d: any) => {
+    const f = d.data() || {};
+    return isRecordedLateFee(f, matchId) || isLateFeeExemption(f, matchId);
+  });
+}
 
 /**
  * Generates a deterministic, fixed-length reservation key by hashing canonical obligation data (FIN-001).
@@ -1420,7 +1434,7 @@ export async function derivePayableAmount(
     // Authoritative Late Fees: derive from server-side match date
     const verifiedLateFees: any[] = [];
     if (intentData.lateFeeItems || intentData.includeLateFees) {
-      if (matchData.date) {
+      if (matchData.date && !(await lateFeeAlreadyRecordedOrExempt(db, playerId, matchId))) {
         const computedFees = computeLateFees(
           matchData.date,
           matchId,
@@ -1542,6 +1556,8 @@ export async function derivePayableAmount(
         seenItemKeys.add(itemKey);
 
         // Derive late fee authoritatively from server records, ignore client lateFeeAmount
+        // B2 interim guard: never offer a late fee already recorded (or exempted) for this match.
+        if (await lateFeeAlreadyRecordedOrExempt(db, playerId, item.matchId)) continue;
         const mSnap = await db.collection("matches").doc(item.matchId).get();
         if (mSnap.exists) {
           const mData = mSnap.data() || {};
@@ -1618,6 +1634,14 @@ export async function derivePayableAmount(
       throw new Error("Invalid plan fee amount.");
     }
 
+    const durationDays = Number(plan.durationDays || 30);
+
+    // B2 (§16): immutable renewal snapshot. The renewal extends exactly the expiry observed now
+    // (basisExpiry) on the membership subject (linked player, else the account document).
+    const subject = await resolveRenewalSubject(db, (ref: any) => ref.get(), authUid);
+    const subjectSnap = await db.collection(subject.kind === "player" ? "players" : "appUsers").doc(subject.id).get();
+    const basisExpiry = currentExpiryOf(subjectSnap.exists ? subjectSnap.data() : null);
+
     return {
       amount: planFee,
       verifiedIntent: {
@@ -1625,7 +1649,17 @@ export async function derivePayableAmount(
         reservationKey: generateReservationKey(intentData, authUid),
         planId,
         userId: authUid,
-        durationDays: Number(plan.durationDays || 30),
+        durationDays,
+        renewal: {
+          version: 1,
+          subjectKind: subject.kind,
+          subjectId: subject.id,
+          planId,
+          planName: String(plan.name || planId),
+          durationDays,
+          amountPaise: toPaise(planFee),
+          basisExpiry,
+        },
       },
     };
   } else if (type === "merch_order") {

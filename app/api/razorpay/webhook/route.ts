@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server.js";
 import crypto from "crypto";
 import {
   extractWebhookEventDetails,
-  processWebhookIntentTransaction,
+  processWebhookPayment,
   classifyWebhookError,
 } from "../../../../lib/razorpay-webhook.ts";
 import {
@@ -26,6 +26,11 @@ import type { WebhookPermanentReason } from "../../../../lib/razorpay-webhook.ts
  *  - 200  permanent (R5): the event cannot be matched to, or contradicts, its intent. It never
  *         fulfils payment; it is first recorded in `webhookDeadLetters` for finance
  *         reconciliation and only then acknowledged. If that record cannot be written: 503.
+ *  - B2: every captured payment with a usable id gets one `gatewayPayments` record. Duplicate,
+ *         held, unmatched and identity-conflict outcomes are recorded (registry + dead-letter) in
+ *         the SAME transaction as the decision, then acknowledged with 200. Any failure before
+ *         commit is 503 and nothing is recorded, so nothing is ever reported as recorded unless
+ *         it committed.
  *
  * Every response carries a correlation id (Razorpay's x-razorpay-event-id when present).
  * Logs and responses carry a reason code and identifiers only: no secrets, no raw payload,
@@ -162,15 +167,9 @@ export async function POST(req: NextRequest) {
   }
 
   const details = extractWebhookEventDetails(payload);
-  if (!details || !details.intentId) {
-    // Valid, signed, supported payment event that names no intent: record, never fulfil (R5).
-    return deadLetter(correlationId, eventIdHeader, rawBody, details ? "NO_INTENT_ID" : "MALFORMED_EVENT", {
-      event,
-      orderId: details?.orderId,
-      paymentId: details?.paymentId,
-      amountPaise: details?.capturedPaise,
-      currency: details?.capturedCurrency,
-    });
+  if (!details) {
+    // Signed, supported event type without a usable payment / order entity: record, never fulfil (R5).
+    return deadLetter(correlationId, eventIdHeader, rawBody, "MALFORMED_EVENT", { event });
   }
 
   const eventFields = {
@@ -182,21 +181,38 @@ export async function POST(req: NextRequest) {
     currency: details.capturedCurrency,
   };
 
-  // 4. Process (FIN-002: transactional, idempotent)
+  // 4. Process (FIN-002 / B2: one transaction decides and records; idempotent)
   try {
-    const result = await processWebhookIntentTransaction(getServerFirestore(), details, payload);
-    if (!result.success) {
-      return deadLetter(correlationId, eventIdHeader, rawBody, "NO_INTENT_ID", eventFields);
+    const result = await processWebhookPayment(getServerFirestore(), details, {
+      correlationId,
+      eventId: eventIdHeader,
+      rawBody,
+    });
+    // Logged only after the transaction committed.
+    if (result.outcome === "processed" || result.outcome === "already_processed") {
+      log("info", correlationId, result.outcome === "already_processed" ? "duplicate" : "processed", {
+        event,
+        intentId: details.intentId,
+        orderId: details.orderId,
+        paymentId: details.paymentId,
+      });
+      return reply(200, correlationId, { success: true, outcome: result.outcome });
     }
-    log("info", correlationId, result.alreadyProcessed ? "duplicate" : "processed", {
+    log("warn", correlationId, "recorded_for_reconciliation", {
       event,
+      decision: result.outcome,
+      reason: result.code,
+      record: result.deadLetterKey,
+      registry: result.paymentRecorded,
       intentId: details.intentId,
       orderId: details.orderId,
       paymentId: details.paymentId,
     });
     return reply(200, correlationId, {
-      success: true,
-      outcome: result.alreadyProcessed ? "already_processed" : "processed",
+      received: true,
+      outcome: "recorded_for_reconciliation",
+      decision: result.outcome,
+      code: result.code,
     });
   } catch (err) {
     const cls = classifyWebhookError(err);
