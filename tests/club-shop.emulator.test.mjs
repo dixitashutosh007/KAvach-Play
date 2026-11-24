@@ -151,6 +151,26 @@ describe("Club Shop — server enforcement and admin toggle", { skip }, () => {
     assert.deepEqual((await db.doc(`merchandises/${s.merchId}`).get()).data(), productBefore);
     await toggle(true);
   });
+
+  it("SHOP-06 disabled: an existing unpaid Shop order can still be paid through the dues checkout", async () => {
+    await toggle(false);
+    const s = await seed();
+    const orderId = id("mo_unpaid");
+    await db.collection("merchOrders").doc(orderId).set({ playerId: s.playerId, playerName: "Shop Player", merchId: s.merchId, merchName: "Club Cap", price: 499, paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: new Date() });
+    const before = createCalls.length;
+    const res = await orderPOST(
+      new Request("http://localhost/api/razorpay/order", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-test-uid": s.authUid },
+        body: JSON.stringify({ amount: 1, currency: "INR", intentData: { type: "finance_dues", playerId: s.playerId, items: [{ type: "merch", merchId: orderId, amount: 1 }] } }),
+      }),
+    );
+    const json = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(json));
+    assert.equal(createCalls.length, before + 1);
+    assert.equal(createCalls.at(-1).amount, 49900); // stored order price, not the client's ₹1
+    await toggle(true);
+  });
 });
 
 describe("Club Shop — Firestore rules (merchOrders create)", { skip }, () => {
@@ -235,6 +255,36 @@ describe("Club Shop — Firestore rules (merchOrders create)", { skip }, () => {
       await rut.assertSucceeds(updateDoc(doc(club, "merchOrders/o_admin"), { orderStatus: "Order Received" }));
       await rut.assertSucceeds(updateDoc(doc(sup, "merchandises/m_cap"), { basePrice: 549 }));
       await rut.assertSucceeds(updateDoc(doc(sup, "merchOrders/o_admin"), { orderStatus: "Fulfilled" }));
+    }
+  });
+
+  it("SHOP-R6 players and admins get no Shop admin privilege: products, others' orders, payment fields, deletion", async () => {
+    await setShop(true);
+    await seedRoles();
+    const { doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp } = await import("firebase/firestore");
+    const p = testEnv.authenticatedContext("p_uid").firestore();
+    // Player: no product management.
+    await rut.assertFails(setDoc(doc(p, "merchandises/m_p"), { name: "X", basePrice: 1 }));
+    await rut.assertFails(updateDoc(doc(p, "merchandises/m_cap"), { basePrice: 1 }));
+    await rut.assertFails(deleteDoc(doc(p, "merchandises/m_cap")));
+    // Player: own order — cannot self-mark paid, reprice or delete it.
+    await rut.assertFails(updateDoc(doc(p, "merchOrders/o_admin"), { paymentStatus: "Unpaid" }));
+    await rut.assertFails(updateDoc(doc(p, "merchOrders/o_admin"), { price: 1 }));
+    await rut.assertFails(deleteDoc(doc(p, "merchOrders/o_admin")));
+    // Another player's order is neither readable nor writable.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "merchOrders/o_other"), { id: "o_other", playerId: "p2", playerName: "Q", merchId: "m_cap", merchName: "Cap", price: 499, paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: new Date() });
+    });
+    await rut.assertFails(getDoc(doc(p, "merchOrders/o_other")));
+    await rut.assertFails(updateDoc(doc(p, "merchOrders/o_other"), { orderStatus: "Fulfilled" }));
+    // Admins only buy as themselves: no admin may create an order for another player.
+    const fin = testEnv.authenticatedContext("fin_uid").firestore();
+    const club = testEnv.authenticatedContext("club_uid").firestore();
+    for (const [who, d] of [["fin", fin], ["club", club]]) {
+      await rut.assertFails(setDoc(doc(d, "merchOrders", "o_for_p1_" + who), {
+        id: "o_for_p1_" + who, playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap", price: 499,
+        paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: serverTimestamp(),
+      }));
     }
   });
 });

@@ -180,3 +180,27 @@ The 21 failures are the existing tests that encode the retired role model. They 
 - **This fix changes `firestore.rules` again** (the `merchandises` write and `merchOrders` update/delete rules). Until the owner applies the updated file to `kavach-play-db-ext`, the deployed rules still allow Finance Admins those direct writes. No deployment was done here.
 
 `mig-mov` was not modified. Nothing was deployed.
+
+## 9. Pre-deployment regression run (2026-11-24, owner request)
+
+Run on `feat/club-shop`. `firestore.rules` is unchanged since `299346e`: git blob `236a7bba86b8c9e282704d13b4cbddb97bd07f14`, sha256 `818f8239a6810d5d2e8d9d16773956e4b15716ec7ea51a38f55c54c8f1337cda`.
+
+**New tests added in this run** (tests only, no application or rules change):
+- SHOP-06: with the Shop disabled, an existing unpaid Shop order can still be paid through the dues checkout. The amount is the stored order price.
+- SHOP-R6, which checks that players and admins get no Shop admin privilege:
+  - A player cannot create, update or delete products.
+  - A player cannot self-mark, reprice or delete their own order.
+  - A player cannot read or write another player's order.
+  - Neither a Finance Admin nor a Club Admin can create an order for another player.
+
+**Results** (all executed):
+
+| Run | Result |
+|---|---|
+| `node scripts/run-emulator-tests.mjs tests/club-shop.emulator.test.mjs` | **12/12 pass** (SHOP-01 to 06, SHOP-R1 to R6) |
+| Mutation check: the same suite against the `e855fa6` rules | SHOP-R4 **fails** as expected (11/12), so the test detects the Finance gap. Rules restored. |
+| `node --test tests/club-shop.test.mjs` (includes the rules source check) | **9/9 pass** |
+| Static, Shop and Razorpay unit suites (13 files) | 198/199. One failure: *Firestore Security Rules — AST Syntax Validation*. It also fails at baseline `e2c7b32`. |
+| All 21 emulator suites | 429/454, 25 failures. These are the same 25 failures as baseline `e2c7b32` (417/442 there). Every one is a pre-existing D-22 role-model test (Match Admin, weekend-ops results, rules RBAC). None involves the Shop or payments. |
+
+**Pre-existing behaviour, recorded and not changed:** a player can change `orderStatus` on their own order. The player group-order flow in `ShopTab` relies on this, and it sets the status to "Ready to Place Order". Payment status, price, owner and creation time stay locked.
