@@ -45,6 +45,8 @@ interface AppHeaderProps {
   persona: "admin" | "player";
   onTogglePersona?: () => void;
   unreadCount?: number;
+  /** Pending weekend-operations tasks for this admin (shown on the persona toggle). */
+  adminPendingCount?: number;
   onSignOut?: () => void;
 }
 
@@ -59,6 +61,7 @@ export function AppHeader({
   persona,
   onTogglePersona,
   unreadCount = 0,
+  adminPendingCount = 0,
   onSignOut,
 }: AppHeaderProps) {
   const activeTabTitle = TAB_TITLES[activeTab] || "";
@@ -122,6 +125,15 @@ export function AppHeader({
               <Shield className="w-3.5 h-3.5 shrink-0 text-brand" />
               <span className="hidden xs:inline">{persona === "admin" ? "Player View" : "Admin Console"}</span>
               <span className="xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>
+              {persona !== "admin" && adminPendingCount > 0 && (
+                <span
+                  data-testid="header-persona-pending"
+                  aria-label={`${adminPendingCount} admin task${adminPendingCount > 1 ? "s" : ""} pending`}
+                  className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10px] font-black leading-[18px] text-center tabular-nums"
+                >
+                  {adminPendingCount > 9 ? "9+" : adminPendingCount}
+                </span>
+              )}
             </button>
           )}
 

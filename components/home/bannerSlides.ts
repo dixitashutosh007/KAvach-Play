@@ -2,8 +2,8 @@
  * Home top-banner slide model (`components/home/bannerSlides.ts`).
  *
  * Pure helpers (no React / Firebase) for:
- *  - building banner slides from EXISTING data sources (pinned club
- *    announcements, feature promos, player birthdays). Match / fixture content
+ *  - building banner slides from EXISTING data sources (Player of the Weekend
+ *    award post, pinned club announcements, feature promos, player birthdays). Match / fixture content
  *    is deliberately excluded (owner decision 2026-11-21);
  *  - today / tomorrow birthday highlights in the club timezone;
  *  - per-user dismissal bookkeeping keyed by a "period" so a dismissed banner does
@@ -14,10 +14,11 @@ import { getPlayerBirthdayStatus } from "@/lib/birthday-utils";
 import { pinnedAnnouncements } from "./postKinds";
 import { firstHttpsLink, toSafeHttpsHref } from "@/lib/linkify";
 import { BANNER_DURATION_DEFAULT_SEC, resolveDisplayDurationMs } from "@/lib/banner-duration";
+import { activePotwPost } from "@/lib/weekend-ops";
 
 const DEFAULT_DURATION_MS = BANNER_DURATION_DEFAULT_SEC * 1000;
 
-export type BannerKind = "notice" | "promo" | "birthday-today" | "birthday-tomorrow";
+export type BannerKind = "notice" | "promo" | "birthday-today" | "birthday-tomorrow" | "potw";
 
 export interface BannerSlide {
   id: string;
@@ -44,6 +45,8 @@ export interface BannerSlide {
    * no mandatory / non-dismissible flag, so every slide is dismissible today.
    */
   dismissible: boolean;
+  /** Player of the Weekend content (kind "potw"). */
+  potw?: { playerName: string; photoURL?: string; message?: string; weekendLabel?: string };
 }
 
 export interface ClubDay {
@@ -144,6 +147,38 @@ export interface BuildBannerSlidesInput {
   appConfig?: AppConfig | null;
   isFeatureEnabled: (key: any) => boolean;
   today: ClubDay;
+  /** Current time (ms) for the Player of the Weekend 7-day window; defaults to now. */
+  nowMs?: number;
+}
+
+const toMillis = (v: unknown): number | null => {
+  const s = toSeconds(v);
+  return s === null ? null : s * 1000;
+};
+
+/**
+ * Player of the Weekend slide: the newest award post, for 7 days or until the
+ * next award (lib/weekend-ops.activePotwPost). One award → one slide.
+ */
+export function buildPotwSlide(posts: Post[] = [], nowMs: number): BannerSlide | null {
+  const post = activePotwPost(posts, nowMs, toMillis);
+  const p = post?.potw;
+  if (!post || !p?.playerName) return null;
+  const message = (p.message || "").trim();
+  const photo = typeof p.photoURL === "string" && p.photoURL.startsWith("https://") ? p.photoURL : undefined;
+  return {
+    id: `potw-${post.id}`,
+    kind: "potw",
+    title: p.playerName,
+    subtitle: p.weekendLabel || undefined,
+    description: message,
+    badge: "Player of the Weekend",
+    badgeColor: "gold",
+    durationMs: Math.max(DEFAULT_DURATION_MS, 8000),
+    dismissKey: `potw:${post.id}`,
+    dismissible: true,
+    potw: { playerName: p.playerName, photoURL: photo, message, weekendLabel: p.weekendLabel },
+  };
 }
 
 /** All candidate slides (before dismissal filtering). Birthdays first. */
@@ -152,12 +187,16 @@ export function buildBannerSlides({
   players = [],
   isFeatureEnabled,
   today,
+  nowMs = Date.now(),
 }: BuildBannerSlidesInput): BannerSlide[] {
-  const list: BannerSlide[] = [...buildBirthdaySlides(players, today)];
+  const potw = buildPotwSlide(announcements, nowMs);
+  const list: BannerSlide[] = [...(potw ? [potw] : []), ...buildBirthdaySlides(players, today)];
   const monthKey = today.dateString.slice(0, 7);
 
   // 1. Pinned club announcements (admin chose "Show in top banner"); newest first, max 2
   pinnedAnnouncements(announcements)
+    // Award posts have their own slide (one award → one banner), even if pinned.
+    .filter((post) => post.kind !== "potw")
     .slice(0, 2)
     .forEach((post) => {
       const version = toSeconds((post as any).updatedAt) ?? toSeconds(post.createdAt) ?? "";

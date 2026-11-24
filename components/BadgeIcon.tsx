@@ -1,5 +1,5 @@
 import { BadgeType, BadgeTier, Badge, BadgeTypeDef } from "@/lib/types";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 
 export type BadgeMeta = { label: string; short: string; tier: BadgeTier; emoji: string; stackable: boolean };
@@ -24,7 +24,15 @@ export const DEFAULT_BADGE_DEFS: Record<string, BadgeMeta> = {
   wickets_200: { label: "KAvach 200 Wicket Club",     short: "200 Wkts",   tier: "gold",    emoji: "200", stackable: false },
   wickets_300: { label: "KAvach 300 Wicket Club",     short: "300 Wkts",   tier: "gold",    emoji: "300", stackable: false },
   wickets_500: { label: "KAvach 500 Wicket Club",     short: "500 Wkts",   tier: "diamond", emoji: "500", stackable: false },
+  player_of_weekend: { label: "Player of the Weekend", short: "POTW",      tier: "gold",    emoji: "🏆",  stackable: true },
 };
+
+/**
+ * Badges issued only by a dedicated server workflow (never from the manual
+ * award picker): Player of the Weekend is granted once per weekend by
+ * POST /api/admin/player-of-weekend together with its banner and notification.
+ */
+export const SYSTEM_AWARDED_BADGES: ReadonlySet<string> = new Set(["player_of_weekend"]);
 
 const FALLBACK_META: BadgeMeta = { label: "Badge", short: "Badge", tier: "bronze", emoji: "?", stackable: false };
 
@@ -86,6 +94,7 @@ export function BadgeIcon({
   className?: string;
   customDefs?: BadgeTypeDef[];
 }) {
+  if (badgeType === "player_of_weekend") return <PlayerOfWeekendBadgeSvg size={size} count={count} className={className} />;
   const meta = getBadgeMeta(badgeType, customDefs);
   const colors = TIER_COLORS[meta.tier];
   const r = size / 2;
@@ -155,6 +164,55 @@ export function BadgeIcon({
         </text>
       </svg>
 
+      {count && count > 1 && (
+        <span
+          className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center"
+          style={{ width: size * 0.4, height: size * 0.4, minWidth: 16, minHeight: 16 }}
+        >
+          x{count}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Player of the Weekend badge: scarlet shield, gold rim, gold trophy framed by
+ * a laurel wreath with a small star — premium, readable at 24–96 px.
+ */
+export function PlayerOfWeekendBadgeSvg({ size = 48, count, className }: { size?: number; count?: number; className?: string }) {
+  const uid = useId().replace(/:/g, "");
+  const leaf = (x: number, y: number, rot: number) => (
+    <ellipse key={`${x}-${y}`} cx={x} cy={y} rx="3.1" ry="1.5" transform={`rotate(${rot} ${x} ${y})`} fill={`url(#potw-gold-${uid})`} />
+  );
+  return (
+    <div className={className} style={{ position: "relative", width: size, height: size, flexShrink: 0 }} data-testid="badge-potw-icon">
+      <svg viewBox="0 0 64 64" width={size} height={size} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Player of the Weekend badge">
+        <defs>
+          <linearGradient id={`potw-shield-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#D51F43" />
+            <stop offset="100%" stopColor="#7A0B22" />
+          </linearGradient>
+          <linearGradient id={`potw-gold-${uid}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#F5D77A" />
+            <stop offset="55%" stopColor="#D6A52B" />
+            <stop offset="100%" stopColor="#A87C14" />
+          </linearGradient>
+        </defs>
+        <path d="M32 3 L57 11 L57 33 Q57 52 32 61 Q7 52 7 33 L7 11 Z" fill={`url(#potw-shield-${uid})`} stroke={`url(#potw-gold-${uid})`} strokeWidth="3" />
+        <path d="M32 8 L52 14.5 L52 33 Q52 48.5 32 56 Q12 48.5 12 33 L12 14.5 Z" fill="none" stroke="#F5D77A" strokeOpacity="0.35" strokeWidth="1" />
+        {/* Laurel */}
+        {[leaf(18.5, 40, -60), leaf(17, 35, -80), leaf(17.5, 30, -100), leaf(19.5, 25.5, -120), leaf(22.5, 44, -35)]}
+        {[leaf(45.5, 40, 60), leaf(47, 35, 80), leaf(46.5, 30, 100), leaf(44.5, 25.5, 120), leaf(41.5, 44, 35)]}
+        {/* Trophy */}
+        <path d="M24 20 H40 V26 Q40 34 32 35.5 Q24 34 24 26 Z" fill={`url(#potw-gold-${uid})`} />
+        <path d="M24 22 H20.5 Q20.5 29 25 30 M40 22 H43.5 Q43.5 29 39 30" fill="none" stroke="#D6A52B" strokeWidth="1.8" strokeLinecap="round" />
+        <rect x="30.5" y="35" width="3" height="4.5" fill="#D6A52B" />
+        <rect x="26" y="39.5" width="12" height="3.5" rx="1" fill={`url(#potw-gold-${uid})`} />
+        {/* Star */}
+        <path d="M32 11.5 l1.2 2.5 2.7 .4 -2 1.9 .5 2.7 -2.4 -1.3 -2.4 1.3 .5 -2.7 -2 -1.9 2.7 -.4 Z" fill="#F5D77A" />
+        <path d="M29.5 23.5 l1.2 -.2 .6 -1.1 .6 1.1 1.2 .2 -.9 .8 .2 1.2 -1.1 -.6 -1.1 .6 .2 -1.2 Z" fill="#7A0B22" opacity="0.7" />
+      </svg>
       {count && count > 1 && (
         <span
           className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center"

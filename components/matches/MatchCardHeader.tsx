@@ -30,8 +30,37 @@ import {
 } from "@/lib/match-card-format";
 import { JerseyInfographic } from "./JerseyInfographic";
 import { getMatchResultDisplay, MATCH_RESULT_STAMP_CLASSES } from "./matchResult";
+import { cricHeroesHref } from "@/lib/weekend-ops";
 
 // ── Small presentational pieces ─────────────────────────────────────────────
+
+/**
+ * The "vs" label row above the opponent. When the match has a valid https
+ * CricHeroes URL (`matches.matchUrl`), a "View on CricHeroes ↗" link sits on
+ * the same line — no extra row, so the card height is unchanged.
+ */
+export function MatchVsLabel({ match }: { match: Match }) {
+  const href = cricHeroesHref(match.matchUrl);
+  return (
+    <span className="flex w-full items-center justify-between gap-2 min-w-0 leading-none">
+      <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
+      {href && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          data-testid={`cricheroes-link-${match.id}`}
+          aria-label={`View ${match.opponent || "this match"} on CricHeroes (opens in a new tab)`}
+          className="inline-flex items-center gap-0.5 shrink-0 text-[11px] font-bold text-scarlet hover:text-deep-wine underline decoration-scarlet/40 underline-offset-2 rounded leading-none py-1 -my-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+        >
+          View on CricHeroes
+          <ExternalLink className="w-3 h-3" aria-hidden="true" />
+        </a>
+      )}
+    </span>
+  );
+}
 
 /** Restrained colours for the compact, inline result stamp. */
 const COMPACT_RESULT_CLASSES = {
@@ -270,7 +299,7 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false, resul
             {match.jerseyColor && <JerseyInfographic color={match.jerseyColor} size="xl" />}
           </div>
           <div className="min-w-0">
-            <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>{" "}
+            <MatchVsLabel match={match} />
             <div className="mt-0.5 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
               <h3 className="min-w-0 flex-1 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
                 {match.opponent}
@@ -377,7 +406,7 @@ export function MatchCardCompactBody({ match, ground, hideResult = false }: Matc
     >
       {/* Left: opponent */}
       <div className="min-w-0 overflow-hidden flex flex-col justify-center gap-1" data-testid={`match-card-compact-left-${match.id}`}>
-        <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
+        <MatchVsLabel match={match} />
         <h3
           className="text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
           title={opponent}
@@ -473,7 +502,7 @@ export function MatchCardStackedBody({
   return (
     <div className="flex flex-col gap-3 min-w-0" data-testid={`match-card-stacked-${match.id}`}>
       <div className="min-w-0">
-        <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
+        <MatchVsLabel match={match} />
         {/* Opponent left, result right on the same line: no extra row. */}
         <div className="mt-1 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
           <h3

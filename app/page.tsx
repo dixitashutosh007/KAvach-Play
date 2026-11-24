@@ -86,6 +86,7 @@ import { LoginScreen } from "@/components/auth/LoginScreen";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { useToast } from "@/components/ui/Toast";
+import { WeekendPrompts } from "@/components/weekend-ops/WeekendPrompts";
 
 const PLAYER_NAV_ICONS: Record<PlayerPrimaryTab, typeof HomeIcon> = {
   home: HomeIcon,
@@ -257,6 +258,9 @@ export default function Home() {
       canDesign: club || !!currentUserObj?.isDesigner,
     };
   }, [hasAdminClaim, currentUserObj]);
+
+  // Pending weekend-operations tasks (indicator on the Admin persona toggle).
+  const [weekendPending, setWeekendPending] = useState(0);
 
   useEffect(() => {
     if (isAdminUser && !hasInitializedAdminRef.current) {
@@ -882,6 +886,7 @@ export default function Home() {
           }
         }}
         unreadCount={unreadCount}
+        adminPendingCount={weekendPending}
         onSignOut={logOut}
       />
 
@@ -1181,6 +1186,20 @@ export default function Home() {
                 }
                 isLinking={isRegistering}
                 onLink={handleSyncAccount}
+              />
+            )}
+
+            {/* Weekend match operations (Admin persona only; the fetch also feeds the
+                persona-toggle indicator). Server decides what is due per verified role. */}
+            {isAuthorizedAdmin && (
+              <WeekendPrompts
+                uid={user.uid}
+                isAdmin={isAuthorizedAdmin}
+                active={effectiveIsAdminMode}
+                activeTab={activeTab}
+                players={store.players}
+                grounds={store.grounds}
+                onPendingChange={setWeekendPending}
               />
             )}
 

@@ -11,6 +11,7 @@ import {
   getStackableSet,
   TIER_COLORS,
   DEFAULT_BADGE_DEFS,
+  SYSTEM_AWARDED_BADGES,
   BadgeShowcase,
   generateBadgeShareImage,
 } from "./BadgeIcon";
@@ -182,6 +183,8 @@ export function BadgesTab({
 
   const availableBadgesForPlayers = (playerIds: string[]): BadgeType[] => {
     return allBadgeTypes.filter((bt) => {
+      // Player of the Weekend is granted only through its weekly workflow (one per weekend).
+      if (SYSTEM_AWARDED_BADGES.has(bt)) return false;
       if (stackableSet.has(bt)) return true;
       return playerIds.some(pid => !existingBadgeTypes(pid).has(bt));
     });

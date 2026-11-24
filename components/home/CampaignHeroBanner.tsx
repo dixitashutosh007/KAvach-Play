@@ -29,9 +29,11 @@ import {
   X,
   RotateCcw,
   ExternalLink,
+  Crown,
 } from "lucide-react";
 import type { AppConfig, Player, Post } from "@/lib/types";
 import { getClubCalendarDate } from "@/lib/utils";
+import { PlayerOfWeekendBadgeSvg } from "@/components/BadgeIcon";
 import {
   buildBannerSlides,
   clubDayFromParts,
@@ -273,6 +275,7 @@ export function CampaignHeroBanner({
   };
 
   const renderBadgeIcon = (slide: BannerSlide) => {
+    if (slide.kind === "potw") return <Crown className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
     if (slide.kind === "birthday-today") return <Cake className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
     if (slide.kind === "birthday-tomorrow") return <Gift className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
     if (slide.badge.includes("Store")) return <ShoppingBag className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
@@ -280,7 +283,10 @@ export function CampaignHeroBanner({
     return <Sparkles className="w-3.5 h-3.5 text-muted-gold" aria-hidden="true" />;
   };
 
-  const surfaceClass = isBirthday
+  const isPotw = activeSlide.kind === "potw" && Boolean(activeSlide.potw);
+  const surfaceClass = isPotw
+    ? "bg-gradient-to-br from-[#5E0718] via-[#A30F2D] to-[#B8862F]"
+    : isBirthday
     ? "bg-gradient-to-br from-deep-wine via-[#8E2338] to-[#B8862F]"
     : "bg-gradient-to-br from-deep-wine via-[#8B1A2C] to-scarlet";
 
@@ -391,6 +397,10 @@ export function CampaignHeroBanner({
               transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: "easeOut" }}
               data-testid={`banner-slide-${activeSlide.id}`}
             >
+              {isPotw && activeSlide.potw ? (
+                <PotwSlideBody potw={activeSlide.potw} />
+              ) : (
+              <>
               {activeSlide.subtitle && (
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-gold mb-0.5 truncate">
                   {activeSlide.subtitle}
@@ -402,6 +412,8 @@ export function CampaignHeroBanner({
               <p className="text-xs sm:text-sm text-white/85 font-medium mt-1 max-w-lg line-clamp-2">
                 {activeSlide.description}
               </p>
+              </>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -472,6 +484,57 @@ export function CampaignHeroBanner({
         </div>
       </div>
     </section>
+    </div>
+  );
+}
+
+/** Player of the Weekend slide body: photo (or initials) in a gold ring, crown, name, message. */
+export function PotwSlideBody({ potw }: { potw: NonNullable<BannerSlide["potw"]> }) {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const initials = potw.playerName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join("");
+  return (
+    <div className="flex items-center gap-3 sm:gap-4" data-testid="banner-potw">
+      <div className="relative shrink-0">
+        <Crown className="absolute -top-3.5 left-1/2 -translate-x-1/2 w-6 h-6 text-muted-gold drop-shadow" fill="currentColor" aria-hidden="true" />
+        <div className="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-full p-[3px] bg-gradient-to-br from-[#F5D77A] via-[#D6A52B] to-[#A87C14] shadow-lg">
+          {potw.photoURL && !photoFailed ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={potw.photoURL}
+              alt={potw.playerName}
+              referrerPolicy="no-referrer"
+              onError={() => setPhotoFailed(true)}
+              className="w-full h-full rounded-full object-cover bg-deep-wine"
+              data-testid="banner-potw-photo"
+            />
+          ) : (
+            <div className="w-full h-full rounded-full bg-deep-wine flex items-center justify-center text-xl font-black text-muted-gold" data-testid="banner-potw-initials">
+              {initials || "★"}
+            </div>
+          )}
+        </div>
+        <div className="absolute -bottom-1.5 -right-1.5">
+          <PlayerOfWeekendBadgeSvg size={30} />
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-gold truncate">
+          Player of the Weekend{potw.weekendLabel ? ` · ${potw.weekendLabel}` : ""}
+        </p>
+        <h2 className="text-xl sm:text-2xl font-black font-heading tracking-tight leading-snug text-white break-words line-clamp-2" data-testid="banner-potw-name">
+          {potw.playerName}
+        </h2>
+        {potw.message && (
+          <p className="text-xs sm:text-sm text-white/90 font-medium mt-0.5 whitespace-pre-line line-clamp-4" data-testid="banner-potw-message">
+            {potw.message}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

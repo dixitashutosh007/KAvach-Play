@@ -481,6 +481,9 @@ export type Post = {
   linkUrl?: string;
   /** Seconds this announcement stays in the Home top banner before rotating (default 6). */
   displayDurationSec?: number;
+  /** "potw": Player of the Weekend award post (server-created; drives the Home banner slide). */
+  kind?: "potw";
+  potw?: { playerId: string; playerName: string; photoURL?: string; message?: string; weekendId: string; weekendLabel?: string };
   createdAt?: any;
   updatedAt?: any;
 };
