@@ -1,20 +1,56 @@
-# R4 — Razorpay Order Concurrency, Ambiguous Outcomes and Duplicate Payments: Architecture Design (revision 6)
+# R4 — Razorpay Order Concurrency, Ambiguous Outcomes and Duplicate Payments: Architecture Design (revision 7)
 
-**Status:** DESIGN ONLY, for independent review. **Not approved for implementation** (§14). Revision 6 resolves findings B15–B18 from the review of revision 5 (`23f5d5e`) and repeats the cross-cutting consistency review (§13). No application code, Firestore rules, tests, test configuration or data changed. No Razorpay call, migration, deployment or production operation.
-**Branch / base:** `mig-mov` @ `23f5d5e`
+**Status:** DESIGN ONLY, for independent review. **Not approved for implementation** (§14). Revision 7 resolves findings B19 and B20 from the review of revision 6 (`cbba0da`) and clarifies capability status terms (§0.C). No application code, Firestore rules, tests, test configuration or data changed. No Razorpay call, migration, deployment or production operation.
+**Branch / base:** `mig-mov` @ `cbba0da`
 **Date:** 2026-11-24
 
 **Evidence base:**
 - Run `r4mwtfrkta4202`: `docs/qa/R4/evidence/R4_EXPERIMENT_RESULTS_AND_ANALYSIS.md`.
 - Re-check: `docs/qa/R4/evidence/supplemental-e5-recheck/E5_RECHECK_RESULTS.md`.
 
-**Resolution matrices:** B15–B18 §15; B9–B14 §16 (retained).
+**Resolution matrices:** B19–B20 §17; B15–B18 §15; B9–B14 §16.
 
 ---
 
 ## 0. Summary, evidence and guarantees
 
-### 0.1 Revision 6 summary
+### 0.A Revision 7 summary
+
+| Finding | Revision 6 | Revision 7 |
+|---|---|---|
+| **B19** retirement vs release | One operation `supersede` and one terminal state `SUPERSEDED` covered both "create never sent" (releases) and "create may have been sent" (retains); the RECOVERED path was unclear | Three independent concerns, each with its own named operation (§2.10): (1) **ending an attempt** (`supersede_unsent`, `abandon_attempt`, `retire_exposed`); (2) **retaining orders** (automatic in every operation after CREATING); (3) **releasing the claim**: only `supersede_unsent` (`CREATE_NOT_SENT_PROVEN`). New terminal state **ABANDONED** for post-CREATING abandonment. `reactivate_attempt` is the normal path for RECOVERED and ACTIVATION_FAILED |
+| **B20** refund ↔ reversal binding | RF completed "a reversal request for line k" with loosely defined binding | Reversal requests bound to payment, allocation, line, amount, target and expected version; **one pending request per allocation line** via a line lock; RF checks eight conditions atomically and **always records the refund fact**, completing the reversal only if every condition holds; `map_refund` never infers the line; concurrency outcomes table (§2.9.2–§2.9.5) |
+| Capability terms | "Disabled", "recommendation" used informally | Four-level status taxonomy; every gated capability listed with its current status (§0.C) |
+
+### 0.B Terminology rule (normative, revision 7)
+
+- **`supersede_unsent` / SUPERSEDED** means *the create request was never sent* (`CREATE_NOT_SENT_PROVEN`). It is the only operation that releases a claim.
+- **`abandon_attempt` / ABANDONED** means *the create request may have been sent*. It **never** releases; it always retains the known order or a placeholder.
+- **Where revision ≤ 6 text says "supersede" or "SUPERSEDED" for an attempt that had committed CREATING** (for example "superseded from UNKNOWN", "late response after supersede from CREATING", B15-1, B15-2, B15-8, B16-5, failure rows 26, 43, Q5, Q29), read **`abandon_attempt` / ABANDONED**. Revision 7's operative sections (§2.3, §2.4, §2.6.1, §2.10, §4.1, §4.2, §4.4, §4.6.3, §4.8) use the new names.
+- **"Retire"** (`retire_exposed` / RETIRED) is used only for exposed (ACTIVE) attempts, as before.
+
+### 0.C Capability status taxonomy (revision 7)
+
+| Status | Meaning | Who changes it |
+|---|---|---|
+| **DISABLED_BY_DEFAULT** | The capability is gated off. If code exists, the gate refuses (403 / 409 with a code). **Recommendations and owner preferences never change this status** | – |
+| **ENABLED_BY_OWNER_DECISION** | Requires *all* of: an explicit written owner approval naming the capability; independent reviewer approval of the evidence it depends on (G-checks); a recorded configuration change (flag) with `requestId`, approver and audit. It applies only to the named environment | Owner + reviewer |
+| **IMPLEMENTED_NOT_DEPLOYED** | Code merged on a branch and tested; not running in any environment | Implementation phase approval |
+| **DEPLOYED_OPERATIONALLY_VERIFIED** | Running in a named environment **and** verified there by independent QA with evidence | Deployment approval + QA |
+
+**Current status of every gated capability:** none is implemented; all are design-only.
+
+| Capability | Default | Required to enable | Current status |
+|---|---|---|---|
+| `expose_replacement` (one-time override) | DISABLED_BY_DEFAULT | Owner decision (Q13, Q22, Q25) | Design only; disabled |
+| `verify_orders_unpayable`; `resolve_anomaly adopt` / `supersede_all` | DISABLED_BY_DEFAULT | G1 + G3/G7 evidence, Q17 | Design only; disabled |
+| FAILED_NO_ORDER classification (and release via it) | DISABLED_BY_DEFAULT | G6 evidence, Q26 | Design only; disabled |
+| Refund webhook ingestion | DISABLED_BY_DEFAULT | G5 evidence, Q27 | Design only; disabled |
+| Client order acknowledgement | DISABLED_BY_DEFAULT | Q23 | Design only; disabled |
+
+**Recorded recommendations (Q13, Q20, Q22–Q25) are not enablement** and do not change any status above.
+
+### 0.1 Revision 6 summary (retained)
 
 | Finding | Revision 5 | Revision 6 |
 |---|---|---|
@@ -121,14 +157,14 @@ Revision 5's X8–X14 still apply.
 ### 2.3 Attempt state machine
 
 - **Non-terminal:** CLAIMED, CREATING, ORDER_RECEIVED, ACTIVATION_FAILED, ACTIVE, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, ANOMALY_MULTIPLE, RETIRED.
-- **Terminal:** PAID, CLOSED_UNAPPLIED, SUPERSEDED, FAILED_NO_ORDER.
+- **Terminal:** PAID, CLOSED_UNAPPLIED, SUPERSEDED (create **never sent**; revision 7), **ABANDONED** (create **may have been sent**; revision 7), FAILED_NO_ORDER (disabled).
 
 **Terminal rule (I8):** once terminal, the attempt document's fields `state`, `fenceVersion`, `gatewayOrderId`, `exposure`, `firstPaymentId` and `obligationKeys` are **never written**. All later facts (late order, late payment, review decision) are recorded on `gatewayOrders`, `gatewayPayments`, the claim, and as **appended** `paymentAttempts/{id}/events` rows.
 
 | From | To | Trigger | Actor |
 |---|---|---|---|
 | CLAIMED | CREATING | create about to be sent (fenced; consumes a bound override, §2.6) | system |
-| CLAIMED | SUPERSEDED | `supersede` (§4.8). **Create never sent** (`CREATE_NOT_SENT_PROVEN`, §2.8.4) → claim released for this attempt | Finance / Super |
+| CLAIMED | SUPERSEDED | **`supersede_unsent`** (§2.10). Create never sent (`CREATE_NOT_SENT_PROVEN`) → the **only** operation that releases a claim | Finance / Super |
 | CREATING | ORDER_RECEIVED | 2xx with valid `order.id` (in memory) | system |
 | CREATING | FAILED_NO_ORDER | **Disabled until G6 is verified and approved (Q26).** Until then every create error, including 400/401, → OUTCOME_UNKNOWN. When enabled: complete HTTP 400 `BAD_REQUEST_ERROR` or 401 body only | system |
 | CREATING | OUTCOME_UNKNOWN | any other outcome, incl. crash or lease expiry observed by another reader (**the observer bumps the fence**) | system |
@@ -140,12 +176,12 @@ Revision 5's X8–X14 still apply.
 | OUTCOME_UNKNOWN | RECONCILING | `reconcile` | Finance / worker |
 | OUTCOME_UNKNOWN | RECOVERED | late response recorded by the original process **while the attempt is non-terminal** (§4.4 case L1) | system |
 | RECONCILING | RECOVERED / OUTCOME_UNKNOWN / ANOMALY_MULTIPLE | 1 found / 0 or lookup failed / > 1 | system |
-| ANOMALY_MULTIPLE | RETIRED / SUPERSEDED | `resolve_anomaly retain_all` (§2.4); `adopt` disabled until G1+G3/G7 (Q17) | Finance / Super |
+| ANOMALY_MULTIPLE | RETIRED / ABANDONED | `resolve_anomaly retain_all` (§2.4); `adopt` disabled until G1+G3/G7 (Q17) | Finance / Super |
 | ACTIVE | PAID | first captured payment applied (webhook) | system |
 | ACTIVE | RETIRED | `retire_exposed`; manual settle / sponsor / waive with acknowledgement; abandonment; `apply_reviewed_payment` with `retireConflictingAttempt` | Finance / Super (Club for match-fee `settle_manual`); system |
-| CREATING, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, ACTIVATION_FAILED | SUPERSEDED | `supersede`, only if application exposure is `APPLICATION_RESPONSE_NOT_AUTHORISED_PROVEN` (§2.8). **The claim is NOT released:** the attempt's known order (if any) or a possible-order placeholder is retained (§2.6, B15) | Finance / Super |
+| CREATING, OUTCOME_UNKNOWN, RECONCILING, RECOVERED, ACTIVATION_FAILED | **ABANDONED** | **`abandon_attempt`** (§2.10), only if application exposure is `APPLICATION_RESPONSE_NOT_AUTHORISED_PROVEN`. **No release:** known order → `retainedOrders`; unknown → placeholder. RECOVERED and ACTIVATION_FAILED normally go through `reactivate_attempt` instead | Finance / Super |
 | eligible (below) | CLOSED_UNAPPLIED | first captured payment for this attempt rejected | system |
-| ACTIVE, RETIRED (marker committed) | SUPERSEDED | **Forbidden** | – |
+| ACTIVE, RETIRED (marker committed) | SUPERSEDED / ABANDONED | **Forbidden** (exposed attempts use `retire_exposed`) | – |
 | any terminal | any | **Forbidden** | – |
 | RETIRED | PAID | **Forbidden** (removed in revision 5, X9) | – |
 
@@ -170,7 +206,7 @@ Revision 5's X8–X14 still apply.
 
 | Option | Status | Preconditions | Effect |
 |---|---|---|---|
-| `retain_all` | **Available** | Actor Finance / Super; `requestId`; reason; claim anomaly set | One transaction: every anomaly order → `retainedOrders` (`anomaly_found`, with both dimensions); unknown-ID possibilities → `retainedPossibleOrders`. Attempt: ANOMALY_MULTIPLE → RETIRED if any of its orders had a committed response marker, else SUPERSEDED (state change only; **no release**). Holder cleared; anomaly cleared; claim + attempt events; `auditLogs`. Result: derived RETAINED |
+| `retain_all` | **Available** | Actor Finance / Super; `requestId`; reason; claim anomaly set | One transaction: every anomaly order → `retainedOrders` (`anomaly_found`, with both dimensions); unknown-ID possibilities → `retainedPossibleOrders`. Attempt: ANOMALY_MULTIPLE → RETIRED if any of its orders had a committed response marker, else **ABANDONED** (state change only; **no release**). Holder cleared; anomaly cleared; claim + attempt events; `auditLogs`. Result: derived RETAINED |
 | `adopt {orderId}` | **Disabled** until G1 + G3/G7 are verified and Q17 is approved | Every *other* anomaly order must be `GATEWAY_UNPAYABLE_PROVEN` | (when enabled) the chosen order's attempt → RECOVERED → revalidate → ACTIVE; others stay retained with `GATEWAY_UNPAYABLE_PROVEN`, which removes them per release condition 2 |
 | `supersede_all` | **Disabled** (same gate) | Every anomaly order `GATEWAY_UNPAYABLE_PROVEN`, or the attempt `CREATE_NOT_SENT_PROVEN` | (when enabled) release per §2.6.1 |
 
@@ -247,14 +283,14 @@ Revision 5's X8–X14 still apply.
 | ACTIVE holder retired (`retire_exposed`; settle / sponsor / waive with acknowledgement; abandonment; reviewed application with `retireConflictingAttempt`) | `retainedOrders` (`exposed_retired`) |
 | A captured payment recorded for an order (applied or rejected) | `retainedOrders` (`paid_applied` / `paid_rejected`) |
 | A gateway order learned by any route other than as the current holder's own order: late response, reconciliation, webhook, Finance attach, migration | `retainedOrders` (`orphan_discovered` / `legacy` / `anomaly_found`), **regardless of application exposure** (B15) |
-| An attempt that may have sent a create (it committed CREATING) leaves the holder role without a known order: superseded from CREATING / OUTCOME_UNKNOWN / RECONCILING; FAILED_NO_ORDER while G6 is unverified | `retainedPossibleOrders` (`create_outcome_unknown`, receipt = `attemptId`) |
+| An attempt that may have sent a create (it committed CREATING) leaves the holder role without a known order: `abandon_attempt` from CREATING / OUTCOME_UNKNOWN / RECONCILING / RECOVERED / ACTIVATION_FAILED; FAILED_NO_ORDER while G6 is unverified | `retainedPossibleOrders` (`create_outcome_unknown`, receipt = `attemptId`) |
 | Legacy reservation in `reconciliation_*` without an order ID | `retainedPossibleOrders` (`legacy_unknown`) |
 
 **Release.** Clearing a holder for re-creation, removing a retained order, or removing a placeholder is permitted **only** when:
 
 | # | Condition | Sufficient evidence | Status |
 |---|---|---|---|
-| 1 | **`CREATE_NOT_SENT_PROVEN`**: the attempt never sent a create request | The attempt is CLAIMED and has never committed CREATING (CREATING is committed **before** the request is sent, §4.1), **and** its fence was bumped by the superseding transaction, so it can never commit CREATING afterwards. Evidence: attempt events show no `create_sent` / CREATING; transaction log of the fence bump | **Available** (`supersede` from CLAIMED; `revoke_override` of a bound CLAIMED attempt) |
+| 1 | **`CREATE_NOT_SENT_PROVEN`**: the attempt never sent a create request | The attempt is CLAIMED and has never committed CREATING (CREATING is committed **before** the request is sent, §4.1), **and** its fence was bumped by the superseding transaction, so it can never commit CREATING afterwards. Evidence: attempt events show no `create_sent` / CREATING; transaction log of the fence bump | **Available** (`supersede_unsent`, §2.10 O1; `revoke_override` of a bound CLAIMED attempt, which invokes O1) |
 | 1b | Definitive gateway rejection proving non-creation (FAILED_NO_ORDER) | G6 verified and the rule approved (Q26) | **Disabled** |
 | 2 | **`GATEWAY_UNPAYABLE_PROVEN`** for every retained order **and** every placeholder resolved to a known order | Approved gateway rule (G3 and/or G7) **and** a per-order fetch-by-ID check at action time (G1), recorded as evidence. Placeholders with unknown IDs can **never** satisfy this (zero lookups are not absence) | **Disabled** (Q17) |
 | 3 | **One-time override** consumed by exactly one replacement attempt | §2.6.2; retained orders and placeholders stay recorded | **Disabled by default** (Q13) |
@@ -285,7 +321,7 @@ Revision 5's X8–X14 still apply.
 | – | AUTHORISED | `authorise_override` | Finance / Super (+ second approver, Q25) | flag on; all claims derived RETAINED; no anomaly; no other live override for these keys | override doc; claim events; audit |
 | AUTHORISED / RELEASED | BOUND | `claimObligations` (§4.1) | system (payer request) | live (time rule); covers exactly the requested keys; claims RETAINED; no anomaly | override `BOUND`, `boundAttemptId`; claims holder = attempt, `boundOverrideId`; attempt CLAIMED (`overrideId`); events |
 | BOUND | CONSUMED | attempt CLAIMED → CREATING | system | override `BOUND` with `boundAttemptId` = this attempt; attempt fence valid. **No time check: binding already happened while live** | override `CONSUMED`, `consumedAt`; attempt CREATING; events |
-| BOUND | RELEASED | `supersede` of the bound attempt **from CLAIMED** (`CREATE_NOT_SENT_PROVEN`) | Finance / Super | attempt CLAIMED, never CREATING | attempt SUPERSEDED (fence bump); claims holder cleared, `boundOverrideId` cleared; override `RELEASED`; events; audit |
+| BOUND | RELEASED | `supersede_unsent` of the bound attempt (O1, `CREATE_NOT_SENT_PROVEN`) | Finance / Super | attempt CLAIMED, never CREATING | attempt SUPERSEDED (fence bump); claims holder cleared, `boundOverrideId` cleared; override `RELEASED`; events; audit |
 | AUTHORISED / RELEASED | EXPIRED | any transaction observing the time rule | system | not live | `EXPIRED`; event |
 | AUTHORISED / RELEASED | REVOKED | `revoke_override` | Finance / Super | state still AUTHORISED / RELEASED | `REVOKED`; events; audit |
 | BOUND | REVOKED | `revoke_override` | Finance / Super | bound attempt still CLAIMED (create never sent) | attempt SUPERSEDED (fence bump); claims holder cleared; override `REVOKED`; events; audit |
@@ -300,11 +336,11 @@ Revision 5's X8–X14 still apply.
 | RELEASED → BOUND vs expiry | As the first row; `expiresAt` is unchanged by release | As the first row |
 | RELEASED → BOUND vs revocation | As the second row | As the second row |
 | BOUND → CREATING vs revocation | CONSUMED; the create is sent; revoke re-runs → 409 `OVERRIDE_CONSUMED` | REVOKED + attempt SUPERSEDED (fence bump); CREATING re-runs → fence/CAS fails → **no create sent**; the payer request gets 409 |
-| BOUND → RELEASED (supersede from CLAIMED) vs concurrent CREATING | RELEASED + attempt SUPERSEDED; CREATING re-runs → fails → no create sent | CONSUMED + CREATING; supersede re-runs → attempt no longer CLAIMED → follows the non-CLAIMED supersede rule (no release; placeholder retained) and the override stays CONSUMED |
+| BOUND → RELEASED (supersede from CLAIMED) vs concurrent CREATING | RELEASED + attempt SUPERSEDED; CREATING re-runs → fails → no create sent | CONSUMED + CREATING; supersede re-runs → attempt no longer CLAIMED → → 409 `CREATE_ALREADY_SENT`; Finance may use `abandon_attempt` (O2: no release; placeholder retained) and the override stays CONSUMED |
 | Two payer requests binding the same override | One BOUND; the other re-runs → HELD_OVERRIDE → the bound attempt's order or 409 | (symmetric) |
 | Transaction retry after a lost commit acknowledgement | The re-run reads the committed state (e.g. BOUND with its own attempt) → returns the same result (idempotent by `boundAttemptId` / `requestId`) | – |
 
-**After consumption (timeout, crash, unknown outcome, persistence failure):** the override stays **CONSUMED permanently**. The only recovery is **reconciliation of `boundAttemptId`** (L1 RECOVERED → revalidate → ACTIVE, or Finance `supersede`, which retains a placeholder). There is never automatic reuse and never a second binding. Another replacement requires a **new** override record (new approval and `requestId`), which can bind only once the claim is RETAINED again (holder cleared).
+**After consumption (timeout, crash, unknown outcome, persistence failure):** the override stays **CONSUMED permanently**. The only recovery is **reconciliation of `boundAttemptId`** (L1 RECOVERED → `reactivate_attempt` → ACTIVE, or Finance `abandon_attempt`, which retains the order or a placeholder). There is never automatic reuse and never a second binding. Another replacement requires a **new** override record (new approval and `requestId`), which can bind only once the claim is RETAINED again (holder cleared).
 
 ### 2.7 Reversal workflows
 
@@ -464,20 +500,28 @@ Revision 5's X8–X14 still apply.
   - Finance `record_refund_outcome` with dashboard evidence (the refund ID and a screenshot or reference ID stored as an evidence reference).
 - **Until transaction RF commits, the local state is unchanged:** refund row `initiated` (or absent), obligation `settled_gateway` / `reversal_pending`, payment application unchanged. A local "unpaid" is never derived from an initiated refund, and a payment is never marked reversed before its obligation transition commits (the same transaction does both).
 
-### 2.9.2 Transaction RF: record the refund outcome (+ complete the line reversal)
+### 2.9.2 Transaction RF: record the refund outcome, then complete an exactly-bound reversal (revised for B20)
+
+RF has two parts **in one Firestore transaction**:
+- **Part 1 (the refund fact)** always commits when its own preconditions hold.
+- **Part 2 (completion)** runs **only** if all eight binding checks pass.
+
+A failed binding check never blocks recording the fact; it leaves the request pending and raises a worklist item.
 
 | Item | Rule |
 |---|---|
-| **Idempotency key** | Razorpay refund ID (`rfnd_…`) = refund row doc ID |
-| **Actor** | Refund webhook (system, after G5) or Finance / Super (`record_refund_outcome`, `requestId`) |
-| **Reads** | Payment; all refund rows; allocation + line reversals; for each line touched: the obligation and any pending reversal request (`reversalRequests/{paymentId}_{lineHash}`, created by R-G1) |
-| **Preconditions** | The evidence's `paymentId` matches the row's payment, and the amount (and currency) match the row (or define a new row for an unknown refund ID, §2.9.3) |
-| **Writes (one transaction)** | (1) Refund row: `initiated` → `processed` / `failed` (CAS), or `create()` for an externally processed refund. (2) Recompute the payment refund summary from all rows. (3) **If** the row is `processed`, maps to line k, a reversal request exists for k, `line.processed(k) == allocatedPaise(k)`, and no other `initiated` row maps to k: `lineReversals/{k}` `create()`; obligation k: `reversal_pending` → the requested target (`unpaid` / `waived`), `settlementVersion` +1, settlement event `gateway_settlement_reversed {refundIds}`; reversal request → `completed`; payment application → `partially_reversed` / `reversed` (recomputed from line reversals); payment event. (4) If the row is `failed`: payment `intervention_required`; reversal request stays `pending` (Finance may `cancel_gateway_reversal`). (5) Payment event `refund_processed` / `refund_failed`; `auditLogs` (human actor, or system with the original requester's reference) |
-| **Claim** | **Never written** (no release on refund; the paid order stays retained) |
-| **Partial bundle refunds** | Only line k is affected (C4). Other lines' allocation, obligation and reversal state are untouched |
-| **Failure** | Any precondition fails → no writes; a conflict → §2.9.3 |
-| **Retry** | Webhook: 503 → Razorpay retries with the same refund ID. Finance: 503 → retry with the same `requestId`. A **reconciliation worklist** (`refund_reconcile` items, created when R-G1 is requested and cleared by RF) surfaces refunds still `initiated` after N hours for Finance follow-up |
-| **Idempotent replay** | Row already in the target state with identical amount, payment and evidence type → no writes, 200 |
+| **Idempotency key** | Razorpay refund ID (`rfnd_…`) = refund row doc ID; Finance calls also carry `requestId` |
+| **Actor** | Refund webhook (system; **DISABLED_BY_DEFAULT** until G5 / Q27) or Finance / Super (`record_refund_outcome`) |
+| **Reads (all before writes)** | Payment; **all** refund rows; allocation `alloc_<paymentId>`; line reversals; the allocation-line lock and its pending reversal request (§2.9.4); the target obligation |
+| **Part 1 preconditions** | (a) Evidence identity = row identity: `paymentId`, `amountPaise`, currency, and refund ID (for an existing row); (b) the outcome is a valid transition (`initiated` → `processed` / `failed`), or an identical replay; (c) for an unknown refund ID: C1 holds (§2.9.3) |
+| **Part 1 writes** | Refund row CAS → `processed` / `failed` (or `create()` external `processed`); evidence stored; payment refund summary recomputed from all rows; refund event; payment event |
+| **Part 2 binding checks** (all, atomically) | **(1)** The refund ID and immutable identity match (Part 1). **(2)** Row state `processed` with valid evidence (`refund_webhook` signature-verified, or a Finance record with a reference). **(3)** Row mapping = `{type: line, allocationId, obligationKey}` equal to the request's `allocationId` + `obligationKey` (split rows: the component for this line). **(4)** `line.processed(k)` (from **processed** rows only) **==** the request's `allocatedPaise` == the allocation line's `allocatedPaise`. **(5)** No row on this payment has mapping `unresolved`. **(6)** The line lock's `pendingRequestId` = a request in state `pending`. **(7)** The obligation is `reversal_pending` with `settlementVersion` == the request's `expectedSettlementVersion`. **(8)** No `lineReversals/{lineHash}` exists for this allocation line (no conflicting completion) |
+| **Part 2 writes** | `allocations/alloc_<paymentId>/lineReversals/{lineHash}` `create()` `{requestId: reversalRequestId, refundIds[], amountPaise}`; obligation `reversal_pending` → request target (`unpaid` / `waived`), `settlementVersion` +1, settlement event `gateway_settlement_reversed {reversalRequestId, refundIds}`; payment application recomputed (`partially_reversed` / `reversed`) + payment event; reversal request `pending` → `completed` (`completedAt`, `refundIds`) + request event; line lock `pendingRequestId` → null, `completedReversalId` set; worklist item for the request closed; `auditLogs` (Finance actor, or system with the original requester's reference) |
+| **Claim** | Never written (no release on refund) |
+| **Part 2 check fails** | No Part 2 writes. A worklist item with the failing check code (`REVERSAL_LINE_NOT_FULLY_REFUNDED`, `REFUND_MAPPING_UNRESOLVED`, `REVERSAL_REQUEST_NOT_PENDING`, `OBLIGATION_VERSION_CHANGED`, `LINE_ALREADY_REVERSED`, …) is created or updated. Response: webhook 200 after commit (fact recorded); Finance 200 with `completion: blocked, code` |
+| **Failure (Part 1)** | Identity conflict → anomaly + intervention (no writes beyond the anomaly, §2.9.3); invalid transition → 409. Contention or outage → 503, **no partial commit** |
+| **Retry** | Webhook 503 → Razorpay redelivers with the same refund ID. Finance 503 → same `requestId`. After commit: Part 1 is an identical replay (no write); Part 2 check 8 or 6 fails → no duplicate reversal |
+| **Idempotent replay** | Row already in the target state with identical evidence → no writes; returns the stored completion status |
 
 ### 2.9.3 Duplicate, conflicting and externally processed refunds
 
@@ -486,8 +530,116 @@ Revision 5's X8–X14 still apply.
 | Duplicate refund webhook / repeated Finance record (same refund ID, same outcome, same amount) | Idempotent replay: no writes |
 | **Conflicting evidence** for the same refund ID (different amount, payment or currency, or `processed` vs `failed`) | **No change** to the row, obligation or payment application; `gatewayPayments/{id}/anomalies/{an_<hash>}` `create()` (`refund_conflict`); payment `intervention_required`; high-severity dead-letter; 200 after commit (webhook) or 409 `REFUND_EVIDENCE_CONFLICT` (Finance) |
 | **Refund processed externally, not recorded locally** (unknown refund ID; e.g. issued in the dashboard) | `create()` a row `processed` with `origin: external`. Mapping: deterministic if the payment is unallocated or single-line; otherwise `unresolved` (§2.5.2). C1 checked: **if adding it would exceed captured** → do not write the row; record a `refund_conflict` anomaly + intervention item (the external fact exceeds what local records allow; human investigation). No line reversal is performed for `unresolved` rows |
-| `map_refund {refundId, mapping}` | Finance / Super; `requestId`; row `unresolved` → line/split mapping once (CAS); C2–C4 must hold, else 409; then the same post-processing as RF step 3 (it may complete a pending line reversal in the same transaction) |
+| `map_refund {refundId, mapping}` | See §2.9.5 (revision 7): explicit mapping only, never inferred from a reversal request; completion in the same transaction only if unambiguous and all RF checks hold |
 | Refund `initiated` locally, never confirmed | Stays `initiated` (reserves capacity, C1/C2); blocks R-G completion and reviewed application; appears on the reconciliation worklist |
+
+### 2.9.4 Reversal request lifecycle (B20)
+
+**Records:**
+- **`reversalRequests/{rr_<uuid>}`:** `{paymentId, allocationId, obligationKey, lineHash, allocatedPaise (exact, copied from the allocation line), target: unpaid | waived, expectedSettlementVersion (the obligation version after it entered reversal_pending), state: pending | completed | cancelled, requestedBy, requestId, reason, refundIds[], createdAt, completedAt?, cancelledAt?}` + append-only `events`.
+- **`allocationLineLocks/{allocationId}_{lineHash}`:** `{pendingRequestId | null, completedReversalId | null, version}`. **Uniqueness rule: at most one pending reversal request per allocation line** (CAS on `pendingRequestId`), and at most one completed line reversal (`lineReversals/{lineHash}` `create()`).
+
+| Operation | Actor | Preconditions | Transaction writes | Failure | Retry / idempotency |
+|---|---|---|---|---|---|
+| **R-G1 `initiate_gateway_reversal {paymentId, obligationKey, target, reason}`** | Finance / Super | Payment application `applied` / `partially_reversed`; the allocation line exists for `obligationKey`; obligation `settled_gateway` via this payment; the line lock has `pendingRequestId` null and `completedReversalId` null; ≥ 1 refund row (initiated or processed) mapped to this exact line; no `unresolved` row on the payment | Obligation `settled_gateway` → `reversal_pending` (version +1); request `create()` with `expectedSettlementVersion` = the new version; lock `pendingRequestId` = request; worklist item; events; audit. **Same transaction:** if `line.processed(k) == allocatedPaise` already (and every RF check 2–8 holds), perform RF Part 2 immediately | 409 `REVERSAL_ALREADY_PENDING` / `LINE_ALREADY_REVERSED` / `NO_REFUND_FOR_LINE` / `REFUND_MAPPING_UNRESOLVED` / `OBLIGATION_STATE_CHANGED` | `requestId` (`adminRequests`) |
+| **RF completion** | system / Finance | §2.9.2 Part 2 | §2.9.2 | §2.9.2 | §2.9.2 |
+| **R-G3 `cancel_gateway_reversal {reversalRequestId, reason}`** | Finance / Super | Request `pending`; obligation `reversal_pending` at `expectedSettlementVersion` | Request → `cancelled`; obligation → `settled_gateway` (version +1); lock `pendingRequestId` → null; events; audit. If processed refunds on the line already equal its allocation → also worklist item `REFUNDED_LINE_STILL_SETTLED` (money returned but obligation settled: Finance must re-request) | 409 `REVERSAL_COMPLETED` / `REVERSAL_NOT_PENDING` | `requestId` |
+
+**While an obligation is `reversal_pending`,** `set_base_amount`, sponsorship operations, `settle_manual`, `waive` and any other settlement change on it return **409 `REVERSAL_PENDING`**. Any write that does change its version (none is permitted, but defensively) makes RF check 7 fail.
+
+### 2.9.5 `map_refund` and concurrency outcomes (B20)
+
+**`map_refund {refundId, mapping: {type: line, allocationId, obligationKey} | {type: split, lines: [...]}, reason}`** (Finance / Super; `requestId`):
+- **Preconditions:** row mapping `unresolved`; the mapping is supplied **explicitly** by Finance (the server **never infers a line from a pending reversal request**); every referenced line exists in the payment's allocation; C1–C4 hold with the new mapping.
+- **Writes:** row mapping CAS `unresolved` → mapped; summary recomputed; refund event; audit.
+- **Same transaction:** if (and only if) the mapping is to exactly one line that has a pending request, and RF checks 2–8 all hold → RF Part 2. Otherwise the worklist item is kept.
+- **Failure:** 409 `REFUND_ALREADY_MAPPED` / `MAPPING_INVALID` / `REFUND_EXCEEDS_LINE`; no writes.
+- **Idempotency:** same `requestId` and the same mapping → replay.
+
+| Race / failure | Outcome |
+|---|---|
+| **Refund webhook vs Finance `record_refund_outcome`** (same refund ID) | Both CAS the row. First commits Part 1 (+ Part 2 if eligible). Second: identical outcome and amount → replay (no writes); different → refund anomaly, no change |
+| **Duplicate refund webhook** | Replay; no writes; HTTP 200 |
+| **Two Finance users `map_refund` on the same unresolved row** | Both CAS `unresolved`. First commits; second: same `requestId` + mapping → replay; otherwise 409 `REFUND_ALREADY_MAPPED` |
+| **RF vs obligation fee adjustment** (`set_base_amount`, sponsorship) | The adjustment is refused while `reversal_pending` (409 `REVERSAL_PENDING`). If it committed earlier (the obligation was not yet pending), R-G1 captured the new version; consistent |
+| **RF vs another reversal request on the same line** | The line lock allows only one pending request: the second R-G1 → 409 `REVERSAL_ALREADY_PENDING`; after completion → 409 `LINE_ALREADY_REVERSED` |
+| **RF vs R-G3 cancel** | Serialised on the request and the obligation. Cancel first → RF records the fact; Part 2 check 6 fails → worklist `REFUNDED_LINE_STILL_SETTLED`. RF first → cancel 409 `REVERSAL_COMPLETED` |
+| **RF on two different lines of one payment** | Independent (C4); both may complete; the payment application is recomputed from line reversals in each transaction (Firestore serialises both on the payment document) |
+| **Commit followed by a lost HTTP response** | Redelivery or retry → replay; no duplicate line reversal (check 8 / `create()`), no duplicate obligation transition (check 7) |
+| **Refund processed at Razorpay, Firestore temporarily unavailable** | RF → 503; the local state is unchanged (obligation still `reversal_pending`, row `initiated` or absent). Razorpay redelivers (after G5) or Finance retries. The worklist item ages past Q28; Finance follows up. Never inferred as completed |
+
+## 2.10 Ending attempts vs retaining orders vs releasing claims (B19)
+
+**Three independent concerns:**
+
+| Concern | Effect | Operations |
+|---|---|---|
+| **(1) End an attempt's ability to create or expose** | Attempt → terminal (SUPERSEDED, ABANDONED) or RETIRED; fence bump; the holder is cleared | `supersede_unsent`, `abandon_attempt`, `retire_exposed`, `resolve_anomaly retain_all` |
+| **(2) Retain a known or possible order** | `retainedOrders` / `retainedPossibleOrders` entries are added (never removed) | Automatic in every concern-(1) operation after CREATING, and in LR (§4.4) |
+| **(3) Release the claim** (allow a new order) | Holder cleared **with no retention added**, and no retained entries remain → derived OPEN | **Only `supersede_unsent`** (`CREATE_NOT_SENT_PROVEN`), plus the disabled gates (§0.C) |
+
+**Rule:** no operation after CREATING clears a placeholder or a retained order, whatever the application exposure evidence.
+
+### O1 `supersede_unsent {attemptId}`: before CREATING
+
+| Item | Rule |
+|---|---|
+| Actor | Finance / Super (also invoked internally by `revoke_override` for a bound CLAIMED attempt) |
+| Preconditions | Attempt state CLAIMED; **no** CREATING ever committed (attempt events contain no `creating_committed`); the attempt is the holder of all its claims at `holderFence` |
+| Transaction writes | Attempt: CLAIMED → **SUPERSEDED**, `fenceVersion` +1, event `superseded_unsent`. Each claim: `holderAttemptId` → null, `holderFence` +1, **no retention added**, event `released_create_not_sent`. Override (if `boundOverrideId`): BOUND → RELEASED, claims `boundOverrideId` → null, override event. `adminRequests`; `auditLogs` |
+| Resulting claim | OPEN if no other retained entries exist (otherwise still RETAINED) |
+| Race with CLAIMED → CREATING | Firestore serialises: supersede first → CREATING fails its CAS, **no request sent**; CREATING first → precondition fails → 409 `CREATE_ALREADY_SENT` (use `abandon_attempt`) |
+| Failure | 409 with a code, no writes |
+| Retry / idempotency | 503 → retry with the same `requestId`; replay returns the stored result |
+
+### O2 `abandon_attempt {attemptId, reason}`: after CREATING (includes "retiring an OUTCOME_UNKNOWN attempt")
+
+| Item | Rule |
+|---|---|
+| Actor | Finance / Super |
+| Preconditions | Attempt in CREATING, OUTCOME_UNKNOWN, RECONCILING, RECOVERED or ACTIVATION_FAILED; **no committed response marker** (application exposure `APPLICATION_RESPONSE_NOT_AUTHORISED_PROVEN`; otherwise use `retire_exposed`); the attempt is the holder |
+| Transaction writes | Attempt → **ABANDONED**, `fenceVersion` +1, event `abandoned {reason}` (terminal; `gatewayOrderId` unchanged). Each claim: holder → null, `holderFence` +1; **retention:** a known order (`gatewayOrderId`, or linked in `gatewayOrders`) → `retainedOrders` (`orphan_discovered`, both dimensions); no known order → `retainedPossibleOrders` (`create_outcome_unknown`, receipt = `attemptId`); retention-while-held rule n/a (holder cleared in the same transaction); claim event. Override (if bound): stays **CONSUMED** (it was consumed at CREATING); `boundOverrideId` → null on the claims; override event `bound_attempt_abandoned`. `adminRequests`; `auditLogs` |
+| Resulting claim | RETAINED (never OPEN) |
+| Failure | 409 (wrong state, marker committed → `USE_RETIRE_EXPOSED`), no writes |
+| Retry / idempotency | `requestId` replay |
+
+### O3 `reactivate_attempt {attemptId}`: normal handling of RECOVERED and ACTIVATION_FAILED
+
+| Item | Rule |
+|---|---|
+| Actor | System on the owning payer's order request (§4.1), or Finance / Super |
+| Preconditions | Attempt RECOVERED or ACTIVATION_FAILED, with a known `gatewayOrderId`; the claim holder is this attempt at its fence; no anomaly; revalidation §2.3.1 passes (obligations unpaid at version, payer binding, amount = current payable, order fetched by ID matches; G1) |
+| Transaction writes | **Transaction A** (§2.8.1): attempt → ACTIVE, marker `responseAuthorisedAt`; `gatewayOrders` application exposure → `APPLICATION_EXPOSURE_UNKNOWN`; events. Claims unchanged (holder's own order) |
+| Result | The **same** order is returned to the payer; no new order |
+| Revalidation fails | 409 `ORDER_REVALIDATION_FAILED` (e.g. amount changed); attempt state unchanged; Finance options: wait (if transient), or `abandon_attempt` (O2, retains the order) |
+| Retry / idempotency | Repeated payer requests re-run O3; once ACTIVE they take the normal reuse path |
+
+### O4 `retire_exposed {attemptId}`: exposed attempts (unchanged)
+
+ACTIVE → RETIRED; order → `retainedOrders` (`exposed_retired`); holder cleared; a bound override stays CONSUMED. **No release.**
+
+### O5 Late gateway response: transaction LR `record_late_order` (§4.4)
+
+| Attempt state when the response arrives | Attempt write | Claim write | Override write |
+|---|---|---|---|
+| OUTCOME_UNKNOWN and still holder (L1) | → RECOVERED (`gatewayOrderId`) | none (holder's own) | none |
+| SUPERSEDED (CLAIMED-superseded, so the create was never sent) | event only | **anomaly** on all its claims (contradiction, L7) | none |
+| ABANDONED / RETIRED / PAID / CLOSED_UNAPPLIED (L2 / L3) | event only | order → `retainedOrders` (replaces this attempt's placeholder in the same transaction) (+ anomaly if another attempt holds) | none (CONSUMED stays CONSUMED) |
+| Any, with a conflicting identity (L7) | event only | anomaly | none |
+
+Idempotent on `gatewayOrders/{orderId}`; the original HTTP request gets 409; never ACTIVE without transaction A.
+
+### O6 Summary transition table (claim release column)
+
+| From attempt state | Operation | To | Claim release? | Retention added |
+|---|---|---|---|---|
+| CLAIMED | `supersede_unsent` | SUPERSEDED | **Yes** | none |
+| CREATING / OUTCOME_UNKNOWN / RECONCILING | `abandon_attempt` | ABANDONED | **No** | placeholder, or known order |
+| RECOVERED / ACTIVATION_FAILED | `reactivate_attempt` | ACTIVE | – (holder keeps it) | none |
+| RECOVERED / ACTIVATION_FAILED | `abandon_attempt` | ABANDONED | **No** | known order |
+| ACTIVE | `retire_exposed` | RETIRED | **No** | known order |
+| ANOMALY_MULTIPLE | `resolve_anomaly retain_all` | RETIRED / ABANDONED | **No** | all orders and placeholders |
+| any terminal | any | – | – | LR may add retention; the attempt is never written |
 
 ## 3. Data model and identifiers
 
@@ -503,7 +655,8 @@ Revision 4 §3 is retained; changes and additions:
 | `obligationAdjustments`, `sponsorships` | §2.7.2, §2.7.3 (deterministic adjustment IDs; `activeSponsorshipId` on the sponsored obligation; sponsorship `state: active \| reversed \| reconciliation_required`) |
 | `lateFeeObligations`, `subscriptionPeriods`, `merchOrders` (server-minted IDs) | unchanged |
 | `adminRequests/{requestId}` | admin idempotency |
-| `reversalRequests/{paymentId}_{lineHash}` | R-G1 request: `{obligationKey, target, state: pending \| completed \| cancelled, requestedBy, refundIds[]}`; `create()` |
+| `reversalRequests/{rr_<uuid>}` | R-G1 request bound to `paymentId`, `allocationId`, `obligationKey`, `lineHash`, exact `allocatedPaise`, `target`, `expectedSettlementVersion`, `requestedBy`, `requestId` (§2.9.4) |
+| `allocationLineLocks/{allocationId}_{lineHash}` | `pendingRequestId`, `completedReversalId`; at most one pending request per allocation line (§2.9.4) |
 | `refundReconcileItems/{refundId}` | worklist for refunds still `initiated` past Q28's threshold |
 | `orderAcks/{orderId}_{uid}` | client acknowledgement (S6b), `create()` |
 
@@ -538,7 +691,7 @@ All of these are server-written only (`allow write: if false`). Finance / Super 
 
 | Step | Rule |
 |---|---|
-| Claim (transaction) | ≤ 20 obligations, one player, all `unpaid`. Each claim: **OPEN** → new attempt (holder); **RETAINED** with a bindable override covering exactly these keys → bind (§2.6.2); **HELD / HELD_OVERRIDE** by this payer's ACTIVE attempt with an identical set and amount → revalidate and reuse; otherwise 409 (`ONLINE_PAYMENT_UNAVAILABLE`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_BEING_VERIFIED`, `ALREADY_PAID`) |
+| Claim (transaction) | ≤ 20 obligations, one player, all `unpaid`. Each claim: **OPEN** → new attempt (holder); **RETAINED** with a bindable override covering exactly these keys → bind (§2.6.2); **HELD / HELD_OVERRIDE** by this payer's ACTIVE attempt with an identical set and amount → revalidate and reuse; **HELD / HELD_OVERRIDE by this payer's RECOVERED or ACTIVATION_FAILED attempt → `reactivate_attempt` (§2.10 O3): revalidate + transaction A → reuse the same order, or 409 if revalidation fails** (revision 7); otherwise 409 (`ONLINE_PAYMENT_UNAVAILABLE`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_BEING_VERIFIED`, `ALREADY_PAID`) |
 | CREATING (transaction) | fenced; consumes a bound override; then `orders.create({receipt: attemptId, notes: {intentId, attemptId}})` |
 | Response | Transaction P (persist), then transaction A (marker), then return the order (§2.8.1) |
 | Failures | §2.3 classification |
@@ -551,7 +704,7 @@ All of these are server-written only (`allow write: if false`). Finance / Super 
 - **R2:** IDENTITY_CONFLICT.
 - **R3:** REJECT_INVALID.
 - **R4:** FAILED_NO_ORDER → REJECT_DUPLICATE + classification anomaly.
-- **R5:** SUPERSEDED / RETIRED → REJECT_DUPLICATE.
+- **R5:** SUPERSEDED / **ABANDONED** / RETIRED → REJECT_DUPLICATE (`ATTEMPT_SUPERSEDED` / `ATTEMPT_ABANDONED` / `ATTEMPT_RETIRED`).
 - **R6:** anomaly (attempt or claim) → REJECT_DUPLICATE.
 - **R7:** attempt has `firstPaymentId` → REJECT_DUPLICATE.
 - **R8:** obligation not `unpaid`, or holder ≠ attempt → REJECT_DUPLICATE.
@@ -590,7 +743,7 @@ Revision 4 §4.3 is retained, with these changes:
 | Case | Situation | Attempt effect | Claim effect | Notes |
 |---|---|---|---|---|
 | **L1** | Late response; attempt OUTCOME_UNKNOWN and **still the holder** | → RECOVERED (`gatewayOrderId`) using the observer's fence | none (holder's own order) | Exposure only via revalidation + transaction A (`reconcile`); the original request gets 409 |
-| **L2** | Late response after `supersede` from CREATING / UNKNOWN / RECONCILING | event only (terminal) | order → `retainedOrders`; the attempt's placeholder removed (replaced) | If superseded **from CLAIMED** (create never sent), a late response is a **contradiction** → L7 |
+| **L2** | Late response after `abandon_attempt` (ABANDONED) | event only (terminal) | order → `retainedOrders`; the attempt's placeholder removed (replaced) | If superseded **from CLAIMED** (create never sent), a late response is a **contradiction** → L7 |
 | **L3** | Late response after another terminal state (PAID, CLOSED_UNAPPLIED with a different known order; FAILED_NO_ORDER when enabled) | event only | order → `retainedOrders` (+ anomaly if held by another) | FAILED_NO_ORDER → also a classification anomaly (G6 contradicted) |
 | **L4** | Captured payment on an order not yet linked | per §4.3 (terminal → event) | correlated → link + `retainedOrders` (`paid_*`) on the correlated obligations' claims; **uncorrelated** → link with `correlation: none`, **no claim known** → payment `unmatched`, Finance item | Application exposure → ACKNOWLEDGED |
 | **L5** | Duplicate late response or event | none | none | Idempotent |
@@ -644,7 +797,7 @@ All use `requestId`; failure 409 with no writes; contention 503.
 |---|---|---|---|
 | CLOSED_UNAPPLIED (this was its first payment) | yes | **event only** | event only (stays `paid_unapplied`) |
 | PAID (additional payment) | yes, if the target obligations are `unpaid` (e.g. after R-G2) and V1–V18 pass | event only | event only (stays `paid`) |
-| SUPERSEDED (late payment on an orphan) | yes, if V1–V18 pass | event only | event only (stays `pending`) |
+| SUPERSEDED / ABANDONED (late payment on an orphan) | yes, if V1–V18 pass | event only | event only (stays `pending`) |
 | FAILED_NO_ORDER | only after `acknowledge_classification_anomaly` (V18) | event only | event only |
 | RETIRED | **not reachable**: any captured payment on a RETIRED attempt's order already moved it to CLOSED_UNAPPLIED (§2.3); a RETIRED attempt with no payment has nothing to review | – | – |
 | ANOMALY_MULTIPLE | **no** (V15) | – | – |
@@ -657,9 +810,9 @@ All use `requestId`; failure 409 with no writes; contention 503.
 |---|---|---|---|---|---|
 | `record_refund_initiated {paymentId, refundId, amountPaise, mapping}` | Finance / Super | mapping rule (§2.5.2; `unresolved` is not allowed for local initiation); C1–C2 hold after adding | row `create()` (`initiated`); summary recomputed; event; audit | 400 `REFUND_MAPPING_REQUIRED`; 409 `REFUND_EXCEEDS_CAPTURED` / `REFUND_EXCEEDS_LINE` / `REFUND_ID_EXISTS` | `requestId`; row ID = refund ID |
 | `record_refund_outcome {refundId, processed\|failed, evidence}` | Finance / Super (webhook after G5) | §2.9.2 | **Transaction RF** | §2.9.2 / §2.9.3 | refund ID; `requestId` |
-| `map_refund {refundId, mapping}` | Finance / Super | row `unresolved`; C2–C4 | mapping (once) + RF post-processing | 409 | `requestId`; mapping CAS |
-| R-G1 `initiate_gateway_reversal {paymentId, obligationKey, target: unpaid\|waived, reason}` | Finance / Super | obligation `settled_gateway` via this payment's allocation line; ≥ 1 refund row (`initiated` or `processed`) mapped to the line | obligation → `reversal_pending`; `reversalRequests/{paymentId}_{lineHash}` `create()` (`pending`, target, requester); worklist item; events; audit. **If the line's processed refunds already equal its allocation**, the same transaction performs the RF step 3 completion | 409 | `requestId`; request doc `create()` |
-| R-G3 `cancel_gateway_reversal` | Finance / Super | request `pending` | obligation → `settled_gateway`; request `cancelled`; events; audit | 409 | `requestId` |
+| `map_refund {refundId, mapping}` | Finance / Super | §2.9.5 (revision 7) | §2.9.5 | §2.9.5 | `requestId`; mapping CAS |
+| R-G1 `initiate_gateway_reversal {paymentId, obligationKey, target: unpaid\|waived, reason}` | Finance / Super | §2.9.4 (revision 7) | §2.9.4 | §2.9.4 | `requestId` |
+| R-G3 `cancel_gateway_reversal {reversalRequestId, reason}` | Finance / Super | §2.9.4 (revision 7) | §2.9.4 | §2.9.4 | `requestId` |
 | ~~R-G2 manual completion~~ | – | **Removed** (X20): completion happens only inside RF or R-G1 | – | – | – |
 
 ### 4.8 Attempt, claim and override actions (revised for B15, B16)
@@ -668,8 +821,9 @@ All use `requestId`; failure 409 with no writes; contention 503.
 |---|---|---|---|---|---|
 | `reconcile` | Finance / Super / worker | attempt non-terminal | §2.3; discovered orders via LR (§4.4) | per LR | events (+ audit) |
 | `attach_order` | Finance / Super | attempt UNKNOWN / RECONCILING (holder); fetch-validated (G1); LR link with the same `attemptId` | → RECOVERED → revalidate + A → ACTIVE | holder's own order | events + audit |
-| `supersede` (from CLAIMED) | Finance / Super | attempt CLAIMED, never CREATING | → SUPERSEDED; fence bump; bound override → RELEASED | **release** for this attempt (`CREATE_NOT_SENT_PROVEN`) | events + audit |
-| `supersede` (from CREATING / UNKNOWN / RECONCILING / RECOVERED / ACTIVATION_FAILED) | Finance / Super | application exposure `APPLICATION_RESPONSE_NOT_AUTHORISED_PROVEN`; holder | → SUPERSEDED; fence bump | **no release:** known order → `retainedOrders`; unknown → `retainedPossibleOrders` | events + audit |
+| `supersede_unsent` | Finance / Super | §2.10 O1 | §2.10 O1 | **release** (`CREATE_NOT_SENT_PROVEN`) | events + audit |
+| `abandon_attempt` | Finance / Super | §2.10 O2 | §2.10 O2 | **no release**; order or placeholder retained | events + audit |
+| `reactivate_attempt` | system (payer request) / Finance / Super | §2.10 O3 | §2.10 O3 | none (holder's own order) | events (+ audit) |
 | `retire_exposed` | Finance / Super | attempt ACTIVE | → RETIRED | order → `retainedOrders` | events + audit |
 | `resolve_anomaly` | Finance / Super | §2.4 | §2.4 | §2.4 | events + audit |
 | `authorise_override` | Finance / Super (+ Super second approval, Q25) | §2.6.2 | §2.6.2 | – | events + audit |
@@ -726,6 +880,19 @@ All use `requestId` (`adminRequests`), 409 with no writes on a failed preconditi
 | 55 | Concurrent `mark_sponsored` ×2 / sponsor ↔ reverse / duplicate reverse | One wins; S1–S8 hold | – |
 | 56 | Sponsorship with malformed adjustment rows / unreconstructable legacy | `reconciliation_required`; dependent actions 409 | – |
 
+**Revision 7 additions to the failure and concurrency matrix:**
+
+| # | Case | Expected result | Second payable order? |
+|---|---|---|---|
+| 57 | `supersede_unsent` vs CREATING (both orderings) | Release with no request sent / 409 `CREATE_ALREADY_SENT` | No |
+| 58 | `abandon_attempt` on UNKNOWN / RECOVERED / ACTIVATION_FAILED | ABANDONED; order or placeholder retained; claim RETAINED | No |
+| 59 | Payer request with a RECOVERED holder | `reactivate_attempt` → same order (or 409 on revalidation failure) | No |
+| 60 | Late response after ABANDONED | Order retained, replacing the placeholder | No |
+| 61 | Late response after SUPERSEDED (create never sent) | Contradiction → anomaly | No |
+| 62 | Two reversal requests on one line | Second 409 `REVERSAL_ALREADY_PENDING` | – |
+| 63 | RF with any binding check failing | Fact recorded; no completion; worklist item | – |
+| 64 | RF races (webhook ↔ Finance, map ↔ map, RF ↔ cancel, RF ↔ fee change, lost response, Firestore outage) | Per §2.9.5 | – |
+
 ## 6. Invariants (revision 4 I1–I16 retained; changes and additions)
 
 | # | Invariant |
@@ -751,6 +918,15 @@ All use `requestId` (`adminRequests`), 409 with no writes on a failed preconditi
 | I23 | **External-fact recording:** a refund processed at Razorpay is always recorded once known (deterministic or `unresolved` mapping); a refund is never inferred from `initiated`; a payment line is reversed and its obligation transitioned **in the same transaction** (RF / R-G1) or not at all |
 | I24 | **Sponsorship:** S1–S8 (§2.7.3); payable ≥ 0; malformed sponsorship history blocks all dependent actions (fail closed) |
 | I25 | **Disabled capabilities stay disabled:** FAILED_NO_ORDER release (G6), `verify_orders_unpayable` / `adopt` / `supersede_all` (G1+G3/G7), refund webhook ingestion (G5), `expose_replacement` (Q13). None is reachable until its evidence and approval exist |
+
+**Revision 7 invariants:**
+
+| # | Invariant |
+|---|---|
+| I26 | **Release only by `supersede_unsent`:** after an attempt has committed CREATING, no operation clears its holder without adding a retained order or placeholder. SUPERSEDED attempts never committed CREATING; ABANDONED attempts always left a retention entry |
+| I27 | **One pending reversal per allocation line;** at most one line reversal per allocation line (`allocationLineLocks` CAS + `lineReversals` `create()`) |
+| I28 | **Bound completion:** a line reversal and its obligation transition exist only if all eight RF checks held in the same transaction; the refund fact is recorded even when completion is blocked |
+| I29 | **Capability status:** a capability's status changes only by the §0.C procedure; recommendations never change it |
 
 ## 7. Test matrix
 
@@ -844,6 +1020,34 @@ Revision 4 rows B6-1…B8-8 and the revision 3 rows are retained. All races run 
 | **B18-6** | Legacy: reconstructable / not reconstructable | Legacy sponsorship record / `reconciliation_required` |
 | **B18-7** | `reconcile_sponsorship` | Missing deterministic adjustments created; S6 verified; events and audit |
 
+**Revision 7 tests.** Same conventions: both orderings for every race; N seeded repetitions; real route handlers; deterministic gateway stub with crash injection; injected clock; **injected Firestore transaction failures** (before the commit, and after the commit with a lost response).
+
+| # | Scenario | Must show |
+|---|---|---|
+| **B19-1** | Claim release is impossible after CREATING: run `abandon_attempt`, `retire_exposed`, `resolve_anomaly retain_all` and LR on attempts in every post-CREATING state | Claim never derived OPEN; a retained entry exists after each; `supersede_unsent` → 409 `CREATE_ALREADY_SENT` |
+| **B19-2** | Placeholders survive attempt retirement: abandon an UNKNOWN attempt → placeholder; then any further admin action (settle, reverse, waive, override-bind attempt while disabled) | Placeholder still present; online 409 |
+| **B19-3** | Recovered order revalidated and reused: L1 → RECOVERED → payer request | `reactivate_attempt` → ACTIVE; the **same** order ID returned; stub creates = 1 |
+| **B19-4** | Abandoning a recovered order does not enable a second order | ABANDONED; order retained; new request 409; stub creates = 1 |
+| **B19-5** | ACTIVATION_FAILED → payer request (revalidation passes / fails) | Same order / 409, attempt unchanged; then `abandon_attempt` retains |
+| **B19-6** | Terminal immutability: byte-compare attempt docs before and after LR, reviewed application, refunds and reversals for SUPERSEDED / ABANDONED / RETIRED-then-terminal / PAID / CLOSED_UNAPPLIED | Unchanged; events appended |
+| **B19-7** | `supersede_unsent` ↔ CREATING (both orderings), with and without a bound override | Release + RELEASED override + 0 creates / 409 + CONSUMED override |
+| **B19-8** | Late response after SUPERSEDED (impossible case injected) | Anomaly on claims |
+| **B20-1** | R-G1 → refund processed (webhook path, gated test harness) → RF completes | Line reversal, obligation target, payment `partially_reversed`, request `completed`, lock cleared, all in one commit |
+| **B20-2** | Each binding check 1–8 failing individually | Fact recorded; no completion; correct worklist code |
+| **B20-3** | Two R-G1 on the same line (concurrent) | One `pending`; the other 409 |
+| **B20-4** | Unresolved external refund → `map_refund` to the requested line / to a different line / a split | Completes / no completion / completes only if exactly one line with a pending request and all checks hold |
+| **B20-5** | `map_refund` attempts to infer from a request (no mapping supplied) | 400 `MAPPING_REQUIRED` |
+| **B20-6** | Webhook ↔ Finance outcome on the same refund ID (both orderings) | One commit; the other replay or anomaly |
+| **B20-7** | Duplicate webhook ×3 incl. concurrent | Single row transition; single line reversal |
+| **B20-8** | Two Finance users mapping concurrently | One mapping; the other replay / 409 |
+| **B20-9** | RF ↔ `set_base_amount` / sponsorship on the obligation (both orderings) | Adjustment 409 while pending; or a version captured before R-G1 |
+| **B20-10** | RF ↔ R-G3 cancel (both orderings) | Completion, or cancellation + `REFUNDED_LINE_STILL_SETTLED` worklist |
+| **B20-11** | RF ↔ another line's RF on the same payment | Both complete; the application recomputed correctly |
+| **B20-12** | Injected failure **before** commit, then retry | No state change, then a single completion |
+| **B20-13** | Commit then **lost response**, then retry / redelivery | Replay; no second line reversal or obligation transition |
+| **B20-14** | Firestore unavailable (503) while the refund is processed at Razorpay | Local state unchanged; retry succeeds later; worklist ages |
+| **B20-15** | R-G1 when the line is already fully refunded | Completion in the same R-G1 transaction |
+
 ## 8. Migration, compatibility and rollback
 
 Revision 4 §8 is retained, plus:
@@ -919,6 +1123,19 @@ Revision 4 §8 is retained, plus:
 
 **Gateway checks** G1–G7: none performed; none assumed.
 
+**Revision 7 questions:**
+- **Q30:** Should the payer's own order request trigger `reactivate_attempt` for a RECOVERED or ACTIVATION_FAILED holder (recommended, for availability), or only Finance?
+- **Q31:** When RF finds the obligation version changed (check 7), is cancel + re-request the required Finance path (recommended), or should Finance be able to re-bind the request to the current version (not recommended)?
+- **Q32:** Wording for 409 `ORDER_REVALIDATION_FAILED` and `REVERSAL_PENDING`.
+
+**Remaining assumptions** (unchanged from revision 6 unless noted):
+- A2: retained orders are payable.
+- A3: test = live.
+- **A4 (relied upon):** Firestore serialises transactions.
+- **A5 (relied upon):** clock skew ≤ 60 s.
+- **A6:** refund IDs are unique and stable (G5).
+- A1 is not relied upon.
+
 ## 11. Phased implementation plan and dependencies (revision 4 §11, extended)
 
 | Phase | Revision 5 additions |
@@ -965,6 +1182,18 @@ Revision 4 §8 is retained, plus:
 | Disabled capabilities | FAILED_NO_ORDER release, verification, adopt, supersede_all, refund webhook, override | All explicitly disabled with their gates (I25) |
 | Earlier protections B1–B14 | Weakened? | **No.** B14's never-exposed proof is kept as evidence but **no longer permits release** (stricter). B10's `RELEASED` is now limited to `CREATE_NOT_SENT_PROVEN` (unchanged in effect). B12 is extended with external facts. B13 is extended with S1–S8 |
 
+**Revision 7 consistency additions:**
+
+| Area | Check | Result |
+|---|---|---|
+| Attempt ending vs release | Does any operation after CREATING release a claim? | No: only `supersede_unsent` releases (O1, I26); ABANDONED always retains |
+| RECOVERED handling | Normal path reuses the same order; abandonment retains | Yes (O3, O2) |
+| Override | Abandoning a bound attempt keeps the override CONSUMED; `supersede_unsent` → RELEASED | Yes (O1, O2, §2.6.2) |
+| Reversal binding | One pending request per line; RF completion only with all eight checks; the refund fact always recorded | Yes (§2.9.2, §2.9.4, I27, I28) |
+| Obligation writes while `reversal_pending` | All settlement and amount changes refused | Yes (§2.9.4) |
+| Capability status | All gated capabilities DISABLED_BY_DEFAULT, design only; recommendations are not enablement | Yes (§0.C, I29) |
+| Earlier safeguards B1–B18 | Weakened? | No |
+
 ## 14. NOT approved for implementation
 
 - **Everything in this document.** No phase (1A, 1B, 2–7) may start until the independent reviewer approves revision 6 **and** the owner gives explicit approval for that specific phase.
@@ -981,6 +1210,8 @@ Revision 4 §8 is retained, plus:
   - any gateway check G1–G7;
   - any production deployment or production data operation.
 - **No other workstream** (R2-B, R6, UX) is implied.
+
+- **Revision 7 additions to the NOT-approved list:** `supersede_unsent`, `abandon_attempt`, `reactivate_attempt`, reversal requests, line locks, transaction RF, `map_refund` and the worklist are **design only**. Every capability in §0.C remains **DISABLED_BY_DEFAULT**, with status "design only". Moving any capability to ENABLED_BY_OWNER_DECISION, IMPLEMENTED_NOT_DEPLOYED or DEPLOYED_OPERATIONALLY_VERIFIED requires the §0.C procedure and separate approval.
 
 ## 15. Resolution matrix: B15–B18
 
@@ -1038,3 +1269,25 @@ Revision 4 §8 is retained, plus:
 | B14 Apply to adopt / supersede_all / retain_all / supersede / late responses / rollback and migration | Each rule updated | §2.4, §4.4, §4.8, §8 |
 | B14 Crash tests (before response, after construction, during send, after send) | B14-1…B14-5 (+ 6–8) | §7 |
 | Cross-cutting review | X8–X14; consistency table | §0.2, §13 |
+
+## 17. Resolution matrix: B19–B20
+
+| Requirement | Resolution | Section |
+|---|---|---|
+| **B19** Distinguish (1) ending an attempt, (2) retaining orders, (3) releasing the claim | Three-concern table; separate operations | §2.10 |
+| B19 Only `CREATE_NOT_SENT_PROVEN` permits release | `supersede_unsent` is the only releasing operation; I26 | §2.10 O1, O6, §6 |
+| B19 Named operations and transitions: supersede CLAIMED; abandon after CREATING; retire OUTCOME_UNKNOWN; RECOVERED; ACTIVATION_FAILED; late response | O1 `supersede_unsent`; O2 `abandon_attempt` (incl. OUTCOME_UNKNOWN); O3 `reactivate_attempt`; O4 `retire_exposed`; O5 LR | §2.10 |
+| B19 Recovered order normally revalidated and reused; if abandoned, claim and order retained | O3 default (incl. on the payer request); O2 retains | §2.10, §4.1 |
+| B19 No post-CREATING operation clears a placeholder or retained order because no response was authorised | Rule + I26 | §2.10, §6 |
+| B19 Exact claim, attempt and override writes per transition | Per-operation tables | §2.10 O1–O5 |
+| B19 New terminal state distinguishing abandonment | ABANDONED; terminology rule | §0.B, §2.3 |
+| B19 Tests (no release after CREATING; placeholders survive; reuse; abandon ≠ second order; terminal immutability) | B19-1…B19-8 | §7 |
+| **B20** Bind the request to payment, allocation, obligation, exact amount, target, expected version, actor, request ID | `reversalRequests` fields | §2.9.4 |
+| B20 One pending request per allocation line | `allocationLineLocks` CAS; I27 | §2.9.4, §6 |
+| B20 RF checks 1–8 atomically | Part 2 binding checks | §2.9.2 |
+| B20 RF success writes (refund, line reversal, obligation, application + summary, request, events, audit) | Part 2 writes | §2.9.2 |
+| B20 Unresolved mapping: record the fact; no completion; explicit `map_refund`; no inference; completion only if unambiguous and the request is valid; conflicts stay on the worklist | `map_refund` rules | §2.9.3, §2.9.5 |
+| B20 Concurrency: webhook vs Finance; duplicate webhook; two mappers; RF vs fee adjustment; RF vs another request; commit + lost response; Razorpay processed + Firestore unavailable | Outcomes table | §2.9.5 |
+| B20 Idempotent by refund ID and request ID; no duplicate line reversal or obligation transition | Keys; checks 6–8; `create()` | §2.9.2, §2.9.5 |
+| B20 Tests incl. orderings and injected failures | B20-1…B20-15 | §7 |
+| **Consistency** Disabled-by-default / enabled-by-owner / implemented-not-deployed / deployed-verified; recommendations ≠ enablement | Taxonomy + current status table; I29 | §0.C, §6, §14 |
