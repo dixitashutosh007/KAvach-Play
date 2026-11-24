@@ -712,9 +712,11 @@ service cloud.firestore {
       }
     }
 
+    // Shop products: managed by Club Admin / Super Admin only (owner decision,
+    // Club Shop brief 2026-11-24). Finance Admins do not manage the Shop.
     match /merchandises/{merchId} {
       allow read: if isSignedIn();
-      allow write: if isAnyAdmin();
+      allow write: if isClubAdmin();
     }
 
     // Club Shop availability: the existing appConfig/default.features.shop flag
@@ -724,6 +726,9 @@ service cloud.firestore {
         || get(/databases/$(database)/documents/appConfig/default).data.get('features', {}).get('shop', true) != false;
     }
 
+    // Shop orders: every admin (incl. Finance) may READ them — they are payment
+    // records in Finance / Payment History. Managing orders (status, edits,
+    // deletion) is Club Admin / Super Admin only.
     match /merchOrders/{orderId} {
       allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.playerId));
       allow create: if isSignedIn()
@@ -734,7 +739,7 @@ service cloud.firestore {
         && incoming().paymentStatus == 'Unpaid'
         && incoming().orderStatus == 'Order Placed'
         && incoming().createdAt == request.time;
-      allow update: if isAnyAdmin() || (
+      allow update: if isClubAdmin() || (
         isSignedIn()
         && isSelf(existing().playerId)
         && isValidMerchOrder(incoming())
@@ -743,7 +748,7 @@ service cloud.firestore {
         && incoming().playerId == existing().playerId
         && incoming().createdAt == existing().createdAt
       );
-      allow delete: if isAnyAdmin();
+      allow delete: if isClubAdmin();
     }
 
     match /polls/{pollId} {

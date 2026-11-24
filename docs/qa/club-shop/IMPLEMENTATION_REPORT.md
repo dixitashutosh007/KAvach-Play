@@ -149,3 +149,34 @@ The 21 failures are the existing tests that encode the retired role model. They 
    - Both are noted for a follow-up.
 4. **Admin Club layout:** the reference's player-style overview (At a Glance + cards) for the admin Club landing was not rebuilt. Admin Club keeps its existing sections, with the Club Menu and the Shop management card added. Shop Activity & Reports opens the existing WhatsApp report; there is no separate analytics view.
 5. **Finance Admin:** the Shop toggle and Club → Shop are Club and Super Admin only, as in D-19. Finance Admins still see Shop purchases in Finance; the rules also still allow them product and order writes (`isAnyAdmin`, pre-existing).
+
+## 8. Closure — owner decisions (2026-11-24)
+
+**Decision 1, keep the existing Admin Club design:** no change since `e855fa6`. Admin Club keeps its sections plus the Club Menu and the Club Shop panel only.
+
+**Decision 2, Shop management is Club Admin and Super Admin only.** Verified by code and rules inspection. **No tests were run, at the owner's instruction.**
+
+| Path | Finance Admin | Club / Super Admin |
+|---|---|---|
+| Club → Shop, Club Menu, Club Shop panel (UI) | Blocked: Club sections require Club Admin (`lib/admin-navigation.ts`); the page shows access-denied | Yes, enabled or disabled |
+| `POST /api/admin/shop` (toggle) | 403 (`requireClubAdmin`; emulator SHOP-01, executed earlier) | Yes |
+| Settings → feature switches | Settings is Super Admin only | Super Admin |
+| **Products** (`merchandises` write) | **Was allowed by `isAnyAdmin()`. Fixed: now `isClubAdmin()`** | Yes, regardless of the Shop flag |
+| **Orders** (`merchOrders` update/delete) | **Was allowed by `isAnyAdmin()`. Fixed: now `isClubAdmin()`** | Yes, regardless of the Shop flag |
+| Shop payment records (`merchOrders` read; Finance and Payment History) | **Kept**: read stays `isAnyAdmin()` | Yes |
+| Player self-service (own unpaid order create; own order read) | Unchanged | Unchanged |
+
+**Fix:** commit after `e855fa6` on `feat/club-shop`. This is a tightening only. Finance's screens make no admin writes to Shop records; the `FinanceTab` order writes belong to the player's own checkout and are governed by the player branch, which is unchanged.
+
+**Tests written for the fix but not executed (per instruction):**
+- `tests/club-shop.emulator.test.mjs`:
+  - **SHOP-R4:** Finance Admin is denied product create, update and delete and order update and delete; order read is allowed.
+  - **SHOP-R5:** Club Admin and Super Admin manage products and orders with the Shop enabled **and** disabled.
+- `tests/club-shop.test.mjs`: a rules source check.
+- Status: **implemented, untested.**
+
+**Deployed rules:**
+- `kavach-play-db-ext` has the rules from `e855fa6`: the `merchOrders` create guard `isShopEnabled()`, which matches the code and emulator tests SHOP-R1 to R3 (executed earlier, passing).
+- **This fix changes `firestore.rules` again** (the `merchandises` write and `merchOrders` update/delete rules). Until the owner applies the updated file to `kavach-play-db-ext`, the deployed rules still allow Finance Admins those direct writes. No deployment was done here.
+
+`mig-mov` was not modified. Nothing was deployed.

@@ -52,6 +52,12 @@ describe("Player: Shop is an on-demand Club facility", () => {
     assert.match(page, /store\.ensureMerchOrders\?\.\(playerScope\)/);
     assert.match(src("hooks/useStore.ts"), /playerIdFilter \? query\(base, where\("playerId", "==", playerIdFilter\)\) : base/);
   });
+  it("rules: products and order management are Club/Super Admin only; every admin may read orders", () => {
+    const r = src("firestore.rules");
+    assert.match(r, /match \/merchandises\/\{merchId\} \{\s*allow read: if isSignedIn\(\);\s*allow write: if isClubAdmin\(\);/);
+    assert.match(r, /match \/merchOrders\/\{orderId\} \{\s*allow read: if isAnyAdmin\(\) \|\|/);
+    assert.match(r, /allow update: if isClubAdmin\(\) \|\| \(\s*isSignedIn\(\)\s*&& isSelf\(existing\(\)\.playerId\)/);
+  });
   it("server blocks new purchases when disabled (order route) and rules block direct order writes", () => {
     assert.match(src("lib/razorpay-order.ts"), /await assertShopOpen\(db\);/);
     assert.match(src("app/api/razorpay/order/route.ts"), /if \(err instanceof ShopClosedError\)/);

@@ -200,4 +200,41 @@ describe("Club Shop — Firestore rules (merchOrders create)", { skip }, () => {
     const { doc, getDoc } = await import("firebase/firestore");
     await rut.assertSucceeds(getDoc(doc(testEnv.authenticatedContext("p_uid").firestore(), "merchOrders/o_keep")));
   });
+
+  // Owner decision (2026-11-24): Shop management is Club Admin / Super Admin only.
+  const seedRoles = () =>
+    testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const { doc, setDoc } = await import("firebase/firestore");
+      const d = ctx.firestore();
+      await setDoc(doc(d, "appUsers/fin_uid"), { name: "Fin", role: "player", isFinanceAdmin: true });
+      await setDoc(doc(d, "appUsers/club_uid"), { name: "Club", role: "player", isClubAdmin: true });
+      await setDoc(doc(d, "merchandises/m_cap"), { name: "Cap", basePrice: 499 });
+      await setDoc(doc(d, "merchOrders/o_admin"), { id: "o_admin", playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap", price: 499, paymentStatus: "Paid", orderStatus: "Order Placed", createdAt: new Date() });
+    });
+
+  it("SHOP-R4 Finance Admin cannot manage products or orders, but can read Shop payment records", async () => {
+    await seedRoles();
+    const { doc, setDoc, updateDoc, deleteDoc, getDoc } = await import("firebase/firestore");
+    const fin = testEnv.authenticatedContext("fin_uid").firestore();
+    await rut.assertFails(setDoc(doc(fin, "merchandises/m_new"), { name: "Jersey", basePrice: 1299 }));
+    await rut.assertFails(updateDoc(doc(fin, "merchandises/m_cap"), { basePrice: 1 }));
+    await rut.assertFails(deleteDoc(doc(fin, "merchandises/m_cap")));
+    await rut.assertFails(updateDoc(doc(fin, "merchOrders/o_admin"), { orderStatus: "Fulfilled" }));
+    await rut.assertFails(deleteDoc(doc(fin, "merchOrders/o_admin")));
+    await rut.assertSucceeds(getDoc(doc(fin, "merchOrders/o_admin")));
+  });
+
+  it("SHOP-R5 Club Admin and Super Admin manage products and orders whether the Shop is enabled or disabled", async () => {
+    const { doc, setDoc, updateDoc } = await import("firebase/firestore");
+    for (const shop of [true, false]) {
+      await setShop(shop);
+      await seedRoles();
+      const club = testEnv.authenticatedContext("club_uid").firestore();
+      const sup = testEnv.authenticatedContext("super_uid", { admin: true }).firestore();
+      await rut.assertSucceeds(setDoc(doc(club, "merchandises/m_" + shop), { name: "Item", basePrice: 100 }));
+      await rut.assertSucceeds(updateDoc(doc(club, "merchOrders/o_admin"), { orderStatus: "Order Received" }));
+      await rut.assertSucceeds(updateDoc(doc(sup, "merchandises/m_cap"), { basePrice: 549 }));
+      await rut.assertSucceeds(updateDoc(doc(sup, "merchOrders/o_admin"), { orderStatus: "Fulfilled" }));
+    }
+  });
 });
