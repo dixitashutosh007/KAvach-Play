@@ -15,10 +15,11 @@
  * Body: { dryRun?: boolean, matchId?: string }
  */
 
-import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { requireFinanceAdmin } from "@/lib/server-auth";
-import { getServerFirestore } from "@/lib/server-db";
+import { NextResponse } from "next/server.js";
+import { requireFinanceAdmin } from "../../../../lib/server-auth.ts";
+import { getServerFirestore } from "../../../../lib/server-db.ts";
+import { actorNameFor } from "../../../../lib/server-audit.ts";
+import { waiveAbandonedMatchObligations, type WaiverSummary } from "../../../../lib/abandoned-match.ts";
 
 export async function POST(req: Request) {
   const guard = await requireFinanceAdmin(req);
@@ -52,78 +53,20 @@ export async function POST(req: Request) {
       });
     }
 
-    const waivedList: Array<{
-      matchId: string;
-      paymentId: string;
-      playerId: string;
-      amount: number;
-      previousStatus: string;
-    }> = [];
-
-    const paidPreservedList: Array<{
-      matchId: string;
-      paymentId: string;
-      playerId: string;
-      amount: number;
-    }> = [];
-
+    const actor = { id: guard.uid, name: await actorNameFor(db, guard.uid) };
+    const waivedList: WaiverSummary["waivedList"] = [];
+    const paidPreservedList: WaiverSummary["paidPreservedList"] = [];
     let alreadyWaivedCount = 0;
     let otherCount = 0;
 
-    // Process all payments across the abandoned matches
+    // Shared trusted transition (lib/abandoned-match.ts) — also used by the
+    // weekend results route; writes one audit entry per match it changes.
     for (const match of matchesToReconcile) {
-      const paymentsSnap = await db.collection(`matches/${match.id}/payments`).get();
-
-      // Collect operations to perform in batches (up to 400 writes per batch)
-      let currentBatch = db.batch();
-      let batchCount = 0;
-
-      for (const payDoc of paymentsSnap.docs) {
-        const pay = payDoc.data();
-        const effectiveAmount = pay.feeOverride !== undefined ? pay.feeOverride : (match.fee || 0);
-
-        if (pay.status === "Unpaid") {
-          waivedList.push({
-            matchId: match.id,
-            paymentId: payDoc.id,
-            playerId: pay.playerId,
-            amount: effectiveAmount,
-            previousStatus: "Unpaid",
-          });
-
-          if (!dryRun) {
-            currentBatch.update(payDoc.ref, {
-              status: "Waived",
-              waivedReason: "Match Abandoned",
-              waivedAt: FieldValue.serverTimestamp(),
-              updatedAt: FieldValue.serverTimestamp(),
-            });
-            batchCount++;
-
-            if (batchCount >= 400) {
-              await currentBatch.commit();
-              currentBatch = db.batch();
-              batchCount = 0;
-            }
-          }
-        } else if (pay.status === "Paid") {
-          // Historical payment preserved per Option A
-          paidPreservedList.push({
-            matchId: match.id,
-            paymentId: payDoc.id,
-            playerId: pay.playerId,
-            amount: pay.feeCollectedAmount ?? effectiveAmount,
-          });
-        } else if (pay.status === "Waived") {
-          alreadyWaivedCount++;
-        } else {
-          otherCount++;
-        }
-      }
-
-      if (!dryRun && batchCount > 0) {
-        await currentBatch.commit();
-      }
+      const r = await waiveAbandonedMatchObligations(db, match, { dryRun, actor });
+      waivedList.push(...r.waivedList);
+      paidPreservedList.push(...r.paidPreservedList);
+      alreadyWaivedCount += r.alreadyWaivedCount;
+      otherCount += r.otherCount;
     }
 
     return NextResponse.json({
