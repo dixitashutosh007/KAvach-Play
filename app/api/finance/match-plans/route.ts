@@ -124,9 +124,9 @@ export async function POST(req: Request) {
   const action = body?.action;
   const guard =
     action === "preview"
-      ? await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin", "matchAdmin"])
+      ? await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"])
       : action === "apply"
-        ? await requireRole(req, ["superAdmin", "financeAdmin", "matchAdmin"])
+        ? await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"])
         : action === "override" || action === "clearOverride"
           ? await requireFinanceAdmin(req)
           : null;

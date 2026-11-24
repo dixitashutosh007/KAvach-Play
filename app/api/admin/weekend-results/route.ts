@@ -1,10 +1,8 @@
 /**
  * POST /api/admin/weekend-results — record weekend match results (Feature A).
  *
- * Auth: Super Admin or (legacy) Match Admin ONLY — owner decision 2026-11-24.
- * Club Admin is deliberately not included until role consolidation (D-19,
- * Workstream B) is implemented and verified; this is narrower than
- * `requireMatchAdmin`, which already admits Club Admin.
+ * Auth: Super Admin or Club Admin (D-22: Club Admin absorbed the retired Match
+ * Admin role; the earlier interim "Match Admin only" rule ended with consolidation).
  *
  * Body: { source?: "prompt" | "backfill", results: [{ matchId, result }] }
  *   result ∈ "KAvach Won" | "KAvach Lost" | "Tie" | "Abandoned"

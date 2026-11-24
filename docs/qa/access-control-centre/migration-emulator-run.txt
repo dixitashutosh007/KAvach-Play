@@ -1,0 +1,62 @@
+seeded 15 appUsers
+Role consolidation — DRY RUN (no writes) — role-consolidation-2026-11-24 [emulator]
+───────────────────────────────────────────────────────────────
+Accounts scanned                         15
+Match Admin holders                      6
+Studio Admin holders                     5
+Designer holders                         5
+Holding more than one retired role       3
+Will receive Club Admin (new)            11
+Already Club Admin (flags cleaned only)  1
+Finance Admin preserved                  2
+Accounts to change                       12
+Flagged for review                       2
+  - u_disabled: disabled (retired: matchAdmin)
+  - u_unlinked: unlinked (retired: designer)
+Super Admin claims are not read or changed by this migration.
+Role consolidation — EXECUTED — role-consolidation-2026-11-24 [emulator]
+───────────────────────────────────────────────────────────────
+Accounts scanned                         15
+Match Admin holders                      6
+Studio Admin holders                     5
+Designer holders                         5
+Holding more than one retired role       3
+Will receive Club Admin (new)            11
+Already Club Admin (flags cleaned only)  1
+Finance Admin preserved                  2
+Accounts to change                       12  → changed 12
+Flagged for review                       2
+  - u_disabled: disabled (retired: matchAdmin)
+  - u_unlinked: unlinked (retired: designer)
+Super Admin claims are not read or changed by this migration.
+=== RE-RUN (idempotency) ===
+Role consolidation — EXECUTED — role-consolidation-2026-11-24 [emulator]
+───────────────────────────────────────────────────────────────
+Accounts scanned                         15
+Match Admin holders                      0
+Studio Admin holders                     0
+Designer holders                         0
+Holding more than one retired role       0
+Will receive Club Admin (new)            0
+Already Club Admin (flags cleaned only)  0
+Finance Admin preserved                  0
+Accounts to change                       0  → changed 0
+Flagged for review                       0
+Super Admin claims are not read or changed by this migration.
+After migration (appUsers):
+  All three + Finance      u_all3_fin         roles=Club+Finance  role=player     playerId=p6 retiredLeft=none kept={"isMatchAdmin":true,"isStudioAdmin":true,"isDesigner":true,"role":"player","isFinanceAdmin":true}
+  Club + Studio            u_club_studio      roles=Club          role=player     playerId=p9 retiredLeft=none kept={"isStudioAdmin":true,"role":"player","isClubAdmin":true}
+  Club Only                u_club             roles=Club          role=player     playerId=p10 retiredLeft=none kept=—
+  Designer Only            u_designer         roles=Club          role=player     playerId=p3 retiredLeft=none kept={"isDesigner":true,"role":"player"}
+  Disabled Match Admin     u_disabled         roles=Club          role=player     playerId=p13 retiredLeft=none kept={"isMatchAdmin":true,"role":"player"}
+  Finance Only             u_fin              roles=Finance       role=player     playerId=p11 retiredLeft=none kept=—
+  Legacy canDesign         u_canDesign        roles=Club          role=player     playerId=p4 retiredLeft=none kept={"canDesign":true,"role":"player"}
+  Match + Finance          u_match_fin        roles=Club+Finance  role=player     playerId=p7 retiredLeft=none kept={"isMatchAdmin":true,"role":"player","isFinanceAdmin":true}
+  Match + Studio           u_match_studio     roles=Club          role=player     playerId=p5 retiredLeft=none kept={"isMatchAdmin":true,"isStudioAdmin":true,"role":"player"}
+  Match Only               u_match            roles=Club          role=player     playerId=p1 retiredLeft=none kept={"isMatchAdmin":true,"role":"player"}
+  Plain Player             u_player           roles=—             role=player     playerId=p15 retiredLeft=none kept=—
+  Role string matchAdmin   u_role_string      roles=Club          role=clubAdmin  playerId=p12 retiredLeft=none kept={"role":"matchAdmin"}
+  Studio + Designer        u_studio_designer  roles=Club          role=player     playerId=p8 retiredLeft=none kept={"isStudioAdmin":true,"isDesigner":true,"role":"player"}
+  Studio Only              u_studio           roles=Club          role=player     playerId=p2 retiredLeft=none kept={"isStudioAdmin":true,"role":"player"}
+  Unlinked Designer        u_unlinked         roles=Club          role=player     playerId=— retiredLeft=none kept={"isDesigner":true,"role":"player"}
+Audit entries (entity "access"): 12

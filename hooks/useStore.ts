@@ -315,17 +315,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
               isStudioMember: false,
             });
           } else {
-            await setDoc(userDoc, { email, name: nameVal, role: resolvedRole });
+            // D-22: role keys are server-written only; Super Admin authority is the claim.
+            await setDoc(userDoc, { email, name: nameVal, role: "player" });
           }
         } else {
           resolvedRole = userSnap.data()?.role || resolvedRole;
-          // Anyone carrying the admin custom claim is granted the admin
-          // role at the doc level too, so downstream role checks stay
-          // consistent even where they read from appUsers.
-          if (hasAdminClaim && resolvedRole !== "admin") {
-            await updateDoc(userDoc, { role: "admin" });
-            resolvedRole = "admin";
-          }
+          // Super Admin authority is the `admin` custom claim (SEC-001). It is no
+          // longer mirrored into appUsers.role (role keys are server-written only,
+          // D-22); the local value keeps the bootstrap flow below unchanged.
+          if (hasAdminClaim) resolvedRole = "admin";
         }
       } catch (e) {
         console.error("Error creating appUser:", e);
@@ -1229,16 +1227,6 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       // error to the admin. Without this a permission-denied write dies
       // silently and the "Settings saved successfully" alert fires anyway.
       throw err;
-    }
-  };
-
-  const updateAppUserRole = async (userId: string, role: string) => {
-    try {
-      const oldUser = appUsers.find(u => u.id === userId);
-      await updateDoc(doc(db, "appUsers", userId), { role });
-      logAudit({ ...getActor(), action: "updated", entity: "user_role", entityId: userId, entityLabel: oldUser?.name || userId, changes: [{ field: "role", oldValue: oldUser?.role, newValue: role }], summary: `Changed role of ${oldUser?.name || userId} to "${role}"` });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `appUsers/${userId}`);
     }
   };
 
@@ -2948,7 +2936,6 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     appConfig,
     updateAppConfig,
     appUsers,
-    updateAppUserRole,
     updateAppUserProfile,
     subscriptionPlans,
     addSubscriptionPlan,

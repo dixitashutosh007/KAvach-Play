@@ -82,14 +82,19 @@ export type AppUser = {
   role: "admin" | "player";
   status?: "Active" | "Disabled" | string;
   playerId?: string;
-  isStudioAdmin?: boolean;
-  isMatchAdmin?: boolean;
+  /** Active roles (D-22): Club Admin and Finance Admin; Super Admin is the `admin` claim. Server-written only. */
   isFinanceAdmin?: boolean;
   isClubAdmin?: boolean;
-  // When true, this user sees the KAvach Design tab (post templates for
-  // match results / milestones / achievements). Admins get access
-  // automatically regardless of this flag.
+  /** @deprecated D-22 retired role (→ Club Admin). Grants nothing; removed by the migration. */
+  isStudioAdmin?: boolean;
+  /** @deprecated D-22 retired role (→ Club Admin). Grants nothing; removed by the migration. */
+  isMatchAdmin?: boolean;
+  /** @deprecated D-22 retired role (→ Club Admin). Grants nothing; removed by the migration. */
   isDesigner?: boolean;
+  /** Original retired-role values kept by the D-22 migration for traceability. */
+  roleMigration?: { migrationId: string; from: Record<string, unknown>; migratedAt?: unknown };
+  rolesUpdatedAt?: unknown;
+  rolesUpdatedBy?: string;
   name?: string;
   dob?: string;
   locality?: string;

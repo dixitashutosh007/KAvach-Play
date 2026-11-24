@@ -84,10 +84,7 @@ export function MobileBottomNav({
     const caps: AdminCapabilities = {
       isSuperAdmin: !!adminPermissions?.isSuperAdmin,
       isClubAdmin: !!adminPermissions?.isClubAdmin,
-      isMatchAdmin: !!adminPermissions?.isMatchAdmin,
       isFinanceAdmin: !!adminPermissions?.isFinanceAdmin,
-      isStudioAdmin: !!adminPermissions?.isStudioAdmin,
-      canDesign: !!(adminPermissions?.canDesign ?? canDesign),
     };
     const adminParent = getAdminNavParent(activeTab);
     const adminItems = getAdminPrimaryNav(caps, (f) => isFeatureEnabled(f as Feature));

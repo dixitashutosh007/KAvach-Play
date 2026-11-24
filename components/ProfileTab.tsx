@@ -54,9 +54,7 @@ export function ProfileTab({
   const isAdmin =
     !!hasAdminClaim ||
     !!appUser?.isClubAdmin ||
-    !!appUser?.isMatchAdmin ||
-    !!appUser?.isFinanceAdmin ||
-    !!appUser?.isStudioAdmin;
+    !!appUser?.isFinanceAdmin; // D-22: active roles only
 
   const hasMissingMandatory =
     !isAdmin &&

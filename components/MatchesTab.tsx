@@ -409,8 +409,7 @@ export function MatchesTab({
     isSuperAdmin ||
     isMatchAdmin ||
     hasAdminClaim ||
-    currentUserObj?.isMatchAdmin ||
-    currentUserObj?.isClubAdmin;
+    currentUserObj?.isClubAdmin; // D-22: retired Match Admin flag grants nothing
 
   const isPlayerView = persona === "player" || (!persona && !userHasAdminPrivileges);
   const isAdmin = !isPlayerView && Boolean(persona === "admin" || userHasAdminPrivileges);
@@ -1695,10 +1694,10 @@ export function MatchPayments({
 
   // Link to AppUser
   const appUser = store.appUsers.find((u) => u.id === user?.uid);
-  // Finance Plans: Match/Finance/Super Admins apply plans; only Finance/Super
+  // Finance Plans: Club/Finance/Super Admins apply plans; only Finance/Super
   // Admins override a fee. The server re-checks both (/api/finance/match-plans).
   const canOverrideFees = isAdmin && Boolean(hasAdminClaim || appUser?.isFinanceAdmin);
-  const canApplyPlans = isAdmin && Boolean(hasAdminClaim || appUser?.isFinanceAdmin || appUser?.isMatchAdmin);
+  const canApplyPlans = isAdmin && Boolean(hasAdminClaim || appUser?.isFinanceAdmin || appUser?.isClubAdmin);
   const mePlayer = resolvePlayerForUser(store.players, user?.uid, appUser);
   const myPayment = mePlayer
     ? matchPayments.find((p) => p.playerId === mePlayer.id)

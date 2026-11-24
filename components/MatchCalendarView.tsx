@@ -53,8 +53,7 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
   const effectiveAdmin = Boolean(
     isAdmin ||
     hasAdminClaim ||
-    currentUser?.isMatchAdmin ||
-    currentUser?.isClubAdmin
+    currentUser?.isClubAdmin // D-22: Club Admin holds match operations
   );
   useEffect(() => {
     setIsMounted(true);

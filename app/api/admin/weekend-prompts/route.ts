@@ -6,7 +6,7 @@
  * time and disappears for everyone once the work is recorded. Read-only.
  *
  * Sections are returned only for the caller's verified roles:
- *   results — Super Admin / Match Admin   (Sunday 19:00 IST)
+ *   results — Super Admin / Club Admin    (Sunday 19:00 IST)
  *   potw    — Super Admin / Club Admin    (Monday 08:00 – Friday 23:59 IST)
  *   fees    — Super Admin / Finance Admin (Tuesday 08:00 IST)
  * `?view=history` returns the persistent Historical Data Completion lists and

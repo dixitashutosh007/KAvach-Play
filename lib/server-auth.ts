@@ -3,7 +3,7 @@
  *
  * Implements SEC-001, D-08, and Active Remediation Master Plan Phase 5:
  * - Super-admin authority is granted strictly via the `admin: true` Firebase Auth custom claim (SEC-001).
- * - Granular administrative capabilities (Club Admin, Match Admin, Finance Admin, Studio Admin, Designer)
+ * - Granular administrative capabilities (Club Admin, Finance Admin; D-22 retired Match Admin, Studio Admin and Designer into Club Admin)
  *   are verified server-side against custom claims and authoritative `/appUsers/{uid}` documents.
  * - Client-supplied roles and privileged fields in request bodies or client headers are strictly rejected.
  * - Enforces fail-closed account status verification: accounts with `status: "Disabled"` are rejected immediately.
@@ -35,11 +35,22 @@ export {
 export type AppRole =
   | "superAdmin"
   | "clubAdmin"
+  /** Internal alias of clubAdmin (retired Match Admin capability set). */
   | "matchAdmin"
   | "financeAdmin"
+  /** Internal alias of clubAdmin (retired Studio Admin capability set). */
   | "studioAdmin"
+  /** Internal alias of clubAdmin (retired Designer capability set). */
   | "isDesigner"
   | "player";
+
+/** Club Admin and the capability aliases it carries (D-22). Never derived from retired flags. */
+function addClubAdmin(roles: Set<AppRole>) {
+  roles.add("clubAdmin");
+  roles.add("matchAdmin");
+  roles.add("studioAdmin");
+  roles.add("isDesigner");
+}
 
 /**
  * Checks whether test authentication bypass is permitted.
@@ -138,18 +149,13 @@ export async function getUserAccount(
         return { ok: true, roles, status: "Disabled", playerId, exists: true };
       }
 
-      // Granular roles stored authoritatively in appUsers (write-protected by firestore.rules)
-      if (data.isClubAdmin === true || data.role === "clubAdmin") roles.add("clubAdmin");
-      if (data.isMatchAdmin === true || data.role === "matchAdmin") roles.add("matchAdmin");
+      // Granular roles stored authoritatively in appUsers (server-written only; firestore.rules).
+      // D-22: the active roles are Club Admin and Finance Admin (+ Super Admin via the claim).
+      // Retired Match Admin / Studio Admin / Designer flags and role strings grant NOTHING;
+      // "matchAdmin" / "studioAdmin" / "isDesigner" survive only as internal capability
+      // aliases of Club Admin so existing route guards keep their meaning.
+      if (data.isClubAdmin === true || data.role === "clubAdmin") addClubAdmin(roles);
       if (data.isFinanceAdmin === true || data.role === "financeAdmin") roles.add("financeAdmin");
-      if (data.isStudioAdmin === true || data.role === "studioAdmin") roles.add("studioAdmin");
-      if (
-        data.isDesigner === true ||
-        data.canDesign === true ||
-        data.role === "designer"
-      ) {
-        roles.add("isDesigner");
-      }
     }
   } catch (err: any) {
     // Fail-closed on database error: do NOT silently continue or retain claims
@@ -165,11 +171,8 @@ export async function getUserAccount(
   // Super Admin inherits all admin roles, BUT disabled status is still strictly enforced.
   if (decodedToken?.admin === true && status !== "Disabled") {
     roles.add("superAdmin");
-    roles.add("clubAdmin");
-    roles.add("matchAdmin");
+    addClubAdmin(roles);
     roles.add("financeAdmin");
-    roles.add("studioAdmin");
-    roles.add("isDesigner");
   }
 
   return { ok: true, roles, status, playerId, exists: docExists };
@@ -471,7 +474,10 @@ export async function requireRole(
     if (headerRoles) {
       for (const r of headerRoles.split(",")) {
         const trimmed = r.trim() as AppRole;
-        if (trimmed) testRoles.add(trimmed);
+        // Mirrors getUserAccount: Club Admin carries its aliases; retired role names
+        // supplied on their own grant nothing (they are not assignable roles any more).
+        if (trimmed === "clubAdmin") addClubAdmin(testRoles);
+        else if (trimmed && trimmed !== "matchAdmin" && trimmed !== "studioAdmin" && trimmed !== "isDesigner") testRoles.add(trimmed);
       }
     }
 
@@ -581,14 +587,16 @@ export async function requireClubAdmin(req: Request): Promise<RoleGuardResult> {
   return requireRole(req, ["clubAdmin", "superAdmin"]);
 }
 
+/** Match operations — Club Admin (absorbed Match Admin, D-22) or Super Admin. */
 export async function requireMatchAdmin(req: Request): Promise<RoleGuardResult> {
-  return requireRole(req, ["matchAdmin", "clubAdmin", "superAdmin"]);
+  return requireRole(req, ["clubAdmin", "superAdmin"]);
 }
 
 export async function requireFinanceAdmin(req: Request): Promise<RoleGuardResult> {
   return requireRole(req, ["financeAdmin", "superAdmin"]);
 }
 
+/** Studio operations — Club Admin (absorbed Studio Admin, D-22) or Super Admin. */
 export async function requireStudioAdmin(req: Request): Promise<RoleGuardResult> {
-  return requireRole(req, ["studioAdmin", "superAdmin"]);
+  return requireRole(req, ["clubAdmin", "superAdmin"]);
 }

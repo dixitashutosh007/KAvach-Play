@@ -7,6 +7,8 @@ import { Player, FeePlan } from "@/lib/types";
 import { dbToInputDate, inputToDbDate, normalizeIndianMobile, validateJerseyNumber } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthProviderBadges } from "@/components/AuthProviderBadges";
+import { RoleChips } from "@/components/access/AccessControlCentre";
+import { activeRolesOf } from "@/lib/role-consolidation";
 import { useToast } from "@/components/ui/Toast";
 
 function PlayerFinancePlanSummary({ player, plans }: { player: Player; plans: FeePlan[] }) {
@@ -59,6 +61,8 @@ export function EditPlayerInline({
   const appUserMatch = store.appUsers.find(
     (u) => u.id === player.id || (u.mobile && player.mobile && normalizeIndianMobile(u.mobile) === normalizeIndianMobile(player.mobile)),
   );
+  // Roles: authoritative account link only — appUsers.playerId (never assume uid === playerId).
+  const linkedAccount = store.appUsers.find((u) => (u as any).playerId === player.id) || null;
 
 
   const [formData, setFormData] = useState({
@@ -122,9 +126,7 @@ export function EditPlayerInline({
       // audited, server-side); this editor no longer writes player.feePlanIds.
     };
     await store.updatePlayer(player.id, updatedData);
-    // isDesigner used to live here as a super-admin toggle but has
-    // moved to Settings → Elevate Player's Role alongside the other
-    // admin flags. That keeps role management in one place.
+    // Admin roles are managed only in Settings → Access Control (D-22).
     onCancel();
   };
 
@@ -383,114 +385,24 @@ export function EditPlayerInline({
         </div>
       </div>
 
-      {/* Privileges — super-admins only, only meaningful when the
-          player has a linked appUser doc (i.e. they've signed in at
-          least once and been provisioned). Toggles write straight to
-          appUsers/{uid}; the "last super admin" guard prevents you
-          from accidentally demoting the only remaining super-admin. */}
-      {isSuperAdmin && appUserMatch && (
-        <div className="border border-purple-500/25 bg-purple-500/5 rounded-xl p-4 space-y-3">
-          <h4 className="text-xs font-bold text-purple-300 uppercase tracking-widest">
-            Privileges
-          </h4>
-          <p className="text-[10px] text-text-muted leading-relaxed">
-            Elevated access to admin surfaces. See Settings for a
-            consolidated view of every role and who holds it.
-          </p>
-          {(() => {
-            const superAdminCount = store.appUsers.filter((u) => u.role === "admin").length;
-            const isLastSuper =
-              appUserMatch.role === "admin" &&
-              superAdminCount <= 1 &&
-              !hasAdminClaim;
-            const isSuperAdminNow = appUserMatch.role === "admin";
-            const rows: {
-              label: string;
-              desc: string;
-              checked: boolean;
-              disabled: boolean;
-              onChange: (checked: boolean) => Promise<void>;
-              accent?: boolean;
-            }[] = [
-              {
-                label: "Super Admin",
-                desc: "Governed via server custom claim (scripts/set-admin-claim.js). Client toggle disabled for security (SEC-001).",
-                checked: isSuperAdminNow,
-                disabled: true,
-                accent: true,
-                onChange: async () => {},
-              },
-              {
-                label: "Studio Admin",
-                desc: "Can manage Squad & Studio subscriptions.",
-                checked: isSuperAdminNow || !!appUserMatch.isStudioAdmin,
-                disabled: isSuperAdminNow,
-                onChange: async (checked) =>
-                  store.updateAppUserProfile(appUserMatch.id, { isStudioAdmin: checked }),
-              },
-              {
-                label: "Match Admin",
-                desc: "Can manage matches, grounds, tournaments & availability.",
-                checked: isSuperAdminNow || !!appUserMatch.isMatchAdmin,
-                disabled: isSuperAdminNow,
-                onChange: async (checked) =>
-                  store.updateAppUserProfile(appUserMatch.id, { isMatchAdmin: checked }),
-              },
-              {
-                label: "Finance Admin",
-                desc: "Can manage club finances and view reports.",
-                checked: isSuperAdminNow || !!appUserMatch.isFinanceAdmin,
-                disabled: isSuperAdminNow,
-                onChange: async (checked) =>
-                  store.updateAppUserProfile(appUserMatch.id, { isFinanceAdmin: checked }),
-              },
-              {
-                label: "Club Admin",
-                desc: "Players, Shop, Pulse, Design, Leaderboard, Reminders.",
-                checked: isSuperAdminNow || !!appUserMatch.isClubAdmin,
-                disabled: isSuperAdminNow,
-                onChange: async (checked) =>
-                  store.updateAppUserProfile(appUserMatch.id, { isClubAdmin: checked }),
-              },
-              {
-                label: "Designer",
-                desc: "Player-level access to Design tab (post templates).",
-                checked: isSuperAdminNow || !!appUserMatch.isDesigner,
-                disabled: isSuperAdminNow,
-                onChange: async (checked) =>
-                  store.updateAppUserProfile(appUserMatch.id, { isDesigner: checked }),
-              },
-            ];
-            return rows.map((r) => (
-              <label
-                key={r.label}
-                className={`flex items-start gap-3 p-2 rounded border ${
-                  r.disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-surface-hover"
-                } ${r.checked ? "bg-surface-hover border-purple-500/20" : "bg-surface-hover border-border"}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={r.checked}
-                  disabled={r.disabled}
-                  onChange={(e) => r.onChange(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded accent-purple-400"
-                />
-                <div className="min-w-0">
-                  <div
-                    className={`text-[11px] font-bold uppercase tracking-wider ${r.accent ? "text-accent" : "text-text-primary"}`}
-                  >
-                    {r.label}
-                  </div>
-                  <div className="text-[10px] text-text-muted">{r.desc}</div>
-                  {r.disabled && r.label === "Super Admin" && (
-                    <div className="text-[10px] text-amber-400 mt-0.5">
-                      Cannot demote the last super admin.
-                    </div>
-                  )}
-                </div>
-              </label>
-            ));
-          })()}
+      {/* Admin access — read-only (D-22). Roles are granted and revoked only in
+          Settings → Access Control, through the audited server API. */}
+      {isSuperAdmin && (
+        <div className="border border-border bg-surface rounded-xl p-4 space-y-2" data-testid="roster-access-summary">
+          <h4 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Admin access</h4>
+          {linkedAccount ? (
+            <RoleChips roles={activeRolesOf(linkedAccount)} empty="No admin role" />
+          ) : (
+            <p className="text-xs text-text-secondary">No linked sign-in account yet.</p>
+          )}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("kavach:navigate", { detail: { tab: "settings", action: "access" } }))}
+            className="min-h-[44px] text-sm font-bold text-brand hover:underline cursor-pointer"
+            data-testid="roster-manage-access"
+          >
+            Manage in Access Control →
+          </button>
         </div>
       )}
 

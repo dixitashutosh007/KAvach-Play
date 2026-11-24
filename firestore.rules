@@ -40,14 +40,16 @@ service cloud.firestore {
         && request.auth.token.get('admin', false) == true;
     }
 
+    // D-22 role consolidation: Match Admin, Studio Admin and Designer are retired into
+    // Club Admin. The retired appUsers flags (isMatchAdmin, isStudioAdmin, isDesigner,
+    // canDesign) grant NOTHING; these helpers keep their names for the existing rules
+    // below and now mean "Club Admin (or the Super Admin claim)".
     function isStudioAdmin() {
-      return isAccountActive()
-        && (request.auth.token.get('admin', false) == true || getUserData().get('isStudioAdmin', false) == true);
+      return isClubAdmin();
     }
 
     function isMatchAdmin() {
-      return isAccountActive()
-        && (request.auth.token.get('admin', false) == true || getUserData().get('isMatchAdmin', false) == true);
+      return isClubAdmin();
     }
 
     function isFinanceAdmin() {
@@ -63,10 +65,16 @@ service cloud.firestore {
     function isAnyAdmin() {
       return isAccountActive()
         && (request.auth.token.get('admin', false) == true
-            || getUserData().get('isStudioAdmin', false) == true
-            || getUserData().get('isMatchAdmin', false) == true
             || getUserData().get('isFinanceAdmin', false) == true
             || getUserData().get('isClubAdmin', false) == true);
+    }
+
+    // Role-bearing appUsers keys. Written ONLY by the server (Access Control API and the
+    // role-consolidation migration, via the Admin SDK) — no client may change them,
+    // Super Admin included, so every role change is validated and audited server-side.
+    function roleKeys() {
+      return ['role', 'isSuperAdmin', 'isClubAdmin', 'isFinanceAdmin', 'isStudioAdmin', 'isMatchAdmin',
+              'isDesigner', 'canDesign', 'roleMigration', 'rolesUpdatedAt', 'rolesUpdatedBy'];
     }
 
     function isVerified() {
@@ -120,20 +128,22 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
       allow list: if isAnyAdmin();
       allow create: if !incoming().keys().hasAny(['playerId'])
+        && (!('role' in incoming()) || incoming().role == 'player')
+        && !incoming().keys().hasAny(roleKeys().removeAll(['role']))
         && (
           isSuperAdmin() || (
             isSignedIn()
             && request.auth.uid == userId
-            && (!('role' in incoming()) || incoming().role == 'player')
-            && !incoming().keys().hasAny(['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
+            && !incoming().keys().hasAny(['status'])
           )
         );
       allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['playerId'])
+        && !incoming().diff(existing()).affectedKeys().hasAny(roleKeys())
         && (
           isSuperAdmin() || (
             isSignedIn()
             && (request.auth.uid == userId || isClubAdmin())
-            && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'])
+            && !incoming().diff(existing()).affectedKeys().hasAny(['status'])
           )
         );
       allow delete: if isSuperAdmin();

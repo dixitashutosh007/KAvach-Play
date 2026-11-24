@@ -15,6 +15,7 @@ import {
   Upload,
   ChevronDown,
   ChevronRight,
+  ShieldCheck,
   Plus,
   Trash2,
   Calendar,
@@ -22,10 +23,22 @@ import {
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
+import { AccessControlCentre } from "@/components/access/AccessControlCentre";
 import { LoadingScreen } from "./LoadingScreen";
 import { useToast } from "@/components/ui/Toast";
 
-export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<typeof useStore>, setPreviewTheme?: (val: string | null) => void }) {
+export function SettingsTab({
+  store,
+  setPreviewTheme,
+  section,
+  onSectionChange,
+}: {
+  store: ReturnType<typeof useStore>;
+  setPreviewTheme?: (val: string | null) => void;
+  /** "access" opens the Access Control Centre (D-22). */
+  section?: string | null;
+  onSectionChange?: (section: string | null) => void;
+}) {
   const { toast } = useToast();
   const { user, hasAdminClaim } = useAuth();
 
@@ -589,19 +602,6 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    if (!isAdmin) return;
-    // Don't let user demote themselves easily if they are the only admin
-    const adminCount = store.appUsers.filter((u) => u.role === "admin").length;
-    if (newRole === "player" && userId === user?.uid && adminCount <= 1) {
-      toast(
-        "You are the only admin. Promote someone else first before demoting yourself.",
-      "error");
-      return;
-    }
-    await store.updateAppUserRole(userId, newRole);
-  };
-
   if (!isAdmin) {
     return (
       <div className="bg-surface p-8 text-center text-text-muted rounded-xl space-y-3">
@@ -626,6 +626,10 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
     );
   }
 
+  if (section === "access") {
+    return <AccessControlCentre currentUid={user?.uid || ""} onBack={() => onSectionChange?.(null)} />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -634,6 +638,24 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
           Admin Settings
         </h2>
       </div>
+
+      {/* D-22: the single entry point for admin roles (replaces the Privileges
+          Overview and the Player Roster role toggles). */}
+      <button
+        type="button"
+        onClick={() => onSectionChange?.("access")}
+        className="w-full text-left rounded-2xl border border-border bg-surface p-4 flex items-center gap-4 hover:border-brand/40 hover:bg-brand-surface/30 transition cursor-pointer"
+        data-testid="settings-access-control"
+      >
+        <span className="w-12 h-12 rounded-2xl bg-brand text-white flex items-center justify-center shrink-0">
+          <ShieldCheck className="w-6 h-6" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-black text-text-primary">Access Control</span>
+          <span className="block text-sm text-text-secondary">Super Admin, Club Admin and Finance Admin — who holds each role, grant and revoke, and the change history.</span>
+        </span>
+        <ChevronRight className="w-5 h-5 text-text-secondary shrink-0" />
+      </button>
 
       <div className="bg-surface rounded-xl overflow-hidden">
         <button
@@ -1546,126 +1568,6 @@ export function SettingsTab({ store, setPreviewTheme }: { store: ReturnType<type
         </div>
       </div>
 
-      {/* Privileges Overview — read-only matrix. Toggling happens in
-          Squad → tap the player → Edit → Privileges block. This screen
-          exists so you can answer "who has Match Admin?" in one glance
-          without hunting through the roster. */}
-      <div className="bg-surface rounded-xl overflow-hidden mt-6">
-        <div className="w-full bg-surface-hover px-4 py-3 border-b border-border flex items-center justify-between">
-          <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary flex items-center gap-2">
-            <Users className="w-4 h-4" /> Privileges Overview
-          </span>
-          <span className="text-[10px] text-text-muted normal-case tracking-normal">
-            edit in Squad → tap player
-          </span>
-        </div>
-        <div className="p-4 space-y-3">
-          {(() => {
-            // Compute the members list per role. A super admin is
-            // considered to hold every downstream role too, since
-            // Squad's toggle enforces exactly that when someone is
-            // promoted / demoted.
-            const roles: {
-              label: string;
-              desc: string;
-              accent: string;
-              filter: (u: any) => boolean;
-            }[] = [
-              {
-                label: "Super Admin",
-                desc: "Full access to every admin surface",
-                accent: "border-accent/50 bg-accent/10 text-accent",
-                filter: (u) => u.role === "admin",
-              },
-              {
-                label: "Match Admin",
-                desc: "Matches, grounds, tournaments, availability",
-                accent: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-                filter: (u) => u.role === "admin" || u.isMatchAdmin,
-              },
-              {
-                label: "Studio Admin",
-                desc: "Squad + Studio subscriptions",
-                accent: "border-violet-500/40 bg-violet-500/10 text-violet-300",
-                filter: (u) => u.role === "admin" || u.isStudioAdmin,
-              },
-              {
-                label: "Finance Admin",
-                desc: "Club finances + reports",
-                accent: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-                filter: (u) => u.role === "admin" || u.isFinanceAdmin,
-              },
-              {
-                label: "Club Admin",
-                desc: "Players, Shop, Pulse, Design, Leaderboard, Reminders",
-                accent: "border-pink-500/40 bg-pink-500/10 text-pink-300",
-                filter: (u) => u.role === "admin" || u.isClubAdmin,
-              },
-              {
-                label: "Designer",
-                desc: "Player-level Design tab access",
-                accent: "border-purple-500/40 bg-purple-500/10 text-purple-300",
-                filter: (u) => u.role === "admin" || u.isDesigner,
-              },
-            ];
-            const nameFor = (u: any) => {
-              // appUsers.name is the canonical display name; fall back
-              // to the linked player's name if appUser has none yet
-              // (fresh sign-ins), then email prefix, then a UID hash.
-              if (u.name) return u.name;
-              const p = store.players.find(
-                (pp) => pp.id === u.id || (pp.mobile && u.mobile && normalizeIndianMobile(pp.mobile) === normalizeIndianMobile(u.mobile)),
-              );
-              if (p?.name) return p.name;
-              if (u.email) return u.email.split("@")[0];
-              return `#${(u.id || "").slice(0, 6)}`;
-            };
-            return roles.map((r) => {
-              const members = store.appUsers.filter(r.filter);
-              const sorted = [...members].sort((a, b) =>
-                nameFor(a).localeCompare(nameFor(b), "en", { sensitivity: "base" }),
-              );
-              return (
-                <div
-                  key={r.label}
-                  className={`rounded-lg border p-3 ${r.accent.split(" ").slice(0, 2).join(" ")}`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div>
-                      <div className={`text-[11px] font-bold uppercase tracking-widest ${r.accent.split(" ")[2]}`}>
-                        {r.label}
-                      </div>
-                      <div className="text-[10px] text-text-muted">{r.desc}</div>
-                    </div>
-                    <div
-                      className={`text-lg font-black font-mono ${r.accent.split(" ")[2]}`}
-                    >
-                      {sorted.length}
-                    </div>
-                  </div>
-                  {sorted.length === 0 ? (
-                    <div className="text-[10px] text-text-muted italic">
-                      No members
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {sorted.map((u) => (
-                        <span
-                          key={u.id}
-                          className="bg-surface-hover border border-border rounded px-2 py-0.5 text-[11px] text-text-primary"
-                          title={u.mobile || u.email || u.id}
-                        >
-                          {nameFor(u)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            });
-          })()}
-        </div>
-      </div>
     </div>
   );
 }

@@ -236,26 +236,19 @@ export default function Home() {
   const isAdminUser =
     store.isLoaded &&
     user &&
-    (isSuperAdminUser ||
-      currentUserObj?.isStudioAdmin ||
-      currentUserObj?.isMatchAdmin ||
-      currentUserObj?.isFinanceAdmin ||
-      currentUserObj?.isClubAdmin ||
-      currentUserObj?.isDesigner);
+    // D-22: active roles only (Super Admin claim, Club Admin, Finance Admin).
+    // Retired Match Admin / Studio Admin / Designer flags grant nothing.
+    (isSuperAdminUser || currentUserObj?.isFinanceAdmin || currentUserObj?.isClubAdmin);
 
-  // Effective admin capabilities (D-18 navigation input). Same derivation as the
-  // per-screen guards further down: Super Admin claim folds into every role and
-  // canDesign = Club Admin or Designer. Not an authority — rules decide writes.
+  // Effective admin capabilities (D-18 navigation input; D-22 three-role model).
+  // Same derivation as the per-screen guards further down: the Super Admin claim
+  // folds into every role. Not an authority — rules and server RBAC decide.
   const adminCaps = useMemo<AdminCapabilities>(() => {
     const sup = !!hasAdminClaim;
-    const club = sup || !!currentUserObj?.isClubAdmin;
     return {
       isSuperAdmin: sup,
-      isClubAdmin: club,
-      isMatchAdmin: sup || !!currentUserObj?.isMatchAdmin,
+      isClubAdmin: sup || !!currentUserObj?.isClubAdmin,
       isFinanceAdmin: sup || !!currentUserObj?.isFinanceAdmin,
-      isStudioAdmin: sup || !!currentUserObj?.isStudioAdmin,
-      canDesign: club || !!currentUserObj?.isDesigner,
     };
   }, [hasAdminClaim, currentUserObj]);
 
@@ -294,10 +287,8 @@ export default function Home() {
       adminCustomClaim: !!hasAdminClaim,
       appUserDocument: store.selfAppUserStatus,
       isClubAdmin: !!currentUserObj?.isClubAdmin,
-      isMatchAdmin: !!currentUserObj?.isMatchAdmin,
       isFinanceAdmin: !!currentUserObj?.isFinanceAdmin,
-      isStudioAdmin: !!currentUserObj?.isStudioAdmin,
-      isDesigner: !!currentUserObj?.isDesigner,
+      retiredRoleFlags: ["isMatchAdmin", "isStudioAdmin", "isDesigner", "canDesign"].filter((k) => (currentUserObj as any)?.[k] === true),
       resolvedAsAdmin: !!isAdminUser,
       playersLoaded: store.playersLoaded,
       playerLinked: diagPlayerLinked,
@@ -345,6 +336,17 @@ export default function Home() {
       setActiveTab("home");
     }
   }, [persona, store.isLoaded, isAdminUser, setActiveTab]);
+
+  // In-app navigation requests from nested components (e.g. Player Roster →
+  // "Manage in Access Control"). Only changes the view; every screen keeps its guard.
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const d = (e as CustomEvent<{ tab?: string; action?: string }>).detail;
+      if (d?.tab) setActiveTab(d.tab, d.action);
+    };
+    window.addEventListener("kavach:navigate", onNavigate);
+    return () => window.removeEventListener("kavach:navigate", onNavigate);
+  }, [setActiveTab]);
 
   // Test-only navigation hooks (strictly isolated behind non-production runtime)
   useEffect(() => {
@@ -503,15 +505,9 @@ export default function Home() {
 
   // Admin-only subscriptions: full appUsers collection (100+ PII docs) and
   // subscriptionHistory audit trail. Non-admin players never load these.
-  // R2-A/R2-C: mirrors the rules' isAnyAdmin(); a Designer-only account is an admin
-  // for navigation but may not read these collections, so it does not subscribe.
+  // R2-A/R2-C: mirrors the rules' isAnyAdmin() (D-22: Super claim, Club or Finance Admin).
   const canReadAccountRecords =
-    !!isAdminUser &&
-    (isSuperAdminUser ||
-      !!currentUserObj?.isStudioAdmin ||
-      !!currentUserObj?.isMatchAdmin ||
-      !!currentUserObj?.isFinanceAdmin ||
-      !!currentUserObj?.isClubAdmin);
+    !!isAdminUser && (isSuperAdminUser || !!currentUserObj?.isFinanceAdmin || !!currentUserObj?.isClubAdmin);
   useEffect(() => {
     if (!store.isLoaded) return;
     if (canReadAccountRecords) {
@@ -752,11 +748,13 @@ export default function Home() {
 
   const isSuperAdmin = !!hasAdminClaim;
   const isFinanceAdmin = isSuperAdmin || appUser?.isFinanceAdmin;
-  const isStudioAdmin = isSuperAdmin || appUser?.isStudioAdmin;
-  const isMatchAdmin = isSuperAdmin || appUser?.isMatchAdmin;
-  const isClubAdmin = isSuperAdmin || appUser?.isClubAdmin;
-  const canDesign = isClubAdmin || !!appUser?.isDesigner;
-  const isAuthorizedAdmin = isSuperAdmin || isFinanceAdmin || isStudioAdmin || isMatchAdmin || isClubAdmin || canDesign;
+  const isClubAdmin = isSuperAdmin || !!appUser?.isClubAdmin;
+  // D-22: Match operations, Studio and Design Studio are Club Admin capabilities.
+  // These aliases are derived ONLY from Club Admin; retired flags are ignored.
+  const isStudioAdmin = isClubAdmin;
+  const isMatchAdmin = isClubAdmin;
+  const canDesign = isClubAdmin;
+  const isAuthorizedAdmin = isSuperAdmin || isFinanceAdmin || isClubAdmin;
   const isAdmin = isAuthorizedAdmin;
   const effectiveIsAdminMode = persona === "admin" && isAuthorizedAdmin;
   // Mandatory profile fields every non-admin player must have populated
@@ -1451,7 +1449,12 @@ export default function Home() {
                     )}
                     {activeTab === "settings" && (
                       isSuperAdmin ? (
-                        <SettingsTab store={store} setPreviewTheme={setPreviewThemeId} />
+                        <SettingsTab
+                          store={store}
+                          setPreviewTheme={setPreviewThemeId}
+                          section={tabAction}
+                          onSectionChange={(sec) => setActiveTab("settings", sec || undefined)}
+                        />
                       ) : (
                         <AccessDenied feature="Settings" requiredRole="Super Admins" />
                       )
@@ -1478,12 +1481,9 @@ export default function Home() {
         canDesign={canDesign}
         currentPlayerId={player?.id || user?.uid}
         adminPermissions={{
-          isSuperAdmin,
-          isClubAdmin,
-          isMatchAdmin,
-          isFinanceAdmin,
-          isStudioAdmin,
-          canDesign,
+          isSuperAdmin: !!isSuperAdmin,
+          isClubAdmin: !!isClubAdmin,
+          isFinanceAdmin: !!isFinanceAdmin,
         }}
       />
     </div>

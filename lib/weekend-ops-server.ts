@@ -20,11 +20,11 @@ export function isSafeId(id: unknown): id is string {
 
 /**
  * Who may act on each prompt (verified server-side roles):
- *  - results: Super Admin + legacy Match Admin only (owner decision 2026-11-24;
- *    Club Admin is added only after D-19 role consolidation is verified).
+ *  - results: Super Admin + Club Admin (D-22 role consolidation; Club Admin
+ *    absorbed the retired Match Admin role).
  *  - Player of the Weekend: the existing badge-award authority (Club / Super).
  *  - actual match fee: Finance / Super (the existing match-ledger guard).
  */
-export const RESULT_RECORDER_ROLES = ["superAdmin", "matchAdmin"] as const;
+export const RESULT_RECORDER_ROLES = ["superAdmin", "clubAdmin"] as const;
 export const POTW_AWARD_ROLES = ["superAdmin", "clubAdmin"] as const;
 export const FEE_ROLES = ["superAdmin", "financeAdmin"] as const;

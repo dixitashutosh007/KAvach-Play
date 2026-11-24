@@ -33,7 +33,7 @@ const COLLECTION = "financePlanAssignments";
 const MAX_PLAYERS_PER_REQUEST = 100;
 
 export async function GET(req: Request) {
-  const guard = await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin", "matchAdmin"]);
+  const guard = await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"]);
   if (!guard.ok) return guard.response;
   try {
     const db = getServerFirestore();

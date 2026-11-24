@@ -9,22 +9,19 @@
  * its own guard in app/page.tsx.
  *
  * Inputs are the *effective* flags computed in app/page.tsx (Super Admin claim
- * already folded into each role flag; `canDesign = isClubAdmin || isDesigner`).
+ * already folded into each role flag).
  *
- * D-19: Match Admin and Studio Admin are retired into Club Admin. Until the
- * role-consolidation migration has run, the legacy flags still open their former
- * areas (Match Center / Club → Studio) so nobody loses access in between.
- * Destinations a role cannot use are hidden from the menu; if one is opened
+ * D-22: the active roles are exactly Super Admin, Club Admin and Finance Admin.
+ * Match Admin, Studio Admin and Designer are retired into Club Admin (Match
+ * Center, Studio and Design Studio are Club Admin areas); their legacy flags open
+ * nothing. Destinations a role cannot use are hidden from the menu; if one is opened
  * directly, the screen shows a polite access-denied message (no silent redirect).
  */
 
 export interface AdminCapabilities {
   isSuperAdmin: boolean;
   isClubAdmin: boolean;
-  isMatchAdmin: boolean;
   isFinanceAdmin: boolean;
-  isStudioAdmin: boolean;
-  canDesign: boolean;
 }
 
 export type AdminDestination = "home" | "matches" | "club" | "finance" | "design" | "settings";
@@ -58,9 +55,9 @@ export const ADMIN_PRIMARY_NAV: readonly AdminPrimaryNavItem[] = [
   { tab: "settings", label: "Settings", shortLabel: "Settings" },
 ] as const;
 
-/** Any administrative role (incl. Designer) — every admin sees Home (D-19). */
+/** Any administrative role — every admin sees Home (D-19). */
 function isAnyAdminRole(c: AdminCapabilities): boolean {
-  return c.isSuperAdmin || c.isClubAdmin || c.isMatchAdmin || c.isFinanceAdmin || c.isStudioAdmin || c.canDesign;
+  return c.isSuperAdmin || c.isClubAdmin || c.isFinanceAdmin;
 }
 
 export interface ClubSectionDef {
@@ -74,8 +71,7 @@ export interface ClubSectionDef {
 /** Club sections in display order (D-19: all Club Admin capabilities). */
 export const CLUB_SECTIONS: readonly ClubSectionDef[] = [
   { key: "players", label: "Player Roster", allowed: (c) => c.isClubAdmin },
-  // Studio: Club Admin (D-19); legacy Studio Admin flag honoured until migrated.
-  { key: "studio", label: "Studio", allowed: (c) => c.isClubAdmin || c.isStudioAdmin },
+  { key: "studio", label: "Studio", allowed: (c) => c.isClubAdmin },
   { key: "announcements", label: "Announcements", allowed: (c) => c.isClubAdmin },
   { key: "pulse", label: "Pulse", feature: "opinion", allowed: (c) => c.isClubAdmin },
   { key: "leaderboard", label: "Leaderboard & Stats", allowed: (c) => c.isClubAdmin },
@@ -97,14 +93,14 @@ export function isAdminDestinationVisible(
       // D-19: every admin; dashboard tiles are role-gated and denials are polite.
       return isAnyAdminRole(c);
     case "matches":
-      // D-19: Club Admin (legacy Match Admin flag honoured until migrated).
-      return c.isClubAdmin || c.isMatchAdmin;
+      return c.isClubAdmin;
     case "club":
       return getVisibleClubSections(c, isFeatureEnabled).length > 0;
     case "finance":
       return c.isFinanceAdmin;
     case "design":
-      return c.canDesign;
+      // D-22: Design Studio is a Club Admin area (Designer retired).
+      return c.isClubAdmin;
     case "settings":
       return c.isSuperAdmin;
   }
@@ -153,14 +149,10 @@ export function getAdminNavParent(tab: string): AdminDestination | null {
 export function getAdminLanding(c: AdminCapabilities, isFeatureEnabled: AdminFeatureCheck = allEnabled): { tab: string; action?: string } {
   const pick = (tab: AdminDestination, action?: string) =>
     isAdminDestinationVisible(tab, c, isFeatureEnabled) ? (action ? { tab, action } : { tab }) : null;
-  const club = getVisibleClubSections(c, isFeatureEnabled);
   return (
     (c.isSuperAdmin && pick("home")) ||
     (c.isFinanceAdmin && pick("finance")) ||
     (c.isClubAdmin && pick("home")) ||
-    (c.isMatchAdmin && pick("matches")) ||
-    (c.isStudioAdmin && club.includes("studio") && pick("club", "studio")) ||
-    (c.canDesign && pick("design")) ||
     (getAdminPrimaryNav(c, isFeatureEnabled)[0] ? { tab: getAdminPrimaryNav(c, isFeatureEnabled)[0].tab } : { tab: "home" })
   );
 }
