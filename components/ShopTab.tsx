@@ -1,7 +1,10 @@
 "use client";
 import { authedFetch } from "@/lib/authed-fetch";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { waitForServerOrder, type ServerOrderReadResult } from "@/lib/merch-order-confirmation";
 import { useStore } from "@/hooks/useStore";
 import { useAuth } from "@/components/AuthProvider";
 import {
@@ -84,6 +87,11 @@ export function ShopTab({
   const [customJerseyName, setCustomJerseyName] = useState("");
   const [customJerseyNumber, setCustomJerseyNumber] = useState("");
   const [isOrdering, setIsOrdering] = useState(false);
+  // B1 (FIN-004): after a successful online payment the browser only waits for the
+  // webhook-created order; it never writes the Paid order itself.
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+  const confirmAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => confirmAbortRef.current?.abort(), []);
 
   // Local state for Admin Edit Order modal
   const [editingOrder, setEditingOrder] = useState<MerchOrder | null>(null);
@@ -428,6 +436,8 @@ export function ShopTab({
         }
 
         const orderData = await res.json();
+        const onlineIntentId = orderData?.intentId ?? orderData?.notes?.intentId;
+        const onlineOrderContext = buildOrderContext(selectedMerch, finalPrice);
 
         const options = {
           key: keyId,
@@ -436,8 +446,10 @@ export function ShopTab({
           name: "Club Merchandise",
           description: `Order: ${selectedMerch.name}`,
           order_id: orderData.id,
-          handler: async function (response: any) {
-            await finalizeOrderPlacement(finalPrice, customPriceAdditions, false);
+          // B1 (FIN-004): the webhook is the sole creator of the Paid online order.
+          // The browser only waits for that server-created order; it writes nothing.
+          handler: function () {
+            void confirmOnlineOrder(onlineIntentId, onlineOrderContext);
           },
           prefill: {
             name: playerProfile?.name || userProfile?.name || "Player",
@@ -470,106 +482,132 @@ export function ShopTab({
     }
   };
 
+  // Details of the current checkout used after an order exists (profile sync, MOQ, e-mails).
+  const buildOrderContext = (merch: Merchandise, finalPrice: number) => {
+    const reachedMoq = getPaidOrdersCount(merch.id) + 1 >= merch.minOrderQuantity;
+    const hasJerseyDetails = merch.category === "Jersey" || merch.requirePlayerDetails;
+
+    // Extract the effective size from either the top-level size dropdown
+    // OR from a chest/size custom field. This ensures ord.size is always
+    // populated so Club Orders shows it. Also picks up waist for profile
+    // sync below.
+    let effectiveSize = orderSize;
+    let effectiveWaist = "";
+    Object.entries(orderCustomSelections).forEach(([key, value]) => {
+      const lowerKey = key.toLowerCase();
+      if (!value) return;
+      if (!effectiveSize && (lowerKey.includes("chest") || lowerKey === "size")) {
+        effectiveSize = value;
+      }
+      if (lowerKey.includes("waist")) {
+        effectiveWaist = value;
+      }
+    });
+
+    return {
+      merch,
+      finalPrice,
+      reachedMoq,
+      hasJerseyDetails,
+      effectiveSize,
+      effectiveWaist,
+      playerName: playerProfile?.name || userProfile?.name || "Anonymous Player",
+      jerseyName: customJerseyName,
+      jerseyNumber: customJerseyNumber,
+    };
+  };
+
+  // Post-order actions. Each is non-fatal: a failure is logged and never turns an
+  // existing (and possibly paid) order into an error for the player.
+  const runPostOrderSideEffects = async (ctx: ReturnType<typeof buildOrderContext>) => {
+    // Silently sync the player profile with the details they used for this
+    // order (size, waist, jersey name, jersey number). Previously this was
+    // a confirm() prompt that most users dismissed, leaving profiles stale.
+    const updatePayload: any = {};
+    if (ctx.effectiveSize) updatePayload.chestSize = ctx.effectiveSize;
+    if (ctx.effectiveWaist) updatePayload.waistSize = ctx.effectiveWaist;
+    if (ctx.hasJerseyDetails) {
+      if (ctx.jerseyName) updatePayload.jerseyName = ctx.jerseyName;
+      if (ctx.jerseyNumber) updatePayload.jerseyNumber = ctx.jerseyNumber;
+    }
+    if (Object.keys(updatePayload).length > 0) {
+      try {
+        if (playerProfile) {
+          await store.updatePlayer(playerProfile.id, updatePayload);
+        }
+        if (userProfile) {
+          await store.updateAppUserProfile(user?.uid || "", { ...userProfile, ...updatePayload });
+        }
+      } catch (e) {
+        console.warn("Profile sync after order failed (order was still placed):", e);
+      }
+    }
+
+    // Update sister orders status if we just reached the MOQ
+    if (ctx.reachedMoq) {
+      try {
+        const sisterOrders = store.merchOrders.filter((o) => o.merchId === ctx.merch.id && o.orderStatus === "Awaiting Min Order Qnty");
+        for (const sister of sisterOrders) {
+          await store.updateMerchOrder(sister.id, { orderStatus: "Ready to Place Order" });
+        }
+      } catch (moqErr) {
+        console.warn("MOQ status update after order failed (order was still placed):", moqErr);
+      }
+    }
+
+    // Send emails
+    try {
+      const playerEmail = userProfile?.email || playerProfile?.email || user?.email;
+      const adminUsers = store.appUsers.filter((u) => u.role === "admin" || u.isFinanceAdmin);
+      const adminEmails = adminUsers.map((u) => u.email).filter(Boolean);
+
+      const emailsToSend = [];
+      if (playerEmail) emailsToSend.push(playerEmail);
+      emailsToSend.push(...adminEmails);
+
+      if (emailsToSend.length > 0) {
+        await authedFetch("/api/email/send", {
+          method: "POST",
+          body: JSON.stringify({
+            to: [...new Set(emailsToSend)], // Deduplicate
+            subject: `Shop Order Placed: ${ctx.merch.name}`,
+            text: `A new shop order has been placed.\n\nPlayer: ${ctx.playerName}\nItem: ${ctx.merch.name}\nAmount: ₹${ctx.finalPrice}\n\nThank you!`,
+            config: store.appConfig,
+          }),
+        });
+      }
+    } catch (emailErr) {
+      console.error("Failed to send order emails", emailErr);
+    }
+  };
+
+  // ₹0 orders only (no gateway payment). Online payments never reach this function:
+  // their Paid order is created exclusively by the Razorpay webhook (B1 / FIN-004).
   const finalizeOrderPlacement = async (finalPrice: number, customPriceAdditions: number, isManual: boolean = true) => {
     if (!selectedMerch) return;
     try {
       setIsOrdering(true);
-      const currentPaidCount = getPaidOrdersCount(selectedMerch.id);
-      const newPaidCount = currentPaidCount + 1;
-      const reachedMoq = newPaidCount >= selectedMerch.minOrderQuantity;
-      const hasJerseyDetails = selectedMerch.category === "Jersey" || selectedMerch.requirePlayerDetails;
-
-      // Extract the effective size from either the top-level size dropdown
-      // OR from a chest/size custom field. This ensures ord.size is always
-      // populated so Club Orders shows it. Also picks up waist for profile
-      // sync below.
-      let effectiveSize = orderSize;
-      let effectiveWaist = "";
-      Object.entries(orderCustomSelections).forEach(([key, value]) => {
-        const lowerKey = key.toLowerCase();
-        if (!value) return;
-        if (!effectiveSize && (lowerKey.includes("chest") || lowerKey === "size")) {
-          effectiveSize = value;
-        }
-        if (lowerKey.includes("waist")) {
-          effectiveWaist = value;
-        }
-      });
+      const ctx = buildOrderContext(selectedMerch, finalPrice);
 
       const orderPayload = {
         playerId: playerProfile?.id || user?.uid || "unknown",
-        playerName: playerProfile?.name || userProfile?.name || "Anonymous Player",
+        playerName: ctx.playerName,
         merchId: selectedMerch.id,
         merchName: selectedMerch.name,
-        size: effectiveSize,
+        size: ctx.effectiveSize,
         spec: orderSpec || undefined,
         customSelections: Object.keys(orderCustomSelections).length > 0 ? orderCustomSelections : undefined,
         customPriceAdditions: customPriceAdditions > 0 ? customPriceAdditions : undefined,
-        jerseyName: hasJerseyDetails ? customJerseyName : undefined,
-        jerseyNumber: hasJerseyDetails ? customJerseyNumber : undefined,
+        jerseyName: ctx.hasJerseyDetails ? customJerseyName : undefined,
+        jerseyNumber: ctx.hasJerseyDetails ? customJerseyNumber : undefined,
         price: finalPrice,
         paymentStatus: "Paid" as const, // Upfront collection
-        orderStatus: (reachedMoq ? "Ready to Place Order" : "Awaiting Min Order Qnty") as any,
+        orderStatus: (ctx.reachedMoq ? "Ready to Place Order" : "Awaiting Min Order Qnty") as any,
         isManual,
       };
 
-      const orderId = await store.addMerchOrder(orderPayload);
-
-      // Silently sync the player profile with the details they used for this
-      // order (size, waist, jersey name, jersey number). Previously this was
-      // a confirm() prompt that most users dismissed, leaving profiles stale.
-      const updatePayload: any = {};
-      if (effectiveSize) updatePayload.chestSize = effectiveSize;
-      if (effectiveWaist) updatePayload.waistSize = effectiveWaist;
-      if (hasJerseyDetails) {
-        if (customJerseyName) updatePayload.jerseyName = customJerseyName;
-        if (customJerseyNumber) updatePayload.jerseyNumber = customJerseyNumber;
-      }
-      if (Object.keys(updatePayload).length > 0) {
-        try {
-          if (playerProfile) {
-            await store.updatePlayer(playerProfile.id, updatePayload);
-          }
-          if (userProfile) {
-            await store.updateAppUserProfile(user?.uid || "", { ...userProfile, ...updatePayload });
-          }
-        } catch (e) {
-          console.warn("Profile sync after order failed (order was still placed):", e);
-        }
-      }
-
-      // Update sister orders status if we just reached the MOQ
-      if (reachedMoq) {
-        const sisterOrders = store.merchOrders.filter((o) => o.merchId === selectedMerch.id && o.orderStatus === "Awaiting Min Order Qnty");
-        for (const sister of sisterOrders) {
-          await store.updateMerchOrder(sister.id, { orderStatus: "Ready to Place Order" });
-        }
-      }
-
-      // Send emails
-      try {
-        const playerEmail = userProfile?.email || playerProfile?.email || user?.email;
-        const adminUsers = store.appUsers.filter((u) => u.role === "admin" || u.isFinanceAdmin);
-        const adminEmails = adminUsers.map((u) => u.email).filter(Boolean);
-        
-        const emailsToSend = [];
-        if (playerEmail) emailsToSend.push(playerEmail);
-        emailsToSend.push(...adminEmails);
-
-        if (emailsToSend.length > 0) {
-          await authedFetch("/api/email/send", {
-            method: "POST",
-            body: JSON.stringify({
-              to: [...new Set(emailsToSend)], // Deduplicate
-              subject: `Shop Order Placed: ${selectedMerch.name}`,
-              text: `A new shop order has been placed.\n\nPlayer: ${orderPayload.playerName}\nItem: ${selectedMerch.name}\nAmount: ₹${finalPrice}\n\nThank you!`,
-              config: store.appConfig,
-            }),
-          });
-        }
-      } catch (emailErr) {
-        console.error("Failed to send order emails", emailErr);
-      }
+      await store.addMerchOrder(orderPayload);
+      await runPostOrderSideEffects(ctx);
 
       toast("Thank you! Order placed successfully and payment recorded.", "success");
       setSelectedMerch(null);
@@ -578,6 +616,53 @@ export function ShopTab({
     } finally {
       setIsOrdering(false);
     }
+  };
+
+  const ONLINE_ORDER_PENDING_MESSAGE =
+    "Payment received. Your order is being confirmed and will appear in My Orders shortly.";
+
+  // Single-document read of the webhook-created order (never a collection query).
+  const readServerMerchOrder = async (orderId: string): Promise<ServerOrderReadResult> => {
+    const snap = await getDoc(doc(db, "merchOrders", orderId));
+    return snap.exists() ? "found" : "absent";
+  };
+
+  // B1 (FIN-004): after Razorpay reports success, wait for the order the webhook creates.
+  // The browser never writes the Paid order and never reports a failure for a paid checkout.
+  const confirmOnlineOrder = async (intentId: unknown, ctx: ReturnType<typeof buildOrderContext>) => {
+    confirmAbortRef.current?.abort();
+    const controller = new AbortController();
+    confirmAbortRef.current = controller;
+    setIsConfirmingPayment(true);
+
+    const result = await waitForServerOrder(readServerMerchOrder, intentId as string, {
+      signal: controller.signal,
+    });
+    if (confirmAbortRef.current === controller) confirmAbortRef.current = null;
+    // Unmounted or dialog closed: stop silently (closing shows its own message).
+    if (result.status === "cancelled") return;
+
+    setIsConfirmingPayment(false);
+    setIsOrdering(false);
+    if (result.status === "confirmed") {
+      toast("Thank you! Payment received and your order is confirmed.", "success");
+      setSelectedMerch(null);
+      await runPostOrderSideEffects(ctx);
+    } else {
+      toast(ONLINE_ORDER_PENDING_MESSAGE, "info");
+      setSelectedMerch(null);
+    }
+  };
+
+  const closeOrderDialog = () => {
+    if (isConfirmingPayment) {
+      confirmAbortRef.current?.abort();
+      confirmAbortRef.current = null;
+      setIsConfirmingPayment(false);
+      setIsOrdering(false);
+      toast(ONLINE_ORDER_PENDING_MESSAGE, "info");
+    }
+    setSelectedMerch(null);
   };
 
   const handleAddManualOrder = async (e: React.FormEvent) => {
@@ -2411,7 +2496,7 @@ export function ShopTab({
                 </h3>
               </div>
               <button
-                onClick={() => setSelectedMerch(null)}
+                onClick={closeOrderDialog}
                 className="text-text-muted hover:text-text-primary transition"
               >
                 <X className="w-4 h-4" />
@@ -2579,8 +2664,13 @@ export function ShopTab({
                   className="w-full bg-accent disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/90 text-black py-3 rounded-xl font-extrabold uppercase tracking-widest text-xs transition flex items-center justify-center gap-2"
                 >
                   <CreditCard className="w-4 h-4" />
-                  {isOrdering ? "Ordering..." : "Pay Upfront & Placed Order"}
+                  {isConfirmingPayment ? "Payment received, confirming order..." : isOrdering ? "Ordering..." : "Pay Upfront & Placed Order"}
                 </button>
+                {isConfirmingPayment && (
+                  <p role="status" className="mt-2 text-[11px] font-semibold text-text-secondary text-center">
+                    Your payment was received. We are confirming your order with the club; you can close this window safely.
+                  </p>
+                )}
               </div>
             </div>
           </div>

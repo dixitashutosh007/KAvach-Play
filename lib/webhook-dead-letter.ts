@@ -35,6 +35,7 @@ export function classifyDeadLetter(reason: WebhookPermanentReason): DeadLetterCl
     case "CONFLICTING_PAYMENT":
       return "conflicting_payment";
     case "MERGE_CHAIN_INVALID":
+    case "MERCH_ORDER_EXISTS": // B1 (PX-1): target order id already taken; never overwritten
       return "data_integrity";
     default:
       return "mismatch";

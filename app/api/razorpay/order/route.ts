@@ -153,6 +153,7 @@ export async function POST(req: Request) {
           currency: resResult.existingOrder.currency || currency,
           receipt: authoritativeReceipt,
           status: "created",
+          intentId: resResult.existingOrder.intentId,
           notes: { ...notes, intentId: resResult.existingOrder.intentId, reusedExistingOrder: true },
         });
       }
@@ -213,6 +214,7 @@ export async function POST(req: Request) {
             currency: recResult.existingOrder.currency || currency,
             receipt: authoritativeReceipt,
             status: "created",
+            intentId: recResult.existingOrder.intentId,
             notes: { ...notes, intentId: recResult.existingOrder.intentId, reusedExistingOrder: true },
           });
         }
@@ -307,6 +309,7 @@ export async function POST(req: Request) {
             currency: waitOrder.currency || currency,
             receipt: authoritativeReceipt,
             status: "created",
+            intentId: waitOrder.intentId,
             notes: { ...notes, intentId: waitOrder.intentId, reusedExistingOrder: true },
           });
         }
@@ -365,6 +368,7 @@ export async function POST(req: Request) {
               currency: recResult.existingOrder.currency || currency,
               receipt: authoritativeReceipt,
               status: "created",
+              intentId: recResult.existingOrder.intentId,
               notes: { ...notes, intentId: recResult.existingOrder.intentId, reusedExistingOrder: true },
             });
           }
@@ -435,6 +439,7 @@ export async function POST(req: Request) {
               currency: retryRes.existingOrder.currency || currency,
               receipt: authoritativeReceipt,
               status: "created",
+              intentId: retryRes.existingOrder.intentId,
               notes: { ...notes, intentId: retryRes.existingOrder.intentId, reusedExistingOrder: true },
             });
           }
@@ -555,7 +560,13 @@ export async function POST(req: Request) {
         await activatePaymentReservation(db, reservationKey, reservationToken, order.id, intentRef.id);
       }
 
-      return NextResponse.json(order);
+      // B1 (FIN-004): return the saved intent id explicitly (the browser confirms the
+      // server-created merchandise order mo_{intentId}); do not rely on the gateway echoing notes.
+      return NextResponse.json({
+        ...order,
+        intentId: intentRef.id,
+        notes: { ...(order?.notes || {}), intentId: intentRef.id },
+      });
     } catch (orderErr: any) {
       if (renewalTimer) {
         clearInterval(renewalTimer);

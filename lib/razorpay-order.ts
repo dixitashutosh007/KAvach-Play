@@ -1280,6 +1280,81 @@ export function calculateAuthoritativeMerchPrice(
  * Derives and verifies the authoritative payable amount server-side.
  * Client-supplied amounts are ignored/overridden to prevent fee tampering (FIN-001).
  */
+/** B1 (PX-1): order statuses a shop checkout may request (MOQ display state only). */
+export const MERCH_CHECKOUT_ORDER_STATUSES = [
+  "Awaiting Min Order Qnty",
+  "Ready to Place Order",
+  "Order Placed",
+] as const;
+
+function optionalBoundedString(value: unknown, field: string, max: number): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") throw new Error(`Invalid merchandise order field: ${field}.`);
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > max) throw new Error(`Merchandise order field ${field} exceeds ${max} characters.`);
+  return trimmed;
+}
+
+/**
+ * B1 (PX-1): builds the stored merchandise order payload from the approved allowlist.
+ * Client-supplied ids, payment fields and any unlisted field are dropped; server values win.
+ */
+export function buildMerchOrderPayload(
+  clientPayload: any,
+  server: { merchId: string; merchName: string; price: number; playerId: string; playerRecordName?: string },
+): Record<string, any> {
+  const src = clientPayload && typeof clientPayload === "object" ? clientPayload : {};
+
+  const playerName =
+    server.playerRecordName ||
+    optionalBoundedString(src.playerName, "playerName", 100) ||
+    "Player";
+
+  let customSelections: Record<string, string> | undefined;
+  if (src.customSelections !== undefined && src.customSelections !== null) {
+    if (typeof src.customSelections !== "object" || Array.isArray(src.customSelections)) {
+      throw new Error("Invalid merchandise order field: customSelections.");
+    }
+    const entries = Object.entries(src.customSelections);
+    if (entries.length > 20) throw new Error("Too many merchandise custom selections.");
+    customSelections = {};
+    for (const [key, value] of entries) {
+      if (key.length === 0 || key.length > 50) throw new Error("Invalid merchandise custom selection name.");
+      if (typeof value !== "string" || value.length > 100) {
+        throw new Error(`Invalid merchandise custom selection value for ${key}.`);
+      }
+      customSelections[key] = value;
+    }
+    if (Object.keys(customSelections).length === 0) customSelections = undefined;
+  }
+
+  const rawNumber = typeof src.jerseyNumber === "number" ? String(src.jerseyNumber) : src.jerseyNumber;
+  const additions = Number(src.customPriceAdditions);
+  const orderStatus = (MERCH_CHECKOUT_ORDER_STATUSES as readonly string[]).includes(src.orderStatus)
+    ? src.orderStatus
+    : "Order Placed";
+
+  const payload: Record<string, any> = {
+    playerId: server.playerId,
+    playerName,
+    merchId: server.merchId,
+    merchName: server.merchName,
+    size: optionalBoundedString(src.size, "size", 50),
+    spec: optionalBoundedString(src.spec, "spec", 200),
+    customSelections,
+    customPriceAdditions: Number.isFinite(additions) && additions > 0 ? additions : undefined,
+    jerseyName: optionalBoundedString(src.jerseyName, "jerseyName", 30),
+    jerseyNumber: optionalBoundedString(rawNumber, "jerseyNumber", 10),
+    price: server.price,
+    orderStatus,
+  };
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined) delete payload[key];
+  }
+  return payload;
+}
+
 export async function derivePayableAmount(
   db: any,
   authUid: string,
@@ -1580,6 +1655,16 @@ export async function derivePayableAmount(
       throw new Error("Payable merchandise amount must be greater than zero.");
     }
 
+    // B1 (PX-1): display name from the verified player record when available.
+    let playerRecordName: string | undefined;
+    try {
+      const pSnap = await db.collection("players").doc(playerId).get();
+      const name = pSnap.exists ? pSnap.data()?.name : undefined;
+      if (typeof name === "string" && name.trim()) playerRecordName = name.trim();
+    } catch {
+      playerRecordName = undefined;
+    }
+
     return {
       amount: calculatedPrice,
       verifiedIntent: {
@@ -1587,13 +1672,15 @@ export async function derivePayableAmount(
         reservationKey: generateReservationKey(intentData, playerId),
         merchId,
         userId: authUid,
-        orderPayload: {
-          ...(orderPayload || {}),
+        // B1 (PX-1): allowlisted fields only. The client can never choose the order id or any
+        // payment field; the webhook stores this payload under mo_{intentId} (create only).
+        orderPayload: buildMerchOrderPayload(orderPayload, {
           merchId,
-          merchName: merch.name || orderPayload?.merchName || "Club Merchandise",
+          merchName: merch.name || "Club Merchandise",
           price: calculatedPrice,
           playerId,
-        },
+          playerRecordName,
+        }),
       },
     };
   }

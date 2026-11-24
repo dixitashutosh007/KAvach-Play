@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import { isValidIntentId, merchOrderIdForIntent } from "./merch-order-confirmation.ts";
 
 export interface WebhookEventDetails {
   event: string;
@@ -36,7 +36,8 @@ export type WebhookPermanentReason =
   | "CONFLICTING_PAYMENT"
   | "MERGE_CHAIN_INVALID"
   | "NO_INTENT_ID"
-  | "MALFORMED_EVENT";
+  | "MALFORMED_EVENT"
+  | "MERCH_ORDER_EXISTS";
 
 export type WebhookRetryableReason = "MERGE_IN_PROGRESS" | "INFRASTRUCTURE";
 
@@ -227,6 +228,49 @@ export function validateWebhookTransaction(
   return { ok: true };
 }
 
+/** B1 (PX-1): order statuses the stored checkout payload may carry (MOQ display state only). */
+const STORED_MERCH_ORDER_STATUSES = ["Awaiting Min Order Qnty", "Ready to Place Order", "Order Placed"];
+
+/**
+ * B1 (PX-1): copies only the allowlisted display fields from an intent's stored merchandise
+ * payload. Never copies an id or a payment field, and never throws (legacy intents may carry
+ * extra fields; they are dropped, not rejected, so a captured payment is never blocked by them).
+ */
+export function pickStoredMerchOrderFields(orderPayload: any, intentAmount: unknown): Record<string, any> {
+  const src = orderPayload && typeof orderPayload === "object" ? orderPayload : {};
+  const out: Record<string, any> = {};
+  const str = (key: string, max: number) => {
+    const v = src[key];
+    if (typeof v === "string" && v.trim() && v.length <= max) out[key] = v.trim();
+  };
+  str("playerId", 128);
+  str("playerName", 100);
+  str("merchId", 128);
+  str("merchName", 100);
+  str("size", 50);
+  str("spec", 200);
+  str("jerseyName", 30);
+  if (typeof src.jerseyNumber === "number" && Number.isFinite(src.jerseyNumber)) {
+    out.jerseyNumber = String(src.jerseyNumber);
+  } else {
+    str("jerseyNumber", 10);
+  }
+  if (src.customSelections && typeof src.customSelections === "object" && !Array.isArray(src.customSelections)) {
+    const sel: Record<string, string> = {};
+    for (const [k, v] of Object.entries(src.customSelections).slice(0, 20)) {
+      if (k.length > 0 && k.length <= 50 && typeof v === "string" && v.length <= 100) sel[k] = v;
+    }
+    if (Object.keys(sel).length > 0) out.customSelections = sel;
+  }
+  const additions = Number(src.customPriceAdditions);
+  if (Number.isFinite(additions) && additions > 0) out.customPriceAdditions = additions;
+  const price = Number(src.price);
+  const amount = Number(intentAmount);
+  out.price = Number.isFinite(price) && price > 0 ? price : Number.isFinite(amount) ? amount : 0;
+  out.orderStatus = STORED_MERCH_ORDER_STATUSES.includes(src.orderStatus) ? src.orderStatus : "Order Placed";
+  return out;
+}
+
 /**
  * Concurrency-safe, transactional intent fulfillment.
  * Executes atomically inside a Firestore transaction (FIN-002).
@@ -415,6 +459,23 @@ export async function processWebhookIntentTransaction(
       }
     }
 
+    // B1 (PX-1): the Paid online merchandise order has a server-controlled id, mo_{intentId}.
+    // Read it before any write; an existing document is never overwritten.
+    let merchOrderRef: any = null;
+    if (type === "merch_order") {
+      if (!isValidIntentId(details.intentId)) {
+        throw new WebhookPermanentError("INTENT_INVALID", "Intent id is not a valid merchandise order identity.");
+      }
+      merchOrderRef = db.collection("merchOrders").doc(merchOrderIdForIntent(details.intentId));
+      const existingOrder = await transaction.get(merchOrderRef);
+      if (existingOrder.exists) {
+        throw new WebhookPermanentError(
+          "MERCH_ORDER_EXISTS",
+          `Merchandise order ${merchOrderRef.id} already exists; it is never overwritten.`,
+        );
+      }
+    }
+
     // 4. Downstream state transitions within the transaction (FIN-002) - STRICTLY AFTER READS
     if (type === "match") {
       if (matchPaymentRef) {
@@ -566,16 +627,14 @@ export async function processWebhookIntentTransaction(
           { merge: true },
         );
       }
-    } else if (type === "merch_order") {
-      const orderPayload = intent.orderPayload || {};
-      const orderId = orderPayload.id || crypto.randomUUID();
-      const orderRef = db.collection("merchOrders").doc(orderId);
-
-      transaction.set(orderRef, {
-        ...orderPayload,
-        id: orderId,
+    } else if (type === "merch_order" && merchOrderRef) {
+      // B1 (PX-1): the webhook is the only creator of a Paid online merchandise order.
+      // Allowlisted display fields only; id and payment fields are server-controlled.
+      transaction.create(merchOrderRef, {
+        ...pickStoredMerchOrderFields(intent.orderPayload, intent.amount),
+        id: merchOrderRef.id,
+        intentId: details.intentId,
         paymentStatus: "Paid",
-        orderStatus: orderPayload.orderStatus || "Order Placed",
         isManual: false,
         razorpayPaymentId: details.paymentId,
         createdAt: now,

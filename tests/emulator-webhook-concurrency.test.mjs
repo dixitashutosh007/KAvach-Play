@@ -192,12 +192,21 @@ describe("FIN-002: Real Firestore Emulator Webhook Concurrency Integration Tests
     assert.equal(results.filter((r) => r.success && !r.alreadyProcessed).length, 1);
     assert.equal(results.filter((r) => r.success && r.alreadyProcessed).length, 1);
 
-    const orderSnap = await db.collection("merchOrders").doc(merchOrderId).get();
+    // B1 (PX-1): the intent's client-supplied orderPayload.id must NOT select the target document.
+    // Previously this test expected the pre-existing order to be overwritten, which is the PX-1
+    // vulnerability. Now the pre-existing order stays untouched and exactly one order is created
+    // at the server-controlled id mo_{intentId}.
+    const seededSnap = await db.collection("merchOrders").doc(merchOrderId).get();
+    assert.equal(seededSnap.data().paymentStatus, "Unpaid");
+    assert.equal(seededSnap.data().razorpayPaymentId, undefined);
+
+    const orderSnap = await db.collection("merchOrders").doc(`mo_${intentId}`).get();
     assert.equal(orderSnap.data().paymentStatus, "Paid");
     assert.equal(orderSnap.data().razorpayPaymentId, "pay_em_merch_1");
 
     const allOrdersSnap = await db.collection("merchOrders").get();
-    assert.equal(allOrdersSnap.size, 1);
+    assert.equal(allOrdersSnap.size, 2, "the seeded order plus exactly one webhook-created order");
+    assert.equal(allOrdersSnap.docs.filter((d) => d.data().razorpayPaymentId === "pay_em_merch_1").length, 1);
   });
 
   it("handles simultaneous arrivals for studio subscription extending expiry exactly once", async () => {
