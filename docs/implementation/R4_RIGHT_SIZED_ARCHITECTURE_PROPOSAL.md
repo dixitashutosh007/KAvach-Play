@@ -1,16 +1,17 @@
 # R4 Right-Sized Architecture Proposal: Security and Payment Integrity
 
-**Status:** PROPOSAL, revision 2, for independent review and owner approval. **Not approval to implement.** Architecture and planning only; no code, rules, tests, configuration or data changed.
-**Branch / base:** `mig-mov` @ `972bcb23df0ccdebaec465be659e0dc35f1785e5` (revision 1: `972bcb2`)
+**Status:** PROPOSAL, revision 3 (architecture direction accepted by independent review), for owner authorisation of B1. **Not approval to implement.** Architecture and planning only; no code, rules, tests, configuration or data changed.
+**Branch / base:** `mig-mov` @ `1b34b01e576ce987839fd372adf03dd460c34d7f` (revision 1: `972bcb2`; revision 2: `1b34b01`)
 
-**Repository restriction (owner, mandatory):** nothing is merged, cherry-picked or pushed to `main`; no Firestore rules deployment; no workflow dispatch; no staging or production deployment; no auto-merge; no production configuration change; no live Razorpay operation. Workflow: `mig-mov` → implementation → tests → independent review → owner acceptance. Production deployment is a separate future approval. `main` stays at `f5739726e75a2e6594c7379bdbfc8a866c63f787`.
+**Repository restriction (owner, mandatory):** nothing is merged, cherry-picked or pushed to `main`; no Firestore rules deployment; no workflow dispatch; no staging or production deployment; no auto-merge; no production configuration change; no live Razorpay operation. Workflow: `mig-mov` → implementation → tests → independent review → owner acceptance. Production deployment is a separate future approval. `main` stays at `f5739726e75a2e6594c7379bdbfc8a866c63f787`. This restriction applies to B1, B2 and all later work until the owner explicitly changes it.
 
 **Revision history**
 
 | Rev | Commit | Change |
 |---|---|---|
 | 1 | `972bcb2` | Right-sized architecture, four phases, batches B1–B16 |
-| 2 | this commit | Review corrections A–F: orphan-order adoption (§14), obligation state table (§15), Studio renewal (§16), legacy late-fee transition (§17), category coverage across the cutover (§18), outage recovery (§19), B1 readiness (§20), decision register (§21). O-1 and O-2 reworked; O-6 set to "no deployment route authorised"; B2 scope extended to all categories |
+| 3 | this commit | Final corrections: owner decisions O-8, O-9, O-10 recorded; order-link uniqueness document (§14.4); Studio renewal atomicity, `appUsers` handling and snapshot-only fee / duration (§16); B1 extended with the FIN-004 checkout fix and finalised (§20) |
+| 2 | `1b34b01` | Review corrections A–F: orphan-order adoption (§14), obligation state table (§15), Studio renewal (§16), legacy late-fee transition (§17), category coverage across the cutover (§18), outage recovery (§19), B1 readiness (§20), decision register (§21). O-1 and O-2 reworked; O-6 set to "no deployment route authorised"; B2 scope extended to all categories |
 **Supersedes for execution (if approved):** the seven-phase plan in `R4_ARCHITECTURE_DESIGN.md` revision 7 (`64de4f8`). Revision 7 stays unchanged as the reference for deferred items.
 **Inputs:** `R4_ARCHITECTURE_DESIGN.md` rev 7; `R4_PHASE_1A_READINESS_REPORT.md` (`d77a2b3`); source at `d77a2b3`; owner decisions of 2026-11-24.
 **Date:** 2026-11-24
@@ -209,7 +210,7 @@ All new collections are already denied by the catch-all (`firestore.rules:5–7`
 - The allowlist keeps every field the shop sends today: `playerId`, `playerName`, `merchId`, `merchName`, `size`, `spec`, `customSelections`, `customPriceAdditions`, `jerseyName`, `jerseyNumber`, `orderStatus` limited to `Awaiting Min Order Qnty` | `Ready to Place Order` | `Order Placed`.
 - `mo_{intentId}` makes the write idempotent across `payment.captured` + `order.paid`. The existing per-intent replay check is unchanged.
 
-**Observed, outside the hotfix (not changed by B1):** after checkout the browser handler also calls `finalizeOrderPlacement` (`components/ShopTab.tsx:437–440, 473–516`), which writes a second order with `paymentStatus: "Paid"`. For players this is refused by the `merchOrders` create rule (`firestore.rules:710–718` requires `Unpaid`). For an administrator it creates an unlinked duplicate "Paid" order. This is audit finding FIN-004 and is fixed in Phase 2 (B7: the browser no longer creates orders for online payments).
+**Observed, outside the hotfix (not changed by B1):** after checkout the browser handler also calls `finalizeOrderPlacement` (`components/ShopTab.tsx:437–440, 473–516`), which writes a second order with `paymentStatus: "Paid"`. For players this is refused by the `merchOrders` create rule (`firestore.rules:710–718` requires `Unpaid`). For an administrator it creates an unlinked duplicate "Paid" order. This is audit finding FIN-004. **Revision 3: fixed in B1** (§20.2).
 
 ## 8. Revised four-phase implementation plan
 
@@ -219,7 +220,7 @@ Each batch: tests first; one commit on `mig-mov`; regression (functional + emula
 
 | Batch | Scope | Files (expected) | Acceptance criteria |
 |---|---|---|---|
-| **B1 PX-1 hotfix** | §7 | `lib/razorpay-order.ts` (merch branch, `:1556–1600`), `lib/razorpay-webhook.ts` (merch branch, `:569–584`), new emulator test | (1) A request carrying `orderPayload.id` = an existing order of another player leaves that order byte-identical. (2) The created order ID is `mo_{intentId}`; replay with both events → one order. (3) Non-allowlisted fields are absent. (4) Price is the server price. (5) The existing shop flow (no `id`) produces one Paid order. (6) No other payment category is touched (all existing webhook suites pass unchanged) |
+| **B1 PX-1 + FIN-004** | §20 (revision 3) | `lib/razorpay-order.ts` (merch branch), `lib/razorpay-webhook.ts` (merch branch), `lib/webhook-dead-letter.ts`, `app/api/razorpay/order/route.ts` (new-order response), `components/ShopTab.tsx` (online callback), new `lib/merch-order-confirmation.ts`, tests | §20.4 tests 1–12, plus: (1) A request carrying `orderPayload.id` = an existing order of another player leaves that order byte-identical. (2) The created order ID is `mo_{intentId}`; replay with both events → one order. (3) Non-allowlisted fields are absent. (4) Price is the server price. (5) The existing shop flow (no `id`) produces one Paid order. (6) No other payment category is touched (all existing webhook suites pass unchanged) |
 | **B2 P0 duplicate settlement (all categories)** | `gatewayPayments` registry for **every** category at once; decision P1–P7 with the §15 table for match fees, other fees and dues-paid merch orders; Studio renewal per §16; interim late-fee guard per §18 (until B3); DUPLICATE / HOLD / UNMATCHED / IDENTITY_CONFLICT write sets; dead-letter inside the transaction; P1 cutover replay; outage behaviour per §19 | `lib/payments/decide.ts` (new, pure), `lib/payments/gateway-payments.ts` (new), `lib/razorpay-webhook.ts`, `app/api/razorpay/webhook/route.ts`, `lib/webhook-dead-letter.ts`; R3 / R5 test expectation updates | (1) Two intents (match screen + dues bundle) for one match fee, both orderings × 20 repetitions → exactly one Paid, one `rejected_duplicate`, the first payment's fields unchanged. (2) Manual cash Paid, then capture → DUPLICATE. (3) Pre-cutover redelivery → REPLAY, never duplicate. (4) Injected failure before commit → no state change; lost acknowledgement → REPLAY with zero writes. (5) Every non-applied capture has a `gatewayPayments` record and a dead-letter. (6) 6 concurrent deliveries → one record. (7) §16 scenarios S1–S7 pass. (8) No category is less protected than before B2 (§18 table, one test per row) |
 | **B3 PX-2 / PX-3 weekly late fees** | Server weekly identity in both order paths; webhook writes `latefee_{matchId}_{week}` with `create()`; legacy transition per §17 (**O-2 revised**) | `lib/razorpay-order.ts`, `lib/razorpay-webhook.ts`, `lib/payments/decide.ts` | (1) A client `lateFeeTemplateId` has no effect. (2) The same week via two intents → one application. (3) Weeks 0..n each once. (4) §17 transition cases T1–T7 pass. (5) UI still shows the fee as paid |
 | **B4 PX-4 otherFees rules** | §4 Phase 1 rule changes | `firestore.rules`, new rules emulator test | Per role: Paid fee status/amount/payment fields immutable; Paid fee not deletable; unpaid fee editable by Finance; `latefee_` IDs not client-creatable; existing UI flows that write unpaid fees still pass. **Not deployed (O-6)**; preserves the Finance workflows listed in §21 (O-3) |
@@ -230,7 +231,7 @@ Each batch: tests first; one commit on `mig-mov`; regression (functional + emula
 | Batch | Scope | Acceptance criteria |
 |---|---|---|
 | **B6 snapshot and identity** | Generalise the B2 snapshot (`obligations[]` + fingerprint) to every order path; ≤ 20 limit | Snapshot immutable; every key server-derived; a request with a foreign obligation → 403; 21 obligations → 400 |
-| **B7 orphan adoption and FIN-004** | P4 adoption per §14; merch orders only from the webhook (FIN-004) | §14 adoption and rejection cases each pass; an orphan for an ambiguous intent is adopted and applied once; an order already linked to another intent → HOLD |
+| **B7 orphan adoption and order links** | P4 adoption per §14; order-link documents (§14.4) on every linking path (FIN-004 moved to B1) | §14 adoption and rejection cases each pass; an orphan for an ambiguous intent is adopted and applied once; an order already linked to another intent → HOLD |
 | **B8 order-route hardening** | Per-obligation `obl_` locks; no expired-`reserving` takeover (→ `reconciliation_required`); `exception` locks never reused | Match screen + dues for one fee concurrently → one order or 409; expired `reserving` → blocked, no second create (gateway stub counts creates); existing `tests/razorpay-concurrent-orders.test.mjs` protections still pass |
 | **B9 legacy compatibility** | Read-only legacy anomaly report script (dry run); UI shows weekly late fees | Report lists double-paid obligations and `lf_` records; no writes possible |
 
@@ -349,14 +350,16 @@ Only new questions; settled owner decisions are not reopened. The "Direction" co
 
 | # | Decision | Direction |
 |---|---|---|
-| **O-1** | Ambiguous-order handling per §14.3: obligations stay blocked for online payment until the orphan is adopted, the obligation is settled manually, or Finance performs an evidenced, audited release after the hold period | **Rework (review)**: implemented as §14.3; no uncontrolled orphan exposure. Owner to confirm the §14.3 hold period |
-| **O-2** | Legacy late-fee transition per §17 (weekly identity kept; cutover boundary; no back-charging of weeks that accrued before cutover while hidden by the legacy UI) | **Revise (review)**: implemented as §17. Owner to confirm the no-back-charge rule (§17.4) |
+| **O-1** | Ambiguous-order handling per §14.3: obligations stay blocked for online payment until the orphan is adopted, the obligation is settled manually, or Finance performs an evidenced, audited release after the hold period | **Rework (review)**: implemented as §14.3 and §14.4; no uncontrolled orphan exposure. Hold period set by O-9 |
+| **O-2** | Legacy late-fee transition per §17 (weekly identity kept; cutover boundary; no back-charging of weeks that accrued before cutover while hidden by the legacy UI) | **Revise (review)**: implemented as §17; no-back-charge rule set by O-10 |
 | **O-3** | Paid other fees become immutable from the browser (as match payments already are) until the Phase 3 correction endpoint exists | **Accept** as a security requirement, preserving the legitimate Finance workflows listed in §21 |
 | **O-4** | Maximum 20 obligations per online payment | **Accept** |
 | **O-5** | A payment whose obligation amount changed after the order was created goes to Finance review instead of being applied | **Accept** |
 | **O-6** | Deployment route for rules (B4, pending R2-A) and code | **No deployment route is authorised at present.** Work stays on `mig-mov`; `main` unchanged |
 | **O-7** | Adopt this proposal as the execution plan in place of revision 7 Phases 1A–7 | **Accept the direction**, subject to the revision 2 corrections (§14–§19) |
-| **O-8** (new) | Recovery of a capture that never reached the webhook (§19.3): Finance records it from Razorpay dashboard evidence; applying it to an obligation needs either a read-only gateway fetch-by-ID in production or Finance attestation | Owner choice; until decided such payments stay `held_for_review` |
+| **O-8** | Recovery of a capture that never reached the webhook (§19.3) | **Owner decision:** read-only Razorpay fetch-by-payment-ID verification, then audited Finance approval; never from spreadsheets, screenshots or bare attestation. Future B13; not implemented now |
+| **O-9** | Hold period before an evidenced release (§14.3) | **Owner decision:** 72 hours from the original ambiguous creation event; retries never reset it; release evidence = gateway search, reservation and intent IDs, reason, actor, timestamp; later payments on a released intent never auto-applied |
+| **O-10** | Late-fee weeks accrued before cutover and hidden by the legacy behaviour (§17.4) | **Owner decision:** waived (no back-charging); weekly identity applies from cutover onwards |
 
 ## 13. Recommended implementation sequence and dependencies
 
@@ -397,7 +400,7 @@ Nothing in this document authorises implementation, deployment, a rules change, 
 | A1 | Event signature valid over the raw body (authenticates order ID, payment ID, amount, currency) | existing R3 check (`app/api/razorpay/webhook/route.ts:126–147`) |
 | A2 | **Intent provenance:** `razorpayIntents/{notes.intentId}` exists. The collection has no client write path (catch-all deny), and from B2 the order route stamps `source: "order-route"`. Intent status `pending`; `orderId` empty | intent |
 | A3 | **Reservation identity:** `notes.reservationKey == intent.reservationKey`; `paymentReservations/{reservationKey}.intentId == intent.id`; reservation state is ambiguous (`reconciliation_required`, `reconciliation_failed`, or expired `reserving`) | reservation |
-| A4 | **Not linked elsewhere:** no other intent has `orderId == X` (transaction query); reservation `orderId` empty or `== X`; no `gatewayPayments` record for order X bound to a different intent (transaction query) | intents, reservation, registry |
+| A4 | **Not linked elsewhere:** the order-link document `paymentReservations/ord_{X}` (§14.4) is absent or already names this intent; reservation `orderId` empty or `== X` | order-link document (transactional), reservation |
 | A5 | **Player ownership:** the intent's payer resolves (merge chain) to the owner of every snapshot obligation | obligations |
 | A6 | **Amount:** captured paise == immutable snapshot `amountPaise` | intent |
 | A7 | **Currency:** event currency == intent currency (INR) | intent |
@@ -407,6 +410,7 @@ Nothing in this document authorises implementation, deployment, a rules change, 
 
 All hold → in the same transaction:
 - `intent.orderId = X`, `orderAdoptedAt`;
+- `create()` the order-link document `paymentReservations/ord_{X}` = `{orderId, intentId, reservationKey, source: "webhook_adoption", linkedAt}` (§14.4);
 - reservation `orderId = X`, event `order_adopted`;
 - then APPLY.
 
@@ -432,9 +436,25 @@ While a reservation is ambiguous, its obligations are **blocked for new online o
 |---|---|---|---|
 | R-a Adoption | the orphan is captured | §14.1 → applied once | none |
 | R-b Manual settlement | Finance records cash / UPI | obligation Paid; locks → `settled_elsewhere`; a later orphan capture → DUPLICATE → refund | no new order created |
-| R-c Evidenced release (Phase 3 Finance action) | Finance, after the hold period (**proposed 72 h; owner to confirm**) | Requires recorded dashboard evidence (orders searched by receipt / notes: none found, or the found order attached through R-a checks), a reason, actor and audit. Old intent → `superseded`, reservation → `released`, then a new order may be created | bounded: at most one orphan per ambiguous create; any capture on it → HOLD `INTENT_SUPERSEDED`, **never auto-applied**; Finance applies it only if the obligation is still unpaid, else refunds |
+| R-c Evidenced release (Phase 3 Finance action) | Finance, after the 72-hour hold period (**O-9**) | Requires recorded dashboard evidence (orders searched by receipt / notes: none found, or the found order attached through R-a checks), a reason, actor and audit. Old intent → `superseded`, reservation → `released`, then a new order may be created | bounded: at most one orphan per ambiguous create; any capture on it → HOLD `INTENT_SUPERSEDED`, **never auto-applied**; Finance applies it only if the obligation is still unpaid, else refunds |
 
 Until B10 / B13 exist, only R-a and R-b are available.
+
+**Hold period (O-9, owner decision):** 72 hours, measured from the **original** ambiguous order-creation event. The reservation stores `ambiguousSince` once, when it first becomes ambiguous; reconciliation attempts, repeated payer requests and retries never overwrite it. An R-c release records gateway search evidence, reservation ID, intent ID, reason, actor and timestamp. A later payment against a released (`superseded`) intent is **never applied automatically**.
+
+### 14.4 Transactional uniqueness of order ↔ intent links (final clarification A)
+
+A query for other intents is not a concurrency-safe guarantee. Uniqueness is enforced by **one deterministic link document per gateway order**, in the existing `paymentReservations` collection (no new collection):
+
+- `paymentReservations/ord_{orderId}` = `{orderId, intentId, reservationKey, source: order_route | webhook_adoption | finance_attach, linkedAt}`. It is server-only, and created with `create()`, never updated.
+- **Every path that links an order to an intent** reads this document and creates it **in the same transaction** that sets `intent.orderId`:
+  - the order route's activation after a successful create (from B7);
+  - P4 adoption;
+  - the Phase 3 Finance attach.
+- **Concurrent adopters:** two transactions that both see the document absent cannot both commit. The server SDK locks the documents it reads, including absent ones, and `create()` fails if the document exists. The loser re-runs, sees the link and evaluates A4: the same intent leads to REPLAY or continue; a different intent leads to HOLD `ORDER_LINKED_ELSEWHERE`.
+- **Reverse direction (one order per intent):** compare-and-set on `intent.orderId` (empty → X) in the same transaction.
+- **Orders linked before B7** (only `intent.orderId` set): the first webhook capture creates the missing link document in its own transaction, after checking `intent.orderId == X`.
+- **Tests (B7):** two concurrent adoptions of one orphan (both orderings × 20) → one link; a link to a different intent → HOLD; an `ALREADY_EXISTS` race → resolved on re-run.
 
 ## 15. Canonical obligation state table (review item B)
 
@@ -482,7 +502,6 @@ Rows are evaluated top to bottom; the first match wins.
 - Player missing → MISSING.
 - Anchor exists → SETTLED.
 - Expiry ≠ snapshot basis → CHANGED.
-- Plan fee ≠ snapshot → CHANGED.
 - Otherwise → PAYABLE.
 
 **Merchandise:**
@@ -524,10 +543,22 @@ Two intents for one period therefore extend twice (pre-existing).
 **APPLY transaction** (reads player, `appUsers`, anchor; then writes):
 1. Anchor exists → DUPLICATE.
 2. Current stored expiry ≠ `basisExpiry` → CHANGED → HOLD. Never re-based silently.
-3. Plan fee ≠ snapshot → CHANGED → HOLD (O-5).
-4. `start = max(basisExpiry, clubToday)` using the club calendar date (`getClubCalendarDate`, not server local time); `newExpiry = start + durationDays`.
-5. Assert `newExpiry > currentExpiry`.
-6. Write in the same transaction: anchor `create()` (`{planId, oldExpiry, newExpiry, paymentId, intentId}`), the player and `appUsers` expiry, and the `gatewayPayments` record.
+3. `start = max(basisExpiry, clubToday)` using the club calendar date (`getClubCalendarDate`, not server local time); `newExpiry = start + durationDays`.
+4. Assert `newExpiry > currentExpiry`.
+5. Write, **all in this one Firestore transaction**: (a) the anchor `create()` (`{planId, durationDays, amountPaise, oldExpiry, newExpiry, paymentId, intentId}`); (b) the player's `studioExpiryDate` / `studioEndDate` / `isStudioMember`; (c) the `appUsers` mirror (rules below); (d) the `gatewayPayments` record (`applied`); (e) intent `paid`. Either all commit or none.
+
+**Fee and duration come only from the immutable snapshot.** The plan document is not re-read at capture. The captured amount must equal the snapshot `amountPaise` (P3), which satisfies O-5 for subscriptions: the product was fixed at order time and there is no mutable obligation amount.
+
+**`appUsers` mirror handling** (the player document is the source of truth):
+
+| `appUsers/{intent.userId}` state | Handling |
+|---|---|
+| Exists, `playerId` = snapshot player | Mirror fields set to `newExpiry` (any previous mirror value recorded in the event) |
+| Exists, mirror expiry already inconsistent with the player's expiry | Overwritten with `newExpiry`; event `appusers_mirror_corrected {old}` |
+| Missing | **Not created** (an expiry-only account document would be malformed); renewal applied on the player; event `appusers_mirror_missing`; low-severity Finance item |
+| Exists but linked to a **different** player | Not written; renewal applied on the snapshot player; event `appusers_mirror_conflict`; high-severity Finance item |
+
+Today's webhook creates a missing `appUsers` document with `set(…, {merge: true})` (`lib/razorpay-webhook.ts:557–567`). B2 replaces that behaviour.
 
 Correctness rests on the **compare-and-set of the expiry inside one transaction** (step 2). The deterministic ID adds a second, explicit duplicate marker.
 
@@ -576,7 +607,7 @@ For player p and match m (same predicates as the UI, `components/FinanceTab.tsx:
 A late fee is due for week w only while the match fee is `Unpaid`, the match is billable, the fee is above 0 and no exemption exists. This matches the UI (`FinanceTab.tsx:164–168`). For each accrued week w:
 
 - covered by a v2 or legacy record → excluded;
-- (p, m) has a legacy record, w is not covered, and accrual(w) < `T_cut` → **excluded (transition waiver)**. The legacy UI hid these weeks once any record existed, so they were never billed and are **not back-charged** (owner to confirm);
+- (p, m) has a legacy record, w is not covered, and accrual(w) < `T_cut` → **excluded (transition waiver)**. The legacy UI hid these weeks once any record existed, so they were never billed and are **not back-charged** (**O-10, owner decision**);
 - (p, m) is `LEGACY_AMBIGUOUS` → late fees for m are excluded from online payment and flagged to Finance;
 - otherwise → snapshot obligation `latefee_{m}_{w}` (₹150 for w = 0, ₹50 for each later week).
 
@@ -650,39 +681,149 @@ Weekly Finance reconciliation:
 2. A read-only B13 tool compares them with `gatewayPayments`. No gateway call is made.
 3. Each missing ID → Finance records a `held_for_review` registry entry with evidence (`source: finance_import`).
 
-Applying such a payment to an obligation needs **O-8** (read-only gateway fetch-by-ID in production, or Finance attestation). Until O-8 is decided, these entries stay held, and they stay visible.
+Applying such a payment requires **O-8 (owner decision): a read-only Razorpay fetch-by-payment-ID, followed by audited Finance approval.** Spreadsheet rows, screenshots or unsupported attestation are never sufficient. The verification must establish:
+- the payment is captured;
+- the exact amount and currency;
+- the order identity, including the §14.4 link;
+- the payer and obligation mapping;
+- no previous application (no `applied` registry record);
+- no identity conflict.
 
-## 20. B1 (PX-1) implementation readiness
+This belongs to the future Finance reconciliation batch (B13) and is **not implemented now**. Until then such entries stay `held_for_review` and visible.
 
-| Item | Detail |
+## 20. B1 final scope: PX-1 merchandise ownership + FIN-004 checkout lifecycle
+
+### 20.1 Server: order identity and field allowlist (PX-1)
+
+| File / function | Change |
 |---|---|
-| Files and functions | `lib/razorpay-order.ts` `derivePayableAmount`, `merch_order` branch (`:1556–1600`): build `orderPayload` from an allowlist; drop the client `id`. `lib/razorpay-webhook.ts` `processWebhookIntentTransaction`: read `merchOrders/mo_{intentId}` in the read phase; in the `merch_order` write branch (`:569–584`) use `transaction.create()` with allowlisted + server fields; add permanent reason `MERCH_ORDER_EXISTS` (`:26–39`). `lib/webhook-dead-letter.ts` `classifyDeadLetter`: map it to `data_integrity`. `generateReservationKey` (`:72–80`) unchanged |
-| Allowlist (validated) | `playerId` (ownership-verified, as today), `playerName` (player record when available, else ≤ 100 chars), `merchId` (must exist), `merchName` (from the merch document), `size` ≤ 50, `spec` ≤ 200, `customSelections` (≤ 20 string pairs, key ≤ 50, value ≤ 100), `customPriceAdditions` (informational), `jerseyName` ≤ 30, `jerseyNumber` ≤ 10, `orderStatus` ∈ {`Awaiting Min Order Qnty`, `Ready to Place Order`, `Order Placed`} (default `Order Placed`) |
-| Server-set fields | `id = mo_{intentId}`, `price` (server, as today), `paymentStatus: "Paid"`, `isManual: false`, `razorpayPaymentId`, `intentId`, `createdAt`, `updatedAt` |
-| Behaviour preserved | Server price; ownership check (`verifyPlayerOwnership`); reservation key; per-intent replay; R3 / R5 HTTP semantics; shop UI unchanged; every field the Club Orders view shows; other intent types untouched |
-| Security boundaries | No client value is used as or inside a document ID; no client value can set server fields; `create()` never overwrites; no rules or data change |
-| New tests | `tests/px1-merch-order-identity.emulator.test.mjs` (real route, real HMAC, R3 harness). (1) Client `id` = another player's order → that document byte-identical. (2) `id` with `/` or over-long → ignored. (3) Client `paymentStatus` / `isManual` / `razorpayPaymentId` / unknown fields → absent or server values. (4) `orderStatus` outside the enum → default. (5) Tampered price → server price. (6) `payment.captured` + `order.paid` × 6 concurrently → one order. (7) Replay → `already_processed`, no second order. (8) Exact `ShopTab.tsx:384–398` payload → one Paid order with all display fields. (9) Pre-existing `mo_{intentId}` → not overwritten, dead-letter `MERCH_ORDER_EXISTS`, 200 |
-| Existing test change | `tests/emulator-webhook-concurrency.test.mjs` merchandise case seeds `orderPayload.id` = an existing order and expects that order to be updated. That **is** the PX-1 behaviour. New expectation: the seeded order is untouched, and one `mo_` order is created. R3 / R5 / R2-A fixtures already use `mo_${intentId}` and are unaffected |
-| Regression | `npm run test:functional`, `npm run test:emulator`, `npx tsc --noEmit`, `npm run build` |
-| Independent of B2 | **Yes.** Only the merchandise branches change; no registry, rules or migration dependency; B2 later wraps the same branch |
-| Known limitations | **FIN-004:** after checkout the browser also calls `finalizeOrderPlacement` (`ShopTab.tsx:437–440, 473–516`). For players the second write is denied by the `merchOrders` create rule (`firestore.rules:710–718` requires `Unpaid`), so a player may see an "Order failed" message after a successful payment. For administrators it creates an unlinked duplicate Paid order. **Not changed in B1; fixed in B7.** The MOQ status is still computed in the browser (bounded by the enum). No deployment is authorised (O-6) |
+| `lib/razorpay-order.ts` `derivePayableAmount`, `merch_order` branch (`:1556–1600`) | Build `orderPayload` from an allowlist; drop the client `id` and every unlisted field. `generateReservationKey` (`:72–80`), price calculation and the ownership check are unchanged |
+| `lib/razorpay-webhook.ts` `processWebhookIntentTransaction` | Read phase: read `merchOrders/mo_{intentId}`. `merch_order` write branch (`:569–584`): `transaction.create()` of `mo_{intentId}` with allowlisted + server fields. If the document already exists, nothing is written and the new permanent reason `MERCH_ORDER_EXISTS` (added to the union at `:26–39`) is recorded |
+| `lib/webhook-dead-letter.ts` `classifyDeadLetter` | Map `MERCH_ORDER_EXISTS` to `data_integrity` |
 
-## 21. Decision register (revision 2)
+**Allowlist (validated):**
+- `playerId`: ownership-verified, as today.
+- `playerName`: from the player record when available, else ≤ 100 chars.
+- `merchId`: must exist. `merchName`: from the merch document.
+- `size` ≤ 50; `spec` ≤ 200.
+- `customSelections`: ≤ 20 string pairs, key ≤ 50, value ≤ 100.
+- `customPriceAdditions`: informational only.
+- `jerseyName` ≤ 30; `jerseyNumber` ≤ 10.
+- `orderStatus` ∈ {`Awaiting Min Order Qnty`, `Ready to Place Order`, `Order Placed`}, default `Order Placed`.
+
+**Server-set:** `id = mo_{intentId}`, `price` (server, as today), `paymentStatus: "Paid"`, `isManual: false`, `razorpayPaymentId`, `intentId`, `createdAt`, `updatedAt`.
+
+### 20.2 Browser: checkout lifecycle (FIN-004)
+
+| File / function | Change |
+|---|---|
+| `components/ShopTab.tsx` `handlePlaceOrder` (`:328–471`), Razorpay `handler` (`:437–440`) | **No longer calls `finalizeOrderPlacement`.** It switches the dialog to a "Payment received, confirming your order…" state and calls the confirmation helper with the intent ID returned by the order route (`orderData.notes.intentId`). Reused orders already return it (`app/api/razorpay/order/route.ts:156, 216, 310, 368, 438`) |
+| `app/api/razorpay/order/route.ts` `POST`, new-order response (`:558`) | Return the gateway order with `notes.intentId` set explicitly from the saved intent, instead of relying on the gateway echoing the notes. No other route change |
+| new `lib/merch-order-confirmation.ts` | `waitForServerOrder(getOrder, intentId, {intervalMs: 2000, timeoutMs: 60000, now})`: polls the **single document** `merchOrders/mo_{intentId}` with `getDoc`. The player's own document is readable under the existing rule (`firestore.rules:710–711`); not-found or permission-denied before creation counts as "pending". Returns `confirmed`, or `pending` on timeout. **It never reports failure for a successful gateway callback** |
+| `components/ShopTab.tsx` (after `confirmed`) | Run the existing post-order steps, unchanged in content and moved into a shared helper used by both paths: profile size / jersey sync; order e-mails; MOQ sister-order update. Each step's failure is logged only and never turns a paid order into an error message |
+| `components/ShopTab.tsx` (after `pending`) | Informational toast: "Payment received. Your order is being confirmed and will appear in My Orders shortly." No error state, no second order |
+| Unchanged | `finalizeOrderPlacement` remains for the **₹0 path** (`:465`); `handleAddManualOrder` (manual / offline orders, `:583`) and every admin order action are untouched |
+
+**Resulting lifecycle:**
+1. Order route (server price, intent saved first).
+2. Razorpay checkout.
+3. Callback → confirming state.
+4. **The webhook is the only creator** of the Paid online order (`mo_{intentId}`).
+5. The browser confirms from that persisted document.
+
+A delayed webhook, or the browser closing right after payment, cannot lose the order. Creation happens on the server from the signed webhook (redelivered for up to 24 h, §19), independent of the browser.
+
+### 20.3 Security invariants
+
+1. No client-supplied value is used as, or inside, a document ID.
+2. No client value can set `paymentStatus`, `price`, `isManual`, `razorpayPaymentId`, `id` or `intentId`.
+3. `create()` only: an existing merchandise order is never overwritten.
+4. Exactly one Paid online order per intent, created only by the signed webhook.
+5. The browser never writes a Paid online order.
+6. No Firestore rules change and no data migration.
+
+### 20.4 Tests
+
+| # | Test (layer) | Expected |
+|---|---|---|
+| 1 | Client `id` = another player's existing order (emulator, real route + HMAC) | That order byte-identical; new `mo_{intentId}` |
+| 2 | `id` containing `/` or over-long | Ignored |
+| 3 | Client `paymentStatus` / `isManual` / `razorpayPaymentId` / unknown fields | Absent or server values |
+| 4 | `orderStatus` outside the enum | Default `Order Placed` |
+| 5 | Tampered price | Server price |
+| 6 | `payment.captured` + `order.paid` × 6 concurrently | One order |
+| 7 | Replay after completion | `already_processed`, no second order |
+| 8 | Exact `ShopTab.tsx:384–398` payload | One Paid order with all display fields |
+| 9 | Pre-existing `mo_{intentId}` | Not overwritten; dead-letter `MERCH_ORDER_EXISTS`; 200 |
+| 10 | `waitForServerOrder` (unit, injected getter and clock) | Immediate found → `confirmed`; found after N polls → `confirmed`; never found → `pending` at timeout; permission-denied treated as pending; never throws a payment failure |
+| 11 | Online-handler path (static source check, labelled as static) | The Razorpay `handler` does not reference `finalizeOrderPlacement`; the ₹0 and manual paths still do |
+| 12 | Other intent types (existing suites) | Unchanged |
+
+**Existing test change:** the merchandise case in `tests/emulator-webhook-concurrency.test.mjs` seeds `orderPayload.id` = an existing order and expects it to be updated, which is exactly the PX-1 behaviour. New expectation: the seeded order is untouched and one `mo_` order is created. R3 / R5 / R2-A fixtures already use `mo_${intentId}` and are unaffected.
+
+**Regression:** `npm run test:functional`; `npm run test:emulator`; `npx tsc --noEmit`; `npm run build`.
+
+**Browser QA:** an end-to-end checkout is **Blocked**. Payment operations are disabled outside production (`arePaymentOperationsEnabled`), and no staging deployment is authorised (O-6). A read-only QA prompt for a future authorised staging run is part of the B1 evidence.
+
+### 20.5 Behaviour preserved
+
+- Server price and ownership check.
+- Reservation key and per-intent replay.
+- R3 / R5 HTTP semantics.
+- Shop catalogue and checkout UI.
+- Club Orders fields.
+- ₹0 and manual / offline ordering.
+- Admin order management.
+- Profile sync, e-mails and MOQ update (now after server confirmation).
+- All other payment categories.
+
+### 20.6 Rollback
+
+- One revert of the B1 commit(s) on `mig-mov`.
+- No data migration, no rules change.
+- `mo_{intentId}` orders created while B1 is active have the same field shape and remain valid for the old code.
+- Nothing is deployed (O-6), so rollback has no production effect.
+
+### 20.7 Risks and limitations
+
+| Item | Note |
+|---|---|
+| Players' order list | `ensureMerchOrders` subscribes to the **whole** `merchOrders` collection (`hooks/useStore.ts:730–741`), which the rules refuse for non-admins (rules are not filters), so a player's "My Orders" list may be empty today. Found by source inspection; not reproduced. B1's confirmation uses a single-document read and is not affected. **Fixing the list query is outside B1** (recommended as a small follow-up) |
+| E-mails, profile sync and MOQ update run in the browser | If the browser closes before confirmation, they are skipped; the order itself is safe. For players today the flow fails at the rules-denied order write, before the e-mails, so this is not a regression |
+| MOQ status is computed in the browser | Bounded by the enum; a server-side MOQ is out of scope |
+| Delayed webhook beyond 60 s | The player sees the "being confirmed" message; the order appears when the webhook commits |
+| Order ID format change (UUID → `mo_{intentId}`) | No code depends on the format (orders are filtered by fields) |
+| End-to-end checkout | Not testable without an authorised staging environment |
+
+### 20.8 Independence
+
+**B1 does not depend on B2.**
+- It changes only the merchandise branches, the shop checkout callback and one new helper.
+- It needs no registry, rules change or migration.
+- B2 later wraps the same webhook branch.
+
+## 21. Decision register (revisions 2–3)
 
 | # | Review observation | Response | Resolution | Remaining owner decision |
 |---|---|---|---|---|
-| A | Notes alone must not establish trust in orphan orders; O-1 risk | Agreed | §14: adoption requires A1–A10 from our own records; exception table; ambiguous obligations stay blocked; evidenced release only | Hold period for R-c (proposed 72 h) |
+| A | Notes alone must not establish trust in orphan orders; O-1 risk | Agreed | §14: adoption requires A1–A10 from our own records; exception table; ambiguous obligations stay blocked; evidenced release only; transactional order-link uniqueness (§14.4, rev 3) | None (O-9 decided) |
 | B | P6 too broad; missing items must not be skipped; all or nothing | Agreed | §15 state table per type; bundle rule; HOLD class; order route rejects unpayable selections | None |
 | C | Renewal basis conflict (order time vs capture time) | Agreed; the defect is pre-existing | §16 immutable snapshot, expiry compare-and-set, anchor, scenarios S1–S7 | None |
-| D | O-2 too broad; keep weekly identity | Agreed | §17 recognition, interpretation, `T_cut`, generation, transition waiver, tests | Confirm the no-back-charge rule (§17.4) |
+| D | O-2 too broad; keep weekly identity | Agreed | §17 recognition, interpretation, `T_cut`, generation, transition waiver, tests | None (O-10 decided) |
 | E | No gap while the registry is introduced | Agreed | §18: registry for all categories in B2; §16 moved into B2; interim late-fee guard; per-category table | None |
-| F | Outage recovery; never claim an unrecorded exception | Agreed | §19 behaviour table, logging rule, weekly reconciliation | O-8 |
-| O-1 | Rework | Done | §14.3 | Hold period |
-| O-2 | Revise | Done | §17 | §17.4 rule |
+| F | Outage recovery; never claim an unrecorded exception | Agreed | §19 behaviour table, logging rule, weekly reconciliation | None (O-8 decided; implementation in B13) |
+| O-1 | Rework | Done | §14.3, §14.4 | None |
+| O-2 | Revise | Done | §17 | None |
 | O-3 | Accept, preserving Finance workflows | Recorded | Still allowed: create unpaid fees; edit unpaid fees; record manual Paid on an unpaid fee; waive or cancel an unpaid fee; create exemption records. Blocked until B10: edit, revert or delete a **Paid** fee | None |
 | O-4 | Accept | Recorded | ≤ 20 obligations | None |
 | O-5 | Accept | Recorded | CHANGED → HOLD (§15, §16) | None |
 | O-6 | No deployment route authorised | Recorded | All work on `mig-mov`; `main` unchanged | Future deployment approval |
-| O-7 | Accept direction subject to corrections | Recorded | This revision | Approval of revision 2 |
+| O-7 | Accept direction subject to corrections | Recorded | Revisions 2 and 3 | None |
+| O-8 | Read-only fetch-by-payment-ID + audited Finance approval | Recorded | §19.3; future B13 | None |
+| O-9 | 72-hour hold from the original ambiguous event | Recorded | §14.3 | None |
+| O-10 | No back-charging of pre-cutover hidden weeks | Recorded | §17.4 | None |
+| Rev 3-A | Query-based order uniqueness is not concurrency-safe | Agreed | §14.4 deterministic `ord_{orderId}` link document created in the linking transaction | None |
+| Rev 3-B | Renewal atomicity; `appUsers` handling; snapshot fee and duration | Agreed | §16 step 5 and `appUsers` table | None |
+| Rev 3-C | Resolve FIN-004 in B1, not B7 | Agreed | §20.2 | None |
 
-**None of the above authorises implementation.** B1 is ready for owner authorisation once the reviewer accepts revision 2.
+**None of the above authorises implementation.** Design review is closed with revision 3; B1 (§20) awaits explicit owner authorisation.
