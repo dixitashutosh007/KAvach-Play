@@ -120,7 +120,8 @@ export function PlayerMatchCard({
           className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-scarlet text-white text-[10px] font-black uppercase tracking-wider font-heading whitespace-nowrap shadow-xs"
         >
           <Sparkles className="w-3 h-3" aria-hidden="true" />
-          <span>Next Match</span>
+          {/* Icon-only on very narrow phones so the corner tab always fits. */}
+          <span className="max-[399px]:sr-only">Next Match</span>
         </span>
       )}
       {tournamentName && (
@@ -173,7 +174,7 @@ export function PlayerMatchCard({
       <MatchCardTopBar
         match={match}
         end={topBarEnd}
-        corner={isHome ? <MatchCornerTab match={match} className="md:hidden" /> : undefined}
+        corner={<MatchCornerTab match={match} className="md:hidden" />}
       />
 
       {isHome ? (
@@ -186,7 +187,7 @@ export function PlayerMatchCard({
           </div>
         </>
       ) : (
-        <MatchCardHeader match={match} ground={ground} />
+        <MatchCardHeader match={match} ground={ground} chipsInCornerOnMobile />
       )}
 
       {isExpanded && tournamentName && (

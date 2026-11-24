@@ -71,6 +71,7 @@ import { MatchPaymentPanel } from "./matches/MatchPaymentPanel";
 import { SquadPicker } from "./matches/SquadPicker";
 import { FeePlanApplyDialog } from "./matches/FeePlanApplyDialog";
 import { MatchDetailsSummary } from "./matches/MatchDetailsSummary";
+import { cricHeroesHref } from "@/lib/weekend-ops";
 import { FeeOverrideSheet } from "./matches/FeeOverrideSheet";
 import { MatchInfoCard } from "./matches/MatchInfoCard";
 import { SquadList, type SquadRow } from "./matches/SquadList";
@@ -1283,13 +1284,13 @@ export function MatchesTab({
                         </div>
                       )}
 
-                      {(match.matchUrl || match.streamingUrl) && (
+                      {(cricHeroesHref(match.matchUrl) || match.streamingUrl) && (
                         <div className="flex gap-4 mt-3 pt-3 border-t border-border">
-                          {match.matchUrl && (
+                          {cricHeroesHref(match.matchUrl) && (
                             <a
-                              href={match.matchUrl}
+                              href={cricHeroesHref(match.matchUrl)!}
                               target="_blank"
-                              rel="noreferrer"
+                              rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               className="text-accent text-xs font-bold hover:underline py-1 flex items-center gap-1.5"
                             >

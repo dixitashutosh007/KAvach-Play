@@ -9,6 +9,7 @@
  * tournament, the match fee with an Edit action (opens the existing Edit Match
  * wizard), and a ⋯ menu for archive. Horizontal on desktop, stacked on mobile.
  */
+import { cricHeroesHref } from "@/lib/weekend-ops";
 import React, { useEffect, useRef, useState } from "react";
 import { CalendarDays, Clock, ExternalLink, Lock, MapPin, MoreHorizontal, Pencil, Trophy } from "lucide-react";
 import type { Ground, Match } from "@/lib/types";
@@ -154,10 +155,10 @@ export function MatchInfoCard({
                 </span>
               )}
             </div>
-            {(match.matchUrl || match.streamingUrl) && (
+            {(cricHeroesHref(match.matchUrl) || match.streamingUrl) && (
               <div className="mt-1.5 flex flex-wrap gap-3">
-                {match.matchUrl && (
-                  <a href={match.matchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
+                {cricHeroesHref(match.matchUrl) && (
+                  <a href={cricHeroesHref(match.matchUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
                     <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Match Centre
                   </a>
                 )}

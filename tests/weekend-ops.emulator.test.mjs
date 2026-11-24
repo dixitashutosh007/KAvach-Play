@@ -367,11 +367,17 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
     assert.ok(due.json.pending.results >= 1);
     await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] });
     assert.equal((await ids(SUN_1930)).includes(mid), false); // cleared for every admin
-    const bf = await call(prompts.GET, { ...MA, now: SUN_1930, query: "?view=backfill" });
-    assert.ok(bf.json.items.some((i) => i.id === old));
-    assert.ok(bf.json.exceptions.some((e) => e.id === nofmt));
-    assert.equal((await call(prompts.GET, { ...FA, now: SUN_1930, query: "?view=backfill" })).status, 403);
-    assert.equal((await call(prompts.GET, { ...CA, now: SUN_1930, query: "?view=backfill" })).status, 403);
+    const bf = await call(prompts.GET, { ...MA, now: SUN_1930, query: "?view=history" });
+    assert.ok(bf.json.results.items.some((i) => i.id === old));
+    assert.ok(!bf.json.results.items.some((i) => i.id === mid)); // recorded → gone
+    assert.ok(!bf.json.results.exceptions.some((e) => e.id === nofmt)); // in the recurring prompt's window → not duplicated
+    // History sections follow roles: Finance sees fees only, Club Admin POTW only — never results.
+    const fin = await call(prompts.GET, { ...FA, now: SUN_1930, query: "?view=history" });
+    assert.deepEqual(Object.keys(fin.json).filter((k) => ["results", "fees", "potw"].includes(k)), ["fees"]);
+    const club = await call(prompts.GET, { ...CA, now: SUN_1930, query: "?view=history" });
+    assert.deepEqual(Object.keys(club.json).filter((k) => ["results", "fees", "potw"].includes(k)), ["potw"]);
+    assert.equal((await call(prompts.GET, { ...PL, now: SUN_1930, query: "?view=history" })).status, 403);
+    assert.equal((await call(prompts.GET, { ...MA, now: SUN_1930, query: "?view=other" })).status, 400);
   });
 
   it("WO-16 Player of the Weekend prompt: open Monday 08:00–Friday 23:59, pending until awarded", async () => {
@@ -419,5 +425,92 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
     // ₹0 is a recorded amount, not "missing".
     await call(ledger.POST, { ...SA, body: { action: "setGroundFee", matchId: abandoned, amount: 0 } });
     assert.equal((await feeIds()).includes(abandoned), false);
+  });
+
+  // ── Historical Data Completion ──
+
+  const hist = async (who, now = TUE_0900) => (await call(prompts.GET, { ...who, now, query: "?view=history" })).json;
+
+  it("WO-18 history: results and fees lists are persistent, role-scoped, disjoint from the recurring prompts, and shrink as records are completed by any admin", async () => {
+    const r1 = await seedMatch({ date: "2026-09-05" });
+    const r2 = await seedMatch({ date: "2026-09-12" });
+    const f1 = await seedMatch({ date: "2026-09-19", result: "KAvach Won" });
+    const recent = await seedMatch({ date: "2026-11-21" }); // in the recurring prompts
+    const h0 = await hist(SA);
+    for (const id of [r1, r2]) assert.ok(h0.results.items.some((i) => i.id === id));
+    assert.ok(h0.fees.items.some((i) => i.id === f1));
+    assert.ok(!h0.results.items.some((i) => i.id === recent));
+    assert.ok(!h0.fees.items.some((i) => i.id === recent));
+    assert.equal(h0.results.count, h0.results.items.length);
+    // Partial completion by a Match Admin; another admin (Super) sees the smaller list.
+    const save = await postResults({ ...MA, now: TUE_0900 }, { source: "backfill", results: [{ matchId: r1, result: "KAvach Lost" }] });
+    assert.equal(save.json.outcomes[0].status, "saved");
+    const h1 = await hist({ uid: "u_other_super", roles: "superAdmin" });
+    assert.equal(h1.results.count, h0.results.count - 1);
+    assert.ok(!h1.results.items.some((i) => i.id === r1));
+    assert.ok(h1.results.items.some((i) => i.id === r2)); // completed records don't reappear; others stay
+    // Fee via the existing ledger route by Finance → gone from history for everyone.
+    await call(ledger.POST, { ...FA, body: { action: "setGroundFee", matchId: f1, amount: 3500 } });
+    const h2 = await hist(SA);
+    assert.ok(!h2.fees.items.some((i) => i.id === f1));
+    assert.equal(h2.fees.count, h0.fees.count - 1);
+    assert.equal(h2.fees.count, h2.fees.items.length);
+    const audit = await audits(r1);
+    assert.match(audit[0].summary, /historical backfill/);
+  });
+
+  it("WO-19 history: Player of the Weekend lists past played weekends without an award; an explicit historical award creates badge + notification + audit, no banner; idempotent", async () => {
+    await db.recursiveDelete(db.collection("badges"));
+    await db.recursiveDelete(db.collection("posts"));
+    await db.recursiveDelete(db.collection("notifications"));
+    const played = await seedMatch({ date: "2026-10-10", result: "KAvach Won" }); // Sat 10 Oct
+    await seedMatch({ date: "2026-10-18", result: "Abandoned" }); // weekend 17 Oct: abandoned only
+    await seedMatch({ date: "2025-12-20", result: "KAvach Won" }); // before POTW_HISTORY_FROM default
+    const h0 = await hist(CA);
+    const ids = h0.potw.items.map((w) => w.weekendId);
+    assert.ok(ids.includes("2026-10-10"));
+    assert.ok(!ids.includes("2026-10-17"));
+    assert.ok(!ids.includes("2025-12-20"));
+    assert.ok(!ids.includes("2026-11-21")); // current weekend → recurring prompt
+    assert.ok(h0.potw.items.find((w) => w.weekendId === "2026-10-10").matches.some((m) => m.id === played));
+    const pid = await seedPlayer({ linkedUid: "uid_hist_potw" });
+    // Only the award authority; only eligible past weekends.
+    assert.equal((await call(potw.POST, { ...MA, now: TUE_0900, body: { source: "history", weekendId: "2026-10-10", playerId: pid } })).status, 403);
+    for (const bad of ["2026-10-17", "2026-10-11", "2025-12-20", "2026-11-21", "junk"]) {
+      assert.equal((await call(potw.POST, { ...CA, now: TUE_0900, body: { source: "history", weekendId: bad, playerId: pid } })).status, 400, bad);
+    }
+    const [a, b] = await Promise.all([
+      call(potw.POST, { ...CA, now: TUE_0900, body: { source: "history", weekendId: "2026-10-10", playerId: pid, message: "Five-for" } }),
+      call(potw.POST, { ...SA, now: TUE_0900, body: { source: "history", weekendId: "2026-10-10", playerId: pid } }),
+    ]);
+    assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+    const badge = (await db.doc("badges/potw_2026-10-10").get()).data();
+    assert.equal(badge.historical, true);
+    assert.equal(badge.weekendId, "2026-10-10");
+    assert.equal((await db.doc("posts/potw_2026-10-10").get()).exists, false); // no banner for an old weekend
+    assert.equal((await db.doc("notifications/potw_2026-10-10").get()).data().userId, "uid_hist_potw");
+    assert.equal((await audits("potw_2026-10-10")).length, 1);
+    const h1 = await hist({ uid: "u_club_2", roles: "clubAdmin" });
+    assert.ok(!h1.potw.items.some((w) => w.weekendId === "2026-10-10"));
+    assert.equal(h1.potw.count, h0.potw.count - 1);
+    // The current weekend's regular award is unaffected and still creates its banner.
+    const cur = await call(potw.POST, { ...CA, now: TUE_0900, body: { weekendId: "2026-11-21", playerId: pid } });
+    assert.equal(cur.status, 200);
+    assert.equal((await db.doc("posts/potw_2026-11-21").get()).exists, true);
+  });
+
+  it("WO-20 results in one request are saved concurrently: all independent rows saved and audited; duplicates rejected; order kept", async () => {
+    const ids = [];
+    for (let i = 0; i < 6; i++) ids.push(await seedMatch({ date: "2026-09-26" }));
+    const r = await postResults({ ...MA, now: TUE_0900 }, {
+      source: "backfill",
+      results: [...ids.map((matchId, i) => ({ matchId, result: i % 2 ? "KAvach Won" : "Tie" })), { matchId: ids[0], result: "KAvach Lost" }],
+    });
+    assert.deepEqual(r.json.outcomes.map((o) => o.matchId), [...ids, ids[0]]);
+    assert.deepEqual(r.json.outcomes.map((o) => o.status), ["saved", "saved", "saved", "saved", "saved", "saved", "invalid"]);
+    for (const [i, id] of ids.entries()) {
+      assert.equal((await match(id)).result, i % 2 ? "KAvach Won" : "Tie");
+      assert.equal((await audits(id)).length, 1);
+    }
   });
 });

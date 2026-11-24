@@ -224,6 +224,101 @@ function sortByStart<T extends MatchLike>(list: T[]): T[] {
   return list.slice().sort((a, b) => (istToMs(a.date, a.time) ?? 0) - (istToMs(b.date, b.time) ?? 0));
 }
 
+// ── Historical Data Completion ──────────────────────────────────────────────
+//
+// Persistent backfill lists, separate from the recurring prompts: an item is in
+// exactly one of (recurring prompt, history). Pending state is the data itself,
+// so the lists survive refreshes, sessions and admin accounts until completed.
+
+/** Result values that mean the match was played (Player of the Weekend eligible). */
+export const PLAYED_RESULTS: readonly string[] = ["KAvach Won", "KAvach Lost", "Tie", "Draw"];
+
+/** Historical results: every eligible match without a result that is NOT in the current recurring prompt. */
+export function resultsHistory(matches: readonly MatchLike[], nowMs: number, mode: WeekendOpsMode) {
+  const recurring = resultsPrompt(matches, nowMs, mode);
+  const inPrompt = new Set(recurring.items.map((m) => m.id));
+  const promptExceptions = new Set(recurring.exceptions.map((e) => e.id));
+  const items = resultsBackfill(matches, nowMs).filter((m) => !inPrompt.has(m.id));
+  const exceptions: (MatchLike & { reason: TimingIssue })[] = [];
+  for (const m of matches) {
+    if (hasResult(m) || m.isArchived || promptExceptions.has(m.id)) continue;
+    const e = estimatedEnd(m);
+    if ("issue" in e) exceptions.push({ ...m, reason: e.issue });
+  }
+  return { items, exceptions: sortByStart(exceptions) };
+}
+
+/** A concluded match (estimated end passed; date passed when the end can't be estimated). */
+function isConcluded(m: MatchLike, nowMs: number): boolean {
+  const end = estimatedEnd(m);
+  if ("ms" in end) return end.ms <= nowMs;
+  const day = istToMs(m.date);
+  return day !== null && day + DAY <= nowMs;
+}
+
+/** Historical actual fees: concluded, open-finance matches with no recorded fee, outside the current recurring prompt. */
+export function feesHistory(matches: readonly MatchLike[], nowMs: number, mode: WeekendOpsMode) {
+  const inPrompt = new Set(feesPrompt(matches, nowMs, mode).items.map((m) => m.id));
+  return sortByStart(
+    matches.filter(
+      (m) =>
+        !inPrompt.has(m.id) &&
+        !m.isArchived &&
+        m.financeStatus !== "closed" &&
+        typeof m.groundFeePaidAmount !== "number" &&
+        isConcluded(m, nowMs),
+    ),
+  );
+}
+
+/** Saturday (YYYY-MM-DD) of the weekend containing a Saturday or Sunday date, else null. */
+export function weekendIdOf(date: string | undefined): string | null {
+  const ms = istToMs(date);
+  if (ms === null) return null;
+  const dow = istParts(ms).dow;
+  if (dow === 6) return istDate(ms);
+  if (dow === 0) return istDate(ms - DAY);
+  return null;
+}
+
+/**
+ * Default start of the Player of the Weekend history (server env
+ * POTW_HISTORY_FROM, YYYY-MM-DD, overrides). Owner to confirm.
+ */
+export const POTW_HISTORY_FROM_DEFAULT = "2026-01-01";
+export function potwHistoryFrom(env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {}): string {
+  const v = env.POTW_HISTORY_FROM;
+  return typeof v === "string" && istToMs(v) !== null ? v : POTW_HISTORY_FROM_DEFAULT;
+}
+
+/**
+ * Historical Player of the Weekend: past weekends (from `fromDate`) with at
+ * least one played match and no award, excluding the weekend whose regular
+ * award window is open now. Nothing is ever awarded automatically.
+ */
+export function potwHistory(matches: readonly MatchLike[], awardedWeekendIds: ReadonlySet<string>, nowMs: number, fromDate: string) {
+  const open = potwWindow(nowMs);
+  const currentWeekend = open.open ? open.weekendId : null;
+  const byWeekend = new Map<string, MatchLike[]>();
+  for (const m of matches) {
+    if (m.isArchived || !PLAYED_RESULTS.includes(String(m.result))) continue;
+    const wid = weekendIdOf(m.date);
+    if (!wid || wid < fromDate || wid === currentWeekend || awardedWeekendIds.has(wid)) continue;
+    const sunEnd = istToMs(wid)! + 2 * DAY;
+    if (sunEnd > nowMs) continue; // weekend not over yet
+    byWeekend.set(wid, [...(byWeekend.get(wid) || []), m]);
+  }
+  return [...byWeekend.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([weekendId, list]) => ({ weekendId, label: weekendLabel(weekendId), matches: sortByStart(list) }));
+}
+
+/** Server check for a historical award request: same rules as potwHistory for one weekend. */
+export function isHistoricalPotwWeekend(weekendId: string, weekendMatches: readonly MatchLike[], nowMs: number, fromDate: string): boolean {
+  if (weekendIdOf(weekendId) !== weekendId) return false; // must be a Saturday
+  return potwHistory(weekendMatches, new Set(), nowMs, fromDate).some((w) => w.weekendId === weekendId);
+}
+
 // ── Player of the Weekend ───────────────────────────────────────────────────
 
 export const POTW_BADGE_TYPE = "player_of_weekend";
@@ -266,16 +361,46 @@ export function activePotwPost<T extends { id: string; kind?: string; createdAt?
 
 // ── CricHeroes link ─────────────────────────────────────────────────────────
 
-/** A safe https CricHeroes match URL, or null (link is hidden). */
+/**
+ * Safe destination for `matches.matchUrl` (the CricHeroes match URL), or null
+ * (the opponent name then renders as plain text).
+ *
+ * Any https host is accepted: CricHeroes share links use several domains, and
+ * the previous cricheroes.in/.com-only check silently hid valid links. Safety:
+ * only http(s) schemes (http is upgraded to https); a bare "host/path" gets
+ * https://; javascript:, data:, mailto:, protocol-relative and credentialed
+ * URLs, hosts without a dot and over-long values are rejected.
+ */
 export function cricHeroesHref(url: unknown): string | null {
-  if (typeof url !== "string" || !url.trim()) return null;
+  if (typeof url !== "string") return null;
+  let raw = url.trim();
+  if (!raw || raw.length > 2048 || /\s/.test(raw) || raw.startsWith("//")) return null;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(raw)?.[1]?.toLowerCase();
+  if (scheme) {
+    if (scheme === "http") raw = "https:" + raw.slice(5);
+    else if (scheme !== "https") {
+      // "cricheroes.in:443/..." style host:port without a scheme
+      if (!/^[a-z0-9.-]+\.[a-z]{2,}:\d+(\/|$)/i.test(raw)) return null;
+      raw = `https://${raw}`;
+    }
+  } else {
+    raw = `https://${raw}`;
+  }
   try {
-    const u = new URL(url.trim());
-    if (u.protocol !== "https:") return null;
-    const host = u.hostname.toLowerCase();
-    if (!(host === "cricheroes.in" || host === "cricheroes.com" || host.endsWith(".cricheroes.in") || host.endsWith(".cricheroes.com"))) return null;
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || u.username || u.password) return null;
+    if (!u.hostname.includes(".") || u.hostname.endsWith(".")) return null;
     return u.toString();
   } catch {
     return null;
+  }
+}
+
+/** Short host label for link titles, e.g. "cricheroes.com". */
+export function linkHostLabel(href: string): string {
+  try {
+    return new URL(href).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
   }
 }

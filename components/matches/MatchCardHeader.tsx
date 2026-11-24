@@ -30,35 +30,69 @@ import {
 } from "@/lib/match-card-format";
 import { JerseyInfographic } from "./JerseyInfographic";
 import { getMatchResultDisplay, MATCH_RESULT_STAMP_CLASSES } from "./matchResult";
-import { cricHeroesHref } from "@/lib/weekend-ops";
+import { cricHeroesHref, linkHostLabel } from "@/lib/weekend-ops";
 
 // ── Small presentational pieces ─────────────────────────────────────────────
 
+/** The small "vs" label above the opponent name. */
+export function MatchVsLabel() {
+  return <span className="block text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>;
+}
+
 /**
- * The "vs" label row above the opponent. When the match has a valid https
- * CricHeroes URL (`matches.matchUrl`), a "View on CricHeroes ↗" link sits on
- * the same line — no extra row, so the card height is unchanged.
+ * Opponent name — the CricHeroes link of every match card and detail header.
+ *
+ * With a safe `matches.matchUrl` the whole name (plus a small external-link
+ * icon) is one link that opens the match on CricHeroes in a new tab; the click
+ * never reaches the card's own navigation. Without a valid URL the name is
+ * plain text. Same font, size and line clamp either way, so the card's layout
+ * and height do not change.
  */
-export function MatchVsLabel({ match }: { match: Match }) {
+export function MatchOpponentName({
+  match,
+  as: Tag = "h3",
+  className,
+  prefix = "",
+  fallback = "Opponent TBC",
+}: {
+  match: Match;
+  as?: "h1" | "h2" | "h3";
+  /** Heading classes WITHOUT a line-clamp (the clamp is applied to the name). */
+  className: string;
+  /** e.g. "vs " for detail headers that print "vs Opponent". */
+  prefix?: string;
+  fallback?: string;
+}) {
+  const name = match.opponent?.trim() || fallback;
   const href = cricHeroesHref(match.matchUrl);
+  if (!href) {
+    return (
+      <Tag className={`${className} line-clamp-2`} title={name} data-testid={`match-opponent-${match.id}`}>
+        {prefix}
+        {name}
+      </Tag>
+    );
+  }
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
-    <span className="flex w-full items-center justify-between gap-2 min-w-0 leading-none">
-      <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted leading-none">vs</span>
-      {href && (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          data-testid={`cricheroes-link-${match.id}`}
-          aria-label={`View ${match.opponent || "this match"} on CricHeroes (opens in a new tab)`}
-          className="inline-flex items-center gap-0.5 shrink-0 text-[11px] font-bold text-scarlet hover:text-deep-wine underline decoration-scarlet/40 underline-offset-2 rounded leading-none py-1 -my-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
-        >
-          View on CricHeroes
-          <ExternalLink className="w-3 h-3" aria-hidden="true" />
-        </a>
-      )}
-    </span>
+    <Tag className={className} data-testid={`match-opponent-${match.id}`}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={stop}
+        data-testid={`cricheroes-link-${match.id}`}
+        title={`Open on ${linkHostLabel(href) || "CricHeroes"} (new tab)`}
+        aria-label={`${prefix}${name} — open match on CricHeroes (opens in a new tab)`}
+        className="group/opp inline-flex max-w-full items-start gap-1 rounded-md text-inherit -mx-0.5 px-0.5 hover:text-scarlet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+      >
+        <span className="min-w-0 break-words line-clamp-2 underline decoration-scarlet/40 decoration-2 underline-offset-4 group-hover/opp:decoration-scarlet">
+          {prefix}
+          {name}
+        </span>
+        <ExternalLink className="shrink-0 w-[0.7em] h-[0.7em] mt-[0.2em] text-scarlet" strokeWidth={2.5} aria-hidden="true" data-testid={`cricheroes-icon-${match.id}`} />
+      </a>
+    </Tag>
   );
 }
 
@@ -167,10 +201,10 @@ export function MatchCategoryRibbon({ category, matchId }: { category: MatchCate
     <span
       data-testid={`category-ribbon-${matchId}`}
       data-category={category.toLowerCase()}
-      className={`inline-flex bg-muted-gold pr-[3px] ${RIBBON_CLIP}`}
+      className={`inline-flex min-w-0 bg-muted-gold pr-[3px] ${RIBBON_CLIP}`}
     >
       <span
-        className={`inline-flex items-center gap-1.5 pl-3 pr-7 py-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-white font-heading ${RIBBON_CLIP} ${
+        className={`inline-flex min-w-0 items-center gap-1.5 pl-3 pr-7 max-[399px]:pr-5 max-[399px]:tracking-[0.04em] py-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-white font-heading ${RIBBON_CLIP} ${
           isTournament ? "bg-gradient-to-r from-violet-800 to-violet-600" : "bg-gradient-to-r from-teal-700 to-teal-500"
         }`}
       >
@@ -179,7 +213,7 @@ export function MatchCategoryRibbon({ category, matchId }: { category: MatchCate
         ) : (
           <StumpsIcon className="w-3.5 h-3.5 shrink-0 text-teal-50" />
         )}
-        <span>{isTournament ? "Tournament" : "Practice"}</span>
+        <span className="truncate">{isTournament ? "Tournament" : "Practice"}</span>
       </span>
     </span>
   );
@@ -221,7 +255,7 @@ export function MatchCardTopBar({
   const category = getMatchCategory(match.matchType);
   if (!category && !end && !corner) return null;
   return (
-    <div className="flex items-start justify-between gap-2 -mt-3 -ml-3 sm:-mt-4 sm:-ml-4 mb-1">
+    <div className="flex items-start justify-between gap-2 -mt-3 -ml-3 sm:-mt-4 sm:-ml-4 mb-1 min-w-0">
       {category ? <MatchCategoryRibbon category={category} matchId={match.id} /> : <span />}
       {(end || corner) && (
         <div className="flex items-start self-stretch shrink-0 gap-1.5">
@@ -279,9 +313,15 @@ export interface MatchCardHeaderProps {
    * "inline": compact stamp right-aligned on the opponent line (no extra row).
    */
   resultPlacement?: "row" | "inline";
+  /**
+   * Below md, format + jersey are shown in the card's top-right corner tab
+   * (MatchCornerTab) instead of the identity column — the Player Matches list
+   * on phones. Desktop layout is unchanged.
+   */
+  chipsInCornerOnMobile?: boolean;
 }
 
-export function MatchCardHeader({ match, ground, meta, hideResult = false, resultPlacement = "row" }: MatchCardHeaderProps) {
+export function MatchCardHeader({ match, ground, meta, hideResult = false, resultPlacement = "row", chipsInCornerOnMobile = false }: MatchCardHeaderProps) {
   const venueLink = getVenueMapsLink(ground);
   const venueName = ground?.name?.trim() || "";
   const hasResult = !hideResult && getMatchResultDisplay(match.result) !== null;
@@ -294,16 +334,18 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false, resul
       <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,auto)] items-center gap-3 @sm:gap-4">
         {/* Identity */}
         <div className="min-w-0 flex flex-col gap-1.5" data-testid={`match-card-identity-${match.id}`}>
-          <div className="flex items-center gap-2" data-testid={`match-card-title-row-${match.id}`}>
+          <div className={`flex items-center gap-2 ${chipsInCornerOnMobile ? "max-md:hidden" : ""}`} data-testid={`match-card-title-row-${match.id}`}>
             <MatchFormatBadge format={match.format} matchId={match.id} />
             {match.jerseyColor && <JerseyInfographic color={match.jerseyColor} size="xl" />}
           </div>
           <div className="min-w-0">
-            <MatchVsLabel match={match} />{" "}
+            <MatchVsLabel />{" "}
             <div className="mt-0.5 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
-              <h3 className="min-w-0 flex-1 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
-                {match.opponent}
-              </h3>
+              <MatchOpponentName
+                match={match}
+                fallback=""
+                className="min-w-0 flex-1 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words"
+              />
               {inlineResult && <MatchResultStamp match={match} compact className="mt-1 @sm:mt-1.5" />}
             </div>
           </div>
@@ -406,13 +448,8 @@ export function MatchCardCompactBody({ match, ground, hideResult = false }: Matc
     >
       {/* Left: opponent */}
       <div className="min-w-0 overflow-hidden flex flex-col justify-center gap-1" data-testid={`match-card-compact-left-${match.id}`}>
-        <MatchVsLabel match={match} />
-        <h3
-          className="text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
-          title={opponent}
-        >
-          {opponent}
-        </h3>
+        <MatchVsLabel />
+        <MatchOpponentName match={match} className="text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words" />
         {hasResult && (
           <div className="flex">
             <MatchResultStamp match={match} />
@@ -502,15 +539,13 @@ export function MatchCardStackedBody({
   return (
     <div className="flex flex-col gap-3 min-w-0" data-testid={`match-card-stacked-${match.id}`}>
       <div className="min-w-0">
-        <MatchVsLabel match={match} />
+        <MatchVsLabel />
         {/* Opponent left, result right on the same line: no extra row. */}
         <div className="mt-1 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
-          <h3
-            className="min-w-0 flex-1 text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2"
-            title={opponent}
-          >
-            {opponent}
-          </h3>
+          <MatchOpponentName
+            match={match}
+            className="min-w-0 flex-1 text-lg font-black font-heading text-text-primary tracking-tight leading-tight break-words"
+          />
           {hasResult && <MatchResultStamp match={match} compact className="mt-1" />}
         </div>
         {tournamentName && (

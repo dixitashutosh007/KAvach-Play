@@ -18,6 +18,8 @@ import {
 import type { Match, MatchPayment, Ground, Player } from "@/lib/types";
 import { JerseyInfographic, getJerseyDetails } from "./JerseyInfographic";
 import { getMatchResultDisplay } from "./matchResult";
+import { MatchOpponentName } from "./MatchCardHeader";
+import { cricHeroesHref } from "@/lib/weekend-ops";
 import { AvailabilityButtons, toAvailabilityChoice } from "./AvailabilityButtons";
 import {
   PersonalPaymentStatusResult,
@@ -105,6 +107,7 @@ export function PlayerMatchDetailModal({
     });
 
   const resultDisplay = getMatchResultDisplay(match.result);
+  const scorecardHref = cricHeroesHref(match.matchUrl);
 
   // Handle Share Match
   const handleShare = () => {
@@ -181,9 +184,12 @@ export function PlayerMatchDetailModal({
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black font-heading text-text-primary tracking-tight">
-              vs {match.opponent}
-            </h1>
+            <MatchOpponentName
+              match={match}
+              as="h1"
+              prefix="vs "
+              className="text-xl sm:text-2xl font-black font-heading text-text-primary tracking-tight"
+            />
           </div>
 
           {/* Match Result Banner (if completed or abandoned) */}
@@ -274,11 +280,11 @@ export function PlayerMatchDetailModal({
             )}
 
             {/* External Links: CricHeroes / Streaming */}
-            {(match.matchUrl || match.streamingUrl) && (
+            {(scorecardHref || match.streamingUrl) && (
               <div className="pt-3 border-t border-border/60 flex flex-wrap gap-2">
-                {match.matchUrl && (
+                {scorecardHref && (
                   <a
-                    href={match.matchUrl}
+                    href={scorecardHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border text-xs font-bold text-text-primary hover:text-scarlet min-h-[44px]"

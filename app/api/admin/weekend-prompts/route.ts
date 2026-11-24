@@ -9,21 +9,27 @@
  *   results — Super Admin / Match Admin   (Sunday 19:00 IST)
  *   potw    — Super Admin / Club Admin    (Monday 08:00 – Friday 23:59 IST)
  *   fees    — Super Admin / Finance Admin (Tuesday 08:00 IST)
- * `?view=backfill` (results roles only) returns the explicit historical
- * backfill queue — every eligible match without a result, any age — plus
- * records whose start/format is missing (exceptions; never guessed).
+ * `?view=history` returns the persistent Historical Data Completion lists and
+ * counts for the caller's roles — everything pending that is NOT in the current
+ * recurring prompt (an item is in exactly one of the two):
+ *   results — eligible matches with no result (+ start/format exceptions)
+ *   fees    — concluded, open-finance matches with no actual fee
+ *   potw    — past weekends (from POTW_HISTORY_FROM) with a played match and no award
+ * Nothing is filled in automatically; completion goes through the same routes.
  */
 import { NextResponse } from "next/server.js";
 import { requireRole, type AppRole } from "../../../../lib/server-auth.ts";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
 import {
-  estimatedEnd,
+  feesHistory,
   feesPrompt,
-  hasResult,
   istDate,
+  POTW_BADGE_TYPE,
+  potwHistory,
+  potwHistoryFrom,
   potwIds,
   potwWindow,
-  resultsBackfill,
+  resultsHistory,
   resultsPrompt,
   weekendLabel,
   weekendOpsMode,
@@ -60,18 +66,34 @@ export async function GET(req: Request) {
   const view = new URL(req.url).searchParams.get("view");
 
   try {
-    if (view === "backfill") {
-      if (!canResults) return NextResponse.json({ error: "Only Super Admins and Match Admins can record results." }, { status: 403 });
-      const snap = await db.collection("matches").get();
+    if (view === "history") {
+      // Full read of matches (and award ids) — only when an admin opens Match Center.
+      const [snap, badgeSnap, postSnap] = await Promise.all([
+        db.collection("matches").get(),
+        canPotw ? db.collection("badges").where("badgeType", "==", POTW_BADGE_TYPE).get() : Promise.resolve(null),
+        canPotw ? db.collection("posts").where("kind", "==", "potw").get() : Promise.resolve(null),
+      ]);
       const all = snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })) as MatchLike[];
-      const items = resultsBackfill(all, now);
-      const exceptions = all
-        .filter((m) => !hasResult(m) && !m.isArchived)
-        .map((m) => ({ m, e: estimatedEnd(m) }))
-        .filter((x): x is { m: MatchLike; e: { issue: any } } => "issue" in x.e)
-        .map(({ m, e }) => ({ ...summary(m), reason: e.issue }));
-      return NextResponse.json({ now, mode, items: items.map(summary), exceptions });
+      const out: Record<string, unknown> = { now, mode };
+      if (canResults) {
+        const r = resultsHistory(all, now, mode);
+        out.results = { count: r.items.length, items: r.items.map(summary), exceptions: r.exceptions.map((m) => ({ ...summary(m), reason: m.reason })) };
+      }
+      if (canFees) {
+        const f = feesHistory(all, now, mode);
+        out.fees = { count: f.length, items: f.map((m: any) => ({ ...summary(m), fee: m.fee ?? null })) };
+      }
+      if (canPotw) {
+        const awarded = new Set<string>();
+        badgeSnap!.docs.forEach((d) => d.data()?.weekendId && awarded.add(String(d.data().weekendId)));
+        postSnap!.docs.forEach((d) => d.data()?.potw?.weekendId && awarded.add(String(d.data().potw.weekendId)));
+        const from = potwHistoryFrom();
+        const w = potwHistory(all, awarded, now, from);
+        out.potw = { count: w.length, from, items: w.map((x) => ({ weekendId: x.weekendId, label: x.label, matches: x.matches.map(summary) })) };
+      }
+      return NextResponse.json(out);
     }
+    if (view) return NextResponse.json({ error: "Unknown view." }, { status: 400 });
 
     // One bounded read covers every section: matches dated within the widest look-back.
     const since = istDate(now - 22 * DAY);

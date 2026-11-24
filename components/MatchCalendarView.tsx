@@ -1,5 +1,6 @@
 "use client";
 
+import { cricHeroesHref } from "@/lib/weekend-ops";
 import { useState, useEffect, useMemo, FC } from "react";
 import {
   Calendar,
@@ -405,9 +406,9 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                                   <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                               </div>
-                                              {m.matchUrl && (
+                                              {cricHeroesHref(m.matchUrl) && (
                                                 <a
-                                                  href={m.matchUrl}
+                                                  href={cricHeroesHref(m.matchUrl)!}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
                                                   className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-text-primary transition uppercase font-bold tracking-wider"
@@ -595,9 +596,9 @@ export const MatchCalendarView: FC<MatchCalendarViewProps> = ({
                                         <Trash2 className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
-                                    {m.matchUrl && (
+                                    {cricHeroesHref(m.matchUrl) && (
                                       <a
-                                        href={m.matchUrl}
+                                        href={cricHeroesHref(m.matchUrl)!}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-500 hover:text-text-primary transition uppercase font-bold tracking-wider"

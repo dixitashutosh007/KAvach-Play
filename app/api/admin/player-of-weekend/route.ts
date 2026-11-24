@@ -4,9 +4,13 @@
  * Auth: Club Admin or Super Admin — the existing badge-award authority
  * (Firestore rules `badges` create: isClubAdmin()). Players cannot reach it.
  *
- * Body: { weekendId, playerId, message? }
- *   weekendId must be the weekend whose award window is open now
- *   (Monday 08:00 → Friday 23:59 IST); past weekends cannot be awarded here.
+ * Body: { weekendId, playerId, message?, source?: "prompt" | "history" }
+ *   prompt (default): weekendId must be the weekend whose award window is open
+ *     now (Monday 08:00 → Friday 23:59 IST).
+ *   history: an explicit Historical Data Completion decision for a past
+ *     weekend (on/after POTW_HISTORY_FROM, at least one played match, not the
+ *     open weekend). Creates the badge, notification and audit entry but NO Home
+ *     banner post — an old award must not displace the current banner.
  *   message: optional, ≤ 4 lines / 120 characters.
  *
  * One transaction with deterministic ids (potw_<weekendId>): the badge, the
@@ -21,7 +25,16 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { requireRole } from "../../../../lib/server-auth.ts";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
 import { actorNameFor, writeServerAudit } from "../../../../lib/server-audit.ts";
-import { POTW_BADGE_TYPE, potwIds, potwWindow, validatePotwMessage, weekendLabel } from "../../../../lib/weekend-ops.ts";
+import {
+  isHistoricalPotwWeekend,
+  POTW_BADGE_TYPE,
+  potwHistoryFrom,
+  potwIds,
+  potwWindow,
+  validatePotwMessage,
+  weekendLabel,
+  type MatchLike,
+} from "../../../../lib/weekend-ops.ts";
 import { isSafeId, POTW_AWARD_ROLES, serverNow } from "../../../../lib/weekend-ops-server.ts";
 
 const NOTIFICATION_TTL_DAYS = 90;
@@ -50,20 +63,38 @@ export async function POST(req: Request) {
   const now = serverNow(req);
 
   try {
-    const window = potwWindow(now);
-    if (!window.open) throw new RequestError(409, "The Player of the Weekend window is closed (Monday 8:00 AM – Friday 11:59 PM IST).");
-    if (body?.weekendId !== window.weekendId) throw new RequestError(400, "Awards can only be granted for the current weekend.");
+    const historical = body?.source === "history";
     if (!isSafeId(body?.playerId)) throw new RequestError(400, "Select a player.");
     const msg = validatePotwMessage(body?.message);
     if (!msg.ok) throw new RequestError(400, msg.error);
-
     const playerId: string = body.playerId;
-    const weekendId = window.weekendId;
+    let weekendId: string;
+    if (historical) {
+      weekendId = typeof body?.weekendId === "string" ? body.weekendId : "";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(weekendId)) throw new RequestError(400, "Choose a weekend.");
+    } else {
+      const window = potwWindow(now);
+      if (!window.open) throw new RequestError(409, "The Player of the Weekend window is closed (Monday 8:00 AM – Friday 11:59 PM IST).");
+      if (body?.weekendId !== window.weekendId) throw new RequestError(400, "Awards can only be granted for the current weekend.");
+      weekendId = window.weekendId;
+    }
     const ids = potwIds(weekendId);
-    const actorName = await actorNameFor(db, guard.uid);
 
-    // Linked login (appUsers.playerId is the authoritative link; never assume uid == playerId).
-    const links = await db.collection("appUsers").where("playerId", "==", playerId).limit(2).get();
+    // Independent reads in parallel: actor name, the linked login
+    // (appUsers.playerId is the authoritative link; never assume uid == playerId)
+    // and, for a historical award, that weekend's matches.
+    const sunday = new Date(Date.parse(`${weekendId}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const [actorName, links, weekendSnap] = await Promise.all([
+      actorNameFor(db, guard.uid),
+      db.collection("appUsers").where("playerId", "==", playerId).limit(2).get(),
+      historical ? db.collection("matches").where("date", ">=", weekendId).where("date", "<=", sunday).get() : Promise.resolve(null),
+    ]);
+    if (historical) {
+      const wm = weekendSnap!.docs.map((d) => ({ ...(d.data() as any), id: d.id })) as MatchLike[];
+      if (!isHistoricalPotwWeekend(weekendId, wm, now, potwHistoryFrom())) {
+        throw new RequestError(400, "This weekend is not open for a historical award (no played match, too early, or the current weekend).");
+      }
+    }
     const recipientUid = links.size === 1 ? links.docs[0].id : null;
 
     const result = await db.runTransaction(async (tx) => {
@@ -91,13 +122,14 @@ export async function POST(req: Request) {
         playerName,
         badgeType: POTW_BADGE_TYPE,
         weekendId,
+        ...(historical ? { historical: true } : {}),
         ...(msg.value ? { note: msg.value } : {}),
         awardedBy: guard.uid,
         awardedByName: actorName,
         awardedAt: FieldValue.serverTimestamp(),
         redeemed: false,
       });
-      tx.create(postRef, {
+      if (!historical) tx.create(postRef, {
         id: ids.post,
         kind: "potw",
         title: "Player of the Weekend",
@@ -136,11 +168,11 @@ export async function POST(req: Request) {
             { field: "playerId", newValue: playerId },
             { field: "badgeType", newValue: POTW_BADGE_TYPE },
           ],
-          summary: `Player of the Weekend (${label}) awarded to ${playerName}.${recipientUid ? "" : " No linked login — no notification sent."}`,
+          summary: `Player of the Weekend (${label}) awarded to ${playerName}${historical ? " (historical data completion; no banner)" : ""}.${recipientUid ? "" : " No linked login — no notification sent."}`,
         },
         tx,
       );
-      return { playerId, playerName, weekendId, notified: Boolean(recipientUid) };
+      return { playerId, playerName, weekendId, historical, notified: Boolean(recipientUid) };
     });
 
     return NextResponse.json({ ok: true, award: result });

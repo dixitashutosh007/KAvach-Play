@@ -86,27 +86,42 @@ describe("Player of the Weekend banner slide", () => {
   });
 });
 
-describe("CricHeroes link in the vs row", () => {
-  const html = (matchUrl) => ReactDOMServer.renderToStaticMarkup(React.createElement(MatchVsLabel, { match: { id: "m1", opponent: "Delhi", matchUrl } }));
-  it("renders a new-tab, noopener link for a valid https CricHeroes URL on the same row as vs", () => {
+describe("CricHeroes link on the opponent name", () => {
+  const { MatchOpponentName } = load("components/matches/MatchCardHeader.tsx");
+  const html = (matchUrl, extra = {}) =>
+    ReactDOMServer.renderToStaticMarkup(React.createElement(MatchOpponentName, { match: { id: "m1", opponent: "Delhi Challengers", matchUrl }, className: "text-lg", ...extra }));
+  it("makes the opponent name (with an external-link icon) one new-tab, noopener link", () => {
     const h = html("https://cricheroes.com/scorecard/1/x");
-    assert.match(h, /href="https:\/\/cricheroes\.com\/scorecard\/1\/x"/);
-    assert.match(h, /target="_blank"/);
-    assert.match(h, /rel="noopener noreferrer"/);
-    assert.match(h, /View on CricHeroes/);
-    assert.match(h, /^<span class="flex w-full items-center justify-between/);
+    assert.match(h, /<a href="https:\/\/cricheroes\.com\/scorecard\/1\/x" target="_blank" rel="noopener noreferrer"/);
+    assert.match(h, /Delhi Challengers<\/span><svg/); // name then icon inside the link
+    assert.match(h, /data-testid="cricheroes-icon-m1"/);
+    assert.match(h, /aria-label="Delhi Challengers — open match on CricHeroes \(opens in a new tab\)"/);
+    assert.match(h, /line-clamp-2/); // same clamp as before
   });
-  it("renders no link for missing, http, javascript or look-alike hosts", () => {
-    for (const u of [undefined, "", "http://cricheroes.com/x", "javascript:alert(1)", "https://cricheroes.com.evil.io/x"]) {
-      assert.doesNotMatch(html(u), /<a /, String(u));
+  it("renders plain text (no link, no icon) without a safe URL", () => {
+    for (const u of [undefined, "", "javascript:alert(1)", "data:text/html,x", "//evil.com"]) {
+      const h = html(u);
+      assert.doesNotMatch(h, /<a /, String(u));
+      assert.match(h, /<h3 class="text-lg line-clamp-2"[^>]*>Delhi Challengers<\/h3>/);
     }
   });
-  it("all three card bodies (Player Home compact, Player/Admin header, Admin stacked) use the shared label", () => {
+  it("detail headers can print the vs prefix", () => {
+    assert.match(html("https://cricheroes.com/x", { prefix: "vs ", as: "h1" }), /<h1[^>]*><a [^>]*>.*vs Delhi Challengers/);
+  });
+  it("every match card body and both detail views use the shared component; no raw matchUrl hrefs remain", () => {
     const s = fs.readFileSync("components/matches/MatchCardHeader.tsx", "utf-8");
-    assert.equal((s.match(/<MatchVsLabel match=\{match\} \/>/g) || []).length, 3);
-    // The header keeps the space between "vs" and the opponent ("vs Delhi Challengers").
-    assert.match(s, /<MatchVsLabel match=\{match\} \/>\{" "\}\s*<div className="mt-0\.5 flex items-start gap-2 min-w-0"/);
-    assert.doesNotMatch(s, />vs<\/span>\{" "\}/);
+    assert.equal((s.match(/<MatchOpponentName/g) || []).length, 3);
+    assert.match(fs.readFileSync("components/matches/PlayerMatchDetailModal.tsx", "utf-8"), /<MatchOpponentName[\s\S]*?as="h1"/);
+    assert.match(fs.readFileSync("components/matches/MatchDetailsSummary.tsx", "utf-8"), /<MatchOpponentName[\s\S]*?as="h2"/);
+    for (const f of ["components/MatchesTab.tsx", "components/MatchCalendarView.tsx", "components/matches/MatchInfoCard.tsx", "components/matches/PlayerMatchDetailModal.tsx"]) {
+      assert.doesNotMatch(fs.readFileSync(f, "utf-8"), /href=\{(match|m|selectedMatch)\.matchUrl\}/, f);
+    }
+  });
+  it("Player Matches cards keep format + jersey in the top-right corner on phones", () => {
+    const card = fs.readFileSync("components/matches/PlayerMatchCard.tsx", "utf-8");
+    assert.match(card, /corner=\{<MatchCornerTab match=\{match\} className="md:hidden" \/>\}/);
+    assert.match(card, /<MatchCardHeader match=\{match\} ground=\{ground\} chipsInCornerOnMobile \/>/);
+    assert.match(fs.readFileSync("components/matches/MatchCardHeader.tsx", "utf-8"), /chipsInCornerOnMobile \? "max-md:hidden" : ""/);
   });
 });
 
@@ -138,5 +153,12 @@ describe("Admin-persona-only prompts", () => {
   });
   it("actual fee uses the existing Finance ledger route; no new fee field", () => {
     assert.match(comp, /postJson\("\/api\/finance\/match-ledger", \{ action: "setGroundFee", matchId, amount: Number\(v\), reason: "" \}\)/);
+  });
+  it("save: in-flight guard, Saving state, close only after server success, values kept on failure", () => {
+    assert.match(comp, /if \(inFlight\.current\) return;/);
+    assert.match(comp, /\{saving \? "Saving…" : failed \? "Retry" : label\}/);
+    assert.match(comp, /if \(!attention\.length && source === "prompt"\) onClose\(\);/);
+    assert.match(comp, /if \(source === "prompt"\) return onClose\(\);/);
+    assert.match(comp, /if \(!bad\.length && source === "prompt"\) return onClose\(\);/);
   });
 });

@@ -150,13 +150,79 @@ describe("actual match fee prompt (Tuesday 08:00 IST)", () => {
   });
 });
 
-describe("CricHeroes link", () => {
-  it("accepts https CricHeroes hosts only", () => {
+describe("CricHeroes link (matches.matchUrl)", () => {
+  it("accepts safe https URLs on any CricHeroes share domain, upgrading http and bare hosts", () => {
     assert.equal(w.cricHeroesHref("https://cricheroes.com/scorecard/123/x"), "https://cricheroes.com/scorecard/123/x");
     assert.equal(w.cricHeroesHref(" https://www.cricheroes.in/match/1 "), "https://www.cricheroes.in/match/1");
-    for (const bad of ["http://cricheroes.com/x", "javascript:alert(1)", "https://cricheroes.com.evil.io/x", "https://evilcricheroes.com/x", "", null, 5, "not a url"]) {
-      assert.equal(w.cricHeroesHref(bad), null, String(bad));
+    assert.equal(w.cricHeroesHref("http://cricheroes.in/m/1"), "https://cricheroes.in/m/1");
+    assert.equal(w.cricHeroesHref("cricheroes.in/m/1"), "https://cricheroes.in/m/1");
+    assert.equal(w.cricHeroesHref("https://crhr.es/abc"), "https://crhr.es/abc");
+  });
+  it("rejects unsafe schemes and malformed values", () => {
+    for (const bad of ["javascript:alert(1)", "JavaScript:alert(1)", "data:text/html,x", "vbscript:x", "mailto:a@b.co", "//evil.com/x", "https://user:pw@cricheroes.com/x", "https://localhost/x", "https://a.b/x y", "", "   ", null, undefined, 5, "x".repeat(2100)]) {
+      assert.equal(w.cricHeroesHref(bad), null, String(bad).slice(0, 30));
     }
+    assert.equal(w.linkHostLabel("https://www.cricheroes.com/x"), "cricheroes.com");
+  });
+});
+
+describe("Historical Data Completion (separate from the recurring prompts)", () => {
+  const NOW = ist("2026-11-24", "09:00"); // Tuesday after the 21–22 Nov weekend
+  const all = [
+    m("recent", "2026-11-21"), // in the recurring results prompt (testing 14 d)
+    m("old", "2026-09-05", "07:00", "T20"),
+    m("oldDone", "2026-09-06", "07:00", "T20", { result: "KAvach Won" }),
+    m("nofmt", "2026-08-01", "07:00", "T20", { format: undefined }),
+    m("future", "2026-11-28"),
+  ];
+  it("results history = eligible with no result, minus the recurring prompt; exceptions listed", () => {
+    const h = w.resultsHistory(all, NOW, "testing");
+    assert.deepEqual(h.items.map((x) => x.id), ["old"]);
+    assert.deepEqual(h.exceptions.map((x) => [x.id, x.reason]), [["nofmt", "missing_or_unknown_format"]]);
+    const prompt = w.resultsPrompt(all, NOW, "testing").items.map((x) => x.id);
+    assert.ok(prompt.includes("recent") && !prompt.includes("old"));
+  });
+  it("fees history = concluded open matches with no fee, minus the recurring prompt; never future, closed or archived", () => {
+    const fees = [
+      m("sat", "2026-11-21"), // recurring (preceding weekend)
+      m("wed", "2026-11-18", "07:00", "T20", { result: "KAvach Won" }),
+      m("sep", "2026-09-05", "07:00", "T20", { result: "Abandoned" }),
+      m("paid", "2026-09-06", "07:00", "T20", { groundFeePaidAmount: 0 }),
+      m("closed", "2026-09-06", "07:00", "T20", { financeStatus: "closed" }),
+      m("arch", "2026-09-06", "07:00", "T20", { isArchived: true }),
+      m("future", "2026-11-28"),
+      m("nofmt", "2026-09-07", "07:00", "T20", { format: undefined }),
+    ];
+    assert.deepEqual(w.feesHistory(fees, NOW, "recurring").map((x) => x.id), ["sep", "nofmt", "wed"]);
+    assert.deepEqual(w.feesPrompt(fees, NOW, "recurring").items.map((x) => x.id), ["sat"]);
+  });
+  it("POTW history = past weekends with a played match and no award, from the start date; never the open weekend", () => {
+    const ms = [
+      m("a", "2026-11-21", "07:00", "T20", { result: "KAvach Won" }), // open weekend (Mon–Fri window) → recurring
+      m("b", "2026-11-15", "07:00", "T20", { result: "KAvach Lost" }), // Sunday → weekend 14 Nov
+      m("c", "2026-11-08", "07:00", "T20", { result: "Abandoned" }), // not played
+      m("d", "2026-11-01", "07:00", "T20", { result: "Tie" }), // awarded below
+      m("e", "2026-10-31", "07:00", "T20", { result: "Draw" }),
+      m("f", "2026-11-11", "07:00", "T20", { result: "KAvach Won" }), // Wednesday → no weekend
+      m("g", "2025-12-27", "07:00", "T20", { result: "KAvach Won" }), // before the start date
+    ];
+    const h = w.potwHistory(ms, new Set(["2026-10-31"]), NOW, "2026-01-01");
+    assert.deepEqual(h.map((x) => x.weekendId), ["2026-11-14"]);
+    assert.equal(h[0].label, "14 Nov – 15 Nov 2026");
+    assert.equal(w.isHistoricalPotwWeekend("2026-11-14", ms, NOW, "2026-01-01"), true);
+    assert.equal(w.isHistoricalPotwWeekend("2026-11-15", ms, NOW, "2026-01-01"), false); // not a Saturday
+    assert.equal(w.isHistoricalPotwWeekend("2026-11-21", ms, NOW, "2026-01-01"), false); // current weekend
+    assert.equal(w.isHistoricalPotwWeekend("2026-11-07", ms, NOW, "2026-01-01"), false); // abandoned only
+    // After the window closes (Saturday), last weekend becomes historical.
+    assert.ok(w.potwHistory(ms, new Set(), ist("2026-11-28", "10:00"), "2026-01-01").some((x) => x.weekendId === "2026-11-21"));
+  });
+  it("weekend ids and the configurable start date", () => {
+    assert.equal(w.weekendIdOf("2026-11-21"), "2026-11-21");
+    assert.equal(w.weekendIdOf("2026-11-22"), "2026-11-21");
+    assert.equal(w.weekendIdOf("2026-11-23"), null);
+    assert.equal(w.potwHistoryFrom({}), w.POTW_HISTORY_FROM_DEFAULT);
+    assert.equal(w.potwHistoryFrom({ POTW_HISTORY_FROM: "2025-06-01" }), "2025-06-01");
+    assert.equal(w.potwHistoryFrom({ POTW_HISTORY_FROM: "junk" }), w.POTW_HISTORY_FROM_DEFAULT);
   });
 });
 

@@ -22,7 +22,8 @@
  * Abandoned and re-sending the same result retries the transition safely.
  * The caller gains no finance permissions: only this fixed transition runs.
  *
- * Partial saves are supported: each item reports its own outcome.
+ * Partial saves are supported: each item reports its own outcome. Items are
+ * processed concurrently (independent documents); "error" items are safe to retry.
  */
 import { NextResponse } from "next/server.js";
 import { FieldValue } from "firebase-admin/firestore";
@@ -38,7 +39,7 @@ const MAX_ITEMS = 50;
 type Outcome =
   | { matchId: string; status: "saved" | "unchanged"; result: string; waiver?: { status: "applied" | "failed"; waived?: number; paidPreserved?: number } }
   | { matchId: string; status: "conflict"; existingResult: string }
-  | { matchId: string; status: "not_found" | "invalid" | "not_eligible"; reason?: string };
+  | { matchId: string; status: "not_found" | "invalid" | "not_eligible" | "error"; reason?: string };
 
 class ItemError extends Error {
   outcome: Outcome;
@@ -68,20 +69,19 @@ export async function POST(req: Request) {
   const now = serverNow(req);
   const actor = { id: guard.uid, name: await actorNameFor(db, guard.uid) };
   const seen = new Set<string>();
-  const outcomes: Outcome[] = [];
 
-  for (const item of list) {
+  // Each match is independent (its own transaction, eligibility check, audit
+  // entry and — for Abandoned — waiver), so they run concurrently; the response
+  // keeps the request order. An unexpected failure on one match is reported as
+  // "error" (safe to retry) and does not undo or block the others.
+  const recordOne = async (item: any): Promise<Outcome> => {
     const matchId = item?.matchId;
     const result = item?.result;
     if (!isSafeId(matchId) || seen.has(matchId)) {
-      outcomes.push({ matchId: String(matchId ?? ""), status: "invalid", reason: "Invalid or duplicate match id." });
-      continue;
+      return { matchId: String(matchId ?? ""), status: "invalid", reason: "Invalid or duplicate match id." };
     }
     seen.add(matchId);
-    if (!isResultValue(result)) {
-      outcomes.push({ matchId, status: "invalid", reason: "Choose Won, Loss, Tie or Abandoned." });
-      continue;
-    }
+    if (!isResultValue(result)) return { matchId, status: "invalid", reason: "Choose Won, Loss, Tie or Abandoned." };
 
     let saved: { status: "saved" | "unchanged"; match: MatchLike & { fee?: number } };
     try {
@@ -114,12 +114,9 @@ export async function POST(req: Request) {
         return { status: "saved" as const, match: { ...match, result } };
       });
     } catch (err) {
-      if (err instanceof ItemError) {
-        outcomes.push(err.outcome);
-        continue;
-      }
+      if (err instanceof ItemError) return err.outcome;
       console.error("[weekend-results] write failed for a match");
-      return NextResponse.json({ error: "Could not save results. Nothing further was changed; try again.", outcomes }, { status: 500 });
+      return { matchId, status: "error", reason: "Could not save; try again." };
     }
 
     const out: Outcome = { matchId, status: saved.status, result };
@@ -132,8 +129,9 @@ export async function POST(req: Request) {
         out.waiver = { status: "failed" };
       }
     }
-    outcomes.push(out);
-  }
+    return out;
+  };
 
+  const outcomes = await Promise.all(list.map(recordOne));
   return NextResponse.json({ ok: true, outcomes });
 }

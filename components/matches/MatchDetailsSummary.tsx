@@ -15,7 +15,7 @@ import type { Ground, Match } from "@/lib/types";
 import { formatMatchCardDate, getMatchCategory } from "@/lib/match-card-format";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
 import { getVenueMapsLink } from "@/lib/venue-maps";
-import { MatchResultStamp } from "./MatchCardHeader";
+import { MatchOpponentName, MatchResultStamp } from "./MatchCardHeader";
 
 export function MatchDetailsSummary({
   match,
@@ -59,9 +59,12 @@ export function MatchDetailsSummary({
       </div>
 
       <div className="flex items-start gap-3 min-w-0">
-        <h2 className="min-w-0 flex-1 text-xl sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
-          vs {match.opponent || "Opponent TBC"}
-        </h2>
+        <MatchOpponentName
+          match={match}
+          as="h2"
+          prefix="vs "
+          className="min-w-0 flex-1 text-xl sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words"
+        />
         <MatchResultStamp match={match} compact className="mt-1.5" />
       </div>
 
