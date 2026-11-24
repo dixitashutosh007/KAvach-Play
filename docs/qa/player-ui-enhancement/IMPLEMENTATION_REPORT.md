@@ -71,7 +71,17 @@ Modified: `lib/player-navigation.ts` (D-20 config), `app/page.tsx` (player routi
 
 ## 8. Test results
 
-TEST_RESULTS_PLACEHOLDER
+| Check | Command | Result |
+|---|---|---|
+| Type-check | `npx tsc --noEmit -p tsconfig.json` | 0 errors |
+| Lint | `npm run lint` | 0 errors, 4 warnings (Firestore rules only — TS/TSX not linted, pre-existing config) |
+| Build | `GIT_BRANCH=mig-mov npm run build` | Pass (27/27 pages) |
+| Functional / unit | `npm run test:functional` | 1086 / 1086 pass, 0 skipped (incl. 14 new D-20 tests; mutation check: adding `mobile` to the public field list fails 2) |
+| Emulator (rules, payments, identity) | `node scripts/run-emulator-tests.mjs` | 444 / 444 pass |
+| D-20 e2e | `npx playwright test e2e/player-ui-enhancement.spec.ts` | 13 / 13 (Desktop Chrome) |
+| Full e2e (Desktop + Mobile Chrome) | `npx playwright test` | 235 passed, 19 failed, 98 skipped (credential-gated, not executed) |
+
+**Full e2e breakdown:** 17 failures are the pre-existing ones that also fail before D-16 (`match-center-corrections` ×2 and `player-home-behavioral` 1/2/2B/4D/4E/4G on both projects; `production-app` 3 on Desktop). 2 were one stale D-18 assertion (`admin-nav-realignment` refresh test still expected Home/Profile/Matches); fixed and re-run: 2 / 2 pass on both projects. All persona-isolation (7 roles), navigation, Club, Directory-privacy, Profile and responsive tests pass.
 
 ## 9. Known gaps and deferred items
 

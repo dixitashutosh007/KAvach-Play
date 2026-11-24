@@ -126,7 +126,7 @@ test.describe("D-18 refresh and persona switching", () => {
     await expect(page.locator('[data-testid="admin-club"]')).toBeVisible();
     await page.reload();
     await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible({ timeout: 30_000 });
-    expect(await page.locator('[data-testid="player-mobile-bottom-nav"] button').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Profile", "Matches"]);
+    expect(await page.locator('[data-testid="player-mobile-bottom-nav"] button').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Club", "Matches"]);
     await expect(page.locator('[data-testid="admin-club"], [data-testid="admin-mobile-bottom-nav"]')).toHaveCount(0);
     await page.locator('[data-testid="header-persona-toggle"]').click();
     await expect(page.locator('[data-testid="admin-mobile-bottom-nav"]')).toBeVisible();
