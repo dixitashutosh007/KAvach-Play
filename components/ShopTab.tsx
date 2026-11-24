@@ -38,18 +38,32 @@ export function ShopTab({
   store,
   persona,
   isAdmin,
+  initialView,
 }: {
   store: ReturnType<typeof useStore>;
   persona: "player" | "admin";
   isAdmin: boolean;
+  /** Admin entry points (Club Menu → Club Shop): open a specific admin view. */
+  initialView?: "store" | "products" | "orders" | "reports";
 }) {
   const { confirm: confirmAction } = useConfirm();
   const { toast } = useToast();
   const { user } = useAuth();
-  const [view, setView] = useState<"catalog" | "history" | "global-list" | "admin">("catalog");
-  const [showReportModal, setShowReportModal] = useState(false);
+  const [view, setView] = useState<"catalog" | "history" | "global-list" | "admin">(
+    isAdmin && (initialView === "products" || initialView === "orders") ? "admin" : "catalog",
+  );
+  const [showReportModal, setShowReportModal] = useState(isAdmin && initialView === "reports");
   const [isCopied, setIsCopied] = useState(false);
-  const [adminSubTab, setAdminSubTab] = useState<"merchandise" | "orders">("merchandise");
+  const [adminSubTab, setAdminSubTab] = useState<"merchandise" | "orders">(initialView === "orders" ? "orders" : "merchandise");
+  // Follow Club Menu entry points while the Shop is already open.
+  useEffect(() => {
+    if (!isAdmin || !initialView) return;
+    if (initialView === "products" || initialView === "orders") {
+      setView("admin");
+      setAdminSubTab(initialView === "orders" ? "orders" : "merchandise");
+    } else if (initialView === "store") setView("catalog");
+    else if (initialView === "reports") setShowReportModal(true);
+  }, [initialView, isAdmin]);
 
   // Local states for Admin merchandise creation
   const [showAddMerch, setShowAddMerch] = useState(false);

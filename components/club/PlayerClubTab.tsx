@@ -15,7 +15,7 @@
  * rather than invented numbers.
  */
 import { useMemo, useState } from "react";
-import { Trophy, Award, BarChart3, Activity, Megaphone, ChevronRight, Users, Medal } from "lucide-react";
+import { Trophy, Award, BarChart3, Activity, Megaphone, ChevronRight, Users, Medal, ShoppingBag } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { useClubStats } from "@/hooks/useClubStats";
 import { useRecentAnnouncements, usePulsePreview } from "@/hooks/useClubData";
@@ -103,6 +103,26 @@ export function PlayerClubTab({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Club Shop — on-demand facility: shown ONLY while an admin has the Shop
+          enabled (appConfig features.shop); no placeholder when it is off. */}
+      {section === "all" && isFeatureEnabled("shop") && (
+        <button
+          type="button"
+          data-testid="club-shop-card"
+          onClick={() => onNavigate("shop")}
+          className="w-full text-left rounded-2xl border border-scarlet/30 bg-gradient-to-r from-brand-surface/70 to-surface p-4 flex items-center gap-4 hover:border-scarlet/60 transition cursor-pointer"
+        >
+          <span className="w-14 h-14 rounded-2xl bg-surface border border-scarlet/20 flex items-center justify-center shrink-0">
+            <ShoppingBag className="w-7 h-7 text-scarlet" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-lg font-black font-heading text-text-primary">Club Shop</span>
+            <span className="block text-sm text-text-secondary">Official KAvach merchandise, jerseys and more</span>
+          </span>
+          <ChevronRight className="w-5 h-5 text-scarlet shrink-0" aria-hidden="true" />
+        </button>
       )}
 
       {show("announcements") && (

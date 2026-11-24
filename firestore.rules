@@ -717,9 +717,17 @@ service cloud.firestore {
       allow write: if isAnyAdmin();
     }
 
+    // Club Shop availability: the existing appConfig/default.features.shop flag
+    // (absent = enabled). A disabled Shop accepts no new player orders.
+    function isShopEnabled() {
+      return !exists(/databases/$(database)/documents/appConfig/default)
+        || get(/databases/$(database)/documents/appConfig/default).data.get('features', {}).get('shop', true) != false;
+    }
+
     match /merchOrders/{orderId} {
       allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.playerId));
       allow create: if isSignedIn()
+        && isShopEnabled()
         && isValidId(orderId)
         && isValidMerchOrder(incoming())
         && isSelf(incoming().playerId)

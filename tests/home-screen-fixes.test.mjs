@@ -134,8 +134,9 @@ describe("Fix 2: no stray Shop label at the top of Home", () => {
   });
   it("Shop module and navigation stay available", () => {
     // D-18: merchandise management is the Admin → Club → Shop section (Club/Super Admin).
-    assert.match(src("lib/admin-navigation.ts"), /\{ key: "shop", label: "Shop", feature: "shop", allowed: \(c\) => c\.isClubAdmin \}/);
-    assert.match(src("components/ClubTab.tsx"), /show\("shop"\) && isClubAdmin && <ShopTab store=\{store\} persona="admin" isAdmin=\{isClubAdmin\} \/>/);
+    // Shop placement brief: admins keep it whether or not the Shop is enabled for players.
+    assert.match(src("lib/admin-navigation.ts"), /\{ key: "shop", label: "Shop", allowed: \(c\) => c\.isClubAdmin \}/);
+    assert.match(src("components/ClubTab.tsx"), /show\("shop"\) && isClubAdmin && \([\s\S]*?<ClubShopPanel[\s\S]*?<ShopTab [^>]*persona="admin" isAdmin=\{isClubAdmin\}/);
     assert.ok(fs.existsSync(path.resolve("components/ShopTab.tsx")) || /shop/i.test(src("app/page.tsx")));
   });
 });

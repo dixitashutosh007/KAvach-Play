@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server.js";
 import Razorpay from "razorpay";
 import { requireAuth } from "../../../../lib/server-auth.ts";
+import { ShopClosedError } from "../../../../lib/shop-config.ts";
 import {
   getServerFirestore,
   arePaymentOperationsEnabled,
@@ -79,7 +80,15 @@ export async function POST(req: Request) {
 
     if (intentData) {
       // Derive authoritative amount server-side; client `amount` is discarded (FIN-001)
-      const derived = await derivePayableAmount(db, auth.uid, intentData);
+      let derived;
+      try {
+        derived = await derivePayableAmount(db, auth.uid, intentData);
+      } catch (err) {
+        if (err instanceof ShopClosedError) {
+          return NextResponse.json({ error: err.message, code: err.code }, { status: 403 });
+        }
+        throw err;
+      }
       payableAmount = derived.amount;
       storedIntentData = derived.verifiedIntent;
     } else {

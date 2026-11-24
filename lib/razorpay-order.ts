@@ -1,3 +1,4 @@
+import { assertShopOpen } from "./shop-config.ts";
 import crypto from "crypto";
 import { computeLateFees } from "./utils.ts";
 import { currentExpiryOf, isLateFeeExemption, isRecordedLateFee, toPaise } from "./payment-decision.ts";
@@ -1668,6 +1669,10 @@ export async function derivePayableAmount(
       throw new Error("merchId is required for merchandise orders.");
     }
     const merchId = orderPayload?.merchId || intentData.merchId;
+
+    // Shop availability is enforced here, server-side: a disabled Shop accepts no
+    // new purchases (existing orders, payments and webhooks are unaffected).
+    await assertShopOpen(db);
 
     const playerId = orderPayload?.playerId || authUid;
     const isAuthorized = await verifyPlayerOwnership(db, authUid, playerId);

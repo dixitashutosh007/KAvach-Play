@@ -63,9 +63,10 @@ export const PLAYER_SECONDARY_DESTINATIONS: Readonly<Record<PlayerSecondaryTab, 
   announcements: { parent: "club", label: "Club Announcements" },
   leaderboard: { parent: "club", label: "Leaderboard", feature: "leaderboard" },
   badges: { parent: "club", label: "Player Badges", feature: "badges" },
+  // Club facility (shown in Club only while enabled); also in Home quick access
+  shop: { parent: "club", label: "Club Shop", feature: "shop" },
   // Home quick access
   studio: { parent: "home", label: "Studio", feature: "studio" },
-  shop: { parent: "home", label: "Club Shop", feature: "shop" },
   // Profile (Payments)
   finance: { parent: "profile", label: "My Payments" },
 };

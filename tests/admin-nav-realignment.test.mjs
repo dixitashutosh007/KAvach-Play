@@ -124,9 +124,9 @@ describe("D-19 role → destination and role → Club section matrix", () => {
       assert.deepEqual(nav.getAdminLanding(c), m.landing);
     });
   }
-  it("club feature flags hide Pulse, Badges and Shop sections", () => {
+  it("club feature flags hide Pulse and Badges; Shop management stays for admins when the Shop is off", () => {
     const off = (f) => !["opinion", "badges", "shop"].includes(f);
-    assert.deepEqual(nav.getVisibleClubSections(caps({ club: true }), off), ["players", "studio", "announcements", "leaderboard"]);
+    assert.deepEqual(nav.getVisibleClubSections(caps({ club: true }), off), ["players", "studio", "announcements", "leaderboard", "shop"]);
   });
 });
 

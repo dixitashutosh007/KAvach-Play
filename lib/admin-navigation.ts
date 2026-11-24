@@ -76,7 +76,9 @@ export const CLUB_SECTIONS: readonly ClubSectionDef[] = [
   { key: "pulse", label: "Pulse", feature: "opinion", allowed: (c) => c.isClubAdmin },
   { key: "leaderboard", label: "Leaderboard & Stats", allowed: (c) => c.isClubAdmin },
   { key: "badges", label: "Badges", feature: "badges", allowed: (c) => c.isClubAdmin },
-  { key: "shop", label: "Shop", feature: "shop", allowed: (c) => c.isClubAdmin },
+  // Shop management stays available to admins whether or not the Shop is enabled
+  // for players (the enable switch lives inside it), so no feature gate here.
+  { key: "shop", label: "Shop", allowed: (c) => c.isClubAdmin },
 ];
 
 export function getVisibleClubSections(c: AdminCapabilities, isFeatureEnabled: AdminFeatureCheck = allEnabled): ClubSection[] {

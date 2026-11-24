@@ -725,10 +725,17 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     lazySubsRef.current.set("playerStats", unsub);
   }, [user]);
 
-  const ensureMerchOrders = useCallback(() => {
+  /**
+   * Shop orders. Admins (no filter) get every order; a player passes their PLAYER
+   * id and gets only their own — the rules allow nothing else, so an unfiltered
+   * player query would be rejected (Shop "My Orders" and Payment History would be empty).
+   */
+  const ensureMerchOrders = useCallback((playerIdFilter?: string) => {
     if (!user || lazySubsRef.current.has("merchOrders")) return;
+    if (process.env.NODE_ENV !== "production" && typeof window !== "undefined" && (window as any).__KAVACH_TEST_STORE__) return;
+    const base = collection(db, "merchOrders");
     const unsub = onSnapshot(
-      collection(db, "merchOrders"),
+      playerIdFilter ? query(base, where("playerId", "==", playerIdFilter)) : base,
       (snapshot) => {
         setMerchOrders(
           snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as MerchOrder),

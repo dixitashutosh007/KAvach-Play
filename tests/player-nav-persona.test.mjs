@@ -96,7 +96,7 @@ describe("D-20 navigation config (lib/player-navigation.ts)", () => {
     assert.deepEqual(nav.getPlayerPrimaryNav((f) => f !== "matches").map((i) => i.tab), ["home", "club"]);
   });
   it("maps every secondary destination to the primary tab it highlights", () => {
-    const expected = { players: "club", opinion: "club", pulse: "club", announcements: "club", leaderboard: "club", badges: "club", studio: "home", shop: "home", finance: null, notifications: null, profile: null };
+    const expected = { players: "club", opinion: "club", pulse: "club", announcements: "club", leaderboard: "club", badges: "club", studio: "home", shop: "club", finance: null, notifications: null, profile: null };
     for (const [tab, parent] of Object.entries(expected)) assert.equal(nav.getPlayerNavParent(tab), parent, tab);
     for (const p of ["home", "club", "matches"]) assert.equal(nav.getPlayerNavParent(p), p);
   });
@@ -116,7 +116,8 @@ describe("D-20 navigation config (lib/player-navigation.ts)", () => {
     assert.equal(nav.resolvePlayerTab("notifications", () => true), "notifications");
   });
   it("provides a contextual back link only on secondary screens", () => {
-    assert.deepEqual(nav.getPlayerBackLink("shop"), { parent: "home", parentLabel: "Home", label: "Club Shop" });
+    // Club Shop is an on-demand Club facility (Shop placement brief, 2026-11-24).
+    assert.deepEqual(nav.getPlayerBackLink("shop"), { parent: "club", parentLabel: "Club", label: "Club Shop" });
     assert.deepEqual(nav.getPlayerBackLink("leaderboard"), { parent: "club", parentLabel: "Club", label: "Leaderboard" });
     assert.deepEqual(nav.getPlayerBackLink("finance"), { parent: "profile", parentLabel: "Profile", label: "My Payments" });
     assert.equal(nav.getPlayerBackLink("home"), null);
@@ -140,7 +141,7 @@ describe("Persona isolation — mobile bottom navigation rendered for every role
   });
   it("secondary screens highlight their parent; admin-only tabs highlight nothing", () => {
     const current = (html) => [...html.matchAll(/<button[^>]*aria-label="([^"]+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
-    assert.deepEqual(current(renderBottomNav("player", {}, "shop")), ["Home"]);
+    assert.deepEqual(current(renderBottomNav("player", {}, "shop")), ["Club"]);
     assert.deepEqual(current(renderBottomNav("player", {}, "badges")), ["Club"]);
     assert.deepEqual(current(renderBottomNav("player", {}, "profile")), []);
     assert.deepEqual(current(renderBottomNav("player", {}, "matches")), ["Matches"]);
@@ -189,7 +190,7 @@ describe("Persona isolation — app shell wiring (app/page.tsx)", () => {
   });
   it("financial data is scoped to the player in Player persona and re-subscribed on persona change", () => {
     assert.match(page, /const playerScope = isAdminUser && persona === "admin" \? undefined : scopedPlayerId \|\| user\?\.uid;/);
-    assert.match(page, /store\.detachDomain\?\.\("allPayments"\);\s*store\.detachDomain\?\.\("allOtherFees"\);\s*scopedPersonaRef\.current = persona;/);
+    assert.match(page, /store\.detachDomain\?\.\("allPayments"\);\s*store\.detachDomain\?\.\("allOtherFees"\);\s*store\.detachDomain\?\.\("merchOrders"\);\s*scopedPersonaRef\.current = persona;/);
   });
   it("announcement management is Admin persona only (D-18: Club → Announcements; Home links to it)", () => {
     const start = page.indexOf('isAdminDestinationVisible("home", adminCaps) ? (');

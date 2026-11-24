@@ -430,7 +430,9 @@ export default function Home() {
   ]);
   const POSTS_TABS = new Set(["home"]);
   const STATS_TABS = new Set(["club"]); // Home no longer shows the performance summary
-  const MERCH_TABS = new Set(["club"]);
+  // Shop orders: admin Club (all orders); player Shop, Finance/Payments and Profile
+  // payment history (own orders only, filtered by player id below).
+  const MERCH_TABS = new Set(["club", "shop", "finance", "profile"]);
   // "opinion"/"pulse" (player Polls & Pulse screens) need polls and responses;
   // before D-20 the player Polls screen loaded nothing (regression fixed here).
   const POLL_TABS = new Set(["club", "opinion", "pulse"]);
@@ -439,7 +441,7 @@ export default function Home() {
   const SUB_PLAN_TABS = new Set(["studio", "club", "profile"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
   const FEE_PLAN_TABS = new Set(["matches", "finance", "club"]);
-  const MERCH_CATALOG_TABS = new Set(["club"]);
+  const MERCH_CATALOG_TABS = new Set(["club", "shop"]);
   const OUT_OF_PLAY_TABS = new Set(["profile", "studio", "club"]);
   useEffect(() => {
     if (!store.isLoaded) return;
@@ -477,6 +479,7 @@ export default function Home() {
       // by domain, not scope, so a stale scope would otherwise persist).
       store.detachDomain?.("allPayments");
       store.detachDomain?.("allOtherFees");
+      store.detachDomain?.("merchOrders");
       scopedPersonaRef.current = persona;
     }
     const playerScope = isAdminUser && persona === "admin" ? undefined : scopedPlayerId || user?.uid;
@@ -484,7 +487,7 @@ export default function Home() {
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
     if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
     if (STATS_TABS.has(activeTab)) store.ensurePlayerStats?.();
-    if (MERCH_TABS.has(activeTab)) store.ensureMerchOrders?.();
+    if (MERCH_TABS.has(activeTab)) store.ensureMerchOrders?.(playerScope);
     if (POLL_TABS.has(activeTab)) {
       store.ensurePolls?.();
       store.ensurePollResponses?.();
