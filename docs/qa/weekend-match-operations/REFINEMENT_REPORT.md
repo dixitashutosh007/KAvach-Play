@@ -201,3 +201,20 @@ See the delivery message for the final counts. The checks this sprint was asked 
    - `posts` writable by any admin client (rules unchanged).
    - The Match Center edit form's "Abandoned" path does not run the waiver.
    - SUB-001 and IDT-003 open (D-17).
+
+## 8. Final verification (commit `41f89c7`)
+
+| Check | Command | Result |
+|---|---|---|
+| Type-check | `npx tsc --noEmit -p tsconfig.json` | 0 errors |
+| Unit / functional | `npm run test:functional` | 1127 / 1127 pass, 0 skipped |
+| Emulator (rules, payments, identity, weekend routes) | `node scripts/run-emulator-tests.mjs` | 464 / 464 pass, 0 skipped |
+| WebKit iPhone (320 / 375 / 390 / 430) | `npx playwright test -c playwright.webkit.config.ts` | 4 / 4 |
+| Full e2e, Desktop + Mobile Chrome | `npx playwright test` | 263 passed, 17 failed, 98 skipped (credential-gated, not executed) |
+| Build | `GIT_BRANCH=mig-mov npm run build` | Pass (30 / 30 pages) |
+
+All 17 failures are the known pre-existing set, recorded since before D-16:
+- `match-center-corrections` ×2 and `player-home-behavioral` 1 / 2 / 2B / 4D / 4E / 4G, each on both projects;
+- `production-app` 3 on Desktop.
+
+There are **no new failures**. All weekend-operations e2e tests pass on both projects.
