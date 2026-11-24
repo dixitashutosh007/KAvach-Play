@@ -15,4 +15,6 @@ export type Tab =
   | "opinion"
   | "design"
   | "club"
-  | "badges";
+  | "badges"
+  | "pulse"
+  | "announcements";

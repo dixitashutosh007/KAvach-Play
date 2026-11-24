@@ -124,12 +124,13 @@ describe("Fix 3: banner Display Duration", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe("Fix 2: no stray Shop label at the top of Home", () => {
-  it("D-16 supersedes: HomeTab renders the club quick-access row (Directory, Studio, Shop, Pulse, Announcements), not a lone Shop chip", () => {
+  it("D-20: HomeTab renders the Quick Access grid (Directory, Studio, Shop, Polls & Pulse), not a lone Shop chip", () => {
     const home = src("components/HomeTab.tsx");
     assert.match(home, /import \{ HomeQuickActions \} from "\.\/home\/HomeQuickActions";/);
     assert.match(home, /<HomeQuickActions isFeatureEnabled=\{isFeatureEnabled\}/);
     const qa = src("components/home/HomeQuickActions.tsx");
-    for (const t of ["players", "studio", "shop", "opinion", "announcements"]) assert.match(qa, new RegExp(`target: "${t}"`));
+    for (const t of ["players", "studio", "shop", "opinion"]) assert.match(qa, new RegExp(`target: "${t}"`));
+    assert.doesNotMatch(qa, /target: "announcements"/);
   });
   it("Shop module and navigation stay available", () => {
     // D-18: merchandise management is the Admin → Club → Shop section (Club/Super Admin).

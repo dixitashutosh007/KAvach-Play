@@ -108,15 +108,15 @@ test("D-16 (supersedes UX-P0-01): Player persona has no Club screen; ClubTab is 
   }
 });
 
-test("D-16 (supersedes UX-P0-03): Player MobileBottomNav renders exactly Home, Profile, Matches with no More", () => {
+test("D-20 (supersedes UX-P0-03): Player MobileBottomNav renders exactly Home, Club, Matches with no More", () => {
   const navCode = fs.readFileSync(path.resolve("components/layout/MobileBottomNav.tsx"), "utf-8");
-  const playerPart = navCode.slice(navCode.indexOf("// Player Primary Navigation (D-16)"));
+  const playerPart = navCode.slice(navCode.indexOf("// Player Primary Navigation (D-20)"));
   assert.ok(playerPart.includes("getPlayerPrimaryNav("), "player nav must come from the shared D-16 config");
   assert.equal(playerPart.includes("MoreDrawer"), false, "player nav must not open a More drawer");
   assert.equal(playerPart.includes(">More<"), false, "player nav must not render More");
   const cfg = fs.readFileSync(path.resolve("lib/player-navigation.ts"), "utf-8");
   const order = [...cfg.slice(cfg.indexOf("PLAYER_PRIMARY_NAV"), cfg.indexOf("] as const;")).matchAll(/tab: "(\w+)"/g)].map((m) => m[1]);
-  assert.deepEqual(order, ["home", "profile", "matches"]);
+  assert.deepEqual(order, ["home", "club", "matches"]);
 });
 
 test("UX-P1-01: Admin experience eliminates dual mobile navigation bars and provides Return to Player View", () => {
@@ -215,9 +215,10 @@ test("UX-SHELL-01: Shared application shell components contract (Task 1.2)", () 
   assert.ok(headerCode.includes('data-testid="header-profile-avatar"'), "AppHeader must provide header profile avatar entry point");
   assert.ok(headerCode.includes('data-testid="header-notifications-btn"'), "AppHeader must provide notifications button");
 
-  // 2. D-16: Profile is a primary Player destination (also reachable from the avatar)
+  // 2. D-20: Club is a primary Player destination; Profile opens from the header avatar
   const cfg = fs.readFileSync(path.resolve("lib/player-navigation.ts"), "utf-8");
-  assert.ok(cfg.includes('{ tab: "profile", label: "Profile" }'), "Profile must be a primary Player destination");
+  assert.ok(cfg.includes('{ tab: "club", label: "Club" }'), "Club must be a primary Player destination");
+  assert.equal(cfg.includes('{ tab: "profile", label: "Profile" }'), false, "Profile must not be a primary destination");
 
   // 3. D-18: no More drawer in either persona; club features live in Club sections
   assert.equal(fs.existsSync(path.resolve("components/layout/MoreDrawer.tsx")), false, "MoreDrawer must be removed");

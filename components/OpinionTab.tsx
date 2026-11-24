@@ -141,7 +141,7 @@ export function OpinionTab({ store, persona }: { store: any; persona: "admin" | 
   const activePolls = store.polls.filter((p: Poll) => p.isActive);
 
   return (
-    <div className="space-y-6 pb-24 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center border border-accent/30">

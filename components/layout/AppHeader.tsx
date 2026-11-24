@@ -21,7 +21,9 @@ const TAB_TITLES: Record<string, string> = {
   settings: "Settings",
   grounds: "Grounds & Venues",
   notifications: "Notifications",
-  badges: "Club Badges",
+  badges: "Player Badges",
+  pulse: "Pulse",
+  announcements: "Announcements",
 };
 
 interface AppHeaderProps {

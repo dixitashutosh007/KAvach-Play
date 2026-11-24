@@ -338,7 +338,9 @@ describe("Club Performance widget", () => {
     const page = src("app/page.tsx");
     const adminHome = page.slice(page.indexOf('data-testid="admin-home-club-panel"'), page.indexOf('data-testid="admin-home-club-panel"') + 1600);
     assert.match(adminHome, /<ClubPerformanceWidget canManage \/>/);
-    assert.match(src("components/HomeTab.tsx"), /<ClubPerformanceWidget \/>/);
+    // D-20: club totals are shown in Player → Club (ClubAtAGlance), not on Player Home.
+    assert.doesNotMatch(src("components/HomeTab.tsx"), /ClubPerformanceWidget/);
+    assert.match(src("components/club/PlayerClubTab.tsx"), /export function ClubAtAGlance\(\)/);
     // Leaderboard & Stats is a Club section; Club Statistics is its first panel.
     assert.match(src("lib/admin-navigation.ts"), /\{ key: "leaderboard", label: "Leaderboard & Stats", allowed: \(c\) => c\.isClubAdmin \}/);
   });

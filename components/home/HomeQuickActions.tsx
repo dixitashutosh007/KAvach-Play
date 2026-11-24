@@ -1,17 +1,16 @@
 "use client";
 
-import { Users, Video, ShoppingBag, PieChart, Megaphone } from "lucide-react";
+import { Users, Dumbbell, ShoppingBag, BarChart3, Zap } from "lucide-react";
 
 /**
- * Home "Club" quick-access row (D-16).
+ * Home "Quick Access" grid (D-20): Directory, Studio, Shop, Polls & Pulse.
  *
- * The Player persona has only three primary destinations (Home, Profile,
- * Matches). Club features that used to live in the More drawer / Club tab are
- * reached from here instead: each chip opens the feature directly. These are
- * entry points, not another navigation layer. Feature-flagged entries are
- * hidden when the club has switched the feature off.
+ * These are entry points, not another navigation layer — each tile opens the
+ * feature directly and the feature screen offers a back link. Feature-flagged
+ * entries are hidden when the club has switched the feature off. Announcements
+ * moved to the Club tab.
  */
-export type HomeQuickActionTarget = "players" | "studio" | "shop" | "opinion" | "announcements";
+export type HomeQuickActionTarget = "players" | "studio" | "shop" | "opinion";
 
 interface QuickAction {
   target: HomeQuickActionTarget;
@@ -22,10 +21,9 @@ interface QuickAction {
 
 export const HOME_QUICK_ACTIONS: readonly QuickAction[] = [
   { target: "players", label: "Directory", icon: Users },
-  { target: "studio", label: "Studio", icon: Video, feature: "studio" },
+  { target: "studio", label: "Studio", icon: Dumbbell, feature: "studio" },
   { target: "shop", label: "Shop", icon: ShoppingBag, feature: "shop" },
-  { target: "opinion", label: "Polls & Pulse", icon: PieChart, feature: "opinion" },
-  { target: "announcements", label: "Announcements", icon: Megaphone },
+  { target: "opinion", label: "Polls & Pulse", icon: BarChart3, feature: "opinion" },
 ];
 
 export function HomeQuickActions({
@@ -39,24 +37,25 @@ export function HomeQuickActions({
   if (actions.length === 0) return null;
 
   return (
-    <div
-      role="group"
-      data-testid="home-quick-actions"
-      aria-label="Club quick access"
-      className="w-full flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar pt-1"
-    >
-      {actions.map(({ target, label, icon: Icon }) => (
-        <button
-          key={target}
-          type="button"
-          data-testid={`home-quick-${target}`}
-          onClick={() => onNavigate(target)}
-          className="min-h-[44px] shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface border border-border hover:border-scarlet/30 hover:bg-canvas-warm text-xs font-bold text-text-primary transition shadow-xs cursor-pointer active:scale-98"
-        >
-          <Icon className="w-4 h-4 text-scarlet" aria-hidden="true" />
-          <span>{label}</span>
-        </button>
-      ))}
-    </div>
+    <section aria-labelledby="home-quick-access-title" className="flex flex-col gap-2">
+      <h2 id="home-quick-access-title" className="flex items-center gap-2 text-base font-bold text-text-primary">
+        <Zap className="w-5 h-5 text-scarlet" aria-hidden="true" />
+        Quick Access
+      </h2>
+      <div role="group" data-testid="home-quick-actions" aria-label="Club quick access" className="grid grid-cols-4 gap-2">
+        {actions.map(({ target, label, icon: Icon }) => (
+          <button
+            key={target}
+            type="button"
+            data-testid={`home-quick-${target}`}
+            onClick={() => onNavigate(target)}
+            className="min-h-[76px] flex flex-col items-center justify-center gap-1.5 px-1 py-2 rounded-2xl bg-surface border border-border hover:border-scarlet/30 hover:bg-surface-hover text-xs font-bold text-text-primary transition shadow-xs cursor-pointer text-center leading-tight"
+          >
+            <Icon className="w-6 h-6 text-scarlet" aria-hidden="true" />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

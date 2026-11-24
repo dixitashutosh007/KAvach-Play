@@ -64,7 +64,8 @@ const ROLES = {
   Designer: { canDesign: true },
   "Super Admin": { isSuperAdmin: true, isClubAdmin: true, isMatchAdmin: true, isFinanceAdmin: true, isStudioAdmin: true, canDesign: true },
 };
-const ADMIN_LABELS = ["Overview", "Match Centre", "Match Center", "Player Roster", "Finance & Dues", "Studio & Nets", "Design Studio", "Settings & Access", "Settings", "Club", "More", "Finance", "Players"];
+// "Club" is a player destination too (D-20); admin vs player bars are told apart by test id.
+const ADMIN_LABELS = ["Overview", "Match Centre", "Match Center", "Player Roster", "Finance & Dues", "Studio & Nets", "Design Studio", "Settings & Access", "Settings", "More", "Finance", "Players", "Profile"];
 
 function renderBottomNav(persona, perms, activeTab = "home", enabled = () => true) {
   return render(
@@ -80,50 +81,56 @@ function renderBottomNav(persona, perms, activeTab = "home", enabled = () => tru
   );
 }
 
-describe("D-16 navigation config (lib/player-navigation.ts)", () => {
-  it("has exactly Home, Profile, Matches in that order", () => {
-    assert.deepEqual(nav.getPlayerPrimaryNav().map((i) => [i.tab, i.label]), [["home", "Home"], ["profile", "Profile"], ["matches", "Matches"]]);
+describe("D-20 navigation config (lib/player-navigation.ts)", () => {
+  it("has exactly Home, Club, Matches in that order; Profile is not a primary destination", () => {
+    assert.deepEqual(nav.getPlayerPrimaryNav().map((i) => [i.tab, i.label]), [["home", "Home"], ["club", "Club"], ["matches", "Matches"]]);
+    assert.equal(nav.isPlayerPrimaryTab("profile"), false);
+    assert.equal(nav.isPlayerGlobalTab("profile"), true);
   });
   it("takes no role input: the config function signature only accepts a feature check", () => {
     assert.equal(nav.getPlayerPrimaryNav.length <= 1, true);
     assert.doesNotMatch(src("lib/player-navigation.ts"), /isSuperAdmin|isClubAdmin|isMatchAdmin|isFinanceAdmin|isStudioAdmin|isDesigner|canDesign|hasAdminClaim|\.role\b|appUser/);
   });
-  it("honours club feature flags for primary items (feed → Home, matches → Matches)", () => {
-    assert.deepEqual(nav.getPlayerPrimaryNav((f) => f !== "feed").map((i) => i.tab), ["profile", "matches"]);
-    assert.deepEqual(nav.getPlayerPrimaryNav((f) => f !== "matches").map((i) => i.tab), ["home", "profile"]);
+  it("honours club feature flags for primary items (feed → Home, matches → Matches; Club always)", () => {
+    assert.deepEqual(nav.getPlayerPrimaryNav((f) => f !== "feed").map((i) => i.tab), ["club", "matches"]);
+    assert.deepEqual(nav.getPlayerPrimaryNav((f) => f !== "matches").map((i) => i.tab), ["home", "club"]);
   });
-  it("maps every secondary destination to its parent", () => {
-    const expected = { players: "home", studio: "home", shop: "home", opinion: "home", notifications: "home", leaderboard: "profile", badges: "profile", finance: "profile" };
+  it("maps every secondary destination to the primary tab it highlights", () => {
+    const expected = { players: "club", opinion: "club", pulse: "club", announcements: "club", leaderboard: "club", badges: "club", studio: "home", shop: "home", finance: null, notifications: null, profile: null };
     for (const [tab, parent] of Object.entries(expected)) assert.equal(nav.getPlayerNavParent(tab), parent, tab);
-    for (const p of ["home", "profile", "matches"]) assert.equal(nav.getPlayerNavParent(p), p);
+    for (const p of ["home", "club", "matches"]) assert.equal(nav.getPlayerNavParent(p), p);
   });
   it("redirects admin-only and unknown tabs out of the Player persona", () => {
-    for (const t of ["club", "design", "settings", "grounds", "dues_and_reminders", "nonsense"]) {
+    for (const t of ["design", "settings", "grounds", "dues_and_reminders", "nonsense"]) {
       assert.equal(nav.resolvePlayerTab(t), "home", t);
       assert.equal(nav.getPlayerNavParent(t), null, t);
     }
+    assert.equal(nav.resolvePlayerTab("profile"), "profile");
+    assert.equal(nav.resolvePlayerTab("club"), "club");
   });
-  it("redirects disabled secondary features and falls back to Profile when Home is disabled", () => {
+  it("redirects disabled secondary features and falls back to Club when Home is disabled", () => {
     assert.equal(nav.resolvePlayerTab("shop", (f) => f !== "shop"), "home");
     assert.equal(nav.resolvePlayerTab("leaderboard", (f) => f !== "leaderboard"), "home");
-    assert.equal(nav.resolvePlayerTab("studio", (f) => f !== "studio" && f !== "feed"), "profile");
+    assert.equal(nav.resolvePlayerTab("pulse", (f) => f !== "opinion"), "home");
+    assert.equal(nav.resolvePlayerTab("studio", (f) => f !== "studio" && f !== "feed"), "club");
     assert.equal(nav.resolvePlayerTab("notifications", () => true), "notifications");
   });
   it("provides a contextual back link only on secondary screens", () => {
     assert.deepEqual(nav.getPlayerBackLink("shop"), { parent: "home", parentLabel: "Home", label: "Club Shop" });
-    assert.deepEqual(nav.getPlayerBackLink("leaderboard"), { parent: "profile", parentLabel: "Profile", label: "Leaderboard" });
+    assert.deepEqual(nav.getPlayerBackLink("leaderboard"), { parent: "club", parentLabel: "Club", label: "Leaderboard" });
+    assert.deepEqual(nav.getPlayerBackLink("finance"), { parent: "profile", parentLabel: "Profile", label: "My Payments" });
     assert.equal(nav.getPlayerBackLink("home"), null);
-    assert.equal(nav.getPlayerBackLink("club"), null);
+    assert.equal(nav.getPlayerBackLink("profile"), null);
   });
 });
 
 describe("Persona isolation — mobile bottom navigation rendered for every role", () => {
   for (const [role, perms] of Object.entries(ROLES)) {
-    it(`${role} in Player persona sees exactly Home, Profile, Matches and no admin entries`, () => {
+    it(`${role} in Player persona sees exactly Home, Club, Matches and no admin entries`, () => {
       const html = renderBottomNav("player", perms);
       assert.match(html, /data-testid="player-mobile-bottom-nav"/);
-      assert.doesNotMatch(html, /admin-mobile-bottom-nav|more-drawer/);
-      assert.deepEqual(buttonLabels(html), ["Home", "Profile", "Matches"]);
+      assert.doesNotMatch(html, /admin-mobile-bottom-nav|admin-nav-|more-drawer/);
+      assert.deepEqual(buttonLabels(html), ["Home", "Club", "Matches"]);
       for (const label of ADMIN_LABELS) assert.ok(!buttonLabels(html).includes(label), label);
     });
   }
@@ -134,7 +141,8 @@ describe("Persona isolation — mobile bottom navigation rendered for every role
   it("secondary screens highlight their parent; admin-only tabs highlight nothing", () => {
     const current = (html) => [...html.matchAll(/<button[^>]*aria-label="([^"]+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
     assert.deepEqual(current(renderBottomNav("player", {}, "shop")), ["Home"]);
-    assert.deepEqual(current(renderBottomNav("player", {}, "badges")), ["Profile"]);
+    assert.deepEqual(current(renderBottomNav("player", {}, "badges")), ["Club"]);
+    assert.deepEqual(current(renderBottomNav("player", {}, "profile")), []);
     assert.deepEqual(current(renderBottomNav("player", {}, "matches")), ["Matches"]);
     assert.deepEqual(current(renderBottomNav("player", {}, "settings")), []);
   });
@@ -210,11 +218,11 @@ describe("Player screens read no admin authority", () => {
 });
 
 describe("Home quick access (rendered)", () => {
-  it("renders Directory, Studio, Shop, Polls & Pulse, Announcements and dispatches each target", () => {
+  it("D-20: renders Directory, Studio, Shop, Polls & Pulse (announcements moved to Club)", () => {
     const html = render(React.createElement(HomeQuickActions, { isFeatureEnabled: () => true, onNavigate: () => {} }));
     const ids = [...html.matchAll(/data-testid="home-quick-(?!actions")(\w+)"/g)].map((m) => m[1]);
-    assert.deepEqual(ids, ["players", "studio", "shop", "opinion", "announcements"]);
-    assert.ok([...html.matchAll(/min-h-\[44px\]/g)].length >= 5, "44px touch targets");
+    assert.deepEqual(ids, ["players", "studio", "shop", "opinion"]);
+    assert.ok([...html.matchAll(/min-h-\[76px\]/g)].length >= 4, "large touch targets");
   });
 });
 

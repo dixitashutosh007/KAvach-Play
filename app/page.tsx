@@ -89,7 +89,7 @@ import { useToast } from "@/components/ui/Toast";
 
 const PLAYER_NAV_ICONS: Record<PlayerPrimaryTab, typeof HomeIcon> = {
   home: HomeIcon,
-  profile: UserIcon,
+  club: Users,
   matches: CalendarDays,
 };
 
@@ -107,6 +107,10 @@ const ShopTab = dynamic(() => import("@/components/ShopTab").then(m => ({ defaul
 const OpinionTab = dynamic(() => import("@/components/OpinionTab").then(m => ({ default: m.OpinionTab })), { ssr: false });
 const DesignTab = dynamic(() => import("@/components/DesignTab").then(m => ({ default: m.DesignTab })), { ssr: false });
 const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ default: m.BadgesTab })), { ssr: false });
+const PlayerClubTab = dynamic(() => import("@/components/club/PlayerClubTab").then(m => ({ default: m.PlayerClubTab })), { ssr: false });
+const PlayerDirectory = dynamic(() => import("@/components/club/PlayerDirectory").then(m => ({ default: m.PlayerDirectory })), { ssr: false });
+const ClubAnnouncementsScreen = dynamic(() => import("@/components/club/ClubAnnouncementsScreen").then(m => ({ default: m.ClubAnnouncementsScreen })), { ssr: false });
+const PulseScreen = dynamic(() => import("@/components/club/PulseScreen").then(m => ({ default: m.PulseScreen })), { ssr: false });
 const ClubTab = dynamic(() => import("@/components/ClubTab").then(m => ({ default: m.ClubTab })), { ssr: false });
 
 export default function Home() {
@@ -178,6 +182,8 @@ export default function Home() {
     | "design"
     | "club"
     | "badges"
+    | "pulse"
+    | "announcements"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
   const [, setTestRerenderCount] = useState(0);
@@ -188,6 +194,14 @@ export default function Home() {
   }, []);
   const activeTab = activeTabBase;
   const [persona, setPersona] = useState<"player" | "admin">("player");
+  // D-20: header screens (Profile, Notifications) return to the primary tab the
+  // player came from.
+  const lastPlayerPrimaryRef = useRef<"home" | "club" | "matches">("home");
+  useEffect(() => {
+    if (activeTabBase === "home" || activeTabBase === "club" || activeTabBase === "matches") {
+      lastPlayerPrimaryRef.current = activeTabBase;
+    }
+  }, [activeTabBase]);
   const [previewThemeId, setPreviewThemeId] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() =>
     typeof window !== "undefined" ? Date.now() : 0,
@@ -411,16 +425,22 @@ export default function Home() {
   const POSTS_TABS = new Set(["home"]);
   const STATS_TABS = new Set(["club"]); // Home no longer shows the performance summary
   const MERCH_TABS = new Set(["club"]);
-  const POLL_TABS = new Set(["club"]);
-  const BADGE_TABS = new Set(["club", "home", "profile", "badges"]);
+  // "opinion"/"pulse" (player Polls & Pulse screens) need polls and responses;
+  // before D-20 the player Polls screen loaded nothing (regression fixed here).
+  const POLL_TABS = new Set(["club", "opinion", "pulse"]);
+  const BADGE_TABS = new Set(["club", "home", "profile", "badges", "leaderboard"]);
   const TOURNAMENT_TABS = new Set(["matches"]);
-  const SUB_PLAN_TABS = new Set(["studio", "club"]);
+  const SUB_PLAN_TABS = new Set(["studio", "club", "profile"]);
   const FEE_TEMPLATE_TABS = new Set(["finance", "club"]);
   const FEE_PLAN_TABS = new Set(["matches", "finance", "club"]);
   const MERCH_CATALOG_TABS = new Set(["club"]);
   const OUT_OF_PLAY_TABS = new Set(["profile", "studio", "club"]);
   useEffect(() => {
     if (!store.isLoaded) return;
+    // D-20: the Player Club tab loads only compact, bounded previews through its
+    // own queries (components/club/*). It must not start the admin Club's
+    // whole-collection listeners, so it maps to a key that is in no set below.
+    const activeTab = persona === "player" && activeTabBase === "club" ? "player_club" : activeTabBase;
     // Admin Match Centre loads payments on demand (a match's Payment Details
     // panel, match detail, edit form via ensureMatchPayments; Calendar and
     // Assign views via ensurePayments) instead of the whole collection up front.
@@ -866,10 +886,13 @@ export default function Home() {
       />
 
       {/* Main Content Responsive Workspace */}
-      <main className="max-w-7xl xl:max-w-[1440px] mx-auto px-4 md:px-6 lg:px-8 pt-24 sm:pt-28 pb-12">
+      {/* D-20 layout: one page gutter (16px mobile) owned here — screens add no
+          outer horizontal padding of their own. Top offset = fixed header height
+          + 16px (+ notch inset); bottom space for the mobile nav is on the root. */}
+      <main className="max-w-7xl xl:max-w-[1440px] mx-auto px-4 md:px-6 lg:px-8 pt-[calc(76px_+_env(safe-area-inset-top))] sm:pt-[calc(84px_+_env(safe-area-inset-top))] pb-6">
         <div className="md:grid md:grid-cols-12 md:gap-6 lg:gap-8 items-start animate-fade-in">
           {/* LEFT PANEL: Live Desktop Sidebar Panel (Hidden on Mobile, Beautiful on Desktop) */}
-          <div className="hidden md:block md:col-span-4 lg:col-span-3 space-y-6 sticky top-28">
+          <div className="hidden md:block md:col-span-4 lg:col-span-3 space-y-6 sticky top-24">
             {/* Elegant user card dashboard */}
             <div className="bg-surface rounded-2xl p-5 border border-border flex flex-col relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
@@ -1045,7 +1068,7 @@ export default function Home() {
           </div>
 
           {/* RIGHT PANEL: Dynamic Screen Area (Responsive Flex Grid block) */}
-          <div className="col-span-1 md:col-span-8 lg:col-span-9 space-y-6">
+          <div className="col-span-1 md:col-span-8 lg:col-span-9 space-y-4 md:space-y-6">
             {quotaExceeded && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
@@ -1197,7 +1220,15 @@ export default function Home() {
                   transition={{ duration: 0.2, ease: "easeInOut" }}
                 >
                   {(() => {
-                    const back = getPlayerBackLink(activeTab);
+                    const back =
+                      getPlayerBackLink(activeTab) ??
+                      (activeTab === "notifications"
+                        ? {
+                            parent: lastPlayerPrimaryRef.current,
+                            parentLabel: { home: "Home", club: "Club", matches: "Matches" }[lastPlayerPrimaryRef.current],
+                            label: "Notifications",
+                          }
+                        : null);
                     if (!back) return null;
                     return (
                       <div className="mb-4 flex items-center gap-2" data-testid="player-back-bar">
@@ -1236,8 +1267,21 @@ export default function Home() {
                       defaultAction={tabAction}
                     />
                   )}
+                  {activeTab === "club" && (
+                    <PlayerClubTab
+                      store={store}
+                      currentUserId={user.uid}
+                      isFeatureEnabled={isFeatureEnabled}
+                      onNavigate={(t: string, action?: string) => setActiveTab(t, action)}
+                    />
+                  )}
                   {activeTab === "profile" && (
-                    <ProfileTab store={store} persona="player" onNavigate={(t) => setActiveTab(t)} />
+                    <ProfileTab
+                      store={store}
+                      persona="player"
+                      onNavigate={(t: string) => setActiveTab(t)}
+                      onBack={() => setActiveTab(lastPlayerPrimaryRef.current)}
+                    />
                   )}
                   {activeTab === "finance" && (
                     <FinanceTab
@@ -1248,12 +1292,10 @@ export default function Home() {
                     />
                   )}
                   {activeTab === "players" && (
-                    <PlayersTab
-                      store={store}
-                      persona="player"
-                      isStudioAdmin={false}
-                    />
+                    <PlayerDirectory store={store} currentUserId={user.uid} />
                   )}
+                  {activeTab === "announcements" && <ClubAnnouncementsScreen openId={tabAction} />}
+                  {activeTab === "pulse" && <PulseScreen store={store} currentUserId={user.uid} />}
                   {activeTab === "leaderboard" && (
                     <LeaderboardTab store={store} persona="player" />
                   )}

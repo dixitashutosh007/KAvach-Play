@@ -18,6 +18,7 @@ import Image from "next/image";
 
 import { PlayerFinanceView } from "./FinanceTab";
 import { ProfilePerformanceCard, ProfileStudioCard } from "./profile/ProfileHubCards";
+import { PlayerProfileHub } from "./profile/PlayerProfileHub";
 import { PollInteraction, PollResults } from "./OpinionTab";
 import { AuthProviderBadges } from "./AuthProviderBadges";
 import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet, BadgeShowcase } from "./BadgeIcon";
@@ -34,13 +35,16 @@ export function ProfileTab({
   forceEdit,
   persona,
   onNavigate,
+  onBack,
 }: {
   store: ReturnType<typeof useStore>;
   forceEdit?: boolean;
-  /** "player" renders the Player persona profile hub (D-16). */
+  /** "player" renders the Player persona Profile hub (D-16 / D-20). */
   persona?: "admin" | "player";
-  /** Opens a Profile secondary destination (leaderboard, badges, studio). */
-  onNavigate?: (tab: "leaderboard" | "badges" | "studio") => void;
+  /** Opens a secondary destination from the Profile (studio, finance, badges, leaderboard). */
+  onNavigate?: (tab: string) => void;
+  /** D-20: Profile opens from the header avatar; Back returns to the previous screen. */
+  onBack?: () => void;
 }) {
   const { confirm: confirmAction } = useConfirm();
   const { toast } = useToast();
@@ -229,6 +233,19 @@ export function ProfileTab({
   const myPayments = linkedPlayer
     ? store.payments.filter((p) => p.playerId === linkedPlayer.id).slice(0, 5) // Recent 5
     : [];
+
+  // D-20: the Player persona Profile is the redesigned hub. Editing still uses
+  // the existing form below (same fields, validation and permissions).
+  if (persona === "player" && !forceEdit && !isEditing && !hasMissingMandatory) {
+    return (
+      <PlayerProfileHub
+        store={store}
+        onEdit={() => setIsEditing(true)}
+        onNavigate={onNavigate}
+        onBack={onBack}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 flex flex-col">
@@ -753,7 +770,7 @@ export function ProfileTab({
   );
 }
 
-function OutOfPlayConfig({
+export function OutOfPlayConfig({
   store,
   playerId,
 }: {
@@ -1037,7 +1054,7 @@ function OpinionResults({ store, playerId }: { store: ReturnType<typeof useStore
   );
 }
 
-function MyBadgesSection({
+export function MyBadgesSection({
   badges,
   playerId,
   badgeTypeDefs,

@@ -197,7 +197,7 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
   });
 
   // ── 3. Announcements, Birthdays, and Feed Preview ─────────────────────────
-  test("3. Announcements open modal dialog, birthdays carousel renders, and feed displays recent activity", async ({
+  test("3. (D-20) Announcements open from Club with modal dialog; birthdays carousel and feed render on Home", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -209,11 +209,12 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // 1. Announcements (Section 4.D)
-    const announcementsSection = page.locator('[data-testid="club-announcements-section"]');
-    await expect(announcementsSection).toBeVisible();
+    // 1. Announcements (D-20): not on Home; read them in Club → Announcements.
+    await expect(page.locator('[data-testid="club-announcements-section"]')).toHaveCount(0);
+    await page.locator('[data-testid="player-mobile-bottom-nav"] button[aria-label="Club"]').click();
+    await page.locator('[data-testid="club-announcements-more"]').click();
     const announcementItem = page.locator('[data-testid="announcement-item-post-announcement-1"]');
-    await expect(announcementItem).toBeVisible();
+    await expect(announcementItem).toBeVisible({ timeout: 10000 });
     await expect(announcementItem.getByText(/Annual Club Championship/i)).toBeVisible();
 
     // Open full announcement modal
@@ -223,6 +224,11 @@ test.describe("Phase 2.1: Player Home — Comprehensive Real Browser Verificatio
     await expect(modal.getByText(/Selections for the winter championship league/i)).toBeVisible();
     await modal.getByRole("button", { name: "Close", exact: true }).click();
     await expect(modal).toBeHidden();
+    await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
+
+    // Back to Home for birthdays and feed
+    await page.locator('[data-testid="player-mobile-bottom-nav"] button[aria-label="Home"]').click();
+    await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible();
 
     // 2. Birthdays Carousel (Section 4.E)
     const birthdaysSection = page.locator('[data-testid="birthdays-section"]');

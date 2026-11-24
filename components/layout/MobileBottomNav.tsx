@@ -26,7 +26,7 @@ type Feature = keyof NonNullable<AppConfig["features"]>;
 
 const PLAYER_NAV_ICONS: Record<PlayerPrimaryTab, typeof HomeIcon> = {
   home: HomeIcon,
-  profile: UserIcon,
+  club: Users,
   matches: CalendarDays,
 };
 
@@ -121,7 +121,7 @@ export function MobileBottomNav({
     );
   }
 
-  // Player Primary Navigation (D-16): exactly Home | Profile | Matches, the same
+  // Player Primary Navigation (D-20): exactly Home | Club | Matches, the same
   // order as the desktop sidebar. No More drawer — secondary screens are reached
   // from Home / Profile and highlight their parent here.
   const activeParent = getPlayerNavParent(activeTab);

@@ -26,17 +26,20 @@ export function PlayerHomeHeader({
   return (
     <div className="w-full flex flex-col gap-3" data-testid="player-home-header">
       <div className="flex items-center justify-between gap-2.5">
-        <h1
-          data-testid="player-home-greeting"
-          className="min-w-0 text-xl sm:text-2xl font-black text-text-primary tracking-tight font-heading leading-tight break-words"
-        >
-          {greeting}
-          {displayName ? (
-            <>
-              , <span className="text-deep-wine">{displayName}</span>
-            </>
-          ) : null}
-        </h1>
+        <div className="min-w-0">
+          <h1
+            data-testid="player-home-greeting"
+            className="min-w-0 text-xl sm:text-2xl font-black text-text-primary tracking-tight font-heading leading-tight break-words"
+          >
+            {greeting}
+            {displayName ? (
+              <>
+                , <span className="text-deep-wine">{displayName}</span>
+              </>
+            ) : null}
+          </h1>
+          <p className="text-sm text-text-secondary mt-0.5">Cricket • Community • KAvach</p>
+        </div>
 
         {player?.kavachId && (
           <div className="shrink-0 inline-flex items-center gap-2 bg-surface border border-brand/20 px-2.5 py-1.5 rounded-xl shadow-xs">

@@ -7,9 +7,10 @@
  * - Campaign-led multi-slide hero banner
  * - Authoritative personal payment summary (isolated to logged-in player)
  * - Next 4 upcoming matches (shared match card + availability selector)
- * - Latest club announcements with full reading modal
+ * - Quick Access: Directory, Studio, Shop, Polls & Pulse (D-20)
  * - Horizontally scrollable team birthdays carousel
  * - Club community feed preview
+ * Club announcements and club performance moved to the Club tab (D-20).
  */
 "use client";
 
@@ -44,10 +45,8 @@ import { CampaignHeroBanner } from "./home/CampaignHeroBanner";
 import { PersonalPaymentCard } from "./home/PersonalPaymentCard";
 import { UpcomingMatchesSection } from "./home/UpcomingMatchesSection";
 import { JerseyInfographic } from "./matches/JerseyInfographic";
-import { ClubAnnouncementsSection } from "./home/ClubAnnouncementsSection";
 import { BirthdaysCarousel } from "./home/BirthdaysCarousel";
 import { ClubFeedPreview } from "./home/ClubFeedPreview";
-import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
 import { HomeQuickActions } from "./home/HomeQuickActions";
 import { resolveGreetingName } from "@/lib/greeting";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -89,11 +88,9 @@ export function HomeTab({
   );
   const mePlayer = myPlayers[0] || null;
 
-  // Announcement publishing/editing and Club Performance management live on
-  // Admin Home (D-16). Player Home only reads published announcements, whatever
-  // the signed-in user's admin privileges.
-  const [announcementToOpen, setAnnouncementToOpen] = useState<string | null>(null);
-  const clearAnnouncementToOpen = useCallback(() => setAnnouncementToOpen(null), []);
+  // Announcement publishing/editing and Club Performance management are Admin
+  // persona only (D-16/D-18). D-20: members read announcements and club totals
+  // in the Club tab; Home links there.
 
   // Feature gate helper
   const isFeatureEnabled = (key: any) => {
@@ -204,8 +201,8 @@ export function HomeTab({
   const handleNavigate = (tab: string, targetId?: string) => {
     // Announcements and the club feed live on Home itself (there is no separate tab).
     if (tab === "announcements") {
-      if (targetId) setAnnouncementToOpen(targetId);
-      else document.getElementById("club-announcements")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // D-20: announcements live in Club → Announcements.
+      onNavigateToTab?.("announcements", targetId);
       return;
     }
     if (tab === "feed") {
@@ -343,7 +340,7 @@ export function HomeTab({
   return (
     <div
       data-testid="player-home-container"
-      className="p-4 sm:p-6 max-w-5xl mx-auto w-full pb-28 flex flex-col gap-5 sm:gap-6"
+      className="max-w-5xl mx-auto w-full flex flex-col gap-4"
     >
       {/* 1. Independence Day Greeting Window (Date-gated) */}
       {isIndependenceDayWindow() && (
@@ -551,11 +548,7 @@ export function HomeTab({
             </div>
           )}
 
-          {/* Club quick access (D-16): Directory, Studio, Shop, Polls & Pulse,
-              Announcements open directly from Home. */}
-          <HomeQuickActions isFeatureEnabled={isFeatureEnabled} onNavigate={(t) => handleNavigate(t)} />
-
-          {/* 5. Campaign-Led Hero Banner (Section 4.B) */}
+          {/* Campaign-Led Hero Banner */}
           <CampaignHeroBanner
             announcements={posts}
             players={players}
@@ -565,16 +558,13 @@ export function HomeTab({
             onNavigate={handleNavigate}
           />
 
-          {/* Personal performance summary intentionally not shown on Home until
-              meaningful individual statistics are available (component retained). */}
-
-          {/* 7. Personal Payment Summary (Section 4.F) */}
+          {/* Personal Payment Summary (Pay Now uses the existing payments flow) */}
           <PersonalPaymentCard
             duesSummary={duesSummary}
             onNavigateToPayments={() => onNavigateToPayments?.()}
           />
 
-          {/* 8. Upcoming Matches (Next 4 Fixtures) (Section 4.G) */}
+          {/* Upcoming Matches (next 4) with availability */}
           <UpcomingMatchesSection
             matches={upcomingMatches}
             grounds={grounds}
@@ -585,15 +575,9 @@ export function HomeTab({
             onNavigateToAllMatches={() => handleNavigate("matches")}
           />
 
-          {/* Club performance totals (admin-maintained; hidden until set) */}
-          <ClubPerformanceWidget />
-
-          {/* 9. Club Announcements (Section 4.D) */}
-          <ClubAnnouncementsSection
-            posts={posts}
-            openAnnouncementId={announcementToOpen}
-            onOpenHandled={clearAnnouncementToOpen}
-          />
+          {/* Quick Access (D-20): Directory, Studio, Shop, Polls & Pulse.
+              Club announcements and club performance live in the Club tab. */}
+          <HomeQuickActions isFeatureEnabled={isFeatureEnabled} onNavigate={(t) => handleNavigate(t)} />
 
           {/* 10. Team Birthdays Carousel (Section 4.E) */}
           <BirthdaysCarousel players={players} referenceDate={clubToday} />

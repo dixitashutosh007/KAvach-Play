@@ -113,10 +113,11 @@ Retain granular capabilities: Super Admin, Club Admin, Finance Admin and Designe
 
 ### Navigation and information architecture — approved direction (D-16, 2026-11-23)
 
-**Player primary navigation:** exactly **Home, Profile, Matches**, in that order, identical on desktop and mobile. No fourth item, no More menu/drawer, no secondary horizontal tab row.
+**Player primary navigation (D-20, 2026-11-24):** exactly **Home, Club, Matches**, in that order, identical on desktop and mobile. The personal Profile opens from the header avatar. No fourth item and no More menu/drawer.
 
-- **Home:** player dashboard (search, campaigns/announcements, birthdays, next matches with availability, personal dues and Pay Now, club feed) plus entry points to Directory, Studio, Shop, Polls & Pulse and Announcements/Feed.
-- **Profile:** player card/identity, personal details, badges, catches, aggregate stats, leaderboard position, own payment history/receipts, own Studio membership, player-facing preferences.
+- **Home:** player dashboard (greeting, campaign banner, personal dues and Pay Now, next matches with availability, club feed) plus Quick Access to Directory, Studio, Shop and Polls & Pulse.
+- **Club:** club totals and circuit standings (verified data only), recent announcements and Pulse (30 days, View More), Polls, Leaderboard, Player Badges, Player Directory (public fields only).
+- **Profile (from avatar):** player card/identity, personal details, badges, Studio membership, dues, own payment history/receipts, Out of Play calendar, catches.
 - **Matches:** upcoming/past matches, details, squad, availability, own fee/payment status, results/scorecards.
 - Secondary destinations (Directory, Studio, Shop, Polls & Pulse, Notifications, Leaderboard, Player Finance) open directly and offer contextual navigation back to their parent; they must not form another navigation layer.
 

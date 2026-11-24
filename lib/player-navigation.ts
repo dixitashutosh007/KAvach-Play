@@ -1,30 +1,35 @@
 /**
- * Player persona navigation model (D-16).
+ * Player persona navigation model (D-16, revised by D-20).
  *
- * The Player persona has exactly three primary destinations — Home, Profile,
- * Matches — in that order, on desktop and mobile alike. Every other player-facing
- * screen is a *secondary destination* that belongs to one of those three parents
- * and is reached contextually (Home quick links, Profile cards, Pay Now), never
- * through another menu.
+ * The Player persona has exactly three primary destinations — Home, Club,
+ * Matches — in that order, on desktop and mobile alike (D-20). The personal
+ * Player Profile is opened from the header avatar and is not a primary
+ * destination. Every other player-facing screen is a *secondary destination*
+ * reached contextually (Home quick access, Club tiles, Profile cards, Pay Now)
+ * with a back link — never through another menu.
  *
  * This module is deliberately persona-only: nothing here takes a role or
  * permission as input, so admin privileges cannot change what a player sees.
  * Firestore rules and server-side RBAC remain the security boundary.
  */
 
-export type PlayerPrimaryTab = "home" | "profile" | "matches";
+export type PlayerPrimaryTab = "home" | "club" | "matches";
+
+/** Screens opened from the header (not part of the bottom navigation). */
+export type PlayerGlobalTab = "profile" | "notifications";
 
 export type PlayerSecondaryTab =
   | "players"
   | "studio"
   | "shop"
   | "opinion"
-  | "notifications"
+  | "pulse"
+  | "announcements"
   | "leaderboard"
   | "badges"
   | "finance";
 
-export type PlayerTab = PlayerPrimaryTab | PlayerSecondaryTab;
+export type PlayerTab = PlayerPrimaryTab | PlayerGlobalTab | PlayerSecondaryTab;
 
 /** Feature flags from `appConfig.features` that gate player destinations. */
 export type PlayerNavFeature = "feed" | "matches" | "leaderboard" | "studio" | "shop" | "opinion" | "badges";
@@ -38,32 +43,38 @@ export interface PlayerPrimaryNavItem {
 /** The only primary navigation the Player persona ever renders, in order. */
 export const PLAYER_PRIMARY_NAV: readonly PlayerPrimaryNavItem[] = [
   { tab: "home", label: "Home", feature: "feed" },
-  { tab: "profile", label: "Profile" },
+  { tab: "club", label: "Club" },
   { tab: "matches", label: "Matches", feature: "matches" },
 ] as const;
 
 export interface PlayerSecondaryDestination {
-  parent: PlayerPrimaryTab;
+  /** Where the back link returns to. */
+  parent: PlayerPrimaryTab | "profile";
   label: string;
   feature?: PlayerNavFeature;
 }
 
-/** Secondary screens and the primary destination each one belongs to. */
+/** Secondary screens and the screen each one returns to. */
 export const PLAYER_SECONDARY_DESTINATIONS: Readonly<Record<PlayerSecondaryTab, PlayerSecondaryDestination>> = {
-  players: { parent: "home", label: "Club Directory" },
+  // Club destinations
+  players: { parent: "club", label: "Player Directory" },
+  opinion: { parent: "club", label: "Polls", feature: "opinion" },
+  pulse: { parent: "club", label: "Pulse", feature: "opinion" },
+  announcements: { parent: "club", label: "Club Announcements" },
+  leaderboard: { parent: "club", label: "Leaderboard", feature: "leaderboard" },
+  badges: { parent: "club", label: "Player Badges", feature: "badges" },
+  // Home quick access
   studio: { parent: "home", label: "Studio", feature: "studio" },
   shop: { parent: "home", label: "Club Shop", feature: "shop" },
-  opinion: { parent: "home", label: "Polls & Pulse", feature: "opinion" },
-  notifications: { parent: "home", label: "Notifications" },
-  leaderboard: { parent: "profile", label: "Leaderboard", feature: "leaderboard" },
-  badges: { parent: "profile", label: "Club Badges", feature: "badges" },
+  // Profile (Payments)
   finance: { parent: "profile", label: "My Payments" },
 };
 
-const PRIMARY_LABELS: Record<PlayerPrimaryTab, string> = {
+const PARENT_LABELS: Record<PlayerPrimaryTab | "profile", string> = {
   home: "Home",
-  profile: "Profile",
+  club: "Club",
   matches: "Matches",
+  profile: "Profile",
 };
 
 export type FeatureCheck = (feature: PlayerNavFeature) => boolean;
@@ -76,7 +87,11 @@ export function getPlayerPrimaryNav(isFeatureEnabled: FeatureCheck = allEnabled)
 }
 
 export function isPlayerPrimaryTab(tab: string): tab is PlayerPrimaryTab {
-  return tab === "home" || tab === "profile" || tab === "matches";
+  return tab === "home" || tab === "club" || tab === "matches";
+}
+
+export function isPlayerGlobalTab(tab: string): tab is PlayerGlobalTab {
+  return tab === "profile" || tab === "notifications";
 }
 
 export function isPlayerSecondaryTab(tab: string): tab is PlayerSecondaryTab {
@@ -85,35 +100,43 @@ export function isPlayerSecondaryTab(tab: string): tab is PlayerSecondaryTab {
 
 /** True when `tab` is a screen the Player persona may display. */
 export function isPlayerTab(tab: string): tab is PlayerTab {
-  return isPlayerPrimaryTab(tab) || isPlayerSecondaryTab(tab);
+  return isPlayerPrimaryTab(tab) || isPlayerGlobalTab(tab) || isPlayerSecondaryTab(tab);
 }
 
-/** The primary destination that should appear active while `tab` is shown. */
+/**
+ * The primary destination that should appear active while `tab` is shown, or
+ * null for header screens (Profile, Notifications) and screens reached from them.
+ */
 export function getPlayerNavParent(tab: string): PlayerPrimaryTab | null {
   if (isPlayerPrimaryTab(tab)) return tab;
-  if (isPlayerSecondaryTab(tab)) return PLAYER_SECONDARY_DESTINATIONS[tab].parent;
+  if (isPlayerSecondaryTab(tab)) {
+    const parent = PLAYER_SECONDARY_DESTINATIONS[tab].parent;
+    return parent === "profile" ? null : parent;
+  }
   return null;
 }
 
 /**
  * Resolve the tab the Player persona should actually show. Admin-only or unknown
- * tabs (club, design, settings, grounds, dues_and_reminders, ...) and destinations
+ * tabs (design, settings, grounds, dues_and_reminders, ...) and destinations
  * whose feature is disabled fall back to an enabled primary destination.
  */
 export function resolvePlayerTab(tab: string, isFeatureEnabled: FeatureCheck = allEnabled): PlayerTab {
   if (isPlayerPrimaryTab(tab)) {
     const item = PLAYER_PRIMARY_NAV.find((i) => i.tab === tab)!;
     if (!item.feature || isFeatureEnabled(item.feature)) return tab;
+  } else if (isPlayerGlobalTab(tab)) {
+    return tab;
   } else if (isPlayerSecondaryTab(tab)) {
     const dest = PLAYER_SECONDARY_DESTINATIONS[tab];
     if (!dest.feature || isFeatureEnabled(dest.feature)) return tab;
   }
-  return getPlayerPrimaryNav(isFeatureEnabled)[0]?.tab ?? "profile";
+  return getPlayerPrimaryNav(isFeatureEnabled)[0]?.tab ?? "club";
 }
 
-/** Back-link details for a secondary screen, or null on a primary screen. */
-export function getPlayerBackLink(tab: string): { parent: PlayerPrimaryTab; parentLabel: string; label: string } | null {
+/** Back-link details for a secondary screen, or null on a primary / header screen. */
+export function getPlayerBackLink(tab: string): { parent: PlayerPrimaryTab | "profile"; parentLabel: string; label: string } | null {
   if (!isPlayerSecondaryTab(tab)) return null;
   const dest = PLAYER_SECONDARY_DESTINATIONS[tab];
-  return { parent: dest.parent, parentLabel: PRIMARY_LABELS[dest.parent], label: dest.label };
+  return { parent: dest.parent, parentLabel: PARENT_LABELS[dest.parent], label: dest.label };
 }

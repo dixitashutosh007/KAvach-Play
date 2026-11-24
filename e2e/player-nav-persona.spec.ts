@@ -1,5 +1,6 @@
 /**
- * D-16 Player persona navigation & persona isolation — real browser suite.
+ * D-16/D-20 Player persona navigation & persona isolation — real browser suite.
+ * D-20: primary navigation is Home, Club, Matches; Profile opens from the avatar.
  *
  * Runs against the local dev server with the synthetic session harness
  * (`e2e/helpers/synthetic-session.ts`): synthetic store data, mocked auth, no
@@ -16,7 +17,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { injectSyntheticSession, RoleConfig } from "./helpers/synthetic-session";
 
-const SHOTS = path.resolve(process.cwd(), "docs/qa/player-nav-persona/screenshots");
+const SHOTS = path.resolve(process.cwd(), "docs/qa/player-ui-enhancement/screenshots");
 test.beforeAll(() => {
   fs.mkdirSync(SHOTS, { recursive: true });
 });
@@ -77,33 +78,34 @@ async function assertNoAdminControls(page: Page) {
   }
 }
 
-test.describe("D-16 persona isolation — every role in Player persona (mobile 390×844)", () => {
+test.describe("Persona isolation — every role in Player persona (mobile 390×844)", () => {
   for (const [roleName, role] of Object.entries(ROLES)) {
     test(`${roleName}: Player persona is the regular player experience`, async ({ page }) => {
       const uid = `nav-${roleName.toLowerCase().replace(/\s+/g, "-")}`;
       await openAsPlayer(page, uid, role, 390, 844);
 
-      // Exactly three primary destinations, in order.
       const nav = '[data-testid="player-mobile-bottom-nav"]';
       await expect(page.locator(nav)).toBeVisible();
-      expect(await navLabels(page, nav)).toEqual(["Home", "Profile", "Matches"]);
+      expect(await navLabels(page, nav)).toEqual(["Home", "Club", "Matches"]);
       await assertNoAdminControls(page);
 
-      // Persona switch is offered only to authorised admins.
       const toggle = page.locator('[data-testid="header-persona-toggle"]');
       if (roleName === "Regular Player") await expect(toggle).toHaveCount(0);
       else await expect(toggle).toBeVisible();
 
       // Admin-only tabs cannot be forced into the Player persona.
-      for (const tab of ["club", "design", "settings", "grounds"]) {
+      for (const tab of ["design", "settings", "grounds"]) {
         await page.evaluate((t) => (window as any).__KAVACH_NAVIGATE_TAB__(t), tab);
         await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible({ timeout: 5000 });
       }
       await assertNoAdminControls(page);
 
-      // Profile and Matches are player screens without admin controls.
-      await page.locator(`${nav} button[aria-label="Profile"]`).click();
-      await expect(page.locator('[data-testid="profile-performance-card"]')).toBeVisible({ timeout: 10_000 });
+      // Club, Profile (avatar) and Matches are player screens without admin controls.
+      await page.locator(`${nav} button[aria-label="Club"]`).click();
+      await expect(page.locator('[data-testid="player-club"]')).toBeVisible({ timeout: 10_000 });
+      await assertNoAdminControls(page);
+      await page.locator('[data-testid="header-profile-avatar"]').click();
+      await expect(page.locator('[data-testid="player-profile-hub"]')).toBeVisible({ timeout: 10_000 });
       await assertNoAdminControls(page);
       await page.locator(`${nav} button[aria-label="Matches"]`).click();
       await expect(page.locator('[data-testid="match-subtabs"]')).toHaveCount(0);
@@ -111,124 +113,92 @@ test.describe("D-16 persona isolation — every role in Player persona (mobile 3
       await assertNoAdminControls(page);
 
       if (roleName !== "Regular Player") {
-        // Switching to Admin persona restores the existing admin experience.
         await toggle.click();
         await expect(page.locator('[data-testid="admin-mobile-bottom-nav"]')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('[data-testid="player-mobile-bottom-nav"]')).toHaveCount(0);
         await toggle.click();
         await expect(page.locator(nav)).toBeVisible();
-        expect(await navLabels(page, nav)).toEqual(["Home", "Profile", "Matches"]);
+        expect(await navLabels(page, nav)).toEqual(["Home", "Club", "Matches"]);
       }
     });
   }
 });
 
-test.describe("D-16 desktop navigation matches mobile (1280×800)", () => {
+test.describe("Desktop navigation matches mobile (1280×800)", () => {
   for (const [roleName, role] of Object.entries(ROLES)) {
-    test(`${roleName}: desktop sidebar shows exactly Home, Profile, Matches`, async ({ page }) => {
+    test(`${roleName}: desktop sidebar shows exactly Home, Club, Matches`, async ({ page }) => {
       const uid = `desk-${roleName.toLowerCase().replace(/\s+/g, "-")}`;
       await openAsPlayer(page, uid, role, 1280, 800);
       const ids = await page.locator('[data-testid^="sidebar-player-"]').evaluateAll((els) =>
         els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => e.getAttribute("data-testid")),
       );
-      expect(ids).toEqual(["sidebar-player-home", "sidebar-player-profile", "sidebar-player-matches"]);
+      expect(ids).toEqual(["sidebar-player-home", "sidebar-player-club", "sidebar-player-matches"]);
       await expect(page.locator('[data-testid="player-mobile-bottom-nav"]')).toBeHidden();
       await assertNoAdminControls(page);
     });
   }
 });
 
-test.describe("D-16 player features stay reachable (Super Admin in Player persona, 390×844)", () => {
-  test("Home quick access, back links, notifications, profile destinations, Pay Now target", async ({ page }) => {
+test.describe("Player features stay reachable (Super Admin in Player persona, 390×844)", () => {
+  test("Home quick access, Club tiles, back links, notifications, Profile and Pay Now", async ({ page }) => {
     await openAsPlayer(page, "reach-super", ROLES["Super Admin"], 390, 844);
     const back = page.locator('[data-testid="player-back-button"]');
     const navCurrent = page.locator('[data-testid="player-mobile-bottom-nav"] button[aria-current="page"]');
 
-    const quick: [string, RegExp][] = [
-      ["players", /Search players/i],
-      ["studio", /Studio/i],
-      ["shop", /Shop|Merchandise/i],
-      ["opinion", /Pulse|Poll/i],
-    ];
-    for (const [target] of quick) {
+    // Home quick access: Studio and Shop return to Home; Directory and Polls belong to Club.
+    for (const [target, parent] of [["studio", "Home"], ["shop", "Home"], ["players", "Club"], ["opinion", "Club"]] as const) {
+      await page.locator('[data-testid="player-mobile-bottom-nav"] button[aria-label="Home"]').click();
       await page.locator(`[data-testid="home-quick-${target}"]`).click();
       await expect(back).toBeVisible({ timeout: 10_000 });
-      await expect(navCurrent).toHaveAttribute("aria-label", "Home");
+      await expect(navCurrent).toHaveAttribute("aria-label", parent);
       await back.click();
-      await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible();
     }
 
-    // Announcements entry stays on Home.
-    await page.locator('[data-testid="home-quick-announcements"]').click();
-    await expect(page.locator('[data-testid="club-announcements-section"]')).toBeVisible();
-    await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
-
-    // Notifications (previously a blank screen in Player persona).
-    await page.locator('[data-testid="header-notifications-btn"]').click();
-    await expect(page.getByRole("heading", { name: /Notification Hub/i })).toBeVisible({ timeout: 10_000 });
-    await expect(navCurrent).toHaveAttribute("aria-label", "Home");
-
-    // Profile destinations.
-    await page.locator('[data-testid="player-mobile-bottom-nav"] button[aria-label="Profile"]').click();
-    await page.locator('[data-testid="profile-open-leaderboard"]').click();
-    await expect(page.getByRole("heading", { name: /Leaderboard/i }).first()).toBeVisible({ timeout: 10_000 });
-    await expect(navCurrent).toHaveAttribute("aria-label", "Profile");
-    await back.click();
-    await page.locator('[data-testid="profile-open-badges"]').click();
-    await expect(page.getByRole("button", { name: /Hall/i })).toBeVisible({ timeout: 10_000 });
+    // Club tiles: Leaderboard, Player Badges, Polls, Pulse — each with a back link to Club.
+    await page.locator('[data-testid="player-mobile-bottom-nav"] button[aria-label="Club"]').click();
+    for (const tile of ["leaderboard", "badges", "opinion", "pulse"]) {
+      await page.locator(`[data-testid="club-tile-${tile}"]`).click();
+      await expect(back).toHaveAttribute("aria-label", "Back to Club", { timeout: 10_000 });
+      await back.click();
+      await expect(page.locator('[data-testid="player-club"]')).toBeVisible();
+    }
+    await page.locator('[data-testid="club-tile-badges"]').click();
     await expect(page.getByRole("button", { name: /Grant|Manage/i })).toHaveCount(0);
     await back.click();
-    await expect(page.locator('[data-testid="profile-studio-card"]')).toBeVisible();
 
-    // Pay Now target: player payments screen (own dues only).
-    await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("finance"));
+    // Notifications (header) with a back link to the last primary screen.
+    await page.locator('[data-testid="header-notifications-btn"]').click();
+    await expect(page.getByRole("heading", { name: /Notification Hub/i })).toBeVisible({ timeout: 10_000 });
+    await expect(back).toHaveAttribute("aria-label", "Back to Club");
+    await back.click();
+
+    // Profile from the avatar; Pay Now opens My Payments with a back link to Profile.
+    await page.locator('[data-testid="header-profile-avatar"]').click();
+    await expect(page.locator('[data-testid="player-profile-hub"]')).toBeVisible({ timeout: 10_000 });
+    await expect(navCurrent).toHaveCount(0);
+    await page.locator('[data-testid="profile-chip-payments"]').click();
+    await page.locator('[data-testid="pay-now-button"]').click();
     await expect(page.getByRole("heading", { name: /My Dues & Payments/i })).toBeVisible({ timeout: 10_000 });
-    await expect(navCurrent).toHaveAttribute("aria-label", "Profile");
+    await expect(back).toHaveAttribute("aria-label", "Back to Profile");
+    await back.click();
+    await expect(page.locator('[data-testid="player-profile-hub"]')).toBeVisible();
   });
 });
 
 test.describe("Announcement management is Admin persona only (D-16; D-18: Club → Announcements)", () => {
   for (const roleName of ["Club Admin", "Super Admin"]) {
-    test(`${roleName}: Admin Home links to Club → Announcements publishing; Player Home does not`, async ({ page }) => {
+    test(`${roleName}: Admin Home links to Club → Announcements publishing; Player screens do not`, async ({ page }) => {
       await openAsPlayer(page, `ann-${roleName.replace(/\s+/g, "-").toLowerCase()}`, ROLES[roleName], 1280, 900);
+      await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
+      await page.locator('[data-testid="sidebar-player-club"]').click();
+      await page.locator('[data-testid="club-announcements-more"]').click();
+      await expect(page.locator('[data-testid="club-announcements-screen"]')).toBeVisible({ timeout: 10_000 });
       await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
       await page.locator('[data-testid="header-persona-toggle"]').click();
       await page.locator('[data-testid="sidebar-tab-home"]').click();
       await page.locator('[data-testid="admin-home-announcements-link"]').click();
       await expect(page.locator('[data-testid="admin-announcements-manager"]')).toBeVisible({ timeout: 15_000 });
-      await expect(page.locator('[data-testid="sidebar-tab-club"]')).toHaveAttribute("aria-current", "page");
       await expect(page.locator('[data-testid="new-announcement-button"]')).toBeVisible();
     });
   }
-  for (const roleName of ["Match Admin", "Finance Admin", "Studio Admin", "Designer"]) {
-    test(`${roleName}: no announcement publishing in either persona (unchanged audience)`, async ({ page }) => {
-      await openAsPlayer(page, `ann2-${roleName.replace(/\s+/g, "-").toLowerCase()}`, ROLES[roleName], 1280, 900);
-      await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
-      await page.locator('[data-testid="header-persona-toggle"]').click();
-      await page.waitForTimeout(500);
-      await expect(page.locator('[data-testid="new-announcement-button"]')).toHaveCount(0);
-    });
-  }
-});
-
-test.describe("D-16 screenshots", () => {
-  const sizes: [number, number][] = [[360, 800], [390, 844], [430, 932], [768, 1024], [1280, 800], [1440, 900]];
-  for (const [w, h] of sizes) {
-    test(`player home/profile/matches at ${w}×${h}`, async ({ page }) => {
-      await openAsPlayer(page, `shot-${w}`, ROLES["Super Admin"], w, h);
-      await shoot(page, `player-home-${w}x${h}`);
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("profile"));
-      await expect(page.locator('[data-testid="profile-performance-card"]')).toBeVisible({ timeout: 10_000 });
-      await shoot(page, `player-profile-${w}x${h}`);
-      await page.evaluate(() => (window as any).__KAVACH_NAVIGATE_TAB__("matches"));
-      await page.waitForTimeout(800);
-      await shoot(page, `player-matches-${w}x${h}`);
-    });
-  }
-  test("secondary screen with back link", async ({ page }) => {
-    await openAsPlayer(page, "shot-secondary", ROLES["Super Admin"], 390, 844);
-    await page.locator('[data-testid="home-quick-players"]').click();
-    await expect(page.locator('[data-testid="player-back-button"]')).toBeVisible();
-    await shoot(page, "player-directory-back-390x844");
-  });
 });

@@ -478,7 +478,7 @@ export function PlayerMatchCenter({
   return (
     <div
       data-testid="player-match-center"
-      className="space-y-5 pb-12 max-w-4xl mx-auto"
+      className="space-y-4 max-w-4xl mx-auto"
     >
       {/* Ineligible / Unauthorized Access Alert Banner */}
       {ineligibleAccessAlert && (

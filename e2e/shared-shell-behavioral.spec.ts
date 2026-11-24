@@ -13,7 +13,7 @@ test.beforeAll(async () => {
 
 test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suite", () => {
   // ── 1. Player Navigation Workflow ──────────────────────────────────────────
-  test("1. (D-16) Player navigation renders exactly Home, Profile, Matches, changes screens, uses Home entry points, and routes avatar to profile", async ({
+  test("1. (D-20) Player navigation renders exactly Home, Club, Matches, changes screens, uses Home entry points, and routes avatar to Profile", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
@@ -25,7 +25,6 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
 
-    // Header brand and avatar visibility
     await expect(page.locator('[data-testid="app-header"]')).toBeVisible();
     const avatarBtn = page.locator('[data-testid="header-profile-avatar"]');
     await expect(avatarBtn).toBeVisible();
@@ -33,28 +32,29 @@ test.describe("Shared Mobile Application Shell — Real Browser Behavioural Suit
     // Exactly 3 primary items, in order, and no More
     const playerNav = page.locator('[data-testid="player-mobile-bottom-nav"]');
     await expect(playerNav).toBeVisible();
-    expect(await playerNav.locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Profile", "Matches"]);
+    expect(await playerNav.locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Club", "Matches"]);
     await expect(playerNav.getByRole("button", { name: "More" })).toHaveCount(0);
 
-    // Navigate to Matches
+    // Matches
     await playerNav.getByRole("button", { name: "Matches", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Match Schedule/i }).first()).toBeVisible({ timeout: 5000 });
 
-    // Navigate to Profile (payments live here)
-    await playerNav.getByRole("button", { name: "Profile", exact: true }).click();
-    await expect(page.getByRole("heading", { name: /Personal Profile/i })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("heading", { name: /My Dues & Payments/i })).toBeVisible({ timeout: 5000 });
+    // Club
+    await playerNav.getByRole("button", { name: "Club", exact: true }).click();
+    await expect(page.locator('[data-testid="player-club"]')).toBeVisible({ timeout: 5000 });
 
-    // Directory is a Home entry point with a contextual back link
+    // Directory is a Home entry point with a contextual back link (back to Club)
     await playerNav.getByRole("button", { name: "Home", exact: true }).click();
     await page.locator('[data-testid="home-quick-players"]').click();
-    await expect(page.getByPlaceholder(/Search players/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="player-directory"]')).toBeVisible({ timeout: 5000 });
     await page.locator('[data-testid="player-back-button"]').click();
-    await expect(page.locator('[data-testid="player-home-container"]')).toBeVisible();
+    await expect(page.locator('[data-testid="player-club"]')).toBeVisible();
 
-    // Verify Header Profile Avatar navigation
+    // Avatar opens the Profile; Back returns to the previous primary screen
     await avatarBtn.click();
-    await expect(page.getByRole("heading", { name: /Personal Profile/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="player-profile-hub"]')).toBeVisible({ timeout: 5000 });
+    await page.locator('[data-testid="profile-back"]').click();
+    await expect(page.locator('[data-testid="player-club"]')).toBeVisible();
   });
 
   // ── 2. Admin Navigation Workflow & RBAC Gating (D-18) ───────────────────────

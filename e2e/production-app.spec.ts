@@ -608,9 +608,9 @@ test.describe("Production Route (/) Verification Suite", () => {
           const navButtons = nav.locator("button");
           const count = await navButtons.count();
 
-          // D-16: exactly 3 primary buttons (Home, Profile, Matches)
+          // D-20: exactly 3 primary buttons (Home, Club, Matches)
           expect(count).toBe(3);
-          expect(await navButtons.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Profile", "Matches"]);
+          expect(await navButtons.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Home", "Club", "Matches"]);
 
           for (let i = 0; i < count; i++) {
             const btn = navButtons.nth(i);
