@@ -104,6 +104,8 @@ describe("CricHeroes link in the vs row", () => {
   it("all three card bodies (Player Home compact, Player/Admin header, Admin stacked) use the shared label", () => {
     const s = fs.readFileSync("components/matches/MatchCardHeader.tsx", "utf-8");
     assert.equal((s.match(/<MatchVsLabel match=\{match\} \/>/g) || []).length, 3);
+    // The header keeps the space between "vs" and the opponent ("vs Delhi Challengers").
+    assert.match(s, /<MatchVsLabel match=\{match\} \/>\{" "\}\s*<div className="mt-0\.5 flex items-start gap-2 min-w-0"/);
     assert.doesNotMatch(s, />vs<\/span>\{" "\}/);
   });
 });

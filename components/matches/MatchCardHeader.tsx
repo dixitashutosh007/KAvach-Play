@@ -299,7 +299,7 @@ export function MatchCardHeader({ match, ground, meta, hideResult = false, resul
             {match.jerseyColor && <JerseyInfographic color={match.jerseyColor} size="xl" />}
           </div>
           <div className="min-w-0">
-            <MatchVsLabel match={match} />
+            <MatchVsLabel match={match} />{" "}
             <div className="mt-0.5 flex items-start gap-2 min-w-0" data-testid={`match-opponent-line-${match.id}`}>
               <h3 className="min-w-0 flex-1 text-lg @sm:text-2xl font-black font-heading text-text-primary tracking-tight leading-tight break-words line-clamp-2">
                 {match.opponent}

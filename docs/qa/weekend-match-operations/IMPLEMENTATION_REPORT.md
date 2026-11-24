@@ -147,8 +147,18 @@ See §9 for counts. Key emulator scenarios, all run against the real route code 
 | Unit / functional | `npm run test:functional` | 1119 / 1119 pass, 0 skipped (33 new) |
 | Emulator (rules, payments, identity, new routes) | `node scripts/run-emulator-tests.mjs` | 461 / 461 pass, 0 skipped (17 new) |
 | New e2e | `npx playwright test e2e/weekend-match-operations.spec.ts` | 9 / 9 (Desktop Chrome) |
-| Full e2e | `npx playwright test` | _see §9a_ |
-| Build | `GIT_BRANCH=mig-mov npm run build` | _see §9a_ |
+| Full e2e (Desktop + Mobile Chrome) | `npx playwright test` | 251 passed, 21 failed, 98 skipped (credential-gated, not executed) — see §9a |
+| Re-run after fix | `npx playwright test e2e/player-match-center-behavioral.spec.ts e2e/weekend-match-operations.spec.ts` | 46 / 46 (both projects) |
+| Build | `GIT_BRANCH=mig-mov npm run build` | Pass (30/30 pages) |
+
+### 9a. Full e2e breakdown
+
+- **17 failures are pre-existing** and also fail before D-16:
+  - `match-center-corrections` ×2;
+  - `player-home-behavioral` 1 / 2 / 2B / 4D / 4E / 4G;
+  - both of the above on both projects;
+  - `production-app` 3 on Desktop.
+- **4 failures were caused by this workstream and are fixed.** `player-match-center-behavioral` 1 and 2 failed on both projects because the shared "vs" label dropped the space between "vs" and the opponent: the text read "vsDelhi Challengers", which screen readers would also read. The space is restored, a unit test now guards it, and both specs plus the weekend suite re-ran 46 / 46.
 
 ## 10. Limitations and residual risks
 
