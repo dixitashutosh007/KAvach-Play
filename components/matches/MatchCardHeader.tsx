@@ -84,13 +84,19 @@ export function MatchOpponentName({
         data-testid={`cricheroes-link-${match.id}`}
         title={`Open on ${linkHostLabel(href) || "CricHeroes"} (new tab)`}
         aria-label={`${prefix}${name} — open match on CricHeroes (opens in a new tab)`}
-        className="group/opp inline-flex max-w-full items-start gap-1 rounded-md text-inherit -mx-0.5 px-0.5 hover:text-scarlet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
+        className="group/opp inline-flex max-w-full items-end gap-1 rounded-md text-inherit -mx-0.5 px-0.5 hover:text-scarlet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-scarlet/50"
       >
+        {/* The icon sits outside the clamped text (aligned to its last line), so it stays visible even when a long name is truncated. */}
         <span className="min-w-0 break-words line-clamp-2 underline decoration-scarlet/40 decoration-2 underline-offset-4 group-hover/opp:decoration-scarlet">
           {prefix}
           {name}
         </span>
-        <ExternalLink className="shrink-0 w-[0.7em] h-[0.7em] mt-[0.2em] text-scarlet" strokeWidth={2.5} aria-hidden="true" data-testid={`cricheroes-icon-${match.id}`} />
+        <ExternalLink
+          className="shrink-0 mb-[0.2em] w-[0.7em] h-[0.7em] text-scarlet"
+          strokeWidth={2.5}
+          aria-hidden="true"
+          data-testid={`cricheroes-icon-${match.id}`}
+        />
       </a>
     </Tag>
   );

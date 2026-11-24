@@ -93,7 +93,7 @@ describe("CricHeroes link on the opponent name", () => {
   it("makes the opponent name (with an external-link icon) one new-tab, noopener link", () => {
     const h = html("https://cricheroes.com/scorecard/1/x");
     assert.match(h, /<a href="https:\/\/cricheroes\.com\/scorecard\/1\/x" target="_blank" rel="noopener noreferrer"/);
-    assert.match(h, /Delhi Challengers<\/span><svg/); // name then icon inside the link
+    assert.match(h, /line-clamp-2[^"]*">Delhi Challengers<\/span><svg[^>]*class="[^"]*shrink-0/); // icon after the clamped name, never clipped by it
     assert.match(h, /data-testid="cricheroes-icon-m1"/);
     assert.match(h, /aria-label="Delhi Challengers — open match on CricHeroes \(opens in a new tab\)"/);
     assert.match(h, /line-clamp-2/); // same clamp as before
