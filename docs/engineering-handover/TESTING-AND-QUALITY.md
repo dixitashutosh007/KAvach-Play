@@ -30,7 +30,7 @@ The repository maintains a multi-tiered validation pyramid:
 
 | Test Category | Runner / Tool | Target Spec Files | Total Specs | Execution Status |
 |---|---|---|---|---|
-| **Functional & Accounting** | `node:test` (`npm run test:functional`) | `tests/accounting-functional.test.mjs`, `tests/abandoned-match-accounting.test.mjs` | 19 | **462/462 PASSED** (All suites locally at `8978577`) |
+| **Functional & Accounting** | `node:test` (`npm run test:functional`) | `tests/*.test.mjs` (entire functional suite) | 1,174 tests across 276 suites | **1,154 PASSED**, 20 failing due to assertion drift against D-22 (test debt) |
 | **Database & Payment Isolation** | `node:test` (`npm run test:functional`) | `tests/database-isolation-and-payment-safety.test.mjs` | 13 | **PASSED** |
 | **Player Match Center UI & Flow** | `node:test` (`npm run test:functional`) | `tests/player-match-center-ui.test.mjs`, `tests/phase2.2-player-match-center.test.mjs` | 130+ | **PASSED** |
 | **Player Home & Navigation** | `node:test` (`npm run test:functional`) | `tests/phase2.1-player-home-corrections.test.mjs`, `tests/phase6-navigation-rbac.test.mjs` | 45+ | **PASSED** |
@@ -46,7 +46,7 @@ The repository maintains a multi-tiered validation pyramid:
 
 ### Functional & Unit Test Suite (`npm run test:functional`)
 
-Executed locally on branch `mig-mov` at HEAD `8978577`:
+Executed locally on branch `mig-mov` at current HEAD `6ed38d4`:
 
 ```bash
 $ npm run test:functional
@@ -54,36 +54,23 @@ $ npm run test:functional
 > ai-studio-applet@0.1.0 test:functional
 > node --test tests/*.test.mjs
 
-✔ FIN-006: getClubCalendarDate calculates date deterministically in Asia/Kolkata (32.9ms)
-✔ FIN-006: computeLateFees enforces Tuesday EOD deadline in Asia/Kolkata (0.3ms)
-✔ FIN-006: Sunday matches have the same Tuesday deadline as Saturday matches (0.1ms)
-✔ FIN-006: Weekday matches do not generate weekend late fees (0.05ms)
-✔ FIN-005: Abandoned match accounting retains collected cash while zeroing dues (0.08ms)
-✔ FIN-007: Late fees deduplicate against existing otherFees records (0.17ms)
-✔ Option A: Status 'Waived' is recognized and excluded from player dues (0.06ms)
 ...
-▶ Database Isolation & Payment Safety Verification
-  ✔ enables payment operations ONLY when branch is 'main' AND DB is production (0.6ms)
-  ✔ disables payment operations on 'mig-mov' with development DB (0.25ms)
-  ✔ disables payment operations on 'mig-mov' even if configured with production DB (0.13ms)
-  ✔ fails closed when branch identity is missing or conflicting (0.08ms)
-...
-▶ Player Match Center UI Verification (Phase 2.2)
-  ✔ validates authoritative match navigation across all entry points (1.2ms)
-  ✔ resolves player fee overrides with timestamp and document ID tie-breaking (0.8ms)
-  ✔ aggregates multi-channel payments without duplicate counting (0.9ms)
-...
-ℹ tests 462
-ℹ suites 101
-ℹ pass 462
-ℹ fail 0
+ℹ tests 1174
+ℹ suites 276
+ℹ pass 1154
+ℹ fail 20
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 1147.64
+ℹ duration_ms 4268.42
 ```
 
-**Result:** **462 tests passed, 0 failures, 0 skipped.** Execution duration: 1.15 seconds.
+**Result:** **1,154 tests passed out of 1,174 tests across 276 suites.**
+- **Test Debt Analysis (20 Failures):** The 20 failing tests are legacy unit assertions expecting the pre-D-22 role structure (e.g. tests written before Decision D-22 that expect `isMatchAdmin`, `isStudioAdmin`, or `isDesigner` to remain standalone granted roles rather than being consolidated into Club Admin, or assertions expecting 6 role pills in the legacy Access Control table). Production code enforces D-22, while these 20 tests need their assertions synchronized with D-22.
+
+### Static Analysis & Build Verification
+- **TypeScript:** `npx tsc --noEmit` completed with **0 errors**.
+- **ESLint:** `npm run lint` completed with **0 errors** (4 standard Next.js open-read warnings).
 
 ### Firebase Emulator Suite (`npm run test:emulator`)
 

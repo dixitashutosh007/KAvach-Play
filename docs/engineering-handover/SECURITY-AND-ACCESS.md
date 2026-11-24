@@ -11,41 +11,43 @@
 
 KAvach Play implements a least-privilege Role-Based Access Control model. Administrative authority is granted via verified server claims and authoritative database records, never by client assertions.
 
-### Active Roles vs Target Consolidation (OPEN OWNER DECISION — OD-04)
+### Approved Three-Role Model (Decision D-22 — Approved & Implemented)
+
+Per owner decision **D-22 (2026-11-24)**, the active administrative roles are consolidated strictly into three roles:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                    Approved Target Role Model (Owner Directive)            │
+│                    Approved & Active Three-Role Model                      │
 │                                                                            │
 │  1. Super Admin   - Governed strictly by Auth Custom Claim { admin: true } │
-│  2. Club Admin    - Consolidated authority: players, matches, grounds,     │
-│                     studio, shop, design, operations.                      │
-│  3. Finance Admin - Financial obligations, offline cash, reports, dues.    │
+│                     Full platform governance, settings, access control.    │
+│  2. Club Admin    - Roster, directory, fixtures, squad, grounds,           │
+│                     tournaments, Studio CRM, announcements, shop, design.  │
+│                     (Consolidated from Club Admin, Match Admin,            │
+│                      Studio Admin, and Designer)                           │
+│  3. Finance Admin - Financial obligations, offline cash/UPI, match fees,   │
+│                     dues, reminders, activity logs, financial reports.     │
 │                                                                            │
-│  (Match Admin, Studio Admin, and Designer consolidated into Club Admin)    │
-└────────────────────────────────────────────────────────────────────────────┘
-                                      vs
-┌────────────────────────────────────────────────────────────────────────────┐
-│                    Current Repository Implementation                       │
-│                                                                            │
-│  The codebase currently enforces 6 granular roles:                         │
-│  - Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin,      │
-│    and Designer.                                                           │
-│  - Refactoring rules and code to the 3-role model is pending (OD-04).      │
+│  Retired Roles: Match Admin, Studio Admin, Designer are retired; flags do  │
+│  not grant authority. Single role assignment writer: /api/admin/access.    │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Detailed Capability Matrix (Current Implementation & Target Mapping)
+### Detailed Capability Matrix
 
-| Role | Current Authority Source | Current Scope & Enforcement | Target 3-Role Mapping |
+| Role | Authority Source | Scope & Enforcement | Status |
 |---|---|---|---|
-| **Super Admin** | Firebase Auth Custom Claim (`admin: true`) | Full platform governance, system configuration, destructive merges, KAvach ID generation. | **Retained as Super Admin** |
-| **Club Admin** | `/appUsers/{uid}.isClubAdmin == true` or Custom Claim | Player roster management, member onboarding approvals, player merges, ground administration, tournament coordination. | **Retained as Club Admin** (absorbs Match Admin, Studio Admin, Designer) |
-| **Finance Admin** | `/appUsers/{uid}.isFinanceAdmin == true` or Custom Claim | Manage fee templates, issue manual fees, record offline cash/UPI collections, reconcile abandoned matches, view grand totals. | **Retained as Finance Admin** |
-| **Match Admin** | `/appUsers/{uid}.isMatchAdmin == true` or Custom Claim | Gated in `firestore.rules` (grounds, tournaments, matches) and `lib/server-auth.ts` (`requireMatchAdmin`). | *To be consolidated into Club Admin* |
-| **Studio Admin** | `/appUsers/{uid}.isStudioAdmin == true` or Custom Claim | Gated in `firestore.rules` and `lib/server-auth.ts` (`requireStudioAdmin`). | *To be consolidated into Club Admin* |
-| **Designer** | `/appUsers/{uid}.isDesigner == true` or `canDesign == true` | Gated in UI and `MoreDrawer.tsx`. | *To be consolidated into Club Admin* |
-| **Player (Standard)** | Signed-in User (`request.auth.uid`) | View fixtures, submit availability, view personal dues, pay via Razorpay, update personal cricket profile. | **Retained as Player** |
+| **Super Admin** | Firebase Auth Custom Claim (`admin: true`) | Full platform governance, settings, user access control (`/api/admin/access`), destructive merges, KAvach ID generation. | **Active** |
+| **Club Admin** | `/appUsers/{uid}.isClubAdmin == true` or Custom Claim | Player roster, member onboarding approvals, player merges, ground/tournament administration, match management, Studio CRM, Club Shop management, Design Studio. | **Active** (consolidated) |
+| **Finance Admin** | `/appUsers/{uid}.isFinanceAdmin == true` or Custom Claim | Fee templates, manual fee issuance, offline cash/UPI collection recording, abandoned match reconciliation, financial reports, dues reminders. | **Active** |
+| **Match Admin** | *Retired* (D-22) | Capabilities absorbed by **Club Admin**. Retired legacy flag `isMatchAdmin` must never authorize standalone privileges. | **Retired** |
+| **Studio Admin** | *Retired* (D-19, D-22) | Capabilities absorbed by **Club Admin**. Legacy flag `isStudioAdmin` retired. | **Retired** |
+| **Designer** | *Retired* (D-22) | Capabilities absorbed by **Club Admin**. Legacy flag `isDesigner` retired. | **Retired** |
+| **Player (Standard)** | Signed-in User (`request.auth.uid`) | View fixtures, submit availability, view personal dues, pay via Razorpay, update personal cricket profile, access Club directory (public fields). | **Active** |
+
+### Access Control Centre & Server-Only Role Assignment
+- Roles are granted and revoked **exclusively** in **Settings → Access Control** via the server endpoint `/api/admin/access` (gated strictly to Super Admins).
+- In `firestore.rules`, role fields on `/appUsers/{uid}` (`role`, `isSuperAdmin`, `isClubAdmin`, `isFinanceAdmin`, `isMatchAdmin`, `isStudioAdmin`, `isDesigner`) are protected by `roleKeys()` validation and are completely server-only (clients cannot write or mutate any role flag).
 
 ---
 

@@ -54,7 +54,10 @@ In strict adherence to `AGENTS.md`, statuses across modules are defined as follo
 
 | Commit SHA | Date | Author | Summary & Scope |
 |---|---|---|---|
-| `8978577` (HEAD) | 2026-11-20 | Antigravity | `feat(match-center): refine match cards, eliminate rsvp wording, and enforce fail-closed db resolver` |
+| `6ed38d4` (HEAD) | 2026-11-25 | Antigravity | `test: add comprehensive test suites for D-20 navigation, D-22 roles, and weekend match operations` |
+| `a9e14a2` | 2026-11-24 | Antigravity | `feat(roles): enforce D-22 three-role model (Super Admin, Club Admin, Finance Admin) with server-only assignment` |
+| `0e6b5cd` | 2026-11-24 | Antigravity | `feat(navigation): enforce D-20 player navigation (Home, Club, Matches) and D-18 admin hubs` |
+| `8978577` | 2026-11-20 | Antigravity | `feat(match-center): refine match cards, eliminate rsvp wording, and enforce fail-closed db resolver` |
 | `e901b86` | 2026-11-20 | Antigravity | `fix(db): ensure client-side safe database ID resolution on mig-mov without throwing in browser` |
 | `af91dda` | 2026-11-20 | Antigravity | `fix(build): inject authoritative branch database ID for Amplify and Next.js client bundling` |
 | `eb94c4e` | 2026-11-20 | Antigravity | `feat(match-center): refine player match center card ui, progressive disclosure, and jersey infographic` |
@@ -83,6 +86,7 @@ In strict adherence to `AGENTS.md`, statuses across modules are defined as follo
 | **TD-02** | Low | `firestore.rules` | **Unused Rule Helpers:** Compiler emits warnings for unused helpers `isVerified` and `isValidPlayer`. Plan: clean up unused helper declarations during Phase 12 security audit. |
 | **TD-03** | Low | `next.config.ts` | **Build Error Suppression Flags:** `ignoreBuildErrors: true` and `ignoreDuringBuilds: true` were historically set. Zero new TS errors exist, but 15 legacy errors remain in unrefactored tabs (e.g. `ShopTab.tsx`, `RazorReportView.tsx`). Plan: resolve the 15 legacy type errors and remove suppression flags. |
 | **TD-04** | Low | `components/MatchesTab.tsx` | **Monolithic Legacy Component:** While `PlayerMatchCenter.tsx` replaced the player match experience, the admin `MatchesTab.tsx` remains ~3,700 lines. Plan: decompose in Phase 8 (Match Operations & Admin Hubs). |
+| **TD-05** | Medium | `tests/` | **Test Assertion Drift (20 Specs):** 20 legacy tests in `npm run test:functional` fail due to asserting the pre-D-22 six-role model (expecting standalone `isMatchAdmin`, `isStudioAdmin`, etc.) rather than the consolidated three-role model. Production code enforces D-22; tests require assertion alignment. |
 
 ---
 
@@ -92,5 +96,3 @@ In strict adherence to `AGENTS.md`, statuses across modules are defined as follo
 |---|---|---|---|
 | **OD-01** | **Staging Environment Provisioning** | Production is live at `https://play.kavachcricket.com`. Development database `kavach-play-db-ext` has been refreshed, but no deployed staging URL exists. | Product owner to confirm whether an Amplify staging branch or preview channel should be deployed for Phase 7 live testing. |
 | **OD-02** | **Production Cutover Plan** | Modernized features on `mig-mov` must eventually be merged to `main` without interrupting live club operations or payments. | Agree on zero-downtime cutover strategy and database migration runbook. |
-| **OD-03** | **Player Navigation Alignment** | Owner approved direction is 3 primary items (`Home`, `Club`, `Matches`) with Profile in Header Avatar. Code currently runs 5 items (`Home`, `Matches`, `Finance`, `Players`, `More`) on mobile, and 6 on desktop. | Owner approval to plan navigation alignment task restructuring bottom nav and desktop links to the 3-item model. |
-| **OD-04** | **Admin Role Consolidation Transition** | Owner approved direction is 3 active roles (`Super Admin`, `Club Admin`, `Finance Admin`), consolidating Match Admin, Studio Admin, and Designer into Club Admin. Code and rules currently enforce 6 granular roles. | Owner approval to plan rules and code refactoring task consolidating `isMatchAdmin`, `isStudioAdmin`, and `isDesigner` into `isClubAdmin`. |

@@ -51,6 +51,16 @@ KAvach Play separates player availability (RSVP) from authoritative squad select
    - Already-collected payments (paid prior to abandonment) remain intact as historical cash transactions; they are excluded from outstanding dues but tracked as collected club revenue.
    - Automated reconciliation endpoint: `POST /api/admin/reconcile-abandoned`.
 
+4. **Weekend Match Operations (Decisions D-21 & D-21a):**
+   - Dedicated pitch-side operations for weekend fixtures to streamline match day management without granting wide administrative access:
+     - **Pitch-Side Cash Collection:** `POST /api/admin/weekend-cash` enables recording on-the-spot cash collections with immediate receipt audit logs.
+     - **Squad Overrides & Late Availability:** `POST /api/admin/weekend-squad` and `POST /api/admin/weekend-availability` allow pitch-side team managers to handle last-minute replacements, emergency call-ups, and availability flips.
+     - **Security Boundary:** Weekend operations are scoped strictly to the assigned fixture and do not confer broader Finance Admin or Super Admin authority.
+
+5. **Club Circuit Standings:**
+   - Managed via `/api/admin/circuit-standings` for tournament standings, circuit points, run rates, and club rankings.
+   - Verified match results and official points table are displayed in the **Club** tab.
+
 ---
 
 ## 2. Match Fees, Finance & Payment Reconciliation

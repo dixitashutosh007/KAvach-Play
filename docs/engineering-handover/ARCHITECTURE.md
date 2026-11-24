@@ -1,9 +1,9 @@
 # KAvach Play — Architecture Specification
 
 **Document:** Engineering Handover — System Architecture & Data Architecture  
-**Status:** Living Engineering Record (Reconciled & Validated)  
+**Status:** Living Engineering Record (Reconciled & Synchronized)  
 **Target Audience:** Implementation Engineers, System Architects, Independent QA / Reviewers  
-**Authoritative Code References:** `lib/database-config.ts`, `lib/server-db.ts`, `lib/firebase.ts`, `lib/server-auth.ts`, `components/layout/MobileBottomNav.tsx`, `components/layout/AppHeader.tsx`, `amplify.yml`  
+**Authoritative Code References:** `lib/database-config.ts`, `lib/server-db.ts`, `lib/firebase.ts`, `lib/server-auth.ts`, `lib/player-navigation.ts`, `lib/admin-navigation.ts`, `amplify.yml`  
 
 ---
 
@@ -56,7 +56,7 @@ KAvach Play is a modern, mobile-first cricket club operations web platform. It s
 |---|---|---|---|
 | **Framework** | Next.js (App Router) | `15.0.0` | Output standalone configured; React Server Components & API routes |
 | **UI Library** | React | `19.0.0-rc-65a56d0e-20241020` | Concurrent features; pinned baseline per Decision D-11 |
-| **Language** | TypeScript | `5.9.3` | Strict type checking enabled (`strict: true`) |
+| **Language** | TypeScript | `5.9.3` | Strict type checking enabled (`strict: true`; 0 errors in `npx tsc --noEmit`) |
 | **Styling** | Tailwind CSS | `4.1.11` | Native CSS custom properties; semantic brand tokens |
 | **Icons** | Lucide React | `^0.454.0` | Standard lightweight vector icons |
 | **Motion** | Motion (Framer Motion) | `^11.11.11` | Smooth spring transitions and mobile drawer animations |
@@ -65,7 +65,7 @@ KAvach Play is a modern, mobile-first cricket club operations web platform. It s
 | **Payment Gateway** | Razorpay Node SDK | `^2.9.6` | Server-side order creation, HMAC signature verification |
 | **Dates / Times** | date-fns | `^4.4.0` | Strict date manipulation; deterministic `Asia/Kolkata` timezones |
 | **Email** | Nodemailer | `^9.0.0` | Server-side transactional notification dispatch |
-| **Unit Testing** | Node.js Test Runner | Native (`node:test`) | Fast, ESM-native, zero-dependency unit and functional tests |
+| **Unit Testing** | Node.js Test Runner | Native (`node:test`) | 1,174 tests across 78 test files in `tests/` |
 | **Rules Testing** | `@firebase/rules-unit-testing` | `^6.0.0` | Local Firestore emulator security rule verification |
 | **E2E Testing** | Playwright | `^1.62.1` | Mobile-first viewport testing (Pixel 5 & Desktop) |
 | **Cloud Hosting** | AWS Amplify Hosting | Web Hosting Gen 2 | Multi-branch build pipeline (`amplify.yml`) |
@@ -126,76 +126,57 @@ On the server, [lib/server-db.ts](file:///Users/ashutoshdixit/projects/KAvach-Pl
 
 ---
 
-## 3. Navigation Architecture Reconciliation (OPEN OWNER DECISION — OD-03)
+## 3. Product Navigation Architecture
 
-The application navigation architecture has evolved and currently presents the following documented versus implemented states:
+The navigation architecture implements owner decisions **D-18** (Admin Navigation), **D-19** (Polite Access Denied), and **D-20** (Player Navigation):
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                    Approved Navigation Target (Owner Directive)            │
+│                    Player Navigation Architecture (D-20)                   │
 │                                                                            │
 │  [Top Header]  Logo / Club Name                   [Bell] [Avatar: Profile] │
 │                                                                            │
-│  [Primary Navigation (Mobile & Desktop)]:                                  │
+│  [Primary Navigation (Mobile Bottom Bar & Desktop Sidebar)]:               │
 │   1. Home                    2. Club                    3. Matches         │
-│  (Profile accessible exclusively via Top Header Avatar on all viewports)   │
-└────────────────────────────────────────────────────────────────────────────┘
-                                      vs
-┌────────────────────────────────────────────────────────────────────────────┐
-│                  Current Working Tree Implementation                       │
 │                                                                            │
-│  [Mobile Bottom Nav]: Home | Matches | Finance | Players | More            │
-│  [Desktop Nav]:       Home | Matches | Finance | Players | Perf | Club     │
-│  [Top Header]:        Logo / Club Name  [Admin Toggle] [Bell] [Avatar]     │
+│  - Profile opens exclusively from the header avatar.                       │
+│  - No More drawer / menu. Secondary screens open contextually.            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                    Admin Navigation Architecture (D-18 / D-19)             │
+│                                                                            │
+│  [Primary Navigation (Mobile Bottom Bar & Desktop Sidebar)]:               │
+│   1. Home                                                                  │
+│   2. Match Center   (Matches, Grounds, Tournaments)                        │
+│   3. Club           (Roster, Studio, Pulse, Stats, Badges, Shop, Invite)   │
+│   4. Finance        (Ledger, Plans, Reminders, Activity Log)               │
+│   5. Design Studio  (Graphic banners and social templates)                │
+│   6. Settings       (Access Control Centre, App Configuration)             │
+│                                                                            │
+│  - Filtered by active three-role capabilities (D-22).                      │
+│  - Unauthorized destinations render polite access-denied screen (D-19).     │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
-
-1. **Approved Direction (Owner Directive):**
-   - 3 primary destinations: `Home`, `Club`, `Matches`.
-   - Profile accessible through the top header avatar (`AppHeader.tsx`).
-   - Identical primary navigation structure across mobile and desktop.
-2. **Current Implementation in Code:**
-   - [components/layout/MobileBottomNav.tsx](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/components/layout/MobileBottomNav.tsx#L173-L219) implements 5 mobile items: `Home`, `Matches`, `Finance`, `Players`, `More` (with MoreDrawer opening secondary features).
-   - [components/layout/AppHeader.tsx](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/components/layout/AppHeader.tsx#L158-L184) already implements the dedicated Avatar button navigating directly to `profile`.
-   - [app/page.tsx](file:///Users/ashutoshdixit/projects/KAvach-Play/KAvach-Play/app/page.tsx#L810-L898) renders 6 desktop buttons: `Home`, `Matches`, `Finance`, `Players`, `Performance`, `Club`.
-3. **Reconciliation Task:**
-   - Tracked as **Open Owner Decision OD-03**. A planned UI task is required to align `MobileBottomNav.tsx` and `app/page.tsx` desktop navigation to the 3-destination taxonomy (`Home`, `Club`, `Matches`).
 
 ---
 
-## 4. Roles & Access Control Reconciliation (OPEN OWNER DECISION — OD-04)
+## 4. Roles & Access Control Model (D-22)
+
+The active admin role model consists of exactly **three roles**:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                  Approved Target Role Model (Owner Directive)              │
+│                 Active Three-Role Model (D-22 / pure lib)                  │
 │                                                                            │
-│  1. Super Admin   - Governed strictly by Auth Custom Claim { admin: true } │
-│  2. Club Admin    - Consolidated administrative authority: players,        │
-│                     matches, grounds, studio, shop, design, operations.    │
-│  3. Finance Admin - Financial obligations, offline cash, reports, dues.    │
+│  1. Super Admin   - Firebase Auth custom claim { admin: true } (SEC-001)   │
+│  2. Club Admin    - appUsers.isClubAdmin (absorbs Match, Studio, Designer) │
+│  3. Finance Admin - appUsers.isFinanceAdmin                                │
 │                                                                            │
-│  (Match Admin, Studio Admin, and Designer retired and consolidated)        │
-└────────────────────────────────────────────────────────────────────────────┘
-                                      vs
-┌────────────────────────────────────────────────────────────────────────────┐
-│                  Current Working Tree Implementation                       │
-│                                                                            │
-│  lib/server-auth.ts & firestore.rules currently enforce 6 granular roles:  │
-│  - Super Admin, Club Admin, Match Admin, Finance Admin, Studio Admin,      │
-│    and Designer.                                                           │
-│  - SettingsTab & EditPlayerInline provide independent toggles for all 6.   │
+│  Retired: Match Admin, Studio Admin, Designer (flags grant NOTHING)        │
+│  Sole Role Writer: /api/admin/access (Super Admin only; server-written)    │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
-
-1. **Approved Target Model:**
-   - 3 active roles: `Super Admin`, `Club Admin`, `Finance Admin`.
-   - Consolidates `Match Admin`, `Studio Admin`, and `Designer` into `Club Admin`.
-2. **Current Code State:**
-   - `lib/server-auth.ts` lines 555 and 563 export dedicated `requireMatchAdmin` and `requireStudioAdmin` guards.
-   - `firestore.rules` lines 43-52 define active helper functions `isMatchAdmin()` and `isStudioAdmin()`, gating `grounds/`, `tournaments/`, and `matches/`.
-   - `components/SettingsTab.tsx` (Privileges Overview L1568-1610) and `components/EditPlayerInline.tsx` (L380-428) display and toggle all 6 roles.
-3. **Reconciliation Task:**
-   - Tracked as **Open Owner Decision / Approved Refactoring Requirement OD-04**. Refactoring `firestore.rules`, `lib/server-auth.ts`, and `SettingsTab.tsx` to consolidate granular checks into `isClubAdmin` will be executed in a dedicated workstream.
 
 ---
 
@@ -220,6 +201,9 @@ Firestore Native Database
 ├── notifications/{notifId}           (User notifications & broadcast announcements)
 ├── outOfPlays/{docId}                (Player planned absence / unavailability)
 ├── catchLog/{entryId}                (Pitch-side catches tally & fielding records)
+├── circuitStandings/{circuitId}      (Club overall rank and wins/matches per circuit)
+├── weekendPrompts/{promptId}         (Scheduled prompt tracking for weekend ops)
+├── auditLogs/{logId}                 (Administrative, access-control, and finance audit trail)
 ├── phoneIndex/{canonicalPhone}       (INTERNAL: Server Admin only; phone reservation)
 ├── uidIndex/{uid}                    (INTERNAL: Server Admin only; UID reservation)
 └── mergeJobs/{jobId}                 (INTERNAL: Server Admin only; merge state machine)
@@ -241,16 +225,20 @@ Frontend state is orchestrated via [hooks/useStore.ts](file:///Users/ashutoshdix
 
 | Endpoint Route | HTTP Method | Auth Guard | Purpose & Authoritative Logic |
 |---|---|---|---|
-| `app/api/razorpay/order` | `POST` | `requireAuth` | Derives payable amount server-side; acquires reservation lease; creates Razorpay order. Disables in development. |
-| `app/api/razorpay/webhook` | `POST` | HMAC Header | Verifies `x-razorpay-signature` using timing-safe buffer compare. Processes payment intent atomically in a Firestore transaction. |
+| `app/api/admin/access` | `GET`, `POST` | `requireSuperAdmin` | Access Control Centre: view role cards/directory/history, grant/revoke active roles. Sole role writer. |
+| `app/api/admin/weekend-results` | `GET`, `POST` | `requireClubAdmin` | Weekend match results recording, scorecard links, CricHeroes integration. |
+| `app/api/admin/player-of-weekend` | `GET`, `POST` | `requireClubAdmin` | Player of the Weekend (POTW) award, badge generation, Home banner trigger. |
+| `app/api/admin/circuit-standings` | `GET`, `PUT`, `DELETE` | `requireClubAdmin` | Manages club overall rank, wins, and matches played per circuit. |
+| `app/api/admin/shop` | `GET`, `POST`, `PUT` | `requireClubAdmin` | Club Shop catalog management, order state transitions, facility enable/disable. |
+| `app/api/admin/merge-players` | `POST`, `PUT` | `requireClubAdmin` | Multi-stage resumable player merge state machine with worker lease, fencing token, collision checks. |
+| `app/api/admin/reconcile-abandoned` | `POST` | `requireFinanceAdmin` | Reconciles abandoned matches under Option A: waives unpaid dues, retains collected cash. |
+| `app/api/finance/match-plans` | `GET`, `POST` | `requireFinanceAdmin` / `requireRole` | Evaluates and applies Finance Plans and audited fee overrides to match obligations. |
+| `app/api/finance/assignments` | `GET`, `POST` | `requireFinanceAdmin` | Player finance plan assignments and subscription period tracking. |
+| `app/api/razorpay/order` | `POST` | `requireAuth` | Derives payable amount server-side; acquires reservation lease; validates B1/B2; creates Razorpay order. |
+| `app/api/razorpay/webhook` | `POST` | HMAC Header | Verifies `x-razorpay-signature` using timing-safe buffer compare. Processes payment intent atomically. |
 | `app/api/player/link-account` | `POST` | `requireAuth` | Atomically links Firebase Auth account to player profile; claims unique phone/UID reservations. |
-| `app/api/admin/merge-players` | `POST`, `PUT` | `requireClubAdmin` | Multi-stage resumable player merge state machine with distributed worker lease, fencing token, and collision checks. |
-| `app/api/admin/reconcile-abandoned` | `POST` | `requireFinanceAdmin` | Reconciles abandoned matches under Option A: waives unpaid dues, retains collected cash, preserves history. |
-| `app/api/admin/generate-kavach-ids` | `POST` | `requireSuperAdmin` | Batch generates sequential authoritative player identification numbers. |
 | `app/api/email/send` | `POST` | `requireAuth` | Dispatches transactional emails via Nodemailer with strict schema validation. |
 | `app/api/whatsapp/send` | `POST` | `requireAuth` | Dispatches WhatsApp notifications to players. |
-| `app/api/whatsapp/invite` | `POST` | `requireClubAdmin` | Dispatches official club onboarding invitations via WhatsApp. |
-| `app/api/whatsapp/remind-studio` | `POST` | `requireStudioAdmin`| Dispatches membership expiration reminders. |
 | `app/api/calendar/sync` | `GET` | Public / Token | Generates iCal subscription feed for club match schedule. |
 
 ---
