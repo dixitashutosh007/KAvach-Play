@@ -132,8 +132,45 @@ export function authorizeEmailRequest(
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
+ * Expands any valid IPv6 address (compressed, uncompressed, or with embedded
+ * dotted-quad IPv4) into 8 16-bit integer groups, or returns null if invalid.
+ */
+function parseIpv6Groups(rawIp: string): number[] | null {
+  let ip = rawIp.trim().toLowerCase().split("%")[0];
+  // Handle embedded dotted-quad IPv4 at the end (e.g. ::ffff:127.0.0.1 or 0:0:0:0:0:ffff:127.0.0.1)
+  const lastColon = ip.lastIndexOf(":");
+  if (lastColon !== -1 && ip.slice(lastColon + 1).includes(".")) {
+    const v4Part = ip.slice(lastColon + 1);
+    if (!net.isIPv4(v4Part)) return null;
+    const [a, b, c, d] = v4Part.split(".").map(Number);
+    const hi = ((a << 8) | b).toString(16);
+    const lo = ((c << 8) | d).toString(16);
+    ip = `${ip.slice(0, lastColon)}:${hi}:${lo}`;
+  }
+
+  const dbl = ip.split("::");
+  if (dbl.length > 2) return null;
+
+  const left = dbl[0] ? dbl[0].split(":") : [];
+  const right = dbl.length === 2 && dbl[1] ? dbl[1].split(":") : [];
+  if (dbl.length === 1 && left.length !== 8) return null;
+  if (dbl.length === 2 && left.length + right.length >= 8) return null;
+
+  const missing = dbl.length === 2 ? 8 - (left.length + right.length) : 0;
+  const parts = [...left, ...Array(missing).fill("0"), ...right];
+  if (parts.length !== 8) return null;
+
+  const groups: number[] = [];
+  for (const p of parts) {
+    if (!/^[0-9a-f]{1,4}$/.test(p)) return null;
+    groups.push(parseInt(p, 16));
+  }
+  return groups;
+}
+
+/**
  * Checks whether an IPv4 or IPv6 address is private, loopback, link-local,
- * multicast, unspecified, or reserved (including IPv4-mapped IPv6).
+ * multicast, unspecified, or reserved (including compressed & uncompressed IPv4-mapped IPv6).
  */
 export function isBlockedIpAddress(rawIp: string): boolean {
   const ip = rawIp.trim().toLowerCase().split("%")[0];
@@ -160,29 +197,30 @@ export function isBlockedIpAddress(rawIp: string): boolean {
   }
 
   if (net.isIPv6(ip)) {
-    // Check IPv4-mapped IPv6 in dotted form (e.g. ::ffff:127.0.0.1) or hex form (e.g. ::ffff:7f00:1)
-    const v4Dotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(ip);
-    if (v4Dotted) return isBlockedIpAddress(v4Dotted[1]);
+    const g = parseIpv6Groups(ip);
+    if (!g) return true; // Fail closed on unparseable IPv6
 
-    const v4Hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(ip);
-    if (v4Hex) {
-      const hi = parseInt(v4Hex[1], 16);
-      const lo = parseInt(v4Hex[2], 16);
-      const mapped = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    // IPv4-mapped IPv6 (::ffff:0:0/96) — covers both compressed & uncompressed forms
+    if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0xffff) {
+      const mapped = `${(g[6] >> 8) & 0xff}.${g[6] & 0xff}.${(g[7] >> 8) & 0xff}.${g[7] & 0xff}`;
       return isBlockedIpAddress(mapped);
     }
 
-    if (
-      ip === "::" ||
-      ip === "0:0:0:0:0:0:0:0" ||
-      ip === "::1" ||
-      ip === "0:0:0:0:0:0:0:1" ||
-      /^fe[89ab][0-9a-f]:/.test(ip) ||   // fe80::/10 link-local
-      /^f[cd][0-9a-f]{2}:/.test(ip) ||   // fc00::/7 unique local (ULA)
-      /^ff[0-9a-f]{2}:/.test(ip) ||      // ff00::/8 multicast
-      /^2001:0?db8:/.test(ip) ||         // 2001:db8::/32 documentation
-      /^64:ff9b:/.test(ip)               // 64:ff9b::/96 NAT64
-    ) {
+    // IPv4-compatible IPv6 (::/96, excluding :: and ::1)
+    if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0 && (g[6] !== 0 || g[7] > 1)) {
+      const compat = `${(g[6] >> 8) & 0xff}.${g[6] & 0xff}.${(g[7] >> 8) & 0xff}.${g[7] & 0xff}`;
+      return isBlockedIpAddress(compat);
+    }
+
+    const isUnspecified = g.every((x) => x === 0);
+    const isLoopback = g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0 && g[6] === 0 && g[7] === 1;
+    const isLinkLocal = (g[0] & 0xffc0) === 0xfe80; // fe80::/10
+    const isUniqueLocal = (g[0] & 0xfe00) === 0xfc00; // fc00::/7
+    const isMulticast = (g[0] & 0xff00) === 0xff00; // ff00::/8
+    const isDocumentation = g[0] === 0x2001 && g[1] === 0x0db8; // 2001:db8::/32
+    const isNat64 = g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0; // 64:ff9b::/96
+
+    if (isUnspecified || isLoopback || isLinkLocal || isUniqueLocal || isMulticast || isDocumentation || isNat64) {
       return true;
     }
     return false;

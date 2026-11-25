@@ -73,10 +73,11 @@ describe("Firestore Security Rules — AST Syntax Validation", () => {
     assert.match(rulesContent, /match \/posts\/\{postId\} \{\s+allow read: if isSignedIn\(\);\s+allow create: if isAnyAdmin\(\);\s+allow update: if isAnyAdmin\(\);/);
   });
 
-  it("enforces SEC-006: merchOrders requires isValidMerchOrder and unpaid on create", () => {
+  it("enforces SEC-006: merchOrders create is Club Admin only and locks server provenance keys", () => {
     assert.match(rulesContent, /function isValidMerchOrder\(data\)/);
-    assert.match(rulesContent, /incoming\(\)\.paymentStatus == 'Unpaid'/);
-    assert.match(rulesContent, /incoming\(\)\.orderStatus == 'Order Placed'/);
+    assert.match(rulesContent, /function merchOrderServerOnlyKeys\(\)/);
+    assert.match(rulesContent, /allow create: if isClubAdmin\(\)/);
+    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(merchOrderServerOnlyKeys\(\)\)/);
   });
 
   it("enforces Finding 1F-08: locks merge lifecycle fields in /players/{playerId} rules", () => {

@@ -16,16 +16,14 @@ describe("D4: payment fee fields are Finance / Super Admin only", () => {
     assert.match(block, /allow create: if \(\s*isFinanceAdmin\(\) \|\|\s*\(isMatchAdmin\(\) && isMatchAdminPaymentCreate\(incoming\(\)\)\) \|\|/);
     assert.match(block, /allow update: if \(\s*isFinanceAdmin\(\) \|\|\s*\(isMatchAdmin\(\) && isMatchAdminPaymentUpdate\(matchId\)\) \|\|/);
   });
-  it("match admin updates: allowlisted fields, no gateway / plan settlement, collected = recorded fee", () => {
+  it("match admin (Club Admin) updates: squad & availability only, no Paid or settlement fields", () => {
     const fn = rules.slice(rules.indexOf("function isMatchAdminPaymentUpdate"), rules.indexOf("function isValidMatchPayment"));
-    assert.match(fn, /changed\.hasOnly\(\['status', 'availability', 'tacticalNote', 'availabilityNote',\s*'paymentMethod', 'manualMethod', 'manualBy', 'feeCollectedAmount', 'updatedAt'\]\)/);
-    for (const k of ["feeOverride'", "feeOffsetAmount", "planTag", "sponsoredBy", "financeSnapshot", "waived"]) {
-      assert.ok(!fn.slice(0, fn.indexOf("incoming().status in")).includes(k), k);
+    assert.match(fn, /changed\.hasOnly\(\['status', 'availability', 'tacticalNote', 'availabilityNote', 'updatedAt'\]\)/);
+    for (const k of ["'Paid'", "paymentMethod", "manualMethod", "manualBy", "feeCollectedAmount", "feeOverride'", "feeOffsetAmount", "planTag", "sponsoredBy", "financeSnapshot", "waived"]) {
+      assert.ok(!fn.includes(k), `Club Admin update rule must not allow ${k}`);
     }
-    assert.match(fn, /incoming\(\)\.get\('paymentMethod', 'manual'\) == 'manual'/);
-    assert.match(fn, /in \['cash_collected', 'deposited_directly'\]/);
-    assert.match(fn, /incoming\(\)\.feeCollectedAmount == existing\(\)\.get\('feeOverride',\s*get\(\/databases\/\$\(database\)\/documents\/matches\/\$\(matchId\)\)\.data\.fee\)/);
-    assert.match(fn, /!isPlanSettled\(existing\(\)\) \|\| incoming\(\)\.status == existing\(\)\.status \|\| incoming\(\)\.status == 'Not Playing'/);
+    assert.match(fn, /incoming\(\)\.status in \['Unpaid', 'Not Playing'\]/);
+    assert.match(fn, /isPlanSettled\(existing\(\)\)\s*&& incoming\(\)\.status == 'Not Playing'/);
   });
   it("player self-service rules are unchanged", () => {
     assert.match(block, /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'availability',\s*'tacticalNote',\s*'availabilityNote',\s*'status',\s*'updatedAt'\s*\]\)/);

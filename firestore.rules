@@ -771,7 +771,7 @@ service cloud.firestore {
         && isValidMerchOrder(incoming())
         && !incoming().diff(existing()).affectedKeys().hasAny([
           'orderStatus', 'merchId', 'merchName', 'paymentStatus', 'price', 'playerId', 'createdAt',
-          'isManual', 'quantity'
+          'isManual', 'quantity', 'customSelections', 'customPriceAdditions'
         ])
         && !incoming().diff(existing()).affectedKeys().hasAny(merchOrderServerOnlyKeys())
       );

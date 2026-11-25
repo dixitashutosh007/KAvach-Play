@@ -178,11 +178,16 @@ describe(
       await rut.assertFails(fin().doc("merchOrders/manual_2").set({ ...order, id: "manual_2" }));
     });
 
-    it("Workstream B: Player cannot modify price or provenance after order creation", async () => {
+    it("Workstream B: Player cannot modify price, customSelections, customPriceAdditions, priceSnapshot, or provenance after order creation", async () => {
       await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ price: 1 }));
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ customSelections: { Sleeve: "Half" } }));
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ customPriceAdditions: 0 }));
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ priceSnapshot: { totalAmount: 1 } }));
       await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ isManual: false }));
       await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ trustedSource: "server" }));
       await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ intentId: "intent_x" }));
+      // Legitimate non-pricing display edit (size) remains allowed
+      await rut.assertSucceeds(p1().doc("merchOrders/ord_p1").update({ size: "XL" }));
     });
 
     it("Workstream A: Only Super Admin can modify appConfig/default SMTP settings", async () => {

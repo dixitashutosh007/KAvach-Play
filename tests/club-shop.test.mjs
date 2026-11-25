@@ -57,12 +57,13 @@ describe("Player: Shop is an on-demand Club facility", () => {
     const r = src("firestore.rules");
     assert.match(r, /match \/merchandises\/\{merchId\} \{\s*allow read: if isSignedIn\(\);\s*allow write: if isClubAdmin\(\);/);
     assert.match(r, /match \/merchOrders\/\{orderId\} \{\s*allow read: if isAnyAdmin\(\) \|\|/);
-    assert.match(r, /allow update: if isClubAdmin\(\) \|\| \(\s*isSignedIn\(\)\s*&& isSelf\(existing\(\)\.playerId\)/);
+    assert.match(r, /allow update: if \(\s*isClubAdmin\(\)\s*&& !incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(merchOrderServerOnlyKeys\(\)\)\s*\) \|\| \(/);
   });
-  it("server blocks new purchases when disabled (order route) and rules block direct order writes", () => {
+  it("server blocks new purchases when disabled (order route) and rules block direct player order writes", () => {
     assert.match(src("lib/razorpay-order.ts"), /await assertShopOpen\(db\);/);
     assert.match(src("app/api/razorpay/order/route.ts"), /if \(err instanceof ShopClosedError\)/);
-    assert.match(src("firestore.rules"), /allow create: if isSignedIn\(\)\s*&& isShopEnabled\(\)/);
+    assert.match(src("firestore.rules"), /allow create: if isClubAdmin\(\)\s*&& isValidId\(orderId\)/);
+    assert.ok(!src("firestore.rules").includes("allow create: if isSignedIn()\n        && isShopEnabled()"));
   });
   it("Shop purchases appear in the existing payment history as 'Shop: <item>'", () => {
     assert.match(src("components/FinanceTab.tsx"), /title: `Shop: \$\{o\.merchName\}`/);

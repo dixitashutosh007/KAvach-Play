@@ -197,6 +197,10 @@ describe("Phase 1 Workstream A: SMTP Credential Isolation & SSRF Protection (/ap
       "::ffff:7f00:1",
       "::ffff:169.254.169.254",
       "::ffff:a00:1",
+      "0:0:0:0:0:ffff:7f00:1",
+      "0:0:0:0:0:ffff:127.0.0.1",
+      "0:0:0:0:0:ffff:10.0.0.1",
+      "0:0:0:0:0:ffff:a9fe:a9fe",
     ];
     for (const ip of blockedIps) {
       assert.equal(isBlockedIpAddress(ip), true, `Expected IP ${ip} to be blocked`);
@@ -239,6 +243,32 @@ describe("Phase 1 Workstream A: SMTP Credential Isolation & SSRF Protection (/ap
     );
     assert.equal(res.status, 400);
     assert.equal(capturedTransportOpts.length, 0);
+  });
+
+  it("fails safely with HTTP 400 when DNS resolution fails (ENOTFOUND) without attempting SMTP or leaking secrets", async () => {
+    setDnsLookupForTesting(async () => {
+      throw Object.assign(new Error("getaddrinfo ENOTFOUND non-existent.example"), { code: "ENOTFOUND" });
+    });
+    setServerDbForTesting(
+      makeFakeDb({
+        emailProvider: "smtp",
+        smtpHost: "non-existent.example",
+        smtpPort: 587,
+        smtpUser: "noreply@kavachcricket.com",
+      }),
+    );
+    const res = await POST(
+      makeReq(
+        { "x-test-uid": "super1", "x-test-admin": "true" },
+        { to: ["admin@example.com"], subject: "Test", text: "Body" },
+      ),
+    );
+    assert.equal(res.status, 400);
+    assert.equal(capturedTransportOpts.length, 0);
+    const bodyText = await res.text();
+    assert.equal(bodyText.includes("super-secret-smtp-password"), false);
+    assert.equal(bodyText.includes("getaddrinfo"), false);
+    assert.equal(bodyText.includes("ENOTFOUND"), false);
   });
 
   it("fails safely with HTTP 500 when SMTP config is missing", async () => {
