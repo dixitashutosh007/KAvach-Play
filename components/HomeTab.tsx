@@ -50,6 +50,7 @@ import { ClubFeedPreview } from "./home/ClubFeedPreview";
 import { HomeQuickActions } from "./home/HomeQuickActions";
 import { resolveGreetingName } from "@/lib/greeting";
 import { getClubCalendarDate } from "@/lib/utils";
+import { searchPlayerAccessibleData } from "@/lib/player-search";
 
 export function HomeTab({
   store,
@@ -71,7 +72,7 @@ export function HomeTab({
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { posts = [], players = [], matches = [], grounds = [], payments = [], appConfig } = store;
+  const { posts = [], players = [], matches = [], grounds = [], polls = [], payments = [], appConfig } = store;
 
   // Club-local calendar day (Asia/Kolkata), so birthdays roll over at club midnight
   // rather than at the device's or UTC midnight.
@@ -309,33 +310,23 @@ export function HomeTab({
     }
   }, [mePlayer, isAdmin, appUser]);
 
-  // Search Results filtering (Section 4.A) - strictly excludes ineligible matches for players
-  const filteredResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return null;
-
-    const matchedMatches = matches.filter(
-      (m) =>
-        isPlayerEligibleForMatch(mePlayer, m, payments, isAdmin) &&
-        (m.opponent?.toLowerCase().includes(q) ||
-          m.date?.toLowerCase().includes(q) ||
-          m.format?.toLowerCase().includes(q))
-    );
-    const matchedAnnouncements = posts.filter(
-      (p) => (p as any).title?.toLowerCase().includes(q) || p.text?.toLowerCase().includes(q)
-    );
-    const matchedPlayers = players.filter(
-      (pl) =>
-        !pl.disabled &&
-        (pl.name?.toLowerCase().includes(q) || pl.kavachId?.toLowerCase().includes(q))
-    );
-
-    return {
-      matches: matchedMatches,
-      announcements: matchedAnnouncements,
-      players: matchedPlayers,
-    };
-  }, [searchQuery, matches, posts, players, mePlayer, payments, isAdmin]);
+  // Search Results filtering (Section 4.A) - strictly excludes ineligible matches & private fields
+  const filteredResults = useMemo(
+    () =>
+      searchPlayerAccessibleData({
+        query: searchQuery,
+        matches,
+        posts,
+        players,
+        grounds,
+        polls,
+        payments,
+        mePlayer,
+        isAdmin,
+        isFeatureEnabled,
+      }),
+    [searchQuery, matches, posts, players, grounds, polls, payments, mePlayer, isAdmin, appConfig]
+  );
 
   return (
     <div
@@ -453,7 +444,7 @@ export function HomeTab({
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-text-primary truncate">{pl.name}</p>
-                      {pl.kavachId && (
+                      {typeof pl.kavachId === "string" && pl.kavachId && (
                         <p className="text-[10px] font-mono font-bold text-muted-gold">
                           {pl.kavachId}
                         </p>
@@ -465,11 +456,72 @@ export function HomeTab({
             </div>
           )}
 
+          {/* Matched Grounds */}
+          {filteredResults.grounds.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                Grounds ({filteredResults.grounds.length})
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {filteredResults.grounds.map((g) => (
+                  <div
+                    key={g.id}
+                    data-testid={`search-result-ground-${g.id}`}
+                    className="p-3 bg-surface-hover rounded-xl border border-border/80 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-text-primary truncate">{g.name}</p>
+                    </div>
+                    {g.mapUrl && (
+                      <a
+                        href={g.mapUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold text-scarlet hover:underline shrink-0 flex items-center gap-1"
+                      >
+                        <MapPin className="w-3.5 h-3.5" /> Map
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Matched Polls & Pulse */}
+          {filteredResults.polls.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                Polls &amp; Pulse ({filteredResults.polls.length})
+              </h3>
+              <div className="flex flex-col gap-2">
+                {filteredResults.polls.map((poll) => (
+                  <div
+                    key={poll.id}
+                    data-testid={`search-result-poll-${poll.id}`}
+                    onClick={() => {
+                      setSearchQuery("");
+                      handleNavigate("polls", poll.id);
+                    }}
+                    className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between cursor-pointer transition"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <p className="text-xs font-bold text-text-primary truncate">{poll.title}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-scarlet shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {filteredResults.matches.length === 0 &&
             filteredResults.announcements.length === 0 &&
-            filteredResults.players.length === 0 && (
+            filteredResults.players.length === 0 &&
+            filteredResults.grounds.length === 0 &&
+            filteredResults.polls.length === 0 && (
               <p className="text-xs text-text-muted py-4 text-center">
-                No matches, notices or teammates found matching &ldquo;{searchQuery}&rdquo;.
+                No matches, grounds, polls, notices or teammates found matching &ldquo;{searchQuery}&rdquo;.
               </p>
             )}
         </div>
