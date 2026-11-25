@@ -14,19 +14,34 @@ import {
   MessageSquare,
   CheckCircle,
   UserX,
+  UserCheck,
   Users,
   Calendar,
   Table2,
   X,
   UserPlus,
+  Search,
+  Layers,
+  LayoutGrid,
+  List,
+  Download,
+  ChevronRight,
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { runBulkOperations } from "@/lib/bulk-operations";
-import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
-import { isRealMoneyPayment } from "@/lib/match-finance";
+import { PlayerDetailsModal } from "./roster/PlayerDetailsModal";
+import { classifyMatchPayment } from "@/lib/match-finance";
+import {
+  buildRosterCsv,
+  computeRosterSummary,
+  filterAndSortRoster,
+  formatPlayingInfo,
+  type RosterMembershipFilter,
+  type RosterStatusFilter,
+} from "@/lib/club-roster";
 import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
 import { PLAN_TYPE_LABEL, assignmentOn, legacyAssignmentsFor } from "@/lib/finance-plans";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -57,8 +72,13 @@ export function PlayersTab({
     "name" | "expiry" | "studio" | "due"
   >("name");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showDisabled, setShowDisabled] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<RosterStatusFilter>("all");
+  const [membershipFilter, setMembershipFilter] = useState<RosterMembershipFilter>("all");
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [visibleCount, setVisibleCount] = useState(25);
+  const [selectedRosterIds, setSelectedRosterIds] = useState<string[]>([]);
+  const [bulkRosterBusy, setBulkRosterBusy] = useState(false);
+  const bulkRosterLockRef = useRef(false);
   // Current Finance Plan per player (admins only; read via the server API).
   const { assignments: planAssignments, loading: plansLoading, error: plansError } = useFinancePlanAssignments(isAdmin);
   // Only show plan info once it actually loaded (never a misleading "Regular").
@@ -74,11 +94,18 @@ export function PlayersTab({
     const plan = (store.feePlans || []).find((p: any) => p.id === a.planId);
     return { name: a.planName, type: plan?.type, until: a.endDate, legacy: !!a.legacy };
   };
-  const [viewMode, setViewMode] = useState<"list" | "table">("list");
+  const [viewMode, setViewMode] = useState<"list" | "grid" | "table">("list");
 
-  // Standalone Invite Player modal (invite anyone by name + phone)
+  // Add / Invite Player modal
   const [showInviteModal, setShowInviteModal] = useState(!!autoOpenInvite);
-  const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
+  const [modalMode, setModalMode] = useState<"add" | "invite">(autoOpenInvite ? "invite" : "add");
+  const [inviteForm, setInviteForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    battingStyle: "",
+    isStudioMember: false,
+  });
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
@@ -91,7 +118,8 @@ export function PlayersTab({
       .filter((p) => p.playerId === playerId && p.status === "Unpaid")
       .reduce((acc, p) => {
         const match = store.matches.find((m) => m.id === p.matchId);
-        return acc + (p.feeOverride !== undefined ? p.feeOverride : (match?.fee || 0));
+        if (!match || match.result === "Abandoned") return acc;
+        return acc + classifyMatchPayment(p, match.fee || 0).outstanding;
       }, 0);
     const otherDues = store.otherFees
       .filter((f) => f.playerId === playerId && f.status === "Unpaid")
@@ -105,35 +133,23 @@ export function PlayersTab({
   const unverifiedPlayers = store.players.filter(
     (p) => p.inviteStatus === "Unverified" && !p.disabled,
   );
-  let displayPlayers = store.players.filter(
-    (p) => p.inviteStatus !== "Pending" && p.inviteStatus !== "Unverified",
+  const rosterSummary = useMemo(
+    () => computeRosterSummary(store.players),
+    [store.players],
   );
-  displayPlayers = displayPlayers.filter((p) => (showDisabled ? p.disabled : !p.disabled));
-  if (searchQuery.trim() !== "") {
-    const q = searchQuery.toLowerCase();
-    displayPlayers = displayPlayers.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.mobile.includes(q) ||
-        (p.email && p.email.toLowerCase().includes(q))
-    );
-  }
-
-  if (sortOption === "name") {
-    displayPlayers.sort((a, b) => a.name.localeCompare(b.name));
-  } else if (sortOption === "expiry") {
-    displayPlayers.sort((a, b) => {
-      const aExp = a.studioExpiryDate || a.studioEndDate || "zzzz"; // push no-expiry to bottom
-      const bExp = b.studioExpiryDate || b.studioEndDate || "zzzz";
-      return aExp.localeCompare(bExp);
-    });
-  } else if (sortOption === "studio") {
-    displayPlayers.sort((a, b) =>
-      a.isStudioMember === b.isStudioMember ? 0 : a.isStudioMember ? -1 : 1,
-    );
-  } else if (sortOption === "due") {
-    displayPlayers.sort((a, b) => getTotalDue(b.id) - getTotalDue(a.id));
-  }
+  const displayPlayers = useMemo(
+    () =>
+      filterAndSortRoster(store.players, {
+        query: searchQuery,
+        statusFilter,
+        membershipFilter,
+        sortOption,
+        getTotalDue,
+      }),
+    [store.players, searchQuery, statusFilter, membershipFilter, sortOption, store.payments, store.otherFees, store.matches],
+  );
+  const pagedPlayers = displayPlayers.slice(0, visibleCount);
+  const hasMorePlayers = displayPlayers.length > visibleCount;
 
   const getMembershipStatus = (player: Player) => {
     const expiryDateStr = player.studioExpiryDate || player.studioEndDate;
@@ -181,63 +197,281 @@ export function PlayersTab({
     }
   };
 
+  const handleExportCsv = () => {
+    const csv = buildRosterCsv(displayPlayers);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `kavach-club-roster-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Exported ${displayPlayers.length} player(s) to CSV.`, "success");
+  };
+
+  const handleBulkStatusChange = async (disable: boolean) => {
+    if (bulkRosterLockRef.current || bulkRosterBusy) return;
+    const targets = displayPlayers.filter((p) => selectedRosterIds.includes(p.id));
+    if (targets.length === 0) return;
+    bulkRosterLockRef.current = true;
+    try {
+      const actionLabel = disable ? "Deactivate" : "Activate";
+      if (
+        !(await confirmAction({
+          message: `${actionLabel} ${targets.length} selected player(s)?`,
+          destructive: disable,
+        }))
+      ) {
+        return;
+      }
+      setBulkRosterBusy(true);
+      const { succeeded, failed } = await runBulkOperations(targets, async (pl) => {
+        await store.updatePlayer(pl.id, {
+          disabled: disable,
+          disabledAt: disable ? new Date().toISOString() : undefined,
+        });
+      });
+      if (failed.length === 0) {
+        setSelectedRosterIds([]);
+        toast(`${actionLabel}d ${succeeded.length} player(s).`, "success");
+      } else {
+        const failedIds = new Set(failed.map((f) => f.item.id));
+        setSelectedRosterIds((prev) => prev.filter((id) => failedIds.has(id)));
+        toast(`${actionLabel}d ${succeeded.length} player(s); ${failed.length} failed.`, "error");
+      }
+    } finally {
+      setBulkRosterBusy(false);
+      bulkRosterLockRef.current = false;
+    }
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-1">
-          Squad <span className="opacity-50 text-sm ml-1">({store.players.length})</span>
-        </h2>
-        {isAdmin && (
+    <div className="space-y-4" data-testid="club-roster-screen">
+      {/* Scarlet Sports-Tech Header Banner */}
+      <div className="rounded-2xl bg-gradient-to-br from-[#A30F2D] to-[#7B0B22] text-white p-4 sm:p-5 shadow-sm space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black font-heading tracking-tight">
+              Club Roster
+            </h2>
+            <p className="text-xs text-white/80 mt-0.5">
+              Manage club players and memberships
+            </p>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                data-testid="roster-export-btn"
+                onClick={handleExportCsv}
+                className="min-h-[40px] px-3 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                title="Export filtered roster as CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+              <button
+                type="button"
+                data-testid="roster-add-player-btn"
+                onClick={() => {
+                  setModalMode("add");
+                  setShowInviteModal(true);
+                  setStandaloneInviteStatus(null);
+                  setInviteForm({ name: "", phone: "", email: "", battingStyle: "", isStudioMember: false });
+                }}
+                className="min-h-[40px] px-3.5 rounded-xl bg-white text-[#A30F2D] hover:bg-[#FCE8ED] text-xs font-extrabold flex items-center gap-1.5 shadow cursor-pointer transition"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Add Player
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 4 Summary KPI Cards */}
+        <div className="grid grid-cols-4 gap-2" data-testid="roster-kpi-cards">
           <button
-            onClick={() => {
-              setShowInviteModal(true);
-              setInviteForm({ name: "", phone: "" });
-            }}
-            className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-text-primary shadow hover:bg-emerald-500 transition"
+            type="button"
+            onClick={() => { setStatusFilter("all"); setMembershipFilter("all"); }}
+            className="rounded-xl bg-white text-[#171C26] p-2.5 text-center shadow-xs hover:bg-[#FCE8ED]/40 transition cursor-pointer"
           >
-            <UserPlus className="h-3.5 w-3.5" />
-            Invite Player
+            <Users className="w-4 h-4 mx-auto text-[#A30F2D] mb-1" />
+            <div className="text-lg sm:text-xl font-black leading-none tabular-nums" data-testid="kpi-total-players">
+              {rosterSummary.totalPlayers}
+            </div>
+            <div className="text-[10px] font-semibold text-[#667085] mt-1">Players</div>
           </button>
-        )}
+
+          <button
+            type="button"
+            onClick={() => { setStatusFilter("active"); setMembershipFilter("all"); }}
+            className="rounded-xl bg-emerald-50 text-[#171C26] p-2.5 text-center border border-emerald-200 hover:bg-emerald-100/70 transition cursor-pointer"
+          >
+            <UserCheck className="w-4 h-4 mx-auto text-[#15803D] mb-1" />
+            <div className="text-lg sm:text-xl font-black leading-none tabular-nums text-[#15803D]" data-testid="kpi-active-players">
+              {rosterSummary.activePlayers}
+            </div>
+            <div className="text-[10px] font-semibold text-[#15803D] mt-1">Active</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setStatusFilter("active"); setMembershipFilter("studio"); }}
+            className="rounded-xl bg-amber-50 text-[#171C26] p-2.5 text-center border border-amber-200 hover:bg-amber-100/70 transition cursor-pointer"
+          >
+            <Layers className="w-4 h-4 mx-auto text-[#D97706] mb-1" />
+            <div className="text-lg sm:text-xl font-black leading-none tabular-nums text-[#B45309]" data-testid="kpi-studio-players">
+              {rosterSummary.studioMembers}
+            </div>
+            <div className="text-[10px] font-semibold text-[#B45309] mt-1">Studio</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setStatusFilter("inactive"); setMembershipFilter("all"); }}
+            className="rounded-xl bg-rose-50 text-[#171C26] p-2.5 text-center border border-rose-200 hover:bg-rose-100/70 transition cursor-pointer"
+          >
+            <UserX className="w-4 h-4 mx-auto text-[#DC2626] mb-1" />
+            <div className="text-lg sm:text-xl font-black leading-none tabular-nums text-[#DC2626]" data-testid="kpi-inactive-players">
+              {rosterSummary.inactivePlayers}
+            </div>
+            <div className="text-[10px] font-semibold text-[#DC2626] mt-1">Inactive</div>
+          </button>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-2 mb-4 justify-between">
-        <input
-          type="text"
-          placeholder="Search players..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-surface-hover border border-border text-text-primary text-xs rounded-xl px-3 py-2 outline-none focus:border-accent flex-1 max-w-sm"
-        />
+      {/* Search & Filter Controls (No Admin Role Filters) */}
+      <div className="bg-white rounded-2xl border border-border p-3 space-y-2.5 shadow-xs">
+        <div className="relative">
+          <Search className="w-4 h-4 text-[#667085] absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="search"
+            data-testid="roster-search-input"
+            placeholder="Search by name or Player ID (e.g. KAV0123)"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setVisibleCount(25);
+            }}
+            className="w-full min-h-[42px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs sm:text-sm rounded-xl pl-9 pr-3 outline-none focus:border-[#D51F43]"
+          />
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
-            <button
-              onClick={() => setViewMode(viewMode === "list" ? "table" : "list")}
-              className={`text-xs min-h-[44px] px-3.5 py-2 rounded-xl font-bold border transition flex items-center gap-1.5 cursor-pointer ${viewMode === "table" ? "bg-accent/20 text-accent border-accent/30" : "bg-surface-hover text-text-secondary border-border hover:bg-surface-hover"}`}
-              title={viewMode === "table" ? "Switch to List View" : "Switch to Table View"}
-            >
-              <Table2 className="h-3.5 w-3.5" />
-              {viewMode === "table" ? "List View" : "Table View"}
-            </button>
-          )}
-          <button
-            onClick={() => setShowDisabled(!showDisabled)}
-            className={`text-xs px-3 py-2 rounded-xl font-bold border transition ${showDisabled ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-surface-hover text-text-secondary border-border hover:bg-surface-hover"}`}
-          >
-            {showDisabled ? "Viewing Deactivated" : "View Deactivated"}
-          </button>
           <select
+            aria-label="Filter by Status"
+            data-testid="roster-status-filter"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as RosterStatusFilter);
+              setVisibleCount(25);
+            }}
+            className="min-h-[38px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
+          >
+            <option value="all">Status: All</option>
+            <option value="active">Status: Active</option>
+            <option value="inactive">Status: Inactive</option>
+          </select>
+
+          <select
+            aria-label="Filter by Membership"
+            data-testid="roster-membership-filter"
+            value={membershipFilter}
+            onChange={(e) => {
+              setMembershipFilter(e.target.value as RosterMembershipFilter);
+              setVisibleCount(25);
+            }}
+            className="min-h-[38px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
+          >
+            <option value="all">Membership: All</option>
+            <option value="studio">Membership: Studio</option>
+            <option value="regular">Membership: Regular</option>
+          </select>
+
+          <select
+            aria-label="Sort players"
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as any)}
-            className="bg-surface-hover border border-border text-text-primary text-xs rounded-xl px-3 py-2 outline-none focus:border-accent"
+            className="min-h-[38px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
           >
-            <option value="name">Sort by Name</option>
-            <option value="expiry">Sort by Expiry Date</option>
-            <option value="studio">Sort by Studio Member</option>
-            <option value="due">Sort by Due Amount</option>
+            <option value="name">Sort: Name</option>
+            <option value="expiry">Sort: Expiry Date</option>
+            <option value="studio">Sort: Studio Member</option>
+            <option value="due">Sort: Due Amount</option>
           </select>
+
+          {isAdmin && (
+            <div className="ml-auto hidden sm:flex items-center bg-[#F6F7F9] border border-border rounded-xl p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                aria-label="List view"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                  viewMode === "list" ? "bg-white text-[#A30F2D] shadow-xs" : "text-[#667085]"
+                }`}
+              >
+                <List className="w-3.5 h-3.5" /> List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                aria-label="Grid view"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                  viewMode === "grid" ? "bg-white text-[#A30F2D] shadow-xs" : "text-[#667085]"
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" /> Grid
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                aria-label="Bulk edit table"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                  viewMode === "table" ? "bg-white text-[#A30F2D] shadow-xs" : "text-[#667085]"
+                }`}
+              >
+                <Table2 className="w-3.5 h-3.5" /> Bulk Edit
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Bulk Selection Bar */}
+        {isAdmin && selectedRosterIds.length > 0 && (
+          <div
+            data-testid="roster-bulk-bar"
+            className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border"
+          >
+            <span className="text-xs font-bold text-[#171C26]">
+              {selectedRosterIds.length} player(s) selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={bulkRosterBusy}
+                onClick={() => handleBulkStatusChange(false)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+              >
+                Activate
+              </button>
+              <button
+                type="button"
+                disabled={bulkRosterBusy}
+                onClick={() => handleBulkStatusChange(true)}
+                className="px-3 py-1.5 rounded-lg bg-red-50 text-[#DC2626] border border-red-200 text-xs font-bold hover:bg-red-100 disabled:opacity-50 cursor-pointer"
+              >
+                Deactivate
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRosterIds([])}
+                className="px-2.5 py-1.5 text-xs font-semibold text-[#667085] hover:text-[#171C26] cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isAdmin && <DuplicatePlayersReport store={store} />}
@@ -478,205 +712,272 @@ export function PlayersTab({
 
         {viewMode === "table" && isAdmin ? (
           <BulkEditTable store={store} players={displayPlayers} />
+        ) : viewMode === "grid" && isAdmin ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="roster-grid-view">
+            {pagedPlayers.map((player) => {
+              const hasPhoto = typeof player.photoURL === "string" && player.photoURL.startsWith("https://");
+              return (
+                <div
+                  key={player.id}
+                  data-testid={`roster-player-card-${player.id}`}
+                  onClick={() => setSelectedPlayer(player)}
+                  className="bg-white rounded-2xl border border-border p-4 hover:border-[#D51F43]/40 transition cursor-pointer flex flex-col gap-3 shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${player.name}`}
+                        checked={selectedRosterIds.includes(player.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() =>
+                          setSelectedRosterIds((prev) =>
+                            prev.includes(player.id) ? prev.filter((x) => x !== player.id) : [...prev, player.id],
+                          )
+                        }
+                        className="w-4 h-4 accent-[#D51F43] shrink-0 cursor-pointer"
+                      />
+                      {hasPhoto ? (
+                        <img src={player.photoURL} alt={player.name} className="w-11 h-11 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center font-black shrink-0">
+                          {player.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-bold text-[#171C26] text-sm truncate">{player.name}</p>
+                        <p className="text-[11px] font-mono text-[#667085] truncate">
+                          Player ID: {player.kavachId || "Pending"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[#667085] truncate">{formatPlayingInfo(player)}</p>
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${player.isStudioMember ? "bg-[#FCE8ED] text-[#A30F2D]" : "bg-[#F6F7F9] text-[#667085]"}`}>
+                      {player.isStudioMember ? "Studio" : "Regular"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${player.disabled ? "bg-red-50 text-[#DC2626]" : "bg-emerald-50 text-[#15803D]"}`}>
+                      {player.disabled ? "Inactive" : "Active"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-        <div className="bg-surface rounded-xl overflow-hidden divide-y divide-border">
+        <div className="bg-white rounded-2xl border border-border overflow-hidden divide-y divide-border shadow-xs" data-testid="roster-list-view">
           {displayPlayers.length === 0 && (
             <div data-testid="empty-players-roster" className="py-12 text-center text-sm text-text-muted space-y-2">
-              <div className="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center mx-auto">
+              <div className="w-10 h-10 rounded-full bg-[#FCE8ED] text-[#A30F2D] flex items-center justify-center mx-auto">
                 <Users className="w-5 h-5" />
               </div>
-              <p className="font-bold text-text-primary text-xs uppercase tracking-wider">No Players Found</p>
-              <p className="text-[11px] text-text-muted max-w-xs mx-auto">
-                {searchQuery ? "No members match your search criteria. Try a different name or number." : "No players match the current roster filter."}
+              <p className="font-bold text-[#171C26] text-xs uppercase tracking-wider">No Players Found</p>
+              <p className="text-[11px] text-[#667085] max-w-xs mx-auto">
+                {searchQuery ? "No members match your search criteria. Try a different name or Player ID." : "No players match the current roster filter."}
               </p>
             </div>
           )}
-          {displayPlayers.map((player) => (
+          {pagedPlayers.map((player) => {
+            const hasPhoto = typeof player.photoURL === "string" && player.photoURL.startsWith("https://");
+            return (
             <div
               key={player.id}
-              className="flex flex-col hover:bg-surface-hover transition cursor-pointer"
+              data-testid={`roster-player-row-${player.id}`}
+              className="flex items-center justify-between gap-3 p-3.5 sm:px-4 hover:bg-[#F6F7F9]/70 transition cursor-pointer"
               onClick={() => setSelectedPlayer(player)}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-hover font-bold text-text-primary relative shrink-0">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                {isAdmin && (
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${player.name}`}
+                    checked={selectedRosterIds.includes(player.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() =>
+                      setSelectedRosterIds((prev) =>
+                        prev.includes(player.id) ? prev.filter((x) => x !== player.id) : [...prev, player.id],
+                      )
+                    }
+                    className="w-4 h-4 accent-[#D51F43] shrink-0 cursor-pointer"
+                  />
+                )}
+                {hasPhoto ? (
+                  <img src={player.photoURL} alt={player.name} className="w-11 h-11 rounded-full object-cover shrink-0 border border-border" />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FCE8ED] font-black text-[#A30F2D] shrink-0">
                     {player.name.charAt(0).toUpperCase()}
-                    {player.isStudioMember && (
-                      <span className="absolute -bottom-1 -right-1 bg-accent text-[9px] rounded-full p-0.5">
-                        🎬
-                      </span>
-                    )}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-text-primary text-[15px] truncate">
-                        {player.name}
-                      </p>
-                      {player.kavachId && (
-                        <span className="shrink-0 px-1.5 py-0.5 rounded border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 text-[9px] font-bold font-mono tracking-wider">
-                          {player.kavachId}
-                        </span>
-                      )}
-                    </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-[#171C26] text-sm sm:text-[15px] truncate">
+                    {player.name}
+                  </p>
+                  <p className="text-[11px] font-mono text-[#667085] truncate">
+                    Player ID: {player.kavachId || "Pending"}
+                  </p>
+                  <p className="text-[11px] text-[#667085] truncate mt-0.5">
+                    {formatPlayingInfo(player)}
                     {showPlans && (() => {
                       const fp = currentPlanFor(player);
-                      return (
-                        <p className="mt-0.5 text-[11px] text-text-secondary" data-testid={`roster-finance-plan-${player.id}`}>
-                          <span className="font-bold text-text-primary">{fp ? fp.name : "Regular"}</span>
-                          {fp?.type ? ` · ${PLAN_TYPE_LABEL[fp.type] || fp.type}` : ""}
-                          {fp ? (fp.until ? ` · until ${fp.until}` : fp.legacy ? " · legacy, no end date" : " · no end date") : " · full match fee"}
-                        </p>
-                      );
+                      return ` · ${fp ? fp.name : "Regular Plan"}`;
                     })()}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-secondary">
-                      <span className="flex items-center gap-1">
-                        <PhoneCall className="h-3 w-3 shrink-0" />
-                        {player.mobile}
-                      </span>
-                      {player.email && (
-                        <span className="flex items-center gap-1 border-l border-border pl-2">
-                          ✉️ {player.email}
-                        </span>
-                      )}
-                      <span
-                        className={`flex items-center gap-1 border-l border-border pl-2 font-bold ${getTotalDue(player.id) > 0 ? "text-red-400" : "text-emerald-400"}`}
-                      >
-                        Due: ₹{getTotalDue(player.id)}
-                      </span>
-                    </div>
-                    <PlayerBadgeRow playerId={player.id} badges={store.badges} customDefs={store.badgeTypeDefs} />
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">
-                  {player.inviteStatus === "Accepted" || player.inviteStatus === "Verified" ? (
-                    <div className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40" title="Verified">
-                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    </div>
-                  ) : (
-                    <div
-                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border ${
-                        player.inviteStatus === "Pending"
-                          ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                          : player.inviteStatus === "Rejected"
-                            ? "bg-red-500/20 text-red-500 border-red-500/30"
-                            : "bg-surface-hover text-text-secondary border-border"
-                      }`}
-                    >
-                      {player.inviteStatus === "Invited"
-                        ? "Unverified"
-                        : player.inviteStatus || "Unverified"}
-                    </div>
-                  )}
-                  {isAdmin && (
-                    <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-                      <button
-                        onClick={async () => {
-                          if (player.disabled) {
-                            if (await confirmAction({ message: `Activate ${player.name}? They will appear in match squads and fee lists again.` })) {
-                              store.updatePlayer(player.id, {
-                                disabled: false,
-                                disabledAt: undefined,
-                              });
-                            }
-                          } else {
-                            if (
-                              await confirmAction({ message: `Deactivate ${player.name}? They won't appear in matches, catches, or fees. They'll be automatically reactivated when they sign in again.`, destructive: true })
-                            ) {
-                              store.updatePlayer(player.id, {
-                                disabled: true,
-                                disabledAt: new Date().toISOString(),
-                              });
-                            }
-                          }
-                        }}
-                        title={player.disabled ? "Activate Player" : "Deactivate Player"}
-                        className={`p-1.5 rounded-md transition cursor-pointer text-xs font-bold px-2 ${player.disabled ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" : "hover:bg-red-500/10 text-text-secondary hover:text-red-400"}`}
-                      >
-                        {player.disabled ? "Activate" : <UserX className="h-4 w-4" />}
-                      </button>
-                      {player.disabled && (
-                        <button
-                          onClick={async () => {
-                            if (
-                              await confirmAction({ message: `Permanently delete ${player.name}? This action cannot be undone and may orphan payment/match records.`, destructive: true })
-                            ) {
-                              await store.deletePlayer(player.id);
-                            }
-                          }}
-                          title="Permanently Delete"
-                          className="p-1.5 rounded-md text-red-400 hover:bg-red-500/20 bg-red-500/10 transition cursor-pointer text-xs font-bold px-3 ml-1"
-                        >
-                          Perm Delete
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  </p>
                 </div>
               </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-col items-end gap-1">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      player.isStudioMember
+                        ? "bg-[#FCE8ED] text-[#A30F2D] border border-[#A30F2D]/20"
+                        : "bg-[#F6F7F9] text-[#667085] border border-border"
+                    }`}
+                  >
+                    <Layers className="w-2.5 h-2.5" />
+                    {player.isStudioMember ? "Studio" : "Regular"}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      player.disabled
+                        ? "bg-red-50 text-[#DC2626] border border-red-200"
+                        : "bg-emerald-50 text-[#15803D] border border-emerald-200"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${player.disabled ? "bg-[#DC2626]" : "bg-[#15803D]"}`} />
+                    {player.disabled ? "Inactive" : "Active"}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#667085]" />
+              </div>
             </div>
-          ))}
+            );
+          })}
         </div>
+        )}
+
+        {viewMode !== "table" && hasMorePlayers && (
+          <div className="flex justify-center pt-1">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((c) => c + 25)}
+              className="min-h-[40px] px-4 rounded-xl bg-white border border-border text-xs font-bold text-[#A30F2D] hover:bg-[#FCE8ED]/40 cursor-pointer transition"
+            >
+              Show more ({displayPlayers.length - visibleCount} remaining)
+            </button>
+          </div>
         )}
       </>
 
       {selectedPlayer && (
-        <SquadPlayerDetails
+        <PlayerDetailsModal
           store={store}
-          player={selectedPlayer}
+          player={store.players.find((p) => p.id === selectedPlayer.id) || selectedPlayer}
           onClose={() => setSelectedPlayer(null)}
           isAdmin={isAdmin}
+          planSummary={showPlans ? currentPlanFor(selectedPlayer) : null}
         />
       )}
 
-      {/* Standalone Invite Player Modal */}
+      {/* Add / Invite Player Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-surface border border-border rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+          <div className="bg-white border border-border rounded-2xl p-5 max-w-md w-full space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
-                <UserPlus className="w-5 h-5" /> Invite Player
+              <div className="flex items-center gap-2 text-[#A30F2D] font-extrabold text-base">
+                <UserPlus className="w-5 h-5" /> {modalMode === "add" ? "Add Player" : "Invite Player"}
               </div>
               <button
                 onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); }}
-                className="text-text-muted hover:text-text-primary p-1"
+                className="text-[#667085] hover:text-[#171C26] p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="text-xs text-text-secondary">
-              Send a WhatsApp welcome message to invite someone to register on the Play App.
+            <div className="flex bg-[#F6F7F9] p-1 rounded-xl border border-border">
+              <button
+                type="button"
+                onClick={() => { setModalMode("add"); setStandaloneInviteStatus(null); }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${modalMode === "add" ? "bg-[#D51F43] text-white" : "text-[#667085]"}`}
+              >
+                Add Directly
+              </button>
+              <button
+                type="button"
+                onClick={() => { setModalMode("invite"); setStandaloneInviteStatus(null); }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${modalMode === "invite" ? "bg-[#D51F43] text-white" : "text-[#667085]"}`}
+              >
+                WhatsApp Invite
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-text-secondary mb-1">Name</label>
+                <label className="block text-[11px] font-semibold text-[#667085] mb-1">Name *</label>
                 <input
                   type="text"
+                  data-testid="add-player-name-input"
                   value={inviteForm.name}
                   onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="Player name"
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-text-secondary mb-1">Phone Number</label>
+                <label className="block text-[11px] font-semibold text-[#667085] mb-1">Phone Number *</label>
                 <input
                   type="tel"
+                  data-testid="add-player-phone-input"
                   value={inviteForm.phone}
                   onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))}
                   placeholder="e.g. 9876543210"
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
                 />
               </div>
+              {modalMode === "add" && (
+                <>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#667085] mb-1">Email (optional)</label>
+                    <input
+                      type="email"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+                      placeholder="player@email.com"
+                      className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#667085] mb-1">Cricket Role</label>
+                    <select
+                      value={inviteForm.battingStyle}
+                      onChange={(e) => setInviteForm((f) => ({ ...f, battingStyle: e.target.value }))}
+                      className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
+                    >
+                      {BATTING_STYLE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt || "Select role..."}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="text-[10px] text-text-muted italic">
-              A WhatsApp template message will be sent with the club name, player name, and registration link.
-            </div>
+            {modalMode === "add" && (
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#171C26] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={inviteForm.isStudioMember}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, isStudioMember: e.target.checked }))}
+                  className="accent-[#D51F43]"
+                />
+                Studio Member
+              </label>
+            )}
 
             {standaloneInviteStatus && (
-              <div className={`text-xs px-3 py-2 rounded-lg font-semibold ${standaloneInviteStatus.ok ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-red-500/15 text-red-400 border border-red-500/30"}`}>
+              <div className={`text-xs px-3 py-2 rounded-lg font-semibold ${standaloneInviteStatus.ok ? "bg-emerald-50 text-[#15803D] border border-emerald-200" : "bg-red-50 text-[#DC2626] border border-red-200"}`}>
                 {standaloneInviteStatus.msg}
               </div>
             )}
@@ -684,41 +985,88 @@ export function PlayersTab({
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
               <button
                 onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); setStandaloneInviteStatus(null); }}
-                className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary"
+                className="px-4 py-2 text-xs font-semibold text-[#667085] hover:text-[#171C26] cursor-pointer"
               >
                 Cancel
               </button>
-              <button
-                onClick={async () => {
-                  if (!inviteForm.phone.trim()) { toast("Please enter a phone number.", "error"); return; }
-                  setStandaloneInviteSending(true);
-                  setStandaloneInviteStatus(null);
-                  try {
-                    const res = await authedFetch("/api/whatsapp/invite", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        to: inviteForm.phone,
-                        playerName: inviteForm.name || "Player",
-                      }),
-                    });
-                    const resData = await res.json().catch(() => ({}));
-                    if (res.ok) {
-                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp! If they don't receive it, ask them to first send "Hi" to your business WhatsApp number, then resend the invite.` });
-                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 8000);
-                    } else {
-                      setStandaloneInviteStatus({ ok: false, msg: resData.error || "Failed to send invite. Please check WhatsApp API settings." });
+              {modalMode === "add" ? (
+                <button
+                  type="button"
+                  data-testid="add-player-submit-btn"
+                  disabled={standaloneInviteSending || !inviteForm.name.trim() || !inviteForm.phone.trim()}
+                  onClick={async () => {
+                    const cleanName = inviteForm.name.trim();
+                    const cleanPhone = inviteForm.phone.replace(/\D/g, "").slice(-10);
+                    const cleanEmail = inviteForm.email.trim().toLowerCase();
+                    if (!cleanName || cleanPhone.length < 10) {
+                      toast("Enter a valid player name and 10-digit mobile number.", "error");
+                      return;
                     }
-                  } catch {
-                    setStandaloneInviteStatus({ ok: false, msg: "Network error. Please try again." });
-                  }
-                  setStandaloneInviteSending(false);
-                }}
-                disabled={standaloneInviteSending || !inviteForm.phone.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-text-primary font-bold rounded-lg text-xs transition shadow-sm"
-              >
-                <Send className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Sending..." : "Send Invite"}
-              </button>
+                    const dup = store.players.find(
+                      (p) =>
+                        !p.mergedInto &&
+                        ((p.mobile && p.mobile.replace(/\D/g, "").slice(-10) === cleanPhone) ||
+                          (cleanEmail && p.email?.toLowerCase() === cleanEmail)),
+                    );
+                    if (dup) {
+                      setStandaloneInviteStatus({ ok: false, msg: `Player already exists: ${dup.name} (${dup.mobile}).` });
+                      return;
+                    }
+                    setStandaloneInviteSending(true);
+                    try {
+                      await store.addPlayer({
+                        name: cleanName,
+                        mobile: cleanPhone,
+                        ...(cleanEmail ? { email: cleanEmail } : {}),
+                        ...(inviteForm.battingStyle ? { battingStyle: inviteForm.battingStyle } : {}),
+                        isStudioMember: inviteForm.isStudioMember,
+                        inviteStatus: "Verified",
+                      });
+                      toast(`Added ${cleanName} to Club Roster.`, "success");
+                      setShowInviteModal(false);
+                    } catch (err: any) {
+                      setStandaloneInviteStatus({ ok: false, msg: err?.message || "Failed to add player." });
+                    } finally {
+                      setStandaloneInviteSending(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Adding..." : "Add Player"}
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    if (!inviteForm.phone.trim()) { toast("Please enter a phone number.", "error"); return; }
+                    setStandaloneInviteSending(true);
+                    setStandaloneInviteStatus(null);
+                    try {
+                      const res = await authedFetch("/api/whatsapp/invite", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          to: inviteForm.phone,
+                          playerName: inviteForm.name || "Player",
+                        }),
+                      });
+                      const resData = await res.json().catch(() => ({}));
+                      if (res.ok) {
+                        setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!` });
+                        setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 8000);
+                      } else {
+                        setStandaloneInviteStatus({ ok: false, msg: resData.error || "Failed to send invite. Please check WhatsApp API settings." });
+                      }
+                    } catch {
+                      setStandaloneInviteStatus({ ok: false, msg: "Network error. Please try again." });
+                    }
+                    setStandaloneInviteSending(false);
+                  }}
+                  disabled={standaloneInviteSending || !inviteForm.phone.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Sending..." : "Send Invite"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -989,191 +1337,5 @@ function BulkEditTable({
         </button>
       )}
     </>
-  );
-}
-
-function SquadPlayerDetails({
-  store,
-  player,
-  onClose,
-  isAdmin,
-}: {
-  store: ReturnType<typeof useStore>;
-  player: Player;
-  onClose: () => void;
-  isAdmin: boolean;
-}) {
-  const matchPayments = store.payments.filter((p) => p.playerId === player.id);
-  const otherFees = store.otherFees.filter((f) => f.playerId === player.id);
-
-  // Separate ledgers
-  const unpaidMatchPayments = matchPayments.filter((p) => p.status === "Unpaid");
-  const paidMatchPayments = matchPayments.filter((p) => p.status === "Paid");
-
-  const unpaidOtherFees = otherFees.filter((f) => f.status === "Unpaid");
-  const paidOtherFees = otherFees.filter((f) => f.status === "Paid");
-
-  const [paidVisibleCount, setPaidVisibleCount] = useState(5);
-  const allPaidItems = [...paidMatchPayments.map(p => ({ kind: "match" as const, item: p })), ...paidOtherFees.map(f => ({ kind: "other" as const, item: f }))];
-  const visiblePaidItems = allPaidItems.slice(0, paidVisibleCount);
-  const hasMorePaid = allPaidItems.length > paidVisibleCount;
-
-  let totalDue = 0;
-  unpaidMatchPayments.forEach((p) => {
-    const m = store.matches.find((mx) => mx.id === p.matchId);
-    if (m) totalDue += p.feeOverride !== undefined ? p.feeOverride : m.fee;
-  });
-  unpaidOtherFees.forEach((f) => (totalDue += f.amount));
-
-  return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-lg my-8 bg-surface rounded-xl border border-border overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 bg-surface p-4 flex justify-between items-center z-10 border-b border-border">
-          <h2 className="text-xl font-bold text-text-primary tracking-tight">
-            {player.name}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-surface-hover rounded-full transition"
-          >
-            <X className="w-5 h-5 text-text-secondary" />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto p-4 custom-scrollbar">
-          <div className="mb-6 bg-surface-hover border border-border rounded-xl p-4">
-            <h4 className="text-[11px] font-bold uppercase tracking-widest text-accent mb-3 flex items-center justify-between">
-              <span>Ledger Details</span>
-              <span className={totalDue > 0 ? "text-red-400" : "text-emerald-400"}>
-                Due: ₹{totalDue}
-              </span>
-            </h4>
-
-            {unpaidMatchPayments.length === 0 && unpaidOtherFees.length === 0 ? (
-              <p className="text-xs text-text-muted italic mb-4">No unpaid dues.</p>
-            ) : (
-              <div className="mb-4">
-                <h5 className="text-[10px] uppercase font-bold text-red-400 mb-2">Unpaid Dues</h5>
-                <ul className="text-xs space-y-2">
-                  {unpaidMatchPayments.map((p) => {
-                    const m = store.matches.find((mx) => mx.id === p.matchId);
-                    return m ? (
-                      <li
-                        key={p.id}
-                        className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {isAdmin && (
-                            <input 
-                              type="checkbox" 
-                              checked={false} 
-                              onChange={() => store.updatePaymentStatus(p.id, "Paid", m.id)}
-                              className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
-                            />
-                          )}
-                          <span className="truncate">
-                            Match vs {m.opponent} ({formatDate(m.date)})
-                          </span>
-                        </div>
-                        <span className="font-mono text-red-300">₹{p.feeOverride !== undefined ? p.feeOverride : m.fee}</span>
-                      </li>
-                    ) : null;
-                  })}
-                  {unpaidOtherFees.map((f) => (
-                    <li
-                      key={f.id}
-                      className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        {isAdmin && (
-                           <input 
-                              type="checkbox" 
-                              checked={false} 
-                              onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Paid")}
-                              className="accent-accent w-3 h-3 cursor-pointer shrink-0" 
-                           />
-                        )}
-                        <span className="truncate">{f.title}</span>
-                      </div>
-                      <span className="font-mono text-red-300">₹{f.amount}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {allPaidItems.length > 0 ? (
-              <div>
-                <h5 className="text-[10px] uppercase font-bold text-emerald-400 mb-2">Paid Dues <span className="text-text-muted font-normal">({allPaidItems.length})</span></h5>
-                <ul className="text-xs space-y-2 opacity-70">
-                  {visiblePaidItems.map((entry) => {
-                    if (entry.kind === "match") {
-                      const p = entry.item as MatchPayment;
-                      const m = store.matches.find((mx) => mx.id === p.matchId);
-                      return m ? (
-                        <li key={p.id} className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0">
-                          <div className="flex items-center gap-2 truncate">
-                            {isAdmin && (
-                              isRealMoneyPayment(p, m.fee) ? (
-                                <input
-                                  type="checkbox"
-                                  checked={true}
-                                  disabled
-                                  readOnly
-                                  aria-label="Money collected — refund it in Manage Match → Finance to reverse"
-                                  title="Money collected — refund it in Manage Match → Finance to reverse"
-                                  className="accent-accent w-3 h-3 shrink-0 opacity-60"
-                                />
-                              ) : (
-                                <input type="checkbox" checked={true} onChange={() => store.updatePaymentStatus(p.id, "Unpaid", m.id)} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
-                              )
-                            )}
-                            <span className="truncate">Match vs {m.opponent} ({formatDate(m.date)})</span>
-                          </div>
-                          <span className="font-mono text-emerald-300 line-through">₹{p.feeOverride !== undefined ? p.feeOverride : m.fee}</span>
-                        </li>
-                      ) : null;
-                    } else {
-                      const f = entry.item as OtherFee;
-                      return (
-                        <li key={f.id} className="flex items-center justify-between text-text-primary border-b border-border pb-1 last:border-0">
-                          <div className="flex items-center gap-2 truncate">
-                            {isAdmin && (
-                              <input type="checkbox" checked={true} onChange={() => store.updateOtherFeeStatus(player.id, f.id, "Unpaid")} className="accent-accent w-3 h-3 cursor-pointer shrink-0" />
-                            )}
-                            <span className="truncate">{f.title}</span>
-                          </div>
-                          <span className="font-mono text-emerald-300 line-through">₹{f.amount}</span>
-                        </li>
-                      );
-                    }
-                  })}
-                </ul>
-                {hasMorePaid && (
-                  <button
-                    onClick={() => setPaidVisibleCount((c) => c + 10)}
-                    className="mt-2 text-[10px] text-accent hover:underline font-semibold"
-                  >
-                    Load more ({allPaidItems.length - paidVisibleCount} remaining)
-                  </button>
-                )}
-              </div>
-            ) : null}
-          </div>
-          <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-widest text-text-muted mb-3 block border-b border-border pb-2">
-              Edit Profile
-            </h4>
-            <EditPlayerInline player={player} store={store} onCancel={onClose} />
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
