@@ -50,7 +50,7 @@ import { ClubFeedPreview } from "./home/ClubFeedPreview";
 import { HomeQuickActions } from "./home/HomeQuickActions";
 import { resolveGreetingName } from "@/lib/greeting";
 import { getClubCalendarDate } from "@/lib/utils";
-import { searchPlayerAccessibleData } from "@/lib/player-search";
+import { usePlayerGlobalSearch, PlayerSearchResultsPanel } from "./search/PlayerGlobalSearch";
 
 export function HomeTab({
   store,
@@ -310,23 +310,20 @@ export function HomeTab({
     }
   }, [mePlayer, isAdmin, appUser]);
 
-  // Search Results filtering (Section 4.A) - strictly excludes ineligible matches & private fields
-  const filteredResults = useMemo(
-    () =>
-      searchPlayerAccessibleData({
-        query: searchQuery,
-        matches,
-        posts,
-        players,
-        grounds,
-        polls,
-        payments,
-        mePlayer,
-        isAdmin,
-        isFeatureEnabled,
-      }),
-    [searchQuery, matches, posts, players, grounds, polls, payments, mePlayer, isAdmin, appConfig]
-  );
+  // Global Player Search (debounced + lazy-loads Posts/Polls/Tournaments on demand)
+  const {
+    debouncedQuery,
+    isLoading: isSearchLoading,
+    error: searchError,
+    results: filteredResults,
+    retry: retrySearch,
+  } = usePlayerGlobalSearch({
+    store,
+    query: searchQuery,
+    mePlayer,
+    isAdmin,
+    isFeatureEnabled,
+  });
 
   return (
     <div
@@ -347,184 +344,21 @@ export function HomeTab({
       />
 
       {/* Search Results Display (if active query) */}
-      {filteredResults ? (
-        <div className="w-full bg-surface border border-border rounded-2xl p-5 shadow-xs flex flex-col gap-4">
-          <div className="flex items-center justify-between border-b border-border pb-3">
-            <h2 className="text-sm font-bold text-text-primary font-heading uppercase tracking-wider flex items-center gap-2">
-              <Search className="w-4 h-4 text-scarlet" />
-              <span>Search Results for &ldquo;{searchQuery}&rdquo;</span>
-            </h2>
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="text-xs text-scarlet hover:underline font-bold cursor-pointer"
-            >
-              Clear
-            </button>
-          </div>
-
-          {/* Matched Matches */}
-          {filteredResults.matches.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                Matches ({filteredResults.matches.length})
-              </h3>
-              <div className="flex flex-col gap-2">
-                {filteredResults.matches.map((m) => (
-                  <div
-                    key={m.id}
-                    data-testid={`search-result-match-${m.id}`}
-                    onClick={() => {
-                      setSearchQuery("");
-                      handleGuardedNavigateToMatch(m.id);
-                    }}
-                    className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between cursor-pointer transition"
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-text-primary">vs {m.opponent}</p>
-                      <p className="text-[11px] text-text-secondary">
-                        {m.date} • {m.format || "T20"}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-scarlet" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Matched Announcements */}
-          {filteredResults.announcements.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                Announcements & Posts ({filteredResults.announcements.length})
-              </h3>
-              <div className="flex flex-col gap-2">
-                {filteredResults.announcements.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => {
-                      setSearchQuery("");
-                      if (p.isAnnouncement === true) handleNavigate("announcements", p.id);
-                      else handleNavigate("feed");
-                    }}
-                    className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between cursor-pointer transition"
-                  >
-                    <div className="min-w-0 pr-2">
-                      <p className="text-xs font-bold text-text-primary truncate">
-                        {(p as any).title || p.text.slice(0, 50)}
-                      </p>
-                      <p className="text-[11px] text-text-secondary truncate">{p.text}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-scarlet shrink-0" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Matched Players */}
-          {filteredResults.players.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                Teammates ({filteredResults.players.length})
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {filteredResults.players.map((pl) => (
-                  <div
-                    key={pl.id}
-                    onClick={() => {
-                      setSearchQuery("");
-                      handleNavigate("players");
-                    }}
-                    className="p-2.5 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center gap-2.5 cursor-pointer transition"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-deep-wine/10 flex items-center justify-center font-bold text-deep-wine text-xs">
-                      {pl.name.charAt(0)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-text-primary truncate">{pl.name}</p>
-                      {typeof pl.kavachId === "string" && pl.kavachId && (
-                        <p className="text-[10px] font-mono font-bold text-muted-gold">
-                          {pl.kavachId}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Matched Grounds */}
-          {filteredResults.grounds.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                Grounds ({filteredResults.grounds.length})
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {filteredResults.grounds.map((g) => (
-                  <div
-                    key={g.id}
-                    data-testid={`search-result-ground-${g.id}`}
-                    className="p-3 bg-surface-hover rounded-xl border border-border/80 flex items-center justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-text-primary truncate">{g.name}</p>
-                    </div>
-                    {g.mapUrl && (
-                      <a
-                        href={g.mapUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-bold text-scarlet hover:underline shrink-0 flex items-center gap-1"
-                      >
-                        <MapPin className="w-3.5 h-3.5" /> Map
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Matched Polls & Pulse */}
-          {filteredResults.polls.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                Polls &amp; Pulse ({filteredResults.polls.length})
-              </h3>
-              <div className="flex flex-col gap-2">
-                {filteredResults.polls.map((poll) => (
-                  <div
-                    key={poll.id}
-                    data-testid={`search-result-poll-${poll.id}`}
-                    onClick={() => {
-                      setSearchQuery("");
-                      handleNavigate("polls", poll.id);
-                    }}
-                    className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between cursor-pointer transition"
-                  >
-                    <div className="min-w-0 pr-2">
-                      <p className="text-xs font-bold text-text-primary truncate">{poll.title}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-scarlet shrink-0" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {filteredResults.matches.length === 0 &&
-            filteredResults.announcements.length === 0 &&
-            filteredResults.players.length === 0 &&
-            filteredResults.grounds.length === 0 &&
-            filteredResults.polls.length === 0 && (
-              <p className="text-xs text-text-muted py-4 text-center">
-                No matches, grounds, polls, notices or teammates found matching &ldquo;{searchQuery}&rdquo;.
-              </p>
-            )}
-        </div>
+      {searchQuery.trim() ? (
+        <PlayerSearchResultsPanel
+          query={searchQuery}
+          debouncedQuery={debouncedQuery}
+          results={filteredResults}
+          isLoading={isSearchLoading}
+          error={searchError}
+          onRetry={retrySearch}
+          onClear={() => setSearchQuery("")}
+          onNavigateMatch={handleGuardedNavigateToMatch}
+          onNavigateTab={handleNavigate}
+          onNavigateFeed={() => handleNavigate("feed")}
+          isFeatureEnabled={isFeatureEnabled}
+          mode="inline"
+        />
       ) : (
         <>
           {/* Quick-action shortcuts are intentionally not rendered on Home: every

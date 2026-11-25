@@ -35,6 +35,8 @@ import { HomeTab } from "@/components/HomeTab";
 import { ProfileTab } from "@/components/ProfileTab";
 import { ProfileLinkNotice } from "@/components/ProfileLinkNotice";
 import { ProfileSyncDialog, profileSyncDismissKey } from "@/components/ProfileSyncDialog";
+import { PlayerGlobalSearchModal } from "@/components/search/PlayerGlobalSearch";
+import { validateMatchNavigation } from "@/lib/match-eligibility";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "@/components/ui/PullToRefreshIndicator";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -127,6 +129,7 @@ export default function Home() {
   const store = useStore(user);
   const { toast } = useToast();
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -886,8 +889,45 @@ export default function Home() {
         }}
         unreadCount={unreadCount}
         adminPendingCount={weekendPending}
+        onOpenSearch={persona === "player" ? () => setGlobalSearchOpen(true) : undefined}
         onSignOut={logOut}
       />
+
+      {persona === "player" && (
+        <PlayerGlobalSearchModal
+          open={globalSearchOpen}
+          onClose={() => setGlobalSearchOpen(false)}
+          store={store}
+          mePlayer={player ?? null}
+          isAdmin={false}
+          isFeatureEnabled={(key) =>
+            isFeatureEnabled(
+              key as keyof NonNullable<import("@/lib/types").AppConfig["features"]>,
+            )
+          }
+          onNavigateMatch={(matchId) => {
+            const validation = validateMatchNavigation(
+              matchId,
+              store.matches,
+              player ?? null,
+              store.payments,
+              false,
+            );
+            if (!validation.allowed) {
+              toast(validation.message || "You do not have access to view this match.", "error");
+              return;
+            }
+            setActiveTab("matches", `match_${matchId}`);
+          }}
+          onNavigateTab={(tab, targetId) => setActiveTab(tab, targetId)}
+          onNavigateFeed={() => {
+            setActiveTab("home");
+            setTimeout(() => {
+              document.getElementById("club-feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 100);
+          }}
+        />
+      )}
 
       {/* Main Content Responsive Workspace */}
       {/* D-20 layout: one page gutter (16px mobile) owned here — screens add no

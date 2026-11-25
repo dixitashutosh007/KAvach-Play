@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Shield, Bell, LogOut, User as UserIcon } from "lucide-react";
+import { Shield, Bell, LogOut, Search, User as UserIcon } from "lucide-react";
 
 import type { Tab } from "./navTypes";
 export type { Tab } from "./navTypes";
@@ -47,6 +47,7 @@ interface AppHeaderProps {
   unreadCount?: number;
   /** Pending weekend-operations tasks for this admin (shown on the persona toggle). */
   adminPendingCount?: number;
+  onOpenSearch?: () => void;
   onSignOut?: () => void;
 }
 
@@ -62,6 +63,7 @@ export function AppHeader({
   onTogglePersona,
   unreadCount = 0,
   adminPendingCount = 0,
+  onOpenSearch,
   onSignOut,
 }: AppHeaderProps) {
   const activeTabTitle = TAB_TITLES[activeTab] || "";
@@ -134,6 +136,20 @@ export function AppHeader({
                   {adminPendingCount > 9 ? "9+" : adminPendingCount}
                 </span>
               )}
+            </button>
+          )}
+
+          {/* Global Search Affordance (Player persona) */}
+          {persona === "player" && onOpenSearch && (
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              data-testid="header-search-btn"
+              className="min-h-[44px] min-w-[44px] rounded-full transition flex items-center justify-center shrink-0 cursor-pointer text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+              title="Search"
+              aria-label="Open global search"
+            >
+              <Search className="w-5 h-5" />
             </button>
           )}
 
