@@ -108,12 +108,13 @@ export function isAdminDestinationVisible(
 }
 
 /**
- * Primary items to render, in fixed order (D-18: all six destinations are shown
- * to every admin role; unauthorized destinations are protected by the screen's
- * AccessDenied guard in app/page.tsx).
+ * Primary items to render, in fixed order (D-18: each destination is shown only
+ * to authorised roles; direct navigation to an unauthorized destination is still
+ * guarded by AccessDenied in app/page.tsx and server-side RBAC).
  */
-export function getAdminPrimaryNav(c: AdminCapabilities, _isFeatureEnabled: AdminFeatureCheck = allEnabled): AdminPrimaryNavItem[] {
-  return isAnyAdminRole(c) ? [...ADMIN_PRIMARY_NAV] : [];
+export function getAdminPrimaryNav(c: AdminCapabilities, isFeatureEnabled: AdminFeatureCheck = allEnabled): AdminPrimaryNavItem[] {
+  if (!isAnyAdminRole(c)) return [];
+  return ADMIN_PRIMARY_NAV.filter((item) => isAdminDestinationVisible(item.tab, c, isFeatureEnabled));
 }
 
 /**

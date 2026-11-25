@@ -53,8 +53,27 @@ export async function navigateToTab(page: Page, tabName: string) {
 
   const value = valueMap[tabName.toLowerCase()] || tabName.toLowerCase();
 
+  // Admins land in Player persona first (D-16/D-18); switch to Admin persona if needed.
+  const adminNavVisible =
+    (await page.locator('[data-testid="admin-mobile-bottom-nav"]').isVisible().catch(() => false)) ||
+    (await page.locator('[data-testid="sidebar-tab-home"]').isVisible().catch(() => false));
+  if (!adminNavVisible) {
+    const toggle = page.locator('[data-testid="header-persona-toggle"]');
+    if (await toggle.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await toggle.click();
+      await page.waitForTimeout(500);
+    }
+  }
+
+  const mobileAdminNavBtn = page.locator(`[data-testid="admin-nav-${value}"]`);
+  if (await mobileAdminNavBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await mobileAdminNavBtn.click();
+    await page.waitForTimeout(1_000);
+    return;
+  }
+
   const mobileSelect = page.locator('[data-testid="admin-tab-select"]');
-  if (await mobileSelect.isVisible({ timeout: 3_000 }).catch(() => false)) {
+  if (await mobileSelect.isVisible({ timeout: 1_500 }).catch(() => false)) {
     await mobileSelect.selectOption(value);
     await page.waitForTimeout(1_500);
     return;
