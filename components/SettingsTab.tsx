@@ -1463,7 +1463,7 @@ export function SettingsTab({
           <div className="pt-2 flex flex-col gap-2">
             <button
               type="submit"
-              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black shadow hover:bg-accent/90 transition"
+              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-text-accent shadow hover:bg-accent/90 transition"
             >
               Save Configuration
             </button>
@@ -1528,7 +1528,7 @@ export function SettingsTab({
               type="button"
               onClick={resyncCalendar}
               disabled={calBusy !== ""}
-              className="rounded-lg bg-accent hover:bg-accent/90 px-3 py-2 text-xs font-black uppercase tracking-wider text-black transition disabled:opacity-60"
+              className="rounded-lg bg-accent hover:bg-accent/90 px-3 py-2 text-xs font-black uppercase tracking-wider text-text-accent transition disabled:opacity-60"
             >
               {calBusy === "resync" ? "Resyncing…" : "Resync All Matches"}
             </button>

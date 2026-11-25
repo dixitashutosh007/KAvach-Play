@@ -808,7 +808,7 @@ export function AdminDashboard({
                        <div className="space-y-2">
                            <button
                              onClick={() => handleNotifyMatch(m)}
-                             className="w-full bg-accent hover:opacity-90 text-black py-2 rounded-lg text-xs font-black uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow"
+                             className="w-full bg-accent hover:opacity-90 text-text-accent py-2 rounded-lg text-xs font-black uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow"
                              title="Share match alert on WhatsApp with players tagged"
                            >
                              <Send className="w-3.5 h-3.5" /> Notify

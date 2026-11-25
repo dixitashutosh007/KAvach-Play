@@ -515,7 +515,7 @@ export function EditPlayerInline({
       <div className="flex gap-2 pt-2">
         <button
           type="submit"
-          className="flex-1 rounded-lg bg-accent py-2 text-sm font-bold text-black border border-accent/10 hover:bg-accent/90 transition shadow-lg"
+          className="flex-1 rounded-lg bg-accent py-2 text-sm font-bold text-text-accent border border-accent/10 hover:bg-accent/90 transition shadow-lg"
         >
           Save Profile
         </button>

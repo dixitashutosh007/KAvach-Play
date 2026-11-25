@@ -1733,7 +1733,7 @@ export function ShopTab({
                     <button
                       onClick={saveAllPendingEdits}
                       disabled={isSavingBulk}
-                      className="rounded-lg bg-accent hover:bg-accent/90 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition disabled:opacity-60"
+                      className="rounded-lg bg-accent hover:bg-accent/90 px-4 py-2 text-xs font-black uppercase tracking-widest text-text-accent transition disabled:opacity-60"
                     >
                       {isSavingBulk ? "Saving..." : "Save Updates"}
                     </button>
@@ -2011,7 +2011,7 @@ export function ShopTab({
                         {isAccepting ? (
                           <button
                             onClick={() => openOrderModal(merch)}
-                            className="w-full bg-accent hover:bg-accent/90 text-black py-2.5 rounded-xl font-bold uppercase tracking-widest text-xs transition shadow-lg shadow-accent/10 hover:scale-[1.01]"
+                            className="w-full bg-accent hover:bg-accent/90 text-text-accent py-2.5 rounded-xl font-bold uppercase tracking-widest text-xs transition shadow-lg shadow-accent/10 hover:scale-[1.01]"
                           >
                             Order Product
                           </button>
@@ -2675,7 +2675,7 @@ export function ShopTab({
                   type="button"
                   disabled={isOrdering || ((selectedMerch.category === "Jersey" || selectedMerch.requirePlayerDetails) && customJerseyNumber === "10")}
                   onClick={handlePlaceOrder}
-                  className="w-full bg-accent disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/90 text-black py-3 rounded-xl font-extrabold uppercase tracking-widest text-xs transition flex items-center justify-center gap-2"
+                  className="w-full bg-accent disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/90 text-text-accent py-3 rounded-xl font-extrabold uppercase tracking-widest text-xs transition flex items-center justify-center gap-2"
                 >
                   <CreditCard className="w-4 h-4" />
                   {isConfirmingPayment ? "Payment received, confirming order..." : isOrdering ? "Ordering..." : "Pay Upfront & Placed Order"}

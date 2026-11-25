@@ -94,7 +94,7 @@ export function LoginScreen({
             initial={{ scale: 0, rotate: -30 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 180, damping: 12, delay: 0.25 }}
-            className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-accent/20 to-accent/5 rounded-2xl border border-accent/20 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.15)] animate-pulse"
+            className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-accent/20 to-accent/5 rounded-2xl border border-accent/20 flex items-center justify-center shadow-[0_0_20px_rgba(213,31,67,0.15)] animate-pulse"
           >
             <Shield className="w-8 h-8 text-accent" />
           </motion.div>

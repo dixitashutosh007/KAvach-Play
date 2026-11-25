@@ -259,7 +259,7 @@ export function ProfileTab({
             <div className="absolute right-0 top-0 w-32 h-32 bg-accent opacity-20 blur-3xl rounded-full translate-x-10 -translate-y-10 pointer-events-none"></div>
             <div className="relative z-10 flex flex-col gap-4">
               <div className="flex gap-4 items-center">
-                <div className="w-14 h-14 bg-accent/20 border justify-center items-center flex rounded-full border-accent text-accent mb-[2px] shadow-[0_0_15px_rgba(16,185,129,0.4)] shrink-0">
+                <div className="w-14 h-14 bg-accent/20 border justify-center items-center flex rounded-full border-accent text-accent mb-[2px] shadow-[0_0_15px_rgba(213,31,67,0.25)] shrink-0">
                   <span className="text-2xl">🎬</span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -574,7 +574,7 @@ export function ProfileTab({
               )}
               <button
                 type="submit"
-                className="flex-[2] rounded-lg bg-accent py-3.5 text-sm font-black uppercase tracking-wider text-black border-2 border-accent flex items-center justify-center gap-2 hover:bg-accent/90 transition shadow-[0_4px_20px_rgba(16,185,129,0.35)]"
+                className="flex-[2] rounded-lg bg-accent py-3.5 text-sm font-black uppercase tracking-wider text-text-accent border-2 border-accent flex items-center justify-center gap-2 hover:bg-accent/90 transition shadow-[0_4px_20px_rgba(213,31,67,0.25)]"
               >
                 <Save className="w-4 h-4" />
                 {hasMissingMandatory ? "Complete Registration" : "Save Changes"}
@@ -911,7 +911,7 @@ export function OutOfPlayConfig({
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 rounded-lg bg-accent py-2 text-xs font-bold text-black hover:bg-accent/90 transition"
+              className="flex-1 rounded-lg bg-accent py-2 text-xs font-bold text-text-accent hover:bg-accent/90 transition"
             >
               {editingId ? "Update" : "Save"}
             </button>

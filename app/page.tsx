@@ -1046,8 +1046,9 @@ export default function Home() {
                       >
                         <span className="flex items-center gap-2.5 uppercase text-[11px]">
                           <IconComp
-                            className="w-4 h-4 text-accent group-hover:scale-110 transition-transform"
-                            style={isActive ? { color: "#000" } : undefined}
+                            className={`w-4 h-4 group-hover:scale-110 transition-transform ${
+                              isActive ? "text-text-accent" : "text-accent"
+                            }`}
                           />
                           {item.label}
                         </span>
@@ -1447,7 +1448,7 @@ export default function Home() {
                       canDesign ? (
                         <DesignTab store={store} />
                       ) : (
-                        <AccessDenied feature="Design Studio" requiredRole="Designers and Club Admins" />
+                        <AccessDenied feature="Design Studio" requiredRole="Club Admins" />
                       )
                     )}
                     {activeTab === "settings" && (

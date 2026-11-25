@@ -2218,7 +2218,7 @@ export function DesignTab({ store }: { store: ReturnType<typeof useStore> }) {
           type="file"
           accept="image/*"
           onChange={onPickPhoto}
-          className="w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-accent file:text-black hover:file:opacity-90"
+          className="w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-accent file:text-text-accent hover:file:opacity-90"
         />
         <p className="text-[10px] text-text-muted mt-1.5 leading-tight">
           Upload a portrait photo of the player (POTM card) or a group shot (milestone).

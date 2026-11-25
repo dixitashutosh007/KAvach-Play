@@ -361,7 +361,7 @@ export function StudioTab({ store }: { store: ReturnType<typeof useStore> }) {
           <span className="p-1 px-2.5 rounded-full bg-surface-hover text-[10px] uppercase font-bold tracking-widest text-text-muted border border-border">
             Inactive
           </span>
-          <div className="w-16 h-16 bg-accent/10 border border-accent/20 rounded-full flex items-center justify-center mx-auto mb-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+          <div className="w-16 h-16 bg-accent/10 border border-accent/20 rounded-full flex items-center justify-center mx-auto mb-2 shadow-[0_0_20px_rgba(213,31,67,0.18)]">
             <Sparkles className="w-8 h-8 text-accent animate-pulse" />
           </div>
           <h2 className="text-2xl font-bold text-text-primary tracking-tight">Unlock Kavach Studio Membership</h2>

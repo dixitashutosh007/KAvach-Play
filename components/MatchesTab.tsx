@@ -1044,7 +1044,7 @@ export function MatchesTab({
                 onClick={() => setSubTab(tab as any)}
                 className={`shrink-0 sm:shrink sm:flex-1 min-h-[40px] py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all duration-200 text-center cursor-pointer ${
                   active
-                    ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
+                    ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(213,31,67,0.25)]"
                     : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
                 }`}
               >
@@ -1108,7 +1108,7 @@ export function MatchesTab({
                     }}
                     aria-label={isAdding ? "Cancel" : "Add Match"}
                     data-testid="add-match-button"
-                    className="inline-flex items-center justify-center gap-1 h-10 min-w-10 rounded-xl sm:rounded-full bg-accent px-2.5 sm:px-3 text-sm font-bold text-black shadow hover:bg-accent/90 transition"
+                    className="inline-flex items-center justify-center gap-1 h-10 min-w-10 rounded-xl sm:rounded-full bg-accent px-2.5 sm:px-3 text-sm font-bold text-text-accent shadow hover:bg-accent/90 transition"
                   >
                     {isAdding ? <X className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
                     <span className={isAdding ? "" : "hidden sm:inline"}>{isAdding ? "Cancel" : "Add Match"}</span>

@@ -116,7 +116,7 @@ export function TournamentsTab({
         </h2>
         <button
           onClick={() => setIsAdding(true)}
-          className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-sm font-bold text-black shadow hover:bg-accent/90 transition"
+          className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-sm font-bold text-text-accent shadow hover:bg-accent/90 transition"
         >
           <Plus className="w-4 h-4" /> Add Tournament
         </button>
@@ -573,7 +573,7 @@ function TournamentFormModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition flex items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-text-accent hover:bg-accent/90 transition flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
               {isSaving ? "Saving..." : isEdit ? "Save Changes" : "Create Tournament"}
@@ -909,7 +909,7 @@ function BulkAddSection({
         <button
           onClick={runBulkAdd}
           disabled={isSubmitting}
-          className="mt-2 w-full rounded-lg bg-accent py-2 text-sm font-bold text-black hover:bg-accent/90 transition disabled:opacity-60"
+          className="mt-2 w-full rounded-lg bg-accent py-2 text-sm font-bold text-text-accent hover:bg-accent/90 transition disabled:opacity-60"
         >
           {isSubmitting ? "Creating..." : `Create ${slots.filter((s) => s.date && s.time).length} Match${slots.filter((s) => s.date && s.time).length !== 1 ? "es" : ""}`}
         </button>

@@ -171,7 +171,7 @@ export function PhoneLoginForm({
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 py-3 px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            className="flex-1 py-3 px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(213,31,67,0.2)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
             style={{ backgroundColor: themeAccent, color: themeTextAccent }}
           >
             {loading ? (
@@ -226,7 +226,7 @@ export function PhoneLoginForm({
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 py-3 px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(16,185,129,0.15)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+          className="flex-1 py-3 px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:opacity-95 transition shadow-[0_4px_12px_rgba(213,31,67,0.2)] flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
           style={{ backgroundColor: themeAccent, color: themeTextAccent }}
         >
           {loading ? (

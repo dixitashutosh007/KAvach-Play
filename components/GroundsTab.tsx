@@ -96,7 +96,7 @@ export function GroundsTab({
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }
             }}
-            className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-black shadow hover:bg-accent/90 transition"
+            className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-text-accent shadow hover:bg-accent/90 transition"
           >
             <Plus className="h-4 w-4" />
             {isAdding ? "Cancel" : "Add Ground"}
@@ -246,7 +246,7 @@ export function GroundsTab({
             </button>
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent/90 transition shadow"
+              className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-bold text-text-accent hover:bg-accent/90 transition shadow"
             >
               {editingId ? "Update Ground" : "Save Ground"}
             </button>
