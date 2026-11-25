@@ -14,9 +14,11 @@ import { nextAnnouncementPageAction } from "@/lib/club-feed";
 export function ClubAnnouncementsScreen({
   openId,
   onOpenHandled,
+  onReturnFromSearch,
 }: {
   openId?: string | null;
   onOpenHandled?: () => void;
+  onReturnFromSearch?: () => void;
 }) {
   const { items, loading, error, done, loadMore } = useAnnouncementPages(20);
   const [pendingOpen, setPendingOpen] = useState<string | null>(openId || null);
@@ -63,6 +65,7 @@ export function ClubAnnouncementsScreen({
             setPendingOpen(null);
             onOpenHandled?.();
           }}
+          onCloseDetail={onReturnFromSearch}
         />
       )}
       {!done && (

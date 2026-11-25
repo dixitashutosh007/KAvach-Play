@@ -189,11 +189,13 @@ export default function Home() {
     | "announcements"
   >("home");
   const [tabAction, setTabAction] = useState<string | null>(null);
+  const [searchReturnHome, setSearchReturnHome] = useState(false);
   const [, setTestRerenderCount] = useState(0);
 
-  const setActiveTab = useCallback((tab: any, action?: string) => {
+  const setActiveTab = useCallback((tab: any, action?: string, options?: { fromSearch?: boolean }) => {
     setActiveTabBase(tab);
     setTabAction(action || null);
+    setSearchReturnHome(Boolean(options?.fromSearch));
   }, []);
   const activeTab = activeTabBase;
   const [persona, setPersona] = useState<"player" | "admin">("player");
@@ -919,7 +921,7 @@ export default function Home() {
             }
             setActiveTab("matches", `match_${matchId}`);
           }}
-          onNavigateTab={(tab, targetId) => setActiveTab(tab, targetId)}
+          onNavigateTab={(tab, targetId) => setActiveTab(tab, targetId, { fromSearch: true })}
           onNavigateFeed={() => {
             setActiveTab("home");
             setTimeout(() => {
@@ -1358,12 +1360,14 @@ export default function Home() {
                       currentUserId={user.uid}
                       initialPlayerId={tabAction}
                       onOpenHandled={() => setTabAction(null)}
+                      onReturnFromSearch={searchReturnHome ? () => setActiveTab("home") : undefined}
                     />
                   )}
                   {activeTab === "announcements" && (
                     <ClubAnnouncementsScreen
                       openId={tabAction}
                       onOpenHandled={() => setTabAction(null)}
+                      onReturnFromSearch={searchReturnHome ? () => setActiveTab("home") : undefined}
                     />
                   )}
                   {activeTab === "pulse" && <PulseScreen store={store} currentUserId={user.uid} />}

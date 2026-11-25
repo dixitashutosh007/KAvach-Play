@@ -67,7 +67,7 @@ export function HomeTab({
   currentUserName: string;
   onNavigateToMatch?: (matchId: string) => void;
   onNavigateToPayments?: () => void;
-  onNavigateToTab?: (tab: any, action?: string) => void;
+  onNavigateToTab?: (tab: any, action?: string, options?: { fromSearch?: boolean }) => void;
 }) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -199,11 +199,11 @@ export function HomeTab({
   );
 
   // Generic navigation dispatcher
-  const handleNavigate = (tab: string, targetId?: string) => {
+  const handleNavigate = (tab: string, targetId?: string, options?: { fromSearch?: boolean }) => {
     // Announcements and the club feed live on Home itself (there is no separate tab).
     if (tab === "announcements") {
       // D-20: announcements live in Club → Announcements.
-      onNavigateToTab?.("announcements", targetId);
+      onNavigateToTab?.("announcements", targetId, options);
       return;
     }
     if (tab === "feed") {
@@ -239,7 +239,7 @@ export function HomeTab({
       // Target ID is an individual match: apply guarded match navigation
       handleGuardedNavigateToMatch(targetId);
     } else if (onNavigateToTab) {
-      onNavigateToTab(tab, targetId);
+      onNavigateToTab(tab, targetId, options);
     }
   };
 
@@ -354,7 +354,7 @@ export function HomeTab({
           onRetry={retrySearch}
           onClear={() => setSearchQuery("")}
           onNavigateMatch={handleGuardedNavigateToMatch}
-          onNavigateTab={handleNavigate}
+          onNavigateTab={(tab, targetId) => handleNavigate(tab, targetId, { fromSearch: true })}
           onNavigateFeed={() => handleNavigate("feed")}
           isFeatureEnabled={isFeatureEnabled}
           mode="inline"

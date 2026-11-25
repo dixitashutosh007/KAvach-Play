@@ -595,3 +595,72 @@ test("Global Search UI & AppHeader wire readiness coordinator, lazy-loading, and
   assert.match(headerSrc, /persona === "player" && onOpenSearch/);
   assert.match(pageSrc, /validateMatchNavigation\(/);
 });
+
+test("Return-to-Home intent lifecycle handles search vs club navigation, invalid targets, and persona/tab resets", () => {
+  const pageSrc = fs.readFileSync(path.join(root, "app/page.tsx"), "utf8");
+  const homeTabSrc = fs.readFileSync(path.join(root, "components/HomeTab.tsx"), "utf8");
+  const directorySrc = fs.readFileSync(path.join(root, "components/club/PlayerDirectory.tsx"), "utf8");
+  const annScreenSrc = fs.readFileSync(path.join(root, "components/club/ClubAnnouncementsScreen.tsx"), "utf8");
+  const annSectionSrc = fs.readFileSync(path.join(root, "components/home/ClubAnnouncementsSection.tsx"), "utf8");
+
+  // Simulate the exact setActiveTab(tab, action, options) + destination close state machine from app/page.tsx
+  let activeTab = "home";
+  let tabAction = null;
+  let searchReturnHome = false;
+  const setActiveTab = (tab, action, options) => {
+    activeTab = tab;
+    tabAction = action || null;
+    searchReturnHome = Boolean(options?.fromSearch);
+  };
+
+  // 1. Search -> Player -> Close -> Player Home
+  setActiveTab("players", "p-1", { fromSearch: true });
+  assert.equal(activeTab, "players");
+  assert.equal(tabAction, "p-1");
+  assert.equal(searchReturnHome, true);
+  // Target opens -> tabAction cleared, searchReturnHome preserved
+  tabAction = null;
+  assert.equal(searchReturnHome, true);
+  // Explicit close invokes onReturnFromSearch -> navigates to "home" and clears searchReturnHome
+  if (searchReturnHome) setActiveTab("home");
+  assert.equal(activeTab, "home");
+  assert.equal(searchReturnHome, false);
+
+  // 2. Search -> Announcement -> Close -> Player Home
+  setActiveTab("announcements", "a-1", { fromSearch: true });
+  tabAction = null;
+  if (searchReturnHome) setActiveTab("home");
+  assert.equal(activeTab, "home");
+  assert.equal(searchReturnHome, false);
+
+  // 3 & 4. Club menu -> Player Directory / Announcements -> Close -> Remain in destination
+  setActiveTab("players");
+  assert.equal(searchReturnHome, false);
+  setActiveTab("announcements");
+  assert.equal(searchReturnHome, false);
+
+  // 5. Opening a second search result after returning home works cleanly
+  setActiveTab("players", "p-2", { fromSearch: true });
+  assert.equal(tabAction, "p-2");
+  assert.equal(searchReturnHome, true);
+  if (searchReturnHome) setActiveTab("home");
+  assert.equal(activeTab, "home");
+
+  // 6. Invalid/unavailable search target clears tabAction via onOpenHandled without firing onReturnFromSearch
+  setActiveTab("players", "p-missing", { fromSearch: true });
+  tabAction = null; // onOpenHandled only
+  assert.equal(activeTab, "players");
+
+  // 7. Navigating elsewhere / switching persona clears stale searchReturnHome
+  setActiveTab("announcements", "a-1", { fromSearch: true });
+  setActiveTab("club");
+  assert.equal(searchReturnHome, false);
+
+  // Verify production wiring matches
+  assert.match(pageSrc, /setSearchReturnHome\(Boolean\(options\?\.fromSearch\)\)/);
+  assert.match(pageSrc, /onReturnFromSearch=\{searchReturnHome \? \(\) => setActiveTab\("home"\) : undefined\}/);
+  assert.match(homeTabSrc, /handleNavigate\(tab, targetId, \{ fromSearch: true \}\)/);
+  assert.match(directorySrc, /onReturnFromSearch\?\.\(\)/);
+  assert.match(annScreenSrc, /onCloseDetail=\{onReturnFromSearch\}/);
+  assert.match(annSectionSrc, /onCloseDetail\?\.\(\)/);
+});

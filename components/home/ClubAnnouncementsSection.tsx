@@ -28,6 +28,7 @@ export function ClubAnnouncementsSection({
   onDelete,
   openAnnouncementId,
   onOpenHandled,
+  onCloseDetail,
 }: {
   posts: Post[];
   /** Show the admin composer (UI only; Firestore rules enforce admin-only creation). */
@@ -40,6 +41,7 @@ export function ClubAnnouncementsSection({
   /** When set (e.g. from the top banner), scroll here and open that announcement. */
   openAnnouncementId?: string | null;
   onOpenHandled?: () => void;
+  onCloseDetail?: () => void;
 }) {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -51,6 +53,7 @@ export function ClubAnnouncementsSection({
   const closeDetail = () => {
     setSelectedAnnouncement(null);
     setConfirmDelete(false);
+    onCloseDetail?.();
   };
   const sectionRef = useRef<HTMLElement>(null);
 

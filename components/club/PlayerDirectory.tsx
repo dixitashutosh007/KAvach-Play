@@ -51,11 +51,13 @@ export function PlayerDirectory({
   currentUserId,
   initialPlayerId,
   onOpenHandled,
+  onReturnFromSearch,
 }: {
   store: ReturnType<typeof useStore>;
   currentUserId: string;
   initialPlayerId?: string | null;
   onOpenHandled?: () => void;
+  onReturnFromSearch?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [visible, setVisible] = useState(DIRECTORY_PAGE_SIZE);
@@ -146,7 +148,10 @@ export function PlayerDirectory({
           isSelf={opened.id === currentUserId}
           badgeTypeDefs={store.badgeTypeDefs}
           nonce={store.refreshNonce ?? 0}
-          onClose={() => setOpenId(null)}
+          onClose={() => {
+            setOpenId(null);
+            onReturnFromSearch?.();
+          }}
         />
       )}
     </div>
