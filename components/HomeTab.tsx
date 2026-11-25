@@ -462,6 +462,7 @@ export function HomeTab({
             matches={upcomingMatches}
             grounds={grounds}
             payments={payments}
+            players={players}
             player={mePlayer}
             onRsvp={handleRsvp}
             onNavigateToMatch={handleGuardedNavigateToMatch}

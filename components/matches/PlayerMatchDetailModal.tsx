@@ -103,6 +103,7 @@ export function PlayerMatchDetailModal({
         availability: memberAv,
         tacticalNote: p.tacticalNote,
         isMe: mePlayer && p.playerId === mePlayer.id,
+        isCaptain: Boolean(match.captainId && !isGuest && p.playerId === match.captainId),
       };
     });
 
@@ -471,10 +472,18 @@ export function PlayerMatchDetailModal({
                     className="py-2.5 flex items-center justify-between gap-2 text-xs"
                   >
                     <div className="flex items-center gap-2 truncate">
-                      <span className="font-semibold text-text-primary truncate">
-                        {member.displayName}
+                      <span className="font-semibold text-text-primary truncate flex items-center gap-1.5">
+                        <span className="truncate">{member.displayName}</span>
+                        {member.isCaptain && (
+                          <span
+                            data-testid={`player-detail-cap-${member.playerId}`}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D] border border-[#A30F2D]/25 text-[9px] font-black uppercase tracking-wider shrink-0"
+                          >
+                            CAP
+                          </span>
+                        )}
                         {member.isMe && (
-                          <span className="ml-1 text-[10px] text-deep-wine font-black">
+                          <span className="text-[10px] text-deep-wine font-black shrink-0">
                             (You)
                           </span>
                         )}

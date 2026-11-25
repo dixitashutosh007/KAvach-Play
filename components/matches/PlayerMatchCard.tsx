@@ -12,9 +12,10 @@
  * live on the Player Payments page; Admin financial views are unaffected.
  */
 import React, { useState } from "react";
-import { Sparkles, Trophy, ChevronDown, ChevronRight } from "lucide-react";
+import { Sparkles, Trophy, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
 import type { Match, Ground } from "@/lib/types";
 import type { PlayerAvailabilityStatus } from "@/lib/personal-match-payment";
+import { buildCaptainWhatsAppUrl, type ResolvedCaptain } from "@/lib/match-captain";
 import { MatchCardCompactBody, MatchCardHeader, MatchCardTopBar, MatchCornerTab } from "./MatchCardHeader";
 import {
   AvailabilityButtons,
@@ -27,6 +28,7 @@ export interface PlayerMatchCardProps {
   match: Match;
   ground?: Ground;
   tournamentName?: string;
+  captain?: ResolvedCaptain | null;
   availability: PlayerAvailabilityStatus | "Out";
   isImmediateNext?: boolean;
   /** Visual variant for alternating consecutive cards in lists */
@@ -84,6 +86,7 @@ export function PlayerMatchCard({
   match,
   ground,
   tournamentName,
+  captain = null,
   availability,
   isImmediateNext = false,
   variant = "default",
@@ -96,8 +99,20 @@ export function PlayerMatchCard({
 }: PlayerMatchCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [pendingChoice, setPendingChoice] = useState<AvailabilityChoice | null>(null);
+  const [captainContactNotice, setCaptainContactNotice] = useState<string | null>(null);
 
   const isCompletedOrPast = Boolean(match.result && match.result !== "Pending");
+
+  const handleContactCaptain = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const res = buildCaptainWhatsAppUrl(captain, match);
+    if (!res.ok) {
+      setCaptainContactNotice(res.reason);
+      return;
+    }
+    setCaptainContactNotice(null);
+    window.open(res.url, "_blank", "noopener,noreferrer");
+  };
 
   const handleSelect = async (stored: StoredAvailability, choice: AvailabilityChoice) => {
     if (!onRsvp || isUpdatingRsvp || disabledRsvp || pendingChoice) return;
@@ -123,6 +138,19 @@ export function PlayerMatchCard({
           {/* Icon-only on very narrow phones so the corner tab always fits. */}
           <span className="max-[399px]:sr-only">Next Match</span>
         </span>
+      )}
+      {captain && (
+        <button
+          type="button"
+          data-testid={`contact-captain-${match.id}`}
+          onClick={handleContactCaptain}
+          aria-label={`Contact Captain ${captain.name} on WhatsApp`}
+          title={`Contact Captain (${captain.name})`}
+          className="inline-flex items-center justify-center gap-1 min-h-[32px] px-2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 cursor-pointer"
+        >
+          <MessageCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">Contact Captain</span>
+        </button>
       )}
       {tournamentName && (
         <button
@@ -201,6 +229,17 @@ export function PlayerMatchCard({
             <span className="truncate max-w-[220px]">{tournamentName}</span>
           </span>
         </div>
+      )}
+
+      {captainContactNotice && (
+        <p
+          role="status"
+          data-testid={`contact-captain-notice-${match.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[11px] font-medium text-amber-800"
+        >
+          {captainContactNotice}
+        </p>
       )}
 
       {/* Absorbs spare height so the availability row aligns across carousel cards. */}

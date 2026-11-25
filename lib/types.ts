@@ -194,6 +194,7 @@ export type Match = {
   resultMarginAmount?: number;
   playerOfTheMatch?: string;
   potmId?: string;
+  captainId?: string;
   topPerformerIds?: string[];
   bestBatsman?: string;
   bestBowler?: string;

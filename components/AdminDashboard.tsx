@@ -38,6 +38,12 @@ import {
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
 import { computeMatchAvailabilityReadiness } from "@/lib/match-readiness";
+import { SquadNotifyModal } from "@/components/matches/SquadNotifyModal";
+import {
+  getUpcomingMatchesMissingCaptain,
+  shouldShowFridayCaptainReminder,
+} from "@/lib/match-captain";
+import { getMatchesWithinNext48Hours } from "@/lib/squad-notify";
 import {
   filterDismissedExpiredStudioAlerts,
   getStudioAlertExpiryKey,
@@ -290,18 +296,23 @@ export function AdminDashboard({
     };
   }, [canSeeClub, players, dismissedExpiredAlerts]);
 
-  // Upcoming matches + readiness counts (Club / Super Admin)
+  // Upcoming matches + readiness counts (Club / Super Admin), prioritizing next 48h
   const upcomingMatchesWithReadiness = useMemo(() => {
     if (!canSeeClub) return [];
     const up = matches.filter((m) => {
       const timeStr = m.time || "00:00";
       return !isPast(new Date(`${m.date}T${timeStr}`));
     });
-    up.sort(
-      (a, b) =>
+    const next48hIds = new Set(getMatchesWithinNext48Hours(up).map((m) => m.id));
+    up.sort((a, b) => {
+      const a48 = next48hIds.has(a.id) ? 0 : 1;
+      const b48 = next48hIds.has(b.id) ? 0 : 1;
+      if (a48 !== b48) return a48 - b48;
+      return (
         new Date(`${a.date}T${a.time || "00:00"}`).getTime() -
-        new Date(`${b.date}T${b.time || "00:00"}`).getTime(),
-    );
+        new Date(`${b.date}T${b.time || "00:00"}`).getTime()
+      );
+    });
 
     return up.map((m) => {
       const matchRecs = payments.filter((p) => p.matchId === m.id);
@@ -324,6 +335,7 @@ export function AdminDashboard({
   const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
   const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
   const [selectedRemindMatch, setSelectedRemindMatch] = useState<Match | null>(null);
+  const [notifyModalMatch, setNotifyModalMatch] = useState<Match | null>(null);
 
   const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(false);
   const [noShowAmount, setNoShowAmount] = useState<number>(0);
@@ -422,42 +434,7 @@ export function AdminDashboard({
   };
 
   const handleNotifyMatch = (m: Match) => {
-    const ground = store.grounds.find((g) => g.id === m.groundId);
-    const startTimeLabel = m.time
-      ? format(parseISO(`${m.date}T${m.time}`), "h:mm a, EEE d MMM")
-      : formatDate(m.date);
-
-    let text = `*Upcoming Match Alert*\n`;
-    text += `KAvach vs ${m.opponent}\n`;
-    text += `Ground Name: ${ground?.name || "TBD"}\n`;
-    text += `Start Time: ${startTimeLabel}\n`;
-    text += `Jersey Colour: ${m.jerseyColor || "TBD"}\n`;
-    text += `Location: ${ground?.mapUrl || "TBD"}\n`;
-
-    const matchPayments = store.payments.filter(
-      (p) => p.matchId === m.id && store.players.some((pl) => pl.id === p.playerId),
-    );
-    const playing = matchPayments.filter((p) => p.status !== "Not Playing");
-
-    const tags: string[] = [];
-    const untagged: string[] = [];
-    for (const pay of playing) {
-      const player = store.players.find((pl) => pl.id === pay.playerId);
-      if (!player) continue;
-      const normalized = normalizeIndianMobile(player.mobile);
-      if (/^\+91\d{10}$/.test(normalized)) {
-        tags.push(`@${normalized}`);
-      } else {
-        untagged.push(player.name);
-      }
-    }
-
-    text += `Players: ${tags.join(" ")}`;
-    if (untagged.length > 0) {
-      text += `\n\n_Could not tag (no valid mobile on file): ${untagged.join(", ")}_`;
-    }
-
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    setNotifyModalMatch(m);
   };
 
   const handleStudioRemind = async (p: Player) => {
@@ -918,6 +895,48 @@ export function AdminDashboard({
           </section>
 
           {/* Today & Upcoming Matches — Club / Super Admin */}
+          {canSeeClub && shouldShowFridayCaptainReminder(matches, canSeeClub) && (() => {
+            const missingCap = getUpcomingMatchesMissingCaptain(matches);
+            return (
+              <section
+                data-testid="friday-captain-reminder"
+                className="rounded-2xl border border-amber-300 bg-amber-50/85 p-3.5 shadow-xs space-y-2"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-800 shrink-0" aria-hidden="true" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-amber-900">
+                    Friday Captain Reminder ({missingCap.length} upcoming match{missingCap.length === 1 ? "" : "es"} without captain)
+                  </h2>
+                </div>
+                <div className="space-y-1.5">
+                  {missingCap.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-2 rounded-xl bg-white/85 border border-amber-200 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-text-primary truncate">
+                          vs {m.opponent || "TBD"}
+                        </p>
+                        <p className="text-[11px] text-text-secondary">
+                          {format(parseISO(m.date), "EEE, d MMM")}
+                          {m.time ? ` · ${format(parseISO(`${m.date}T${m.time}`), "h:mm a")}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("matches", `edit_${m.id}`)}
+                        data-testid={`dashboard-assign-captain-${m.id}`}
+                        className="min-h-[34px] px-3 rounded-lg bg-[#A30F2D] text-white text-xs font-bold hover:bg-[#8B0D26] transition shrink-0 cursor-pointer"
+                      >
+                        Assign Captain
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
           {canSeeClub && (
             <section data-testid="admin-upcoming-matches">
               <div className="flex items-center justify-between mb-2.5">
@@ -1380,6 +1399,15 @@ export function AdminDashboard({
       )}
 
       {/* Group Remind Modal */}
+      <SquadNotifyModal
+        open={Boolean(notifyModalMatch)}
+        match={notifyModalMatch}
+        ground={notifyModalMatch ? grounds.find((g) => g.id === notifyModalMatch.groundId) : undefined}
+        players={players}
+        payments={payments}
+        onClose={() => setNotifyModalMatch(null)}
+      />
+
       {isGroupRemindModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
           <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-5 relative shadow-2xl">

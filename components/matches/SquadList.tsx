@@ -20,6 +20,7 @@ export interface SquadRow {
   name: string;
   photoURL?: string;
   isYou?: boolean;
+  isCaptain?: boolean;
 }
 
 const BADGE: Record<PlanBadgeTone, string> = {
@@ -289,9 +290,17 @@ export function SquadList({
                       </button>
                     )}
                     <Avatar name={row.name} photoURL={row.photoURL} />
-                    <span className="truncate text-sm font-bold text-text-primary">
-                      {row.name}
-                      {row.isYou && <span className="ml-1.5 text-[10px] font-bold uppercase text-brand">You</span>}
+                    <span className="truncate text-sm font-bold text-text-primary flex items-center gap-1.5">
+                      <span className="truncate">{row.name}</span>
+                      {row.isCaptain && (
+                        <span
+                          data-testid={`squad-cap-badge-${row.payment.playerId}`}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D] border border-[#A30F2D]/25 text-[10px] font-black uppercase tracking-wider shrink-0"
+                        >
+                          CAP
+                        </span>
+                      )}
+                      {row.isYou && <span className="text-[10px] font-bold uppercase text-brand shrink-0">You</span>}
                     </span>
                   </span>
                   <span className="min-w-0">
@@ -325,9 +334,17 @@ export function SquadList({
                   )}
                   <Avatar name={row.name} photoURL={row.photoURL} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-text-primary">
-                      {row.name}
-                      {row.isYou && <span className="ml-1 text-[10px] font-bold uppercase text-brand">You</span>}
+                    <span className="flex items-center gap-1.5 truncate text-sm font-bold text-text-primary">
+                      <span className="truncate">{row.name}</span>
+                      {row.isCaptain && (
+                        <span
+                          data-testid={`squad-cap-badge-mobile-${row.payment.playerId}`}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#FCE8ED] text-[#A30F2D] border border-[#A30F2D]/25 text-[9px] font-black uppercase tracking-wider shrink-0"
+                        >
+                          CAP
+                        </span>
+                      )}
+                      {row.isYou && <span className="text-[10px] font-bold uppercase text-brand shrink-0">You</span>}
                     </span>
                     <span className={`mt-0.5 inline-block max-w-full truncate rounded-full border px-1.5 py-px text-[11px] font-bold ${BADGE[badge.tone]}`}>
                       {badge.label}

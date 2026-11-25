@@ -16,6 +16,7 @@ import { useCallback, useRef, useState } from "react";
 import { CalendarDays, ChevronRight, ArrowRight } from "lucide-react";
 import { Match, Ground, MatchPayment, Player } from "@/lib/types";
 import { PlayerMatchCard } from "@/components/matches/PlayerMatchCard";
+import { resolveMatchCaptain } from "@/lib/match-captain";
 import {
   derivePlayerAvailability,
 } from "@/lib/personal-match-payment";
@@ -24,6 +25,7 @@ export function UpcomingMatchesSection({
   matches = [],
   grounds = [],
   payments = [],
+  players = [],
   player,
   onRsvp,
   onNavigateToMatch,
@@ -32,6 +34,7 @@ export function UpcomingMatchesSection({
   matches: Match[];
   grounds: Ground[];
   payments: MatchPayment[];
+  players?: Player[];
   player: Player | null;
   onRsvp: (matchId: string, availability: "Confirmed" | "Tentative" | "No") => Promise<void>;
   onNavigateToMatch: (matchId: string) => void;
@@ -131,6 +134,7 @@ export function UpcomingMatchesSection({
                 <PlayerMatchCard
                   match={match}
                   ground={grounds.find((g) => g.id === match.groundId)}
+                  captain={resolveMatchCaptain(match, players)}
                   availability={derivePlayerAvailability(player, match, payments).status}
                   variant={idx % 2 === 1 ? "alternate" : "default"}
                   layout="home"

@@ -36,6 +36,7 @@ import {
 } from "@/lib/player-match-filters";
 import { MatchFilterSelect } from "./MatchFilterSelect";
 import { PlayerMatchCard } from "./PlayerMatchCard";
+import { resolveMatchCaptain } from "@/lib/match-captain";
 import { MatchesLoadError } from "./MatchesLoadError";
 import { PlayerMatchDetailModal } from "./PlayerMatchDetailModal";
 import { MatchDateSelector } from "./AdminMatchDateList";
@@ -436,6 +437,7 @@ export function PlayerMatchCenter({
       match={match}
       ground={store.grounds.find((g) => g.id === match.groundId)}
       tournamentName={match.tournamentId ? tournamentMap.get(match.tournamentId) : undefined}
+      captain={resolveMatchCaptain(match, store.players || [])}
       availability={
         optimisticAvailability[match.id] ||
         derivePlayerAvailability(mePlayer, match, store.payments).status

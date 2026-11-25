@@ -85,6 +85,17 @@ import { callMatchPlans } from "@/hooks/useMatchFinancePlans";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
 import { computeMatchAvailabilityReadiness, hasExplicitAvailabilityResponse, resolveCanonicalPlayerPaymentRecord } from "@/lib/match-readiness";
 import { runBulkOperations } from "@/lib/bulk-operations";
+import { CaptainSelector } from "./matches/CaptainSelector";
+import { SquadNotifyModal } from "./matches/SquadNotifyModal";
+import {
+  getUpcomingMatchesMissingCaptain,
+  resolveMatchCaptain,
+  shouldShowFridayCaptainReminder,
+} from "@/lib/match-captain";
+import {
+  formatMatchDateTimeKolkata,
+  getMatchesWithinNext48Hours,
+} from "@/lib/squad-notify";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
 export const MATCH_VIEW_OPTIONS = [
@@ -207,6 +218,12 @@ export function MatchesTab({
       if (tourn) {
         setPlayerSearch(tourn.name || "");
       }
+    } else if (defaultAction && defaultAction.startsWith("edit_")) {
+      const targetMatchId = defaultAction.replace("edit_", "");
+      const match = store.matches.find((m) => m.id === targetMatchId);
+      if (match) {
+        startEdit(match);
+      }
     }
   }, [defaultAction, store.matches, store.tournaments]);
 
@@ -245,6 +262,7 @@ export function MatchesTab({
     isTentative: false,
     tentativelyBlockedBy: "",
     tournamentId: "",
+    captainId: "",
   });
 
   // Margin for the fee calculator. A form control only (the match stores just
@@ -265,6 +283,7 @@ export function MatchesTab({
     }
   }, [store.grounds, formData.groundId]);
 
+  const [notifyModalMatch, setNotifyModalMatch] = useState<Match | null>(null);
   // Match finances closed (Manage Match → Finance): the fee basis is locked
   // (also enforced by Firestore rules); other match details stay editable.
   const editingFinanceClosed = !!editingId && store.matches.find((m) => m.id === editingId)?.financeStatus === "closed";
@@ -276,8 +295,9 @@ export function MatchesTab({
       goToFormStep((formStep + 1) as MatchFormStep);
       return;
     }
+    const { captainId: selectedCaptainId, ...matchFields } = formData;
     const processedData = {
-      ...formData,
+      ...matchFields,
       // Opponent is optional; an empty one is saved as "TBD".
       opponent: formData.opponent.trim() || "TBD",
       fee: Number(formData.fee) || 0,
@@ -290,7 +310,15 @@ export function MatchesTab({
       if (before && before.financeStatus === "closed") processedData.fee = Number(before.fee) || 0;
       const matchId = editingId;
       const feeOrDateChanged = !!before && (Number(before.fee) !== processedData.fee || before.date !== processedData.date);
+      const captainChanged = (selectedCaptainId || "") !== (before?.captainId || "");
       Promise.resolve(store.updateMatch({ ...processedData, id: editingId } as Match)).then(async () => {
+        if (captainChanged) {
+          try {
+            await store.assignMatchCaptain(matchId, selectedCaptainId || null);
+          } catch (err: any) {
+            toast(err?.message || "Match saved, but captain assignment failed.", "error");
+          }
+        }
         // Keep automatically applied Finance Plans in step with the new fee /
         // date. Only payments still exactly as the last automatic application
         // left them change; paid, overridden or hand-edited ones never do.
@@ -304,7 +332,15 @@ export function MatchesTab({
       });
       setEditingId(null);
     } else {
-      store.addMatch(processedData);
+      Promise.resolve(store.addMatch(processedData)).then(async (newMatchId) => {
+        if (newMatchId && selectedCaptainId) {
+          try {
+            await store.assignMatchCaptain(newMatchId, selectedCaptainId);
+          } catch (err: any) {
+            toast(err?.message || "Match created, but captain assignment failed.", "error");
+          }
+        }
+      });
     }
     setIsAdding(false);
     resetForm();
@@ -337,6 +373,7 @@ export function MatchesTab({
       isTentative: false,
       tentativelyBlockedBy: "",
       tournamentId: "",
+      captainId: "",
     });
   };
 
@@ -370,6 +407,7 @@ export function MatchesTab({
       isTentative: match.isTentative || false,
       tentativelyBlockedBy: match.tentativelyBlockedBy || "",
       tournamentId: match.tournamentId || "",
+      captainId: match.captainId || "",
     });
     setEditingId(match.id);
     setIsAdding(true);
@@ -402,6 +440,7 @@ export function MatchesTab({
       isTentative: false,
       tentativelyBlockedBy: "",
       tournamentId: match.tournamentId || "",
+      captainId: "",
     });
     setEditingId(null);
     setIsAdding(true);
@@ -662,6 +701,16 @@ export function MatchesTab({
                     placeholder="Leave empty to show TBD"
                   />
                   <p className="mt-1 text-[11px] text-text-secondary">If left empty, the match is saved as “vs TBD”.</p>
+                </div>
+                <div>
+                  <FieldLabel htmlFor="match-captain">
+                    Captain <span className="font-normal text-text-muted">(optional — any active club player)</span>
+                  </FieldLabel>
+                  <CaptainSelector
+                    players={store.players}
+                    value={formData.captainId || ""}
+                    onChange={(captainId) => setFormData({ ...formData, captainId })}
+                  />
                 </div>
               </FormSection>
             </>
@@ -1124,6 +1173,91 @@ export function MatchesTab({
             {isAdmin && !isAdding && (
               <MatchToolbar store={store} />
             )}
+
+            {isAdmin && !isAdding && shouldShowFridayCaptainReminder(store.matches, isAdmin) && (() => {
+              const missingCap = getUpcomingMatchesMissingCaptain(store.matches);
+              return (
+                <div
+                  data-testid="friday-captain-reminder"
+                  className="rounded-2xl border border-amber-300 bg-amber-50/80 p-3.5 shadow-xs space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-black uppercase tracking-wider text-amber-900">
+                      Friday Captain Reminder ({missingCap.length} match{missingCap.length === 1 ? "" : "es"} missing captain)
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {missingCap.map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between gap-2 rounded-xl bg-white/80 border border-amber-200 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-text-primary truncate">vs {m.opponent || "TBD"}</p>
+                          <p className="text-[11px] text-text-secondary">
+                            {formatMatchDateTimeKolkata(m.date, m.time)} (IST)
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(m)}
+                          data-testid={`assign-captain-btn-${m.id}`}
+                          className="min-h-[34px] px-3 rounded-lg bg-[#A30F2D] text-white text-xs font-bold hover:bg-[#8B0D26] transition shrink-0 cursor-pointer"
+                        >
+                          Assign Captain
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {isAdmin && !isAdding && (() => {
+              const next48h = getMatchesWithinNext48Hours(store.matches);
+              if (next48h.length === 0) return null;
+              return (
+                <div
+                  data-testid="match-center-notify-48h"
+                  className="rounded-2xl border border-brand/20 bg-brand-surface/35 p-3.5 shadow-xs space-y-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-black uppercase tracking-wider text-brand">
+                      Next 48 Hours — Squad Notifications ({next48h.length})
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {next48h.map((m) => {
+                      const cap = resolveMatchCaptain(m, store.players);
+                      return (
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between gap-2 rounded-xl bg-surface border border-border px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-extrabold text-text-primary truncate">
+                              vs {m.opponent || "TBD"}
+                            </p>
+                            <p className="text-[11px] text-text-secondary truncate">
+                              {formatMatchDateTimeKolkata(m.date, m.time)} (IST)
+                              {cap ? ` · Cap: ${cap.name}` : ""}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNotifyModalMatch(m)}
+                            data-testid={`notify-squad-btn-${m.id}`}
+                            className="min-h-[36px] px-3 rounded-lg bg-[#A30F2D] text-white text-xs font-bold hover:bg-[#8B0D26] transition shrink-0 cursor-pointer"
+                          >
+                            Notify Squad
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {editMatchModal}
@@ -1660,6 +1794,14 @@ export function MatchesTab({
           )}
         </>
       )}
+      <SquadNotifyModal
+        open={Boolean(notifyModalMatch)}
+        match={notifyModalMatch}
+        ground={notifyModalMatch ? store.grounds.find((g) => g.id === notifyModalMatch.groundId) : undefined}
+        players={store.players}
+        payments={store.payments}
+        onClose={() => setNotifyModalMatch(null)}
+      />
     </div>
   );
 }
@@ -1981,7 +2123,13 @@ export function MatchPayments({
     .filter((p) => p.status !== "Not Playing")
     .map((p) => {
       const pl = store.players.find((x) => x.id === p.playerId);
-      return { payment: p, name: p.guestName || pl?.name || "Player", photoURL: p.guestName ? undefined : pl?.photoURL, isYou: !!mePlayer && pl?.id === mePlayer.id && !p.guestName };
+      return {
+        payment: p,
+        name: p.guestName || pl?.name || "Player",
+        photoURL: p.guestName ? undefined : pl?.photoURL,
+        isYou: !!mePlayer && pl?.id === mePlayer.id && !p.guestName,
+        isCaptain: Boolean(match.captainId && !p.guestName && p.playerId === match.captainId),
+      };
     });
   const paymentName = (p: MatchPayment) => p.guestName || store.players.find((x) => x.id === p.playerId)?.name || "Player";
 

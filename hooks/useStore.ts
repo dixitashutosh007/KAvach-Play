@@ -1763,6 +1763,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const assignMatchCaptain = async (matchId: string, captainId: string | null) => {
+    const res = await authedFetch("/api/admin/match-captain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId, captainId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to update match captain.");
+    }
+    return data;
+  };
+
   const removeStudioMembership = async (playerId: string) => {
     const res = await authedFetch("/api/admin/studio-membership/remove", {
       method: "POST",
@@ -3151,6 +3164,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     selfAppUserStatus,
     applyLinkedPlayerId,
     playersLoaded,
+    assignMatchCaptain,
     removeStudioMembership,
     dismissExpiredStudioAlert,
     refreshData,

@@ -223,6 +223,7 @@ service cloud.firestore {
         && (data.get('resultMarginAmount', 0) is int || data.get('resultMarginAmount', 0) is float)
         && data.get('playerOfTheMatch', '') is string
         && data.get('potmId', '') is string
+        && (!data.keys().hasAny(['captainId']) || (data.captainId is string && data.captainId.size() <= 128))
         && (!data.keys().hasAny(['topPerformerIds']) || data.topPerformerIds is list)
         && data.get('bestBatsman', '') is string
         && data.get('bestBowler', '') is string
