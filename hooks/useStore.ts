@@ -879,11 +879,14 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
-  const recordCatch = async (entry: Omit<CatchLogEntry, "id" | "recordedAt">) => {
+  const recordCatch = async (
+    entry: Omit<CatchLogEntry, "id" | "recordedAt"> & { idempotencyKey?: string },
+  ) => {
+    const idempotencyKey = entry.idempotencyKey || crypto.randomUUID();
     const res = await authedFetch("/api/admin/catches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(entry),
+      body: JSON.stringify({ ...entry, idempotencyKey }),
     });
     const data = await res.json();
     if (!res.ok) {

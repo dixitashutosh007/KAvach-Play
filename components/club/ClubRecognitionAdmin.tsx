@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Crown, Edit3, Plus, Trash2, Check, X, Sparkles } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
@@ -60,6 +60,8 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
   const [savingCatch, setSavingCatch] = useState(false);
   const [deletingCatchId, setDeletingCatchId] = useState<string | null>(null);
   const [catchError, setCatchError] = useState<string | null>(null);
+  const pendingCatchKeyRef = useRef<string | null>(null);
+  const catchInFlightRef = useRef(false);
 
   const openWindow = useMemo(() => potwWindow(Date.now()), []);
 
@@ -203,6 +205,7 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
   };
 
   const resetCatchForm = () => {
+    pendingCatchKeyRef.current = null;
     setEditingCatchId(null);
     setCatchPlayerId("");
     setCatchType("stunning");
@@ -224,6 +227,7 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
 
   const handleSaveCatch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (catchInFlightRef.current) return;
     setCatchError(null);
     const parsed = validateCatchInput({
       playerId: catchPlayerId,
@@ -237,6 +241,7 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
       return;
     }
 
+    catchInFlightRef.current = true;
     setSavingCatch(true);
     try {
       if (editingCatchId) {
@@ -254,16 +259,20 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
         if (!res.ok) throw new Error(data.error || "Failed to correct catch entry.");
         toast("Catch entry corrected.", "success");
       } else {
-        const res = await authedFetch("/api/admin/catches", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...parsed.value,
-            idempotencyKey: crypto.randomUUID(),
-          }),
+        if (!pendingCatchKeyRef.current) {
+          pendingCatchKeyRef.current = crypto.randomUUID();
+        }
+        await store.recordCatch({
+          playerId: parsed.value.playerId,
+          playerName: activePlayers.find((p) => p.id === parsed.value.playerId)?.name || "Player",
+          type: parsed.value.type,
+          count: parsed.value.count,
+          matchId: parsed.value.matchId,
+          comment: parsed.value.comment,
+          recordedBy: "admin",
+          idempotencyKey: pendingCatchKeyRef.current,
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to record catch.");
+        pendingCatchKeyRef.current = null;
         toast("Catch recorded.", "success");
       }
       resetCatchForm();
@@ -273,6 +282,7 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
       setCatchError(msg);
       toast(msg, "error");
     } finally {
+      catchInFlightRef.current = false;
       setSavingCatch(false);
     }
   };
@@ -497,7 +507,10 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
                   data-testid="catch-player-select"
                   value={catchPlayerId}
                   disabled={Boolean(editingCatchId)}
-                  onChange={(e) => setCatchPlayerId(e.target.value)}
+                  onChange={(e) => {
+                    pendingCatchKeyRef.current = null;
+                    setCatchPlayerId(e.target.value);
+                  }}
                   className="w-full min-h-[42px] rounded-xl border border-border bg-surface px-3 text-sm text-text-primary disabled:opacity-60"
                 >
                   <option value="">Select active player…</option>
@@ -513,7 +526,10 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
                 <select
                   data-testid="catch-type-select"
                   value={catchType}
-                  onChange={(e) => setCatchType(e.target.value as CatchType)}
+                  onChange={(e) => {
+                    pendingCatchKeyRef.current = null;
+                    setCatchType(e.target.value as CatchType);
+                  }}
                   className="w-full min-h-[42px] rounded-xl border border-border bg-surface px-3 text-sm text-text-primary"
                 >
                   <option value="stunning">Stunning Catch</option>
@@ -529,7 +545,10 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
                   max={50}
                   step={1}
                   value={catchCount}
-                  onChange={(e) => setCatchCount(e.target.value)}
+                  onChange={(e) => {
+                    pendingCatchKeyRef.current = null;
+                    setCatchCount(e.target.value);
+                  }}
                   className="w-full min-h-[42px] rounded-xl border border-border bg-surface px-3 text-sm text-text-primary"
                 />
               </div>
@@ -540,7 +559,10 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
               <input
                 type="text"
                 value={catchComment}
-                onChange={(e) => setCatchComment(e.target.value)}
+                onChange={(e) => {
+                  pendingCatchKeyRef.current = null;
+                  setCatchComment(e.target.value);
+                }}
                 placeholder="Match context or fielding note"
                 className="w-full min-h-[40px] rounded-xl border border-border bg-surface px-3 text-sm text-text-primary"
               />

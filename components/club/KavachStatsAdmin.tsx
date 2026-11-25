@@ -116,10 +116,14 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save KAvach Stats.");
-      toast(
-        editingStatId ? "Player statistics updated." : "Player statistics saved.",
-        "success",
-      );
+      if (data.stat?.duplicateWarning) {
+        toast(data.stat.duplicateWarning, "error");
+      } else {
+        toast(
+          editingStatId ? "Player statistics updated." : "Player statistics saved.",
+          "success",
+        );
+      }
       resetForm();
     } catch (err: any) {
       const msg = err?.message || "Could not save player statistics.";

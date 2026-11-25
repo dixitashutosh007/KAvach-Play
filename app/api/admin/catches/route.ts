@@ -159,6 +159,9 @@ export async function POST(req: Request) {
     if (err instanceof RequestError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
+    if ((err as any)?.code === 6 && idempotencyKey) {
+      return NextResponse.json({ ok: true, id: idempotencyKey, deduplicated: true });
+    }
     console.error("[catches] create failed");
     return NextResponse.json({ error: "Could not record catch." }, { status: 500 });
   }
@@ -203,9 +206,26 @@ export async function PATCH(req: Request) {
       const playerSnap = await tx.get(playerRef);
       if (!playerSnap.exists) throw new RequestError(404, "Player not found.");
       const player = playerSnap.data() || {};
+      if (player.disabled || player.mergedInto) {
+        throw new RequestError(400, "Disabled or merged players cannot be updated.");
+      }
 
       const oldType = (oldEntry.type === "dropped" ? "dropped" : "stunning") as CatchType;
       const oldCount = Math.max(0, Number(oldEntry.count) || 0);
+      const oldComment = typeof oldEntry.comment === "string" ? oldEntry.comment : "";
+      const newComment = parsed.value.comment || "";
+
+      if (oldType === parsed.value.type && oldCount === parsed.value.count && oldComment === newComment) {
+        return {
+          id: entryId,
+          unchanged: true,
+          totals: {
+            stunningCatches: Math.max(0, Number(player.stunningCatches) || 0),
+            droppedCatches: Math.max(0, Number(player.droppedCatches) || 0),
+          },
+        };
+      }
+
       const nextTotals = computeCorrectedCatchTotals(
         { stunningCatches: player.stunningCatches, droppedCatches: player.droppedCatches },
         { type: oldType, count: oldCount },

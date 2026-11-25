@@ -55,7 +55,18 @@ export async function POST(req: Request) {
 
       const targetId = requestedId || deterministicPlayerStatId(playerId, year);
       const statRef = db.collection("playerStats").doc(targetId);
-      const existingSnap = await tx.get(statRef);
+      const dupQuery = db
+        .collection("playerStats")
+        .where("playerId", "==", playerId)
+        .where("year", "==", year);
+
+      const [existingSnap, allMatchingSnap] = await Promise.all([
+        tx.get(statRef),
+        tx.get(dupQuery),
+      ]);
+
+      const matchingIds = allMatchingSnap.docs.map((d) => d.id);
+      const duplicateIds = matchingIds.filter((id) => id !== targetId);
 
       if (existingSnap.exists) {
         const old = existingSnap.data() || {};
@@ -80,22 +91,39 @@ export async function POST(req: Request) {
               { field: "runs", oldValue: String(old.runs ?? 0), newValue: String(runs) },
               { field: "wickets", oldValue: String(old.wickets ?? 0), newValue: String(wickets) },
             ],
-            summary: `Updated ${year} KAvach Stats for ${playerData.name || playerId}: ${runs} runs, ${wickets} wickets`,
+            summary: `Updated ${year} KAvach Stats record ${targetId} for ${playerData.name || playerId}: ${runs} runs, ${wickets} wickets`,
           },
           tx,
         );
-        return { id: targetId, playerId, year, runs, wickets, action: "updated" as const };
+        return {
+          id: targetId,
+          playerId,
+          year,
+          runs,
+          wickets,
+          action: "updated" as const,
+          ...(duplicateIds.length > 0
+            ? {
+                duplicateWarning: `${duplicateIds.length} other duplicate record(s) exist for ${year}.`,
+                duplicateIds,
+              }
+            : {}),
+        };
       }
 
-      // Check for legacy non-deterministic duplicates for (playerId, year)
-      const dupSnap = await db
-        .collection("playerStats")
-        .where("playerId", "==", playerId)
-        .where("year", "==", year)
-        .limit(1)
-        .get();
-      if (!dupSnap.empty) {
-        const legacyDoc = dupSnap.docs[0];
+      if (requestedId && !existingSnap.exists) {
+        throw new RequestError(404, "Stat record not found.");
+      }
+
+      if (allMatchingSnap.size > 1) {
+        throw new RequestError(
+          409,
+          `Multiple duplicate KAvach Stats records exist for this player and year (${matchingIds.join(", ")}). Please reconcile or delete the duplicate records first.`,
+        );
+      }
+
+      if (allMatchingSnap.size === 1) {
+        const legacyDoc = allMatchingSnap.docs[0];
         const old = legacyDoc.data() || {};
         tx.update(legacyDoc.ref, {
           runs,
@@ -115,7 +143,7 @@ export async function POST(req: Request) {
               { field: "runs", oldValue: String(old.runs ?? 0), newValue: String(runs) },
               { field: "wickets", oldValue: String(old.wickets ?? 0), newValue: String(wickets) },
             ],
-            summary: `Updated ${year} KAvach Stats for ${playerData.name || playerId}: ${runs} runs, ${wickets} wickets`,
+            summary: `Updated legacy ${year} KAvach Stats record ${legacyDoc.id} for ${playerData.name || playerId}: ${runs} runs, ${wickets} wickets`,
           },
           tx,
         );
