@@ -327,49 +327,42 @@ export interface PaymentShare {
 const rupees = (n: unknown) => Math.max(0, Math.round(Number(n) || 0));
 
 /** Collected amount recorded on a payment (real money only), or 0. */
-export function collectedMoney(p: Pick<MatchPayment, "status" | "manualMethod" | "sponsoredBy" | "feeCollectedAmount" | "feeOverride">, matchFee: number): number {
-  const status = String(p.status || "");
-  if (EXCLUDED_STATUSES.has(status)) return 0;
-  if (p.manualMethod === "club_sponsored" || p.manualMethod === "part_of_plan" || p.sponsoredBy) return 0;
-  if (status === "Paid") {
-    return rupees(p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : p.feeOverride !== undefined ? p.feeOverride : matchFee);
-  }
-  if (status === "Unpaid" && p.feeCollectedAmount !== undefined && p.feeCollectedAmount > 0) {
-    const expected = rupees(p.feeOverride !== undefined ? p.feeOverride : matchFee);
-    return Math.min(expected, rupees(p.feeCollectedAmount));
-  }
-  return 0;
+export function collectedMoney(p: Pick<MatchPayment, "status" | "manualMethod" | "sponsoredBy" | "feeCollectedAmount" | "feeOverride" | "feeOffsetAmount">, matchFee: number): number {
+  return classifyMatchPayment(p as MatchPayment, matchFee).cashReceived;
 }
 
 /** Is real money held on this payment (only these may be refunded / reversed)? */
-export function isRealMoneyPayment(p: Pick<MatchPayment, "status" | "manualMethod" | "sponsoredBy" | "feeCollectedAmount" | "feeOverride" | "guestName">, matchFee: number): boolean {
+export function isRealMoneyPayment(p: Pick<MatchPayment, "status" | "manualMethod" | "sponsoredBy" | "feeCollectedAmount" | "feeOverride" | "feeOffsetAmount" | "guestName">, matchFee: number): boolean {
   return collectedMoney(p, matchFee) > 0;
 }
 
 /** Player / club shares for one payment; null when it is not part of the match finances. */
 export function paymentShare(p: MatchPayment, matchFee: number): PaymentShare | null {
-  if (p.status === "Not Playing" || p.status === "Waived") return null;
-  const fee = rupees(matchFee);
-  const paid = p.status === "Paid";
+  const cls = classifyMatchPayment(p, matchFee);
+  if (cls.category === "excluded") return null;
+
   const snap = (p as MatchPayment & { financeSnapshot?: { pendingAllocation?: boolean; source?: string; planType?: string } }).financeSnapshot;
-  if (p.sponsoredBy) {
-    // Fee carried by another player's payment (their feeOverride includes it).
-    return { contribution: 0, sponsorship: 0, paid, realMoney: false, collectedAmount: 0, kind: "paid_by_other" };
+  let kind: ShareKind = "regular";
+  if (cls.category === "player_sponsored") {
+    kind = "paid_by_other";
+  } else if (cls.category === "club_sponsored") {
+    kind = "sponsored";
+  } else if (p.manualMethod === "part_of_plan") {
+    kind = snap?.pendingAllocation ? "pending" : "subscription";
+  } else if (snap?.source === "override") {
+    kind = "override";
+  } else if ((snap && snap.planType && snap.planType !== "regular") || p.feeOverride !== undefined || p.planTag || cls.clubSponsored > 0) {
+    kind = "plan";
   }
-  if (p.manualMethod === "club_sponsored") {
-    return { contribution: 0, sponsorship: p.feeOffsetAmount !== undefined ? rupees(p.feeOffsetAmount) : fee, paid, realMoney: false, collectedAmount: 0, kind: "sponsored" };
-  }
-  if (p.manualMethod === "part_of_plan") {
-    if (snap?.pendingAllocation) return { contribution: 0, sponsorship: 0, paid, realMoney: false, collectedAmount: 0, kind: "pending" };
-    const sponsorship = rupees(p.feeOffsetAmount);
-    const contribution = p.feeCollectedAmount !== undefined ? rupees(p.feeCollectedAmount) : Math.max(0, fee - sponsorship);
-    return { contribution, sponsorship, paid, realMoney: false, collectedAmount: 0, kind: "subscription" };
-  }
-  const contribution = p.feeOverride !== undefined ? rupees(p.feeOverride) : fee;
-  const sponsorship = p.feeOffsetAmount !== undefined ? rupees(p.feeOffsetAmount) : Math.max(0, fee - contribution);
-  const kind: ShareKind = snap?.source === "override" ? "override" : snap && snap.planType && snap.planType !== "regular" ? "plan" : p.feeOverride !== undefined || p.planTag ? "plan" : "regular";
-  const money = collectedMoney(p, fee);
-  return { contribution, sponsorship, paid, realMoney: money > 0, collectedAmount: money, kind };
+
+  return {
+    contribution: cls.expectedContribution,
+    sponsorship: cls.clubSponsored,
+    paid: cls.isSettled,
+    realMoney: cls.cashReceived > 0,
+    collectedAmount: cls.cashReceived,
+    kind,
+  };
 }
 
 export interface MatchFinancialStatement {
@@ -526,6 +519,8 @@ export function summarizeClubFinanceOverview(
     billableMatchCount: billableMatches.length,
     totalExpected,
     actualCashReceived,
+    billableCashReceived,
+    historicalAbandonedCash: Math.max(0, actualCashReceived - billableCashReceived),
     subscriptionCovered,
     sponsored,
     outstanding,

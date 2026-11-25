@@ -1234,6 +1234,11 @@ function AdminFinanceView({
                   <div className="bg-surface-hover p-2.5 rounded-lg">
                     <div className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Actual Cash</div>
                     <div className="font-mono font-bold text-emerald-400 mt-0.5">₹{grandTotalCollected}</div>
+                    {clubOverview.historicalAbandonedCash > 0 && (
+                      <div className="text-[9px] text-text-muted mt-0.5">
+                        incl. ₹{clubOverview.historicalAbandonedCash} historical (abandoned)
+                      </div>
+                    )}
                   </div>
                   <div className="bg-surface-hover p-2.5 rounded-lg">
                     <div className="text-[9px] uppercase tracking-wider text-blue-400 font-bold">Sub Covered</div>

@@ -20,13 +20,15 @@ export async function POST(req: Request) {
     let link = body?.link;
     let appConfig: Record<string, any> = {};
 
-    if (isFinanceOnly) {
-      if (body?.action !== "due_reminder") {
-        return NextResponse.json(
-          { error: "Forbidden: Finance Admins may only send due_reminder WhatsApp notifications." },
-          { status: 403 },
-        );
-      }
+    const isDueReminder = body?.action === "due_reminder";
+    if (isFinanceOnly && !isDueReminder) {
+      return NextResponse.json(
+        { error: "Forbidden: Finance Admins may only send due_reminder WhatsApp notifications." },
+        { status: 403 },
+      );
+    }
+
+    if (isFinanceOnly || isDueReminder) {
       const { resolveAuthorizedDueReminder } = await import("@/lib/reminder-server");
       const origin = new URL(req.url).origin;
       const resolved = await resolveAuthorizedDueReminder(db, {

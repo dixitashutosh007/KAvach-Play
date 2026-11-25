@@ -19,7 +19,8 @@
  *                     fee) in date order until the subscription runs out.
  *  Any part of a match fee not covered is club sponsorship.
  */
-import type { FeePlan, FinancePlanAssignment } from "@/lib/types";
+import type { FeePlan, FinancePlanAssignment, MatchPayment } from "@/lib/types";
+import { classifyMatchPayment } from "./match-finance.ts";
 
 export type SubscriptionMethod = "cash" | "upi" | "bank";
 
@@ -289,24 +290,16 @@ export function buildSponsorshipReport({
 
   for (const p of payments) {
     const m = byId.get(p.matchId);
-    if (!m || p.status === "Not Playing" || p.status === "Waived") continue;
+    if (!m) continue;
     const fee = Math.max(0, Math.round(Number(m.fee) || 0));
     const snap = p.financeSnapshot;
-    let playerShare = 0;
-    let covered = 0;
-    let club = 0;
-    let pending = 0;
-    if (p.manualMethod === "part_of_plan") {
-      if (snap?.pendingAllocation) pending = 1;
-      covered = Number(p.feeCollectedAmount) || 0;
-      club = Number(p.feeOffsetAmount) || 0;
-    } else if (p.manualMethod === "club_sponsored") {
-      club = p.feeOffsetAmount !== undefined ? Number(p.feeOffsetAmount) || 0 : fee;
-    } else {
-      const own = p.feeOverride !== undefined ? Number(p.feeOverride) || 0 : fee;
-      playerShare = own;
-      club = p.feeOffsetAmount !== undefined ? Number(p.feeOffsetAmount) || 0 : Math.max(0, fee - own);
-    }
+    const cls = classifyMatchPayment(p as unknown as MatchPayment, fee);
+    if (cls.category === "excluded") continue;
+
+    const pending = snap?.pendingAllocation ? 1 : 0;
+    const covered = cls.subscriptionCovered;
+    const club = cls.clubSponsored;
+    const playerShare = cls.category === "subscription_covered" || pending ? 0 : cls.expectedContribution;
     const planLabel = snap?.source === "override" ? "Overrides" : snap?.planName || p.planTag?.replace(/ \(Subscription\)$/, "") || "Regular";
     const planKey = snap?.source === "override" ? "override" : snap?.planId || (p.planTag ? `tag:${planLabel}` : "regular");
     const rows: Bucket[] = [

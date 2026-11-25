@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { doc, getDocFromServer } from "firebase/firestore";
 import nodemailer from "nodemailer";
 
 export const runtime = "nodejs";
@@ -29,11 +27,13 @@ export async function POST(req: Request) {
     }
 
     let { to, subject, text, html, config } = body;
-    let safeHtml = emailAuth.isFinanceDueReminderOnly ? undefined : html;
-    let activeConfig = emailAuth.isFinanceDueReminderOnly ? undefined : config;
+    const isDueReminder = body?.action === "due_reminder";
+    let safeHtml = emailAuth.isFinanceDueReminderOnly || isDueReminder ? undefined : html;
+    let activeConfig = emailAuth.isFinanceDueReminderOnly || isDueReminder ? undefined : config;
 
-    // Finance Admin due reminders MUST be resolved server-side from playerId + verified dues.
-    if (emailAuth.isFinanceDueReminderOnly) {
+    // All due_reminder calls (Finance Admin, Club Admin, Super Admin) MUST resolve
+    // recipient, dues amount, link, and template server-side from playerId.
+    if (emailAuth.isFinanceDueReminderOnly || isDueReminder) {
       const { getServerFirestore } = await import("@/lib/server-db");
       const { resolveAuthorizedDueReminder } = await import("@/lib/reminder-server");
       const origin = new URL(req.url).origin;
@@ -56,9 +56,9 @@ export async function POST(req: Request) {
     // load SMTP & Resend settings securely from database
     if (!activeConfig) {
       try {
-        const docRef = doc(db, "appConfig", "default");
-        const docSnap = await getDocFromServer(docRef);
-        if (docSnap.exists()) {
+        const { getServerFirestore } = await import("@/lib/server-db");
+        const docSnap = await getServerFirestore().collection("appConfig").doc("default").get();
+        if (docSnap.exists) {
           activeConfig = docSnap.data();
         }
       } catch (dbErr) {

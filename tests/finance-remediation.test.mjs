@@ -6,9 +6,11 @@ import {
   buildMatchFinancialStatement,
   classifyMatchPayment,
   collectedMoney,
+  paymentShare,
   summarizeClubFinanceOverview,
   summarizeMatchFinance,
 } from "../lib/match-finance.ts";
+import { buildSponsorshipReport } from "../lib/subscription-periods.ts";
 import { isMatchBillable } from "../lib/matchBillable.ts";
 import { buildTransactionsLedger } from "../lib/transactions-ledger.ts";
 import { calculatePlayerDues } from "../lib/player-dues.ts";
@@ -173,7 +175,7 @@ test("F3: reminder authorization enforces action=due_reminder and server-side du
   const waRoute = fs.readFileSync(path.join(root, "app/api/whatsapp/send/route.ts"), "utf8");
   assert.match(waRoute, /resolveAuthorizedDueReminder/);
   assert.match(waRoute, /channel:\s*"whatsapp"/);
-  assert.match(waRoute, /body\?\.action !== "due_reminder"/);
+  assert.match(waRoute, /isDueReminder = body\?\.action === "due_reminder"/);
 
   const duesTab = fs.readFileSync(path.join(root, "components/DuesAndRemindersTab.tsx"), "utf8");
   // Individual & bulk reminders both supply action: "due_reminder" and playerId
@@ -278,4 +280,64 @@ test("FND-04 & FND-05: Paid partial receipts retain unpaid balance and feeOffset
   assert.equal(fullClub.expectedContribution, 0);
   assert.equal(fullClub.cashReceived, 0);
   assert.equal(fullClub.outstanding, 0);
+});
+
+test("FND-05-R1: paymentShare, collectedMoney, buildMatchFinancialStatement, and buildSponsorshipReport agree on ₹500 fee with ₹200 offset and no feeOverride", () => {
+  const m = { id: "m-unify", date: "2026-11-24", opponent: "Unify", fee: 500, result: "KAvach Won" };
+  const p = { id: "pay-unify", matchId: "m-unify", playerId: "p1", status: "Paid", feeOffsetAmount: 200 };
+
+  // Even without explicit feeCollectedAmount, Paid with 200 club offset must report 300 cash & 200 sponsorship
+  assert.equal(collectedMoney(p, 500), 300);
+  const share = paymentShare(p, 500);
+  assert.equal(share?.contribution, 300);
+  assert.equal(share?.sponsorship, 200);
+  assert.equal(share?.collectedAmount, 300);
+
+  const stmt = buildMatchFinancialStatement(m, [p]);
+  assert.equal(stmt.expectedPlayerContribution, 300);
+  assert.equal(stmt.clubSponsored, 200);
+  assert.equal(stmt.actualCashReceived, 300);
+  assert.equal(stmt.systemFee, 500);
+
+  const report = buildSponsorshipReport({
+    from: "2026-11-01",
+    to: "2026-11-30",
+    matches: [m],
+    payments: [{ ...p, playerName: "P1" }],
+    periods: [],
+  });
+  assert.equal(report.totals.playerShare, 300);
+  assert.equal(report.totals.clubSponsored, 200);
+  assert.equal(report.totals.matchFees, 500);
+});
+
+test("FND-01-R1: Abandoned matches preserve historical cash without inflating billable Expected or Outstanding", () => {
+  const mAbandNoCash = { id: "m-ab-0", date: "2026-11-20", opponent: "X", fee: 500, result: "Abandoned" };
+  const mAbandWithCash = { id: "m-ab-cash", date: "2026-11-21", opponent: "Y", fee: 500, result: "Abandoned" };
+  const mBillableUnpaid = { id: "m-bill-unpaid", date: "2026-11-22", opponent: "Z", fee: 500, result: "Pending" };
+  const mWaived = { id: "m-waived-only", date: "2026-11-23", opponent: "W", fee: 500, result: "Pending" };
+
+  const allMatches = [mAbandNoCash, mAbandWithCash, mBillableUnpaid, mWaived];
+  const pList = [{ id: "p1", name: "P1" }];
+  const payList = [
+    { id: "a1", matchId: "m-ab-0", playerId: "p1", status: "Waived" },
+    { id: "a2", matchId: "m-ab-cash", playerId: "p1", status: "Paid", paymentMethod: "razorpay", razorpayPaymentId: "r1" },
+    { id: "a3", matchId: "m-bill-unpaid", playerId: "p1", status: "Unpaid" },
+    { id: "a4", matchId: "m-waived-only", playerId: "p1", status: "Waived" },
+  ];
+
+  const reportData = allMatches.map((m) => summarizeMatchFinance(m, payList.filter((p) => p.matchId === m.id), pList));
+  const overview = summarizeClubFinanceOverview(reportData, isMatchBillable);
+
+  // Abandoned with no cash & waived-only match are excluded; abandoned with historical cash + billable unpaid are included
+  assert.deepEqual(
+    overview.includedMatches.map((d) => d.match.id),
+    ["m-ab-cash", "m-bill-unpaid"],
+  );
+  assert.equal(overview.totalExpected, 500);
+  assert.equal(overview.actualCashReceived, 500);
+  assert.equal(overview.billableCashReceived, 0);
+  assert.equal(overview.historicalAbandonedCash, 500);
+  assert.equal(overview.outstanding, 500);
+  assert.equal(overview.cashCollectionPct, 0);
 });
