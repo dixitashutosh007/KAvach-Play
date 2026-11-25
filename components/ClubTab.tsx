@@ -28,6 +28,8 @@ const BadgesTab = dynamic(() => import("@/components/BadgesTab").then(m => ({ de
 const StudioAdminTab = dynamic(() => import("@/components/StudioAdminTab").then(m => ({ default: m.StudioAdminTab })), { ssr: false });
 const ClubStatisticsAdmin = dynamic(() => import("@/components/ClubStatisticsAdmin").then(m => ({ default: m.ClubStatisticsAdmin })), { ssr: false });
 const CircuitStandingsAdmin = dynamic(() => import("@/components/club/CircuitStandingsAdmin").then(m => ({ default: m.CircuitStandingsAdmin })), { ssr: false });
+const KavachStatsAdmin = dynamic(() => import("@/components/club/KavachStatsAdmin").then(m => ({ default: m.KavachStatsAdmin })), { ssr: false });
+const ClubRecognitionAdmin = dynamic(() => import("@/components/club/ClubRecognitionAdmin").then(m => ({ default: m.ClubRecognitionAdmin })), { ssr: false });
 const AdminAnnouncementsManager = dynamic(() => import("@/components/home/AdminAnnouncementsManager").then(m => ({ default: m.AdminAnnouncementsManager })), { ssr: false });
 
 const SECTION_ICONS: Record<ClubSection, typeof Users> = {
@@ -185,17 +187,21 @@ export function ClubTab({
         <div className="space-y-6">
           <ClubStatisticsAdmin />
           <CircuitStandingsAdmin />
+          <KavachStatsAdmin store={store} />
           <LeaderboardTab store={store} persona="admin" />
         </div>
       )}
       {show("badges") && isClubAdmin && (
-        <BadgesTab
-          store={store}
-          isClubAdmin={isClubAdmin}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          defaultView={subAction === "grant" ? "award" : undefined}
-        />
+        <div className="space-y-6">
+          <ClubRecognitionAdmin store={store} />
+          <BadgesTab
+            store={store}
+            isClubAdmin={isClubAdmin}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            defaultView={subAction === "grant" ? "award" : undefined}
+          />
+        </div>
       )}
       {show("shop") && isClubAdmin && (
         <div className="space-y-4">

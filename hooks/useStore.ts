@@ -9,6 +9,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { authedFetch } from "@/lib/authed-fetch";
 import {
   Ground,
   Match,
@@ -879,21 +880,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const recordCatch = async (entry: Omit<CatchLogEntry, "id" | "recordedAt">) => {
-    try {
-      const playerRef = doc(db, "players", entry.playerId);
-      const field = entry.type === "dropped" ? "droppedCatches" : "stunningCatches";
-      await updateDoc(playerRef, {
-        [field]: increment(entry.count),
-        updatedAt: serverTimestamp(),
-      });
-      await addDoc(collection(db, "catchLog"), cleanPayload({
-        ...entry,
-        recordedAt: serverTimestamp(),
-      }));
-      logAudit({ ...getActor(), action: "created", entity: "catch", entityId: entry.playerId, entityLabel: entry.playerName, changes: [{ field: "type", newValue: entry.type }, { field: "count", newValue: String(entry.count) }], summary: `Recorded ${entry.count} ${entry.type} catch${entry.count !== 1 ? "es" : ""} for ${entry.playerName}` });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `players/${entry.playerId}`);
+    const res = await authedFetch("/api/admin/catches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to record catch");
     }
+    return data;
   };
 
   const loadMoreNotifications = useCallback(async () => {
