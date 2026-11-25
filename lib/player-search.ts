@@ -57,14 +57,14 @@ export interface PlayerSearchInput {
   now?: number;
 }
 
-function isPostVisibleToPlayer(post: Post, isAdmin: boolean): boolean {
-  const anyPost = post as Record<string, unknown>;
-  if (anyPost.isArchived === true || anyPost.disabled === true) return false;
-  if (!isAdmin && anyPost.audience === "admin") return false;
-  if (!isAdmin && Array.isArray(anyPost.targetRoles) && anyPost.targetRoles.includes("admin") && !anyPost.targetRoles.includes("player")) {
-    return false;
+function isPostVisibleToPlayer(
+  post: Post,
+  isFeatureEnabled: (key: string) => boolean,
+): boolean {
+  if (post.isAnnouncement === true) {
+    return isFeatureEnabled("announcements");
   }
-  return true;
+  return isFeatureEnabled("feed");
 }
 
 export function searchPlayerAccessibleData({
@@ -155,10 +155,8 @@ export function searchPlayerAccessibleData({
   const matchedFeedPosts: Post[] = [];
 
   for (const p of posts) {
-    if (!isPostVisibleToPlayer(p, isAdmin)) continue;
+    if (!isPostVisibleToPlayer(p, isFeatureEnabled)) continue;
     const isAnnouncement = p.isAnnouncement === true;
-    if (isAnnouncement && !isFeatureEnabled("announcements")) continue;
-    if (!isAnnouncement && !isFeatureEnabled("feed")) continue;
 
     const title = (p as { title?: string }).title?.toLowerCase() || "";
     const text = p.text?.toLowerCase() || "";

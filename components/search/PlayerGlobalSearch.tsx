@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Calendar,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { useStore } from "@/hooks/useStore";
 import { searchPlayerAccessibleData, type PlayerSearchResults } from "@/lib/player-search";
+import { createSearchReadinessCoordinator, type SearchReadinessSnapshot } from "@/lib/search-readiness";
 import { formatPlayingInfo } from "@/lib/club-roster";
 import type { Player } from "@/lib/types";
 
@@ -36,85 +37,95 @@ export function usePlayerGlobalSearch({
   isAdmin: boolean;
   isFeatureEnabled: (key: string) => boolean;
 }) {
-  const [debouncedQuery, setDebouncedQuery] = useState(query);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [retryNonce, setRetryNonce] = useState(0);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [isDebouncing, setIsDebouncing] = useState(false);
+  const [readiness, setReadiness] = useState<SearchReadinessSnapshot>({
+    status: "idle",
+    readyQuery: "",
+    error: null,
+  });
+
+  const loadersRef = useRef({
+    ensurePosts: store.ensurePosts,
+    ensurePolls: store.ensurePolls,
+    ensureTournaments: store.ensureTournaments,
+  });
+  loadersRef.current = {
+    ensurePosts: store.ensurePosts,
+    ensurePolls: store.ensurePolls,
+    ensureTournaments: store.ensureTournaments,
+  };
+
+  const coordinatorRef = useRef<ReturnType<typeof createSearchReadinessCoordinator> | null>(null);
+  useEffect(() => {
+    const coord = createSearchReadinessCoordinator(
+      () => loadersRef.current,
+      (snap) => setReadiness(snap),
+    );
+    coordinatorRef.current = coord;
+    return () => {
+      coord.dispose();
+      coordinatorRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
+      setIsDebouncing(false);
       setDebouncedQuery("");
-      setIsLoading(false);
-      setError(null);
+      void coordinatorRef.current?.startQuery("");
       return;
     }
-    setIsLoading(true);
+    setIsDebouncing(true);
     const timer = setTimeout(() => {
+      setIsDebouncing(false);
       setDebouncedQuery(query);
+      void coordinatorRef.current?.startQuery(query);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Lazy-load Posts, Polls, and Tournaments on demand when a non-empty search runs
-  useEffect(() => {
-    const trimmed = debouncedQuery.trim();
-    if (!trimmed) return;
+  const isLoading = isDebouncing || readiness.status === "loading";
+  const error = readiness.status === "error" ? readiness.error : null;
 
-    let cancelled = false;
-    setError(null);
-    setIsLoading(true);
-
-    Promise.all([
-      Promise.resolve(store.ensurePosts?.()),
-      Promise.resolve(store.ensurePolls?.()),
-      Promise.resolve(store.ensureTournaments?.()),
-    ])
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load searchable club data.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedQuery, retryNonce, store.ensurePosts, store.ensurePolls, store.ensureTournaments]);
-
-  const results = useMemo(
-    () =>
-      searchPlayerAccessibleData({
-        query: debouncedQuery,
-        matches: store.matches,
-        tournaments: store.tournaments,
-        posts: store.posts,
-        players: store.players,
-        grounds: store.grounds,
-        polls: store.polls,
-        payments: store.payments,
-        mePlayer,
-        isAdmin,
-        isFeatureEnabled,
-      }),
-    [
-      debouncedQuery,
-      store.matches,
-      store.tournaments,
-      store.posts,
-      store.players,
-      store.grounds,
-      store.polls,
-      store.payments,
+  const results = useMemo(() => {
+    if (isDebouncing || readiness.status !== "ready" || !readiness.readyQuery.trim()) {
+      return null;
+    }
+    return searchPlayerAccessibleData({
+      query: readiness.readyQuery,
+      matches: store.matches,
+      tournaments: store.tournaments,
+      posts: store.posts,
+      players: store.players,
+      grounds: store.grounds,
+      polls: store.polls,
+      payments: store.payments,
       mePlayer,
       isAdmin,
       isFeatureEnabled,
-    ],
-  );
+    });
+  }, [
+    isDebouncing,
+    readiness,
+    store.matches,
+    store.tournaments,
+    store.posts,
+    store.players,
+    store.grounds,
+    store.polls,
+    store.payments,
+    mePlayer,
+    isAdmin,
+    isFeatureEnabled,
+  ]);
 
-  const retry = () => setRetryNonce((n) => n + 1);
+  const retry = () => {
+    if (query.trim()) {
+      void coordinatorRef.current?.retry();
+    }
+  };
 
   return { debouncedQuery, isLoading, error, results, retry };
 }

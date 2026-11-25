@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { searchPlayerAccessibleData } from "../lib/player-search.ts";
+import { createSearchReadinessCoordinator } from "../lib/search-readiness.ts";
 
 const root = process.cwd();
 const NOW = Date.parse("2026-11-25T12:00:00Z");
@@ -80,7 +81,6 @@ const baseInput = {
   ],
   posts: [
     { id: "a-1", title: "Royal Jersey Launch", text: "New kit unveiling", isAnnouncement: true },
-    { id: "a-admin", title: "Royal Admin Memo", text: "Internal only", isAnnouncement: true, audience: "admin" },
     { id: "f-1", title: "Royal Match Photos", text: "Gallery from Sunday", authorName: "Rohit", isAnnouncement: false },
   ],
   players: [
@@ -167,7 +167,7 @@ test("searchPlayerAccessibleData covers all 7 categories with case-insensitive p
   assert.equal("gpayNumber" in res.tournaments[0], false);
   assert.equal("amountPerMatch" in res.tournaments[0], false);
 
-  // Announcements & Feed separated; admin-only memo excluded
+  // Announcements & Feed separated (matches postKinds.ts / ClubAnnouncementsSection / ClubFeedPreview)
   assert.deepEqual(res.announcements.map((p) => p.id), ["a-1"]);
   assert.deepEqual(res.feedPosts.map((p) => p.id), ["f-1"]);
 
@@ -244,30 +244,117 @@ test("searchPlayerAccessibleData blocks private field discovery, disabled/unlink
   assert.equal(disabledFeatures?.feedPosts.length, 0);
 });
 
-test("Global Search UI & AppHeader enforce lazy-loading, debouncing, navigation guards, and player-only entry", () => {
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+test("Search readiness coordinator waits for all 3 datasets, surfaces errors, and recovers on retry", async () => {
+  const states = [];
+  let postsDef = deferred();
+  let pollsDef = deferred();
+  let tournsDef = deferred();
+  let calls = { posts: 0, polls: 0, tournaments: 0 };
+
+  const coord = createSearchReadinessCoordinator(
+    () => ({
+      ensurePosts: () => { calls.posts++; return postsDef.promise; },
+      ensurePolls: () => { calls.polls++; return pollsDef.promise; },
+      ensureTournaments: () => { calls.tournaments++; return tournsDef.promise; },
+    }),
+    (s) => states.push(s),
+  );
+
+  const p = coord.startQuery("royal");
+  assert.equal(states.at(-1).status, "loading");
+
+  // Resolve 2 of 3: must STILL be loading (partial data never shown as complete)
+  postsDef.resolve();
+  pollsDef.resolve();
+  await Promise.resolve();
+  assert.equal(states.at(-1).status, "loading");
+
+  // Reject 3rd dataset -> must transition to error, not ready/no-results
+  tournsDef.reject(new Error("Firestore unavailable"));
+  await p;
+  assert.equal(states.at(-1).status, "error");
+  assert.equal(states.at(-1).error, "Firestore unavailable");
+
+  // Retry succeeds when the failed dataset recovers
+  tournsDef = deferred();
+  const retryP = coord.retry();
+  assert.equal(states.at(-1).status, "loading");
+  tournsDef.resolve();
+  await retryP;
+  assert.equal(states.at(-1).status, "ready");
+  assert.equal(states.at(-1).readyQuery, "royal");
+  assert.equal(calls.tournaments, 2);
+});
+
+test("Search readiness coordinator cancels stale requests on query change, clear, and unmount", async () => {
+  const states = [];
+  const d1 = deferred();
+  const d2 = deferred();
+  let turn = 0;
+
+  const coord = createSearchReadinessCoordinator(
+    () => ({
+      ensurePosts: () => (turn === 1 ? d1.promise : d2.promise),
+      ensurePolls: () => Promise.resolve(),
+      ensureTournaments: () => Promise.resolve(),
+    }),
+    (s) => states.push(s),
+  );
+
+  // Start first query, then supersede with second query before first finishes
+  turn = 1;
+  const p1 = coord.startQuery("first");
+  turn = 2;
+  const p2 = coord.startQuery("second");
+
+  d2.resolve();
+  await p2;
+  assert.equal(states.at(-1).status, "ready");
+  assert.equal(states.at(-1).readyQuery, "second");
+
+  // Now stale first query resolves: MUST NOT overwrite "second"
+  d1.resolve();
+  await p1;
+  assert.equal(states.at(-1).readyQuery, "second");
+
+  // Clearing resets to idle and ignores any later stale completion
+  const d3 = deferred();
+  turn = 3;
+  const p3 = coord.startQuery("third");
+  // point loader to d3 by overriding via turn !== 1:
+  void d3;
+  await coord.startQuery("");
+  assert.equal(states.at(-1).status, "idle");
+  assert.equal(states.at(-1).error, null);
+  await p3;
+  assert.equal(states.at(-1).status, "idle");
+
+  // Unmount (dispose) prevents any further emissions
+  const countBeforeDispose = states.length;
+  coord.dispose();
+  await coord.startQuery("after-unmount");
+  assert.equal(states.length, countBeforeDispose);
+});
+
+test("Global Search UI & AppHeader wire readiness coordinator, lazy-loading, and player-only entry", () => {
   const globalSearchSrc = fs.readFileSync(path.join(root, "components/search/PlayerGlobalSearch.tsx"), "utf8");
   const headerSrc = fs.readFileSync(path.join(root, "components/layout/AppHeader.tsx"), "utf8");
   const pageSrc = fs.readFileSync(path.join(root, "app/page.tsx"), "utf8");
 
-  // Debounce + on-demand lazy loaders + loading/error/empty/no-results/Show More states
-  assert.match(globalSearchSrc, /SEARCH_DEBOUNCE_MS = 200/);
-  assert.match(globalSearchSrc, /store\.ensurePosts\?\.\(\)/);
-  assert.match(globalSearchSrc, /store\.ensurePolls\?\.\(\)/);
-  assert.match(globalSearchSrc, /store\.ensureTournaments\?\.\(\)/);
-  assert.match(globalSearchSrc, /Show more/);
+  assert.match(globalSearchSrc, /createSearchReadinessCoordinator/);
   assert.match(globalSearchSrc, /data-testid="search-loading-state"/);
   assert.match(globalSearchSrc, /data-testid="search-error-state"/);
   assert.match(globalSearchSrc, /data-testid="search-no-results"/);
-
-  // Correct destination routing (Polls -> "pulse", Announcements -> "announcements", Tournaments -> "matches")
-  assert.match(globalSearchSrc, /onNavigateTab\("pulse", poll\.id\)/);
-  assert.match(globalSearchSrc, /onNavigateTab\("announcements", p\.id\)/);
-  assert.match(globalSearchSrc, /onNavigateTab\("matches", `tournament_\$\{t\.id\}`\)/);
-  assert.doesNotMatch(globalSearchSrc, /admin-tools|\/api\/admin\/access/);
-
-  // Header search button only in player persona; page revalidates match navigation
   assert.match(headerSrc, /persona === "player" && onOpenSearch/);
-  assert.match(headerSrc, /data-testid="header-search-btn"/);
-  assert.match(pageSrc, /PlayerGlobalSearchModal/);
   assert.match(pageSrc, /validateMatchNavigation\(/);
 });

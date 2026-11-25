@@ -165,6 +165,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   // restart subscriptions. Keys: "allPayments" | "allOtherFees" |
   // `match-payments:${matchId}`. Values: the unsubscribe fn.
   const lazySubsRef = useRef<Map<string, () => void>>(new Map());
+  const lazyPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
   const paymentsPerMatchRef = useRef<Map<string, MatchPayment[]>>(new Map());
   const allPaymentsSnapshotRef = useRef<MatchPayment[]>([]);
   const loadedOneShotsRef = useRef<Set<string>>(new Set());
@@ -586,6 +587,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       // Tear down lazy subscriptions (payments, otherFees, outOfPlays, etc.)
       lazySubsRef.current.forEach((unsub) => unsub());
       lazySubsRef.current.clear();
+      lazyPromisesRef.current.clear();
       paymentsPerMatchRef.current.clear();
       allPaymentsSnapshotRef.current = [];
       setMatchPaymentsStatus({});
@@ -604,6 +606,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         console.warn(`[useStore] Error detaching subscription for ${domainKey}:`, err);
       }
       lazySubsRef.current.delete(domainKey);
+      lazyPromisesRef.current.delete(domainKey);
     }
   }, []);
 
@@ -617,6 +620,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           console.warn(`[useStore] Error detaching subscription for ${key}:`, err);
         }
         lazySubsRef.current.delete(key);
+        lazyPromisesRef.current.delete(key);
       }
     });
   }, []);
@@ -697,20 +701,44 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     [user, recomputePayments],
   );
 
-  const ensurePosts = useCallback(() => {
-    if (!user || lazySubsRef.current.has("posts")) return;
-    const unsub = onSnapshot(
-      collection(db, "posts"),
-      (snapshot) => {
-        setPosts(
-          snapshot.docs
-            .map((doc) => ({ id: doc.id, ...doc.data() }) as Post)
-            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "posts"),
-    );
-    lazySubsRef.current.set("posts", unsub);
+  const ensurePosts = useCallback((): Promise<void> => {
+    if (!user) return Promise.resolve();
+    const existing = lazyPromisesRef.current.get("posts");
+    if (lazySubsRef.current.has("posts") && existing) return existing;
+
+    const promise = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let unsub: (() => void) | undefined;
+      unsub = onSnapshot(
+        collection(db, "posts"),
+        (snapshot) => {
+          setPosts(
+            snapshot.docs
+              .map((doc) => ({ id: doc.id, ...doc.data() }) as Post)
+              .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)),
+          );
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        },
+        (err) => {
+          lazySubsRef.current.delete("posts");
+          lazyPromisesRef.current.delete("posts");
+          try {
+            unsub?.();
+          } catch {}
+          handleFirestoreError(err, OperationType.LIST, "posts");
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        },
+      );
+      lazySubsRef.current.set("posts", unsub);
+    });
+    lazyPromisesRef.current.set("posts", promise);
+    return promise;
   }, [user]);
 
   const ensurePlayerStats = useCallback(() => {
@@ -748,18 +776,42 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     lazySubsRef.current.set("merchOrders", unsub);
   }, [user]);
 
-  const ensurePolls = useCallback(() => {
-    if (!user || lazySubsRef.current.has("polls")) return;
-    const unsub = onSnapshot(
-      collection(db, "polls"),
-      (snapshot) => {
-        setPolls(
-          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Poll),
-        );
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "polls"),
-    );
-    lazySubsRef.current.set("polls", unsub);
+  const ensurePolls = useCallback((): Promise<void> => {
+    if (!user) return Promise.resolve();
+    const existing = lazyPromisesRef.current.get("polls");
+    if (lazySubsRef.current.has("polls") && existing) return existing;
+
+    const promise = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let unsub: (() => void) | undefined;
+      unsub = onSnapshot(
+        collection(db, "polls"),
+        (snapshot) => {
+          setPolls(
+            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Poll),
+          );
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        },
+        (err) => {
+          lazySubsRef.current.delete("polls");
+          lazyPromisesRef.current.delete("polls");
+          try {
+            unsub?.();
+          } catch {}
+          handleFirestoreError(err, OperationType.LIST, "polls");
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        },
+      );
+      lazySubsRef.current.set("polls", unsub);
+    });
+    lazyPromisesRef.current.set("polls", promise);
+    return promise;
   }, [user]);
 
   const ensurePollResponses = useCallback(() => {
@@ -1092,18 +1144,27 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     lazySubsRef.current.set("allSubscriptionHistory", unsub);
   }, [user]);
 
-  const ensureTournaments = useCallback(async () => {
-    if (!user || loadedOneShotsRef.current.has("tournaments")) return;
+  const ensureTournaments = useCallback((): Promise<void> => {
+    if (!user) return Promise.resolve();
+    const existing = lazyPromisesRef.current.get("tournaments");
+    if (loadedOneShotsRef.current.has("tournaments") && existing) return existing;
+
     loadedOneShotsRef.current.add("tournaments");
-    try {
-      const snap = await getDocs(collection(db, "tournaments"));
-      setTournaments(
-        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament),
-      );
-    } catch (err) {
-      loadedOneShotsRef.current.delete("tournaments");
-      handleFirestoreError(err, OperationType.LIST, "tournaments");
-    }
+    const promise = (async () => {
+      try {
+        const snap = await getDocs(collection(db, "tournaments"));
+        setTournaments(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament),
+        );
+      } catch (err) {
+        loadedOneShotsRef.current.delete("tournaments");
+        lazyPromisesRef.current.delete("tournaments");
+        handleFirestoreError(err, OperationType.LIST, "tournaments");
+        throw err;
+      }
+    })();
+    lazyPromisesRef.current.set("tournaments", promise);
+    return promise;
   }, [user]);
 
   const ensureSubscriptionPlans = useCallback(async () => {

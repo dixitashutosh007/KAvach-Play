@@ -487,14 +487,14 @@ export default function Home() {
     const playerScope = isAdminUser && persona === "admin" ? undefined : scopedPlayerId || user?.uid;
     if (wantsAllPayments) store.ensurePayments?.(playerScope);
     if (OTHER_FEE_TABS.has(activeTab)) store.ensureOtherFees?.(playerScope);
-    if (POSTS_TABS.has(activeTab)) store.ensurePosts?.();
+    if (POSTS_TABS.has(activeTab)) void store.ensurePosts?.().catch(() => {});
     if (STATS_TABS.has(activeTab)) store.ensurePlayerStats?.();
     if (MERCH_TABS.has(activeTab)) store.ensureMerchOrders?.(playerScope);
     if (POLL_TABS.has(activeTab)) {
-      store.ensurePolls?.();
+      void store.ensurePolls?.().catch(() => {});
       store.ensurePollResponses?.();
     }
-    if (TOURNAMENT_TABS.has(activeTab)) store.ensureTournaments?.();
+    if (TOURNAMENT_TABS.has(activeTab)) void store.ensureTournaments?.().catch(() => {});
     if (SUB_PLAN_TABS.has(activeTab)) store.ensureSubscriptionPlans?.();
     if (FEE_TEMPLATE_TABS.has(activeTab)) store.ensureFeeTemplates?.();
     if (FEE_PLAN_TABS.has(activeTab)) store.ensureFeePlans?.();
