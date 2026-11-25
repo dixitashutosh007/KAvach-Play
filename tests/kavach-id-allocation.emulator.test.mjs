@@ -60,52 +60,138 @@ describe("ROSTER-R5: Atomic Official Player ID allocation — Emulator", { skip 
     return { status: res.status, json: await res.json().catch(() => ({})) };
   }
 
-  it("preserves existing player IDs without renumbering and allocates next sequential ID", async () => {
+  it("existing player without KAvach ID receives one atomically and preserves historical IDs", async () => {
     await clearState();
     await db.collection("players").doc("p_existing_1").set({ name: "Existing One", kavachId: "K2026003" });
     await db.collection("players").doc("p_existing_2").set({ name: "Existing Two", kavachId: "K2026007" });
+    await db.collection("players").doc("p_pending").set({ name: "Pending Player", inviteStatus: "Pending" });
 
-    const r1 = await allocateNextKavachId(db, { year: 2026 });
-    assert.equal(r1.kavachId, "K2026008");
-    assert.equal(r1.alreadyAssigned, false);
+    const res = await callPost({ body: { year: 2026, playerId: "p_pending" } });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.kavachId, "K2026008");
+    assert.equal(res.json.alreadyAssigned, false);
 
-    // Existing players remain untouched
+    // Persisted on the player doc inside the same transaction
+    const pSnap = await db.collection("players").doc("p_pending").get();
+    assert.equal(pSnap.data().kavachId, "K2026008");
+
+    // Historical players remain untouched
     assert.equal((await db.collection("players").doc("p_existing_1").get()).data().kavachId, "K2026003");
     assert.equal((await db.collection("players").doc("p_existing_2").get()).data().kavachId, "K2026007");
   });
 
-  it("allocates 5 distinct sequential IDs under simultaneous concurrent calls", async () => {
+  it("existing player with KAvach ID retains the same ID and repeated requests are idempotent", async () => {
     await clearState();
+    await db.collection("players").doc("p_keep").set({ name: "Keep Me", kavachId: "K2025042" });
+
+    const r1 = await callPost({ body: { year: 2026, playerId: "p_keep" } });
+    const r2 = await callPost({ body: { year: 2026, playerId: "p_keep" } });
+    assert.equal(r1.status, 200);
+    assert.equal(r2.status, 200);
+    assert.equal(r1.json.kavachId, "K2025042");
+    assert.equal(r2.json.kavachId, "K2025042");
+    assert.equal(r1.json.alreadyAssigned, true);
+    assert.equal(r2.json.alreadyAssigned, true);
+
+    const reservations = await db.collection("kavachIdReservations").get();
+    assert.equal(reservations.size, 0);
+  });
+
+  it("5 concurrent requests for the same player result in exactly one assigned ID and one reservation", async () => {
+    await clearState();
+    await db.collection("players").doc("p_race").set({ name: "Race Player", inviteStatus: "Pending" });
 
     const results = await Promise.all([
-      callPost({ body: { year: 2026 } }),
-      callPost({ body: { year: 2026 } }),
-      callPost({ body: { year: 2026 } }),
-      callPost({ body: { year: 2026 } }),
-      callPost({ body: { year: 2026 } }),
+      callPost({ body: { year: 2026, playerId: "p_race" } }),
+      callPost({ body: { year: 2026, playerId: "p_race" } }),
+      callPost({ body: { year: 2026, playerId: "p_race" } }),
+      callPost({ body: { year: 2026, playerId: "p_race" } }),
+      callPost({ body: { year: 2026, playerId: "p_race" } }),
+    ]);
+
+    for (const r of results) {
+      assert.equal(r.status, 200);
+      assert.equal(r.json.kavachId, "K2026001");
+    }
+    const freshCount = results.filter((r) => r.json.alreadyAssigned === false).length;
+    const reuseCount = results.filter((r) => r.json.alreadyAssigned === true).length;
+    assert.equal(freshCount, 1);
+    assert.equal(reuseCount, 4);
+
+    // Exactly one reservation and counter == 1 (no wasted IDs)
+    const reservations = await db.collection("kavachIdReservations").get();
+    assert.equal(reservations.size, 1);
+    const counterSnap = await db.collection("appConfig").doc("kavachIdCounters").get();
+    assert.equal(counterSnap.data()["2026"], 1);
+    const pSnap = await db.collection("players").doc("p_race").get();
+    assert.equal(pSnap.data().kavachId, "K2026001");
+  });
+
+  it("concurrent requests for different players receive unique sequential IDs", async () => {
+    await clearState();
+    await db.collection("players").doc("pa").set({ name: "Player A" });
+    await db.collection("players").doc("pb").set({ name: "Player B" });
+    await db.collection("players").doc("pc").set({ name: "Player C" });
+
+    const results = await Promise.all([
+      callPost({ body: { year: 2026, playerId: "pa" } }),
+      callPost({ body: { year: 2026, playerId: "pb" } }),
+      callPost({ body: { year: 2026, playerId: "pc" } }),
     ]);
 
     for (const r of results) {
       assert.equal(r.status, 200);
       assert.equal(r.json.alreadyAssigned, false);
     }
-
     const ids = results.map((r) => r.json.kavachId).sort();
-    assert.deepEqual(ids, ["K2026001", "K2026002", "K2026003", "K2026004", "K2026005"]);
+    assert.deepEqual(ids, ["K2026001", "K2026002", "K2026003"]);
+
+    const persisted = await Promise.all(["pa", "pb", "pc"].map((id) => db.collection("players").doc(id).get()));
+    assert.deepEqual(persisted.map((s) => s.data().kavachId).sort(), ["K2026001", "K2026002", "K2026003"]);
   });
 
-  it("does not overwrite an existing player's kavachId when playerId is passed", async () => {
+  it("rejects unauthorized actors with 403 and allows Super Admin", async () => {
     await clearState();
-    await db.collection("players").doc("p_keep").set({ name: "Keep Me", kavachId: "K2025042" });
+    const playerRes = await callPost({ actor: "player_1", roles: "player", body: { year: 2026 } });
+    assert.equal(playerRes.status, 403);
 
-    const res = await callPost({ body: { year: 2026, playerId: "p_keep" } });
-    assert.equal(res.status, 200);
-    assert.equal(res.json.kavachId, "K2025042");
-    assert.equal(res.json.alreadyAssigned, true);
+    const financeRes = await callPost({ actor: "fin_1", roles: "financeAdmin", body: { year: 2026 } });
+    assert.equal(financeRes.status, 403);
+
+    const superRes = await callPost({ actor: "super_1", roles: "superAdmin", body: { year: 2026 } });
+    assert.equal(superRes.status, 200);
   });
 
-  it("rejects non-ClubAdmin callers with 403", async () => {
-    const res = await callPost({ actor: "player_1", roles: "player", body: { year: 2026 } });
-    assert.equal(res.status, 403);
+  it("rejects invalid or nonexistent playerIds and surfaces allocation failures", async () => {
+    await clearState();
+
+    const emptyRes = await callPost({ body: { year: 2026, playerId: "" } });
+    assert.equal(emptyRes.status, 400);
+
+    const badCharRes = await callPost({ body: { year: 2026, playerId: "bad/id" } });
+    assert.equal(badCharRes.status, 400);
+
+    const nonStringRes = await callPost({ body: { year: 2026, playerId: 12345 } });
+    assert.equal(nonStringRes.status, 400);
+
+    const missingRes = await callPost({ body: { year: 2026, playerId: "does_not_exist" } });
+    assert.equal(missingRes.status, 404);
+
+    // Simulate exhausted reservation attempts -> allocation failure surfaced as 500
+    await db.collection("appConfig").doc("kavachIdCounters").set({ "2026": 0 });
+    const batch = db.batch();
+    for (let i = 1; i <= 50; i++) {
+      const id = `K2026${String(i).padStart(3, "0")}`;
+      batch.set(db.collection("kavachIdReservations").doc(id), { kavachId: id });
+    }
+    await batch.commit();
+    await db.collection("players").doc("p_fail").set({ name: "Fail Player", inviteStatus: "Pending" });
+
+    const failRes = await callPost({ body: { year: 2026, playerId: "p_fail" } });
+    assert.equal(failRes.status, 500);
+    assert.match(failRes.json.error || "", /Could not allocate/);
+    // Player remains without kavachId
+    const pFail = await db.collection("players").doc("p_fail").get();
+    assert.equal(pFail.data().kavachId, undefined);
   });
 });

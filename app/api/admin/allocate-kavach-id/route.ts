@@ -15,9 +15,12 @@ export async function POST(req: Request) {
     body = {};
   }
 
-  const playerId = typeof body?.playerId === "string" && body.playerId.trim() ? body.playerId.trim() : undefined;
-  if (playerId && !isSafeId(playerId)) {
-    return NextResponse.json({ error: "Invalid playerId." }, { status: 400 });
+  let playerId: string | undefined;
+  if (body?.playerId !== undefined && body?.playerId !== null) {
+    if (typeof body.playerId !== "string" || !isSafeId(body.playerId.trim())) {
+      return NextResponse.json({ error: "Invalid playerId." }, { status: 400 });
+    }
+    playerId = body.playerId.trim();
   }
   const year = typeof body?.year === "number" ? body.year : new Date().getFullYear();
 

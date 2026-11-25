@@ -1600,10 +1600,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ year: new Date().getFullYear() }),
       });
-      if (allocRes.ok) {
-        const allocData = await allocRes.json();
-        if (allocData?.kavachId) kavachId = allocData.kavachId;
+      const allocData = await allocRes.json().catch(() => ({}));
+      if (!allocRes.ok || !allocData?.kavachId) {
+        throw new Error(allocData?.error || "Failed to allocate Official Player ID.");
       }
+      kavachId = allocData.kavachId;
     }
 
     try {
@@ -1626,7 +1627,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     try {
       const existingPlayer = players.find((p) => p.id === playerId);
 
-      // Auto-assign KAvach ID atomically when player gets approved and doesn't have one
+      // Auto-assign KAvach ID atomically in the server transaction when player gets approved
       if (
         (updates.inviteStatus === "Accepted" || updates.inviteStatus === "Verified") &&
         existingPlayer && !existingPlayer.kavachId && !updates.kavachId
@@ -1634,11 +1635,11 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         const allocRes = await authedFetch("/api/admin/allocate-kavach-id", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ year: new Date().getFullYear() }),
+          body: JSON.stringify({ year: new Date().getFullYear(), playerId }),
         });
-        if (allocRes.ok) {
-          const allocData = await allocRes.json();
-          if (allocData?.kavachId) updates.kavachId = allocData.kavachId;
+        const allocData = await allocRes.json().catch(() => ({}));
+        if (!allocRes.ok || !allocData?.kavachId) {
+          throw new Error(allocData?.error || "Failed to allocate Official Player ID.");
         }
       }
 
