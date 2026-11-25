@@ -10,11 +10,26 @@ export async function POST(req: Request) {
     // Only signed-in admins can trigger email sends. This closes the
     // external-callable surface that link-preview crawlers were hitting.
     // Auth guard is evaluated FIRST before reading body or database (Phase 5).
-    const { requireClubAdmin } = await import("@/lib/server-auth");
-    const guard = await requireClubAdmin(req);
+    const { requireRole } = await import("@/lib/server-auth");
+    const guard = await requireRole(req, ["clubAdmin", "financeAdmin", "superAdmin"]);
     if (!guard.ok) return guard.response;
 
-    const { to, subject, text, html, apiKey, config } = await req.json();
+    const body = await req.json();
+    const { authorizeEmailRequest } = await import("@/lib/email-auth");
+    const emailAuth = authorizeEmailRequest(
+      {
+        superAdmin: guard.roles.has("superAdmin"),
+        clubAdmin: guard.roles.has("clubAdmin"),
+        financeAdmin: guard.roles.has("financeAdmin"),
+      },
+      body,
+    );
+    if (!emailAuth.ok) {
+      return NextResponse.json({ success: false, error: emailAuth.error }, { status: emailAuth.status });
+    }
+
+    const { to, subject, text, html, config } = body;
+    const safeHtml = emailAuth.isFinanceDueReminderOnly ? undefined : html;
 
     let activeConfig = config;
 
@@ -67,7 +82,7 @@ export async function POST(req: Request) {
           to: recipients,
           subject: subject,
           text: text,
-          html: html || text.replace(/\n/g, "<br>"),
+          html: safeHtml || text.replace(/\n/g, "<br>"),
         }),
       });
 
@@ -116,7 +131,7 @@ export async function POST(req: Request) {
         to: recipients.join(", "),
         subject: subject,
         text: text,
-        html: html || text.replace(/\n/g, "<br>"),
+        html: safeHtml || text.replace(/\n/g, "<br>"),
       });
 
       return NextResponse.json({ success: true, messageId: info.messageId });

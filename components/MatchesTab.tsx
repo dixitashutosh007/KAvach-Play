@@ -83,7 +83,8 @@ import { buildMatchPlanApplication } from "@/lib/match-plan-application";
 import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
 import { callMatchPlans } from "@/hooks/useMatchFinancePlans";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
-import { computeMatchAvailabilityReadiness, hasExplicitAvailabilityResponse } from "@/lib/match-readiness";
+import { computeMatchAvailabilityReadiness, hasExplicitAvailabilityResponse, resolveCanonicalPlayerPaymentRecord } from "@/lib/match-readiness";
+import { runBulkOperations } from "@/lib/bulk-operations";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
 export const MATCH_VIEW_OPTIONS = [
@@ -2006,32 +2007,31 @@ export function MatchPayments({
   const [bulkAvailTarget, setBulkAvailTarget] = useState<"Confirmed" | "Tentative" | "No">("Confirmed");
   const [bulkAvailAllowOverwrite, setBulkAvailAllowOverwrite] = useState(false);
   const [bulkAvailSaving, setBulkAvailSaving] = useState(false);
+  const bulkRemoveLockRef = useRef(false);
+  const bulkAvailLockRef = useRef(false);
 
   const handleBulkRemoveSquad = async (targets: SquadRow[]) => {
-    if (bulkRemovingSquad || targets.length === 0) return;
-    const confirmed = await confirmAction({
-      message: `Remove ${targets.length} selected player(s) from the squad? Their payment records are kept (marked Not Playing); Finance Plan assignments remain unchanged.`,
-      destructive: true,
-    });
-    if (!confirmed) return;
+    if (bulkRemoveLockRef.current || bulkRemovingSquad || targets.length === 0) return;
+    bulkRemoveLockRef.current = true;
+    try {
+      const confirmed = await confirmAction({
+        message: `Remove ${targets.length} selected player(s) from the squad? Their payment records are kept (marked Not Playing); Finance Plan assignments remain unchanged.`,
+        destructive: true,
+      });
+      if (!confirmed) return;
 
-    setBulkRemovingSquad(true);
-    let succeeded = 0;
-    let failed = 0;
-    for (const row of targets) {
-      try {
+      setBulkRemovingSquad(true);
+      const { succeeded, failed } = await runBulkOperations(targets, async (row) => {
         await store.updatePaymentStatus(row.payment.id, "Not Playing", match.id);
-        succeeded++;
-      } catch (err) {
-        console.error(`Bulk remove failed for ${row.name}:`, err);
-        failed++;
+      });
+      if (failed.length === 0) {
+        toast(`Removed ${succeeded.length} player(s) from the squad.`, "success");
+      } else {
+        toast(`Removed ${succeeded.length} player(s); ${failed.length} failed. Check permissions or payment state.`, "error");
       }
-    }
-    setBulkRemovingSquad(false);
-    if (failed === 0) {
-      toast(`Removed ${succeeded} player(s) from the squad.`, "success");
-    } else {
-      toast(`Removed ${succeeded} player(s); ${failed} failed. Check permissions or payment state.`, "error");
+    } finally {
+      setBulkRemovingSquad(false);
+      bulkRemoveLockRef.current = false;
     }
   };
 
@@ -2044,58 +2044,56 @@ export function MatchPayments({
     const active = store.players
       .filter((p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending")
       .sort((a, b) => a.name.localeCompare(b.name));
-    const recByPlayer = new Map(matchPayments.map((p) => [p.playerId, p]));
     return active.map((player) => {
-      const payment = recByPlayer.get(player.id);
+      const payment = resolveCanonicalPlayerPaymentRecord(player.id, matchPayments);
       const hasResponded = hasExplicitAvailabilityResponse(payment?.availability);
       return { player, payment, hasResponded };
     });
   }, [store.players, matchPayments]);
 
   const handleBulkAvailabilitySubmit = async () => {
-    if (bulkAvailSaving || bulkAvailSelectedIds.length === 0) return;
-    const targets = eligibleAvailabilityPlayers.filter(
-      (item) =>
-        bulkAvailSelectedIds.includes(item.player.id) &&
-        (bulkAvailAllowOverwrite || !item.hasResponded),
-    );
-    if (targets.length === 0) {
-      toast("No eligible players selected.", "error");
-      return;
-    }
-    const overwriteCount = targets.filter((t) => t.hasResponded).length;
-    const warning =
-      overwriteCount > 0
-        ? ` Warning: ${overwriteCount} player(s) already submitted a response that will be overwritten.`
-        : "";
-    const ok = await confirmAction({
-      message: `Set administrative availability to "${bulkAvailTarget === "No" ? "Not Playing" : bulkAvailTarget}" for ${targets.length} player(s)?${warning}`,
-    });
-    if (!ok) return;
+    if (bulkAvailLockRef.current || bulkAvailSaving || bulkAvailSelectedIds.length === 0) return;
+    bulkAvailLockRef.current = true;
+    try {
+      const targets = eligibleAvailabilityPlayers.filter(
+        (item) =>
+          bulkAvailSelectedIds.includes(item.player.id) &&
+          (bulkAvailAllowOverwrite || !item.hasResponded),
+      );
+      if (targets.length === 0) {
+        toast("No eligible players selected.", "error");
+        return;
+      }
+      const overwriteCount = targets.filter((t) => t.hasResponded).length;
+      const warning =
+        overwriteCount > 0
+          ? ` Warning: ${overwriteCount} player(s) already submitted a response that will be overwritten.`
+          : "";
+      const ok = await confirmAction({
+        message: `Set administrative availability to "${bulkAvailTarget === "No" ? "Not Playing" : bulkAvailTarget}" for ${targets.length} player(s)?${warning}`,
+      });
+      if (!ok) return;
 
-    setBulkAvailSaving(true);
-    let succeeded = 0;
-    let failed = 0;
-    for (const item of targets) {
-      try {
+      setBulkAvailSaving(true);
+      const { succeeded, failed } = await runBulkOperations(targets, async (item) => {
         if (item.payment) {
           await store.updateMatchAvailability(item.payment.id, bulkAvailTarget, match.id);
         } else {
           await store.addPaymentStatus(match.id, item.player.id, "Not Playing", bulkAvailTarget);
         }
-        succeeded++;
-      } catch (err) {
-        console.error(`Bulk availability failed for ${item.player.name}:`, err);
-        failed++;
+      });
+      if (failed.length === 0) {
+        setBulkAvailSelectedIds([]);
+        toast(`Updated availability for ${succeeded.length} player(s).`, "success");
+        setBulkAvailOpen(false);
+      } else {
+        const failedIds = new Set(failed.map((f) => f.item.player.id));
+        setBulkAvailSelectedIds((prev) => prev.filter((id) => failedIds.has(id)));
+        toast(`Updated ${succeeded.length} player(s); ${failed.length} failed.`, "error");
       }
-    }
-    setBulkAvailSaving(false);
-    setBulkAvailSelectedIds([]);
-    if (failed === 0) {
-      toast(`Updated availability for ${succeeded} player(s).`, "success");
-      setBulkAvailOpen(false);
-    } else {
-      toast(`Updated ${succeeded} player(s); ${failed} failed.`, "error");
+    } finally {
+      setBulkAvailSaving(false);
+      bulkAvailLockRef.current = false;
     }
   };
 

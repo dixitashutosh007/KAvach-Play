@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert } from "lucide-react";
 import { formatDate, computeLateFees } from "@/lib/utils";
@@ -19,6 +19,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
   const [selectedDues, setSelectedDues] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [isSendingBulk, setIsSendingBulk] = useState(false);
+  const bulkRemindLockRef = useRef(false);
 
   // Email template used by manual "Send Reminder" buttons. Automatic cron
   // scheduling was removed to control Cloud Run / Lambda costs — reminders
@@ -294,7 +295,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                    <button
                      disabled={isSendingBulk}
                      onClick={async () => {
-                       if (isSendingBulk) return;
+                       if (bulkRemindLockRef.current || isSendingBulk) return;
                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
                        if (targetDues.length === 0) {
                          toast("No dues found to remind."); return;
@@ -315,13 +316,13 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                          return;
                        }
 
-                       if (!await confirmAction({ message: `Send an email reminder to ${playersWithEmail.length} recipient(s) (${hasSelection ? 'selected dues' : 'all visible dues'})?` })) return;
-
-                       setIsSendingBulk(true);
+                       bulkRemindLockRef.current = true;
                        let sentCount = 0;
                        let failCount = 0;
 
                        try {
+                         if (!await confirmAction({ message: `Send an email reminder to ${playersWithEmail.length} recipient(s) (${hasSelection ? 'selected dues' : 'all visible dues'})?` })) return;
+                         setIsSendingBulk(true);
                          for (const data of playersWithEmail) {
                             const link = `${window.location.origin}/pay/${data.player.id}`;
                             try {
@@ -338,6 +339,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
+                                  action: "due_reminder",
                                   to: [data.player.email],
                                   subject: renderTpl(reminderTemplate.subject),
                                   text: renderTpl(reminderTemplate.body),
@@ -360,6 +362,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                          );
                        } finally {
                          setIsSendingBulk(false);
+                         bulkRemindLockRef.current = false;
                        }
                      }}
                      className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} disabled:opacity-50 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap cursor-pointer`}
@@ -369,7 +372,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                    <button
                      disabled={isSendingBulk}
                      onClick={async () => {
-                       if (isSendingBulk) return;
+                       if (bulkRemindLockRef.current || isSendingBulk) return;
                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
                        if (targetDues.length === 0) {
                          toast("No dues found to remind."); return;
@@ -390,14 +393,14 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                          return;
                        }
 
-                       if (!await confirmAction({ message: `Send WhatsApp API reminders to ${playersWithMobile.length} recipient(s) (${hasSelection ? 'selected dues' : 'all visible dues'})?` })) return;
-
-                       setIsSendingBulk(true);
+                       bulkRemindLockRef.current = true;
                        let sentCount = 0;
                        let failCount = 0;
                        const failReasons: string[] = [];
 
                        try {
+                         if (!await confirmAction({ message: `Send WhatsApp API reminders to ${playersWithMobile.length} recipient(s) (${hasSelection ? 'selected dues' : 'all visible dues'})?` })) return;
+                         setIsSendingBulk(true);
                          for (const data of playersWithMobile) {
                             const link = `${window.location.origin}/pay/${data.player.id}`;
                             try {
@@ -440,6 +443,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                          );
                        } finally {
                          setIsSendingBulk(false);
+                         bulkRemindLockRef.current = false;
                        }
                      }}
                      className="bg-emerald-500/20 text-emerald-700 hover:bg-emerald-500/30 disabled:opacity-50 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap cursor-pointer"

@@ -19,6 +19,7 @@
 
 import { isMatchBillable } from "./matchBillable.ts";
 import { isPlayerEligibleForMatch } from "./match-eligibility.ts";
+import { resolveCanonicalPlayerPaymentRecord } from "./match-readiness.ts";
 import type { Match, MatchPayment, Player } from "./types.ts";
 
 export type PersonalPaymentDisplayStatus =
@@ -495,9 +496,8 @@ export function derivePlayerAvailability(
     };
   }
 
-  const payment = payments.find(
-    (p) => p.playerId === player.id && p.matchId === match.id
-  );
+  const matchPayments = payments.filter((p) => p.matchId === match.id);
+  const payment = resolveCanonicalPlayerPaymentRecord(player.id, matchPayments);
 
   if (!payment) {
     return {
@@ -510,8 +510,16 @@ export function derivePlayerAvailability(
     };
   }
 
+  /**
+   * Authoritative precedence between player availability and payment settlement:
+   * Payment settlement ("Paid" / "Unpaid") and player availability are separate
+   * concepts. Explicit availability ("Yes", "Confirmed", "Waitlist",
+   * "Tentative", "No") ALWAYS takes precedence so admin readiness and
+   * player-facing availability never disagree. Only when availability is unset
+   * or "Pending" does squad membership ("Unpaid" / "Paid") imply "Playing".
+   */
   const av = payment.availability;
-  if (av === "Confirmed" || av === "Yes" || payment.status === "Paid") {
+  if (av === "Confirmed" || av === "Yes") {
     return {
       status: "Playing",
       badgeLabel: "Playing",
@@ -558,8 +566,8 @@ export function derivePlayerAvailability(
     };
   }
 
-  // If status is Unpaid but availability is not explicitly set, they are in the squad (Playing)
-  if (payment.status === "Unpaid") {
+  // Availability is unset or "Pending": fall back to squad status if already assigned.
+  if (payment.status === "Unpaid" || payment.status === "Paid") {
     return {
       status: "Playing",
       badgeLabel: "Playing",

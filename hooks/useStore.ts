@@ -1626,31 +1626,6 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const updatePlayer = async (playerId: string, updates: Partial<Player>) => {
     try {
       const existingPlayer = players.find((p) => p.id === playerId);
-      if (existingPlayer) {
-        if (
-          (updates.inviteStatus === "Accepted" ||
-            updates.inviteStatus === "Verified") &&
-          existingPlayer.inviteStatus !== updates.inviteStatus
-        ) {
-          createNotification(
-            playerId,
-            "Membership Approved",
-            "Your club membership has been approved!",
-            "email",
-          );
-        }
-        if (
-          updates.isStudioMember === true &&
-          existingPlayer.isStudioMember !== true
-        ) {
-          createNotification(
-            playerId,
-            "Studio Membership Active",
-            "Welcome to the Studio! You now have access to premium features.",
-            "both",
-          );
-        }
-      }
 
       // Auto-assign KAvach ID when player gets approved and doesn't have one
       if (
@@ -1704,9 +1679,36 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         await updateDoc(doc(db, "players", playerId), cleanedUpdates);
       }
 
+      if (existingPlayer) {
+        if (
+          (updates.inviteStatus === "Accepted" ||
+            updates.inviteStatus === "Verified") &&
+          existingPlayer.inviteStatus !== updates.inviteStatus
+        ) {
+          createNotification(
+            playerId,
+            "Membership Approved",
+            "Your club membership has been approved!",
+            "email",
+          );
+        }
+        if (
+          updates.isStudioMember === true &&
+          existingPlayer.isStudioMember !== true
+        ) {
+          createNotification(
+            playerId,
+            "Studio Membership Active",
+            "Welcome to the Studio! You now have access to premium features.",
+            "both",
+          );
+        }
+      }
+
       logAudit({ ...getActor(), action: "updated", entity: "player", entityId: playerId, entityLabel: existingPlayer?.name || playerId, changes: diffChanges(existingPlayer, updates), summary: `Updated player "${existingPlayer?.name || playerId}"` });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `players/${playerId}`);
+      throw err;
     }
   };
 
@@ -1850,11 +1852,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         );
       }
     } catch (err) {
+      if (payment) {
+        setPayments((prev) => prev.map((p) => (p.id === paymentId ? payment : p)));
+      }
       handleFirestoreError(
         err,
         OperationType.UPDATE,
         `matches/${matchId}/payments/${paymentId}`,
       );
+      throw err;
     }
   };
 
@@ -1864,6 +1870,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     matchId: string,
     tacticalNote?: string,
   ) => {
+    const previousPayment = payments.find((p) => p.id === paymentId);
     setPayments((prev) =>
       prev.map((p) =>
         p.id === paymentId
@@ -1877,14 +1884,13 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
-      const p = payments.find((p) => p.id === paymentId);
-      const playerObj = players.find((pl) => pl.id === p?.playerId);
+      const playerObj = players.find((pl) => pl.id === previousPayment?.playerId);
       const updateData: any = { availability, updatedAt: serverTimestamp() };
       if (tacticalNote !== undefined) {
         updateData.tacticalNote = tacticalNote;
       }
       await updateDoc(docRef, updateData);
-      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerObj?.name || "Player"} availability`, changes: [{ field: "availability", oldValue: p?.availability, newValue: availability }], summary: `${playerObj?.name || "Player"} changed availability to ${availability}` });
+      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: paymentId, entityLabel: `${playerObj?.name || "Player"} availability`, changes: [{ field: "availability", oldValue: previousPayment?.availability, newValue: availability }], summary: `${playerObj?.name || "Player"} changed availability to ${availability}` });
       createNotification(
         "admin",
         "Player Availability Changed",
@@ -1892,11 +1898,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         "in_app",
       );
     } catch (err) {
+      if (previousPayment) {
+        setPayments((prev) => prev.map((p) => (p.id === paymentId ? previousPayment : p)));
+      }
       handleFirestoreError(
         err,
         OperationType.UPDATE,
         `matches/${matchId}/payments/${paymentId}`,
       );
+      throw err;
     }
   };
 
@@ -2412,6 +2422,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         );
       }
     } catch (err) {
+      setPayments((prev) => prev.filter((p) => p.id !== id));
       handleFirestoreError(
         err,
         OperationType.CREATE,

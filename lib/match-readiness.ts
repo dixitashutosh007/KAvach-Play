@@ -54,27 +54,75 @@ export function hasExplicitAvailabilityResponse(
   return classifyMatchAvailability(availability) !== "unresponded";
 }
 
+function toEpochMs(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === "number") return ts;
+  if (typeof ts === "string") {
+    const parsed = Date.parse(ts);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof ts === "object" && typeof ts.seconds === "number") {
+    return ts.seconds * 1000 + (typeof ts.nanoseconds === "number" ? Math.floor(ts.nanoseconds / 1e6) : 0);
+  }
+  return 0;
+}
+
+/**
+ * Deterministically selects the canonical availability record for a player in a
+ * match, independent of Firestore document ordering.
+ *
+ * Rules:
+ * 1. Excludes guest records (`guestName` set) so guest entries never overwrite or
+ *    represent the host player's own availability.
+ * 2. Prefers records with an explicit availability response over Pending/unset.
+ * 3. Prefers active squad records (`status !== "Not Playing"`) over `"Not Playing"`.
+ * 4. Tie-breaks deterministically by latest `updatedAt`, then by `id` ascending.
+ */
+export function resolveCanonicalPlayerPaymentRecord<
+  T extends Pick<MatchPayment, "id" | "playerId" | "status" | "availability"> & {
+    guestName?: string;
+    updatedAt?: any;
+  },
+>(playerId: string, matchPayments: readonly T[]): T | null {
+  const primaryRecords = matchPayments.filter(
+    (p) => p.playerId === playerId && !p.guestName,
+  );
+  if (primaryRecords.length === 0) return null;
+  if (primaryRecords.length === 1) return primaryRecords[0];
+
+  const sorted = [...primaryRecords].sort((a, b) => {
+    const aExplicit = hasExplicitAvailabilityResponse(a.availability) ? 1 : 0;
+    const bExplicit = hasExplicitAvailabilityResponse(b.availability) ? 1 : 0;
+    if (aExplicit !== bExplicit) return bExplicit - aExplicit;
+
+    const aActive = a.status !== "Not Playing" ? 1 : 0;
+    const bActive = b.status !== "Not Playing" ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+
+    const aTime = toEpochMs(a.updatedAt);
+    const bTime = toEpochMs(b.updatedAt);
+    if (aTime !== bTime) return bTime - aTime;
+
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+
+  return sorted[0];
+}
+
 /**
  * Computes mutually exclusive readiness counts across the eligible active
  * player population, kept strictly independent from squad membership.
  */
 export function computeMatchAvailabilityReadiness(
   players: readonly Pick<Player, "id" | "disabled" | "inviteStatus">[],
-  matchPayments: readonly Pick<MatchPayment, "playerId" | "status" | "availability">[],
+  matchPayments: readonly (Pick<MatchPayment, "id" | "playerId" | "status" | "availability"> & {
+    guestName?: string;
+    updatedAt?: any;
+  })[],
 ): MatchAvailabilityReadiness {
   const activeMembers = players.filter(
     (p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending",
   );
-
-  // If a player has multiple payment records (e.g. host + guest), prefer the
-  // primary non-Not-Playing record or the first record with an explicit response.
-  const availabilityByPlayer = new Map<string, MatchPayment["availability"]>();
-  for (const pay of matchPayments) {
-    const existing = availabilityByPlayer.get(pay.playerId);
-    if (!existing || (!hasExplicitAvailabilityResponse(existing) && hasExplicitAvailabilityResponse(pay.availability))) {
-      availabilityByPlayer.set(pay.playerId, pay.availability);
-    }
-  }
 
   let confirmedCount = 0;
   let tentativeCount = 0;
@@ -82,7 +130,8 @@ export function computeMatchAvailabilityReadiness(
   let unrespondedCount = 0;
 
   for (const member of activeMembers) {
-    const category = classifyMatchAvailability(availabilityByPlayer.get(member.id));
+    const canonical = resolveCanonicalPlayerPaymentRecord(member.id, matchPayments);
+    const category = classifyMatchAvailability(canonical?.availability);
     if (category === "confirmed") confirmedCount++;
     else if (category === "tentative") tentativeCount++;
     else if (category === "not_playing") notPlayingCount++;

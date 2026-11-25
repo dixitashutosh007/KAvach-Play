@@ -21,7 +21,8 @@ import {
   UserPlus,
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { runBulkOperations } from "@/lib/bulk-operations";
 import { EditPlayerInline } from "./EditPlayerInline";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
@@ -82,6 +83,7 @@ export function PlayersTab({
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
   const [bulkPendingBusy, setBulkPendingBusy] = useState(false);
+  const bulkPendingLockRef = useRef(false);
 
 
   const getTotalDue = (playerId: string) => {
@@ -278,29 +280,28 @@ export function PlayersTab({
                       type="button"
                       disabled={bulkPendingBusy}
                       onClick={async () => {
-                        if (bulkPendingBusy) return;
+                        if (bulkPendingLockRef.current || bulkPendingBusy) return;
                         const targets = pendingPlayers.filter((p) => selectedPendingIds.includes(p.id));
                         if (targets.length === 0) return;
-                        if (!(await confirmAction({ message: `Approve ${targets.length} selected registration request(s)?` }))) return;
-                        setBulkPendingBusy(true);
-                        let okCount = 0;
-                        let failCount = 0;
-                        for (const pl of targets) {
-                          try {
+                        bulkPendingLockRef.current = true;
+                        try {
+                          if (!(await confirmAction({ message: `Approve ${targets.length} selected registration request(s)?` }))) return;
+                          setBulkPendingBusy(true);
+                          const { succeeded, failed } = await runBulkOperations(targets, async (pl) => {
                             await store.updatePlayer(pl.id, { inviteStatus: "Verified" });
-                            okCount++;
-                          } catch {
-                            failCount++;
+                          });
+                          if (failed.length === 0) {
+                            setSelectedPendingIds([]);
+                            toast(`Approved ${succeeded.length} player(s).`, "success");
+                          } else {
+                            const failedIds = new Set(failed.map((f) => f.item.id));
+                            setSelectedPendingIds((prev) => prev.filter((id) => failedIds.has(id)));
+                            toast(`Approved ${succeeded.length} player(s); ${failed.length} failed.`, "error");
                           }
+                        } finally {
+                          setBulkPendingBusy(false);
+                          bulkPendingLockRef.current = false;
                         }
-                        setBulkPendingBusy(false);
-                        setSelectedPendingIds([]);
-                        toast(
-                          failCount === 0
-                            ? `Approved ${okCount} player(s).`
-                            : `Approved ${okCount} player(s); ${failCount} failed.`,
-                          failCount === 0 ? "success" : "error",
-                        );
                       }}
                       className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer"
                     >
@@ -310,32 +311,31 @@ export function PlayersTab({
                       type="button"
                       disabled={bulkPendingBusy}
                       onClick={async () => {
-                        if (bulkPendingBusy) return;
+                        if (bulkPendingLockRef.current || bulkPendingBusy) return;
                         const targets = pendingPlayers.filter((p) => selectedPendingIds.includes(p.id));
                         if (targets.length === 0) return;
-                        if (!(await confirmAction({ message: `Decline ${targets.length} selected registration request(s)?`, destructive: true }))) return;
-                        setBulkPendingBusy(true);
-                        let okCount = 0;
-                        let failCount = 0;
-                        for (const pl of targets) {
-                          try {
+                        bulkPendingLockRef.current = true;
+                        try {
+                          if (!(await confirmAction({ message: `Decline ${targets.length} selected registration request(s)?`, destructive: true }))) return;
+                          setBulkPendingBusy(true);
+                          const { succeeded, failed } = await runBulkOperations(targets, async (pl) => {
                             await store.updatePlayer(pl.id, {
                               inviteStatus: "Rejected",
                               rejectedAt: new Date().toISOString(),
                             });
-                            okCount++;
-                          } catch {
-                            failCount++;
+                          });
+                          if (failed.length === 0) {
+                            setSelectedPendingIds([]);
+                            toast(`Declined ${succeeded.length} request(s).`, "success");
+                          } else {
+                            const failedIds = new Set(failed.map((f) => f.item.id));
+                            setSelectedPendingIds((prev) => prev.filter((id) => failedIds.has(id)));
+                            toast(`Declined ${succeeded.length} request(s); ${failed.length} failed.`, "error");
                           }
+                        } finally {
+                          setBulkPendingBusy(false);
+                          bulkPendingLockRef.current = false;
                         }
-                        setBulkPendingBusy(false);
-                        setSelectedPendingIds([]);
-                        toast(
-                          failCount === 0
-                            ? `Declined ${okCount} request(s).`
-                            : `Declined ${okCount} request(s); ${failCount} failed.`,
-                          failCount === 0 ? "success" : "error",
-                        );
                       }}
                       className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 border border-rose-200 hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
                     >
