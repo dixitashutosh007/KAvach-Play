@@ -124,6 +124,8 @@ export type AppUser = {
   // observed on the user. Never overwritten once set for a given provider,
   // so it acts as a rough "when did they first link this method" audit.
   firstProviderLinkedAt?: Record<string, string>;
+  /** Admin Home dismissed expired-Studio alert map: playerId -> dismissed expiry key. */
+  dismissedExpiredStudioAlerts?: Record<string, string>;
 };
 
 export type Ground = {

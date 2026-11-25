@@ -1763,6 +1763,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
+  const removeStudioMembership = async (playerId: string) => {
+    const res = await authedFetch("/api/admin/studio-membership/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to remove Studio membership.");
+    }
+    return data;
+  };
+
+  const dismissExpiredStudioAlert = async (playerId: string, expiryKey: string) => {
+    if (!user?.uid) {
+      throw new Error("Signed-in admin session is required.");
+    }
+    const currentAppUser = appUsers.find((u) => u.id === user.uid);
+    const nextDismissed = {
+      ...(currentAppUser?.dismissedExpiredStudioAlerts || {}),
+      [playerId]: expiryKey,
+    };
+    await updateDoc(doc(db, "appUsers", user.uid), {
+      dismissedExpiredStudioAlerts: nextDismissed,
+      updatedAt: serverTimestamp(),
+    });
+  };
+
   const deletePlayer = async (playerId: string) => {
     const p = players.find(x => x.id === playerId);
     try {
@@ -3123,6 +3151,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     selfAppUserStatus,
     applyLinkedPlayerId,
     playersLoaded,
+    removeStudioMembership,
+    dismissExpiredStudioAlert,
     refreshData,
     refreshNonce,
   };

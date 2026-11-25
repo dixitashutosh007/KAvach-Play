@@ -65,3 +65,19 @@ export function getStudioMembership(
 
   return { status, daysRemaining, endDateRaw, hasPastSubscription, isStudioUser };
 }
+
+export function getStudioAlertExpiryKey(
+  player: Pick<StudioMembershipFields, "studioExpiryDate" | "studioEndDate">,
+): string {
+  return player.studioExpiryDate || player.studioEndDate || "no-expiry";
+}
+
+export function filterDismissedExpiredStudioAlerts<
+  T extends { id: string; studioExpiryDate?: string; studioEndDate?: string },
+>(
+  expired: T[],
+  dismissedMap?: Record<string, string> | null,
+): T[] {
+  if (!dismissedMap) return expired;
+  return expired.filter((p) => dismissedMap[p.id] !== getStudioAlertExpiryKey(p));
+}

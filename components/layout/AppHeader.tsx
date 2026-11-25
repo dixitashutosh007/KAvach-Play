@@ -116,27 +116,58 @@ export function AppHeader({
 
         {/* Action Controls & Navigation Affordances */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Admin / Player Persona Toggle (Admin members only) */}
+          {/* Admin / Player Persona Segmented Switch (Admin members only) */}
           {isAdmin && onTogglePersona && (
-            <button
-              onClick={onTogglePersona}
+            <div
+              role="group"
+              aria-label="Switch persona"
               data-testid="header-persona-toggle"
-              className="min-h-[44px] min-w-[44px] px-2 sm:px-2.5 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider border border-brand/30 text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition shadow-inner cursor-pointer flex items-center justify-center gap-1"
-              title={persona === "admin" ? "Switch to Player View" : "Enter Admin Console"}
+              className="inline-flex items-center p-0.5 rounded-full bg-[#F6F7F9] border border-[#E5E7EB] shadow-inner shrink-0"
             >
-              <Shield className="w-3.5 h-3.5 shrink-0 text-brand" />
-              <span className="hidden xs:inline">{persona === "admin" ? "Player View" : "Admin Console"}</span>
-              <span className="xs:hidden">{persona === "admin" ? "Player" : "Admin"}</span>
-              {persona !== "admin" && adminPendingCount > 0 && (
-                <span
-                  data-testid="header-persona-pending"
-                  aria-label={`${adminPendingCount} admin task${adminPendingCount > 1 ? "s" : ""} pending`}
-                  className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10px] font-black leading-[18px] text-center tabular-nums"
-                >
-                  {adminPendingCount > 9 ? "9+" : adminPendingCount}
-                </span>
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (persona !== "player") onTogglePersona();
+                }}
+                aria-pressed={persona === "player"}
+                aria-label="Switch to Player view"
+                data-testid="header-persona-player"
+                className={`min-h-[38px] px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
+                  persona === "player"
+                    ? "bg-white text-[#171C26] shadow-xs ring-1 ring-[#E5E7EB]/80"
+                    : "text-[#667085] hover:text-[#171C26]"
+                }`}
+              >
+                <UserIcon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span>Player</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (persona !== "admin") onTogglePersona();
+                }}
+                aria-pressed={persona === "admin"}
+                aria-label="Switch to Admin console"
+                data-testid="header-persona-admin"
+                className={`min-h-[38px] px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
+                  persona === "admin"
+                    ? "bg-[#A30F2D] text-white shadow-xs"
+                    : "text-[#667085] hover:text-[#171C26]"
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span>Admin</span>
+                {persona !== "admin" && adminPendingCount > 0 && (
+                  <span
+                    data-testid="header-persona-pending"
+                    aria-label={`${adminPendingCount} admin task${adminPendingCount > 1 ? "s" : ""} pending`}
+                    className="ml-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D51F43] text-white text-[9px] font-black leading-[16px] text-center tabular-nums"
+                  >
+                    {adminPendingCount > 9 ? "9+" : adminPendingCount}
+                  </span>
+                )}
+              </button>
+            </div>
           )}
 
           {/* Global Search Affordance (Player persona) */}

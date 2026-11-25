@@ -1,6 +1,7 @@
 "use client";
 
 import { useStore } from "@/hooks/useStore";
+import { useAuth } from "@/components/AuthProvider";
 import { useMemo, useRef, useState } from "react";
 import { createCatchBatchState, executeCatchBatch, type CatchBatchState } from "@/lib/catch-batch";
 import { Match, Player } from "@/lib/types";
@@ -37,6 +38,10 @@ import {
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
 import { computeMatchAvailabilityReadiness } from "@/lib/match-readiness";
+import {
+  filterDismissedExpiredStudioAlerts,
+  getStudioAlertExpiryKey,
+} from "@/lib/studio-membership";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 
@@ -60,7 +65,8 @@ export function AdminDashboard({
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
-  const { matches, payments, players, otherFees, grounds } = store;
+  const { user } = useAuth();
+  const { matches, payments, players, otherFees, grounds, appUsers } = store;
 
   const canSeeClub = isSuperAdmin || isClubAdmin;
   const canSeeFinance = isSuperAdmin || isFinanceAdmin;
@@ -69,6 +75,21 @@ export function AdminDashboard({
   const [matchPickerMode, setMatchPickerMode] = useState<MatchPickerMode>(null);
   const [financeTab, setFinanceTab] = useState<FinanceSnapshotTab>("dues");
   const [remindingStudioId, setRemindingStudioId] = useState<string | null>(null);
+  const [dismissingStudioId, setDismissingStudioId] = useState<string | null>(null);
+  const [removingStudioId, setRemovingStudioId] = useState<string | null>(null);
+  const [optimisticDismissedAlerts, setOptimisticDismissedAlerts] = useState<Record<string, string>>({});
+
+  const currentAdminUser = useMemo(
+    () => (user?.uid ? appUsers.find((u) => u.id === user.uid) : undefined),
+    [appUsers, user?.uid],
+  );
+  const dismissedExpiredAlerts = useMemo(
+    () => ({
+      ...(currentAdminUser?.dismissedExpiredStudioAlerts || {}),
+      ...optimisticDismissedAlerts,
+    }),
+    [currentAdminUser?.dismissedExpiredStudioAlerts, optimisticDismissedAlerts],
+  );
 
   // Financial summaries (Finance / Super Admin only)
   const { totalDueAmount, duePlayersCount, topDuePlayers } = useMemo(() => {
@@ -260,12 +281,14 @@ export function AdminDashboard({
       }
     });
 
+    const visibleExpired = filterDismissedExpiredStudioAlerts(expired, dismissedExpiredAlerts);
+
     return {
       activeStudioCount: Math.max(0, studioMembers.length - expired.length),
-      expiredStudioMembers: expired,
+      expiredStudioMembers: visibleExpired,
       renewalDueMembers: renewalDue,
     };
-  }, [canSeeClub, players]);
+  }, [canSeeClub, players, dismissedExpiredAlerts]);
 
   // Upcoming matches + readiness counts (Club / Super Admin)
   const upcomingMatchesWithReadiness = useMemo(() => {
@@ -291,7 +314,6 @@ export function AdminDashboard({
         confirmedCount: readiness.confirmedCount,
         tentativeCount: readiness.tentativeCount,
         outCount: readiness.notPlayingCount,
-        unrespondedCount: readiness.unrespondedCount,
       };
     });
   }, [canSeeClub, matches, payments, players, grounds]);
@@ -495,6 +517,45 @@ export function AdminDashboard({
     }
     setRemindingStudioId(null);
     toast(`Sent: ${sent}${failed > 0 ? `, Failed: ${failed}` : ""}`, failed > 0 ? "error" : "success");
+  };
+
+  const handleDismissExpiredStudio = async (p: Player) => {
+    const expiryKey = getStudioAlertExpiryKey(p);
+    setDismissingStudioId(p.id);
+    setOptimisticDismissedAlerts((prev) => ({ ...prev, [p.id]: expiryKey }));
+    try {
+      await store.dismissExpiredStudioAlert(p.id, expiryKey);
+      toast(`Dismissed Studio alert for ${p.name}.`, "success");
+    } catch (err: any) {
+      setOptimisticDismissedAlerts((prev) => {
+        const next = { ...prev };
+        delete next[p.id];
+        return next;
+      });
+      toast(err?.message || "Could not dismiss Studio alert.", "error");
+    } finally {
+      setDismissingStudioId(null);
+    }
+  };
+
+  const handleRemoveFromStudio = async (p: Player) => {
+    const confirmed = await confirmAction({
+      title: "Remove from Studio",
+      message: `Remove ${p.name} from Studio membership? They will lose Studio membership and Studio access immediately, while their regular Club Player account, identity, and history remain intact.`,
+      confirmLabel: "Remove from Studio",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    setRemovingStudioId(p.id);
+    try {
+      await store.removeStudioMembership(p.id);
+      toast(`${p.name} removed from Studio membership.`, "success");
+    } catch (err: any) {
+      toast(err?.message || "Failed to remove Studio membership.", "error");
+    } finally {
+      setRemovingStudioId(null);
+    }
   };
 
   const roleLabels = [
@@ -884,7 +945,7 @@ export function AdminDashboard({
                 </div>
               ) : (
                 <div className="flex overflow-x-auto md:grid md:grid-cols-2 gap-3 pb-2 md:pb-0 snap-x no-scrollbar">
-                  {upcomingMatchesWithReadiness.slice(0, 4).map(({ match: m, ground, squadCount, confirmedCount, tentativeCount, outCount, unrespondedCount }) => (
+                  {upcomingMatchesWithReadiness.slice(0, 4).map(({ match: m, ground, squadCount, confirmedCount, tentativeCount, outCount }) => (
                     <div
                       key={m.id}
                       className="min-w-[290px] md:min-w-0 snap-center bg-surface rounded-2xl border border-border border-l-4 border-l-brand p-4 shadow-xs shrink-0 flex flex-col justify-between gap-3"
@@ -911,7 +972,7 @@ export function AdminDashboard({
                         <p className="text-xs text-text-secondary truncate mt-0.5">
                           {m.format || "Match"} · {ground?.name || "Ground TBD"}
                         </p>
-                        <div className="mt-2.5 bg-surface-hover border border-border rounded-xl px-2.5 py-2 grid grid-cols-4 gap-1 text-center">
+                        <div className="mt-2.5 bg-surface-hover border border-border rounded-xl px-2.5 py-2 grid grid-cols-3 gap-1 text-center">
                           <div>
                             <span className="block text-xs font-black text-emerald-700 tabular-nums">{confirmedCount}</span>
                             <span className="block text-[9px] font-bold text-text-secondary uppercase">Confirmed</span>
@@ -923,10 +984,6 @@ export function AdminDashboard({
                           <div>
                             <span className="block text-xs font-black text-rose-700 tabular-nums">{outCount}</span>
                             <span className="block text-[9px] font-bold text-text-secondary uppercase">Not Playing</span>
-                          </div>
-                          <div>
-                            <span className="block text-xs font-black text-text-muted tabular-nums">{unrespondedCount}</span>
-                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Unresponded</span>
                           </div>
                         </div>
                       </div>
@@ -1128,7 +1185,8 @@ export function AdminDashboard({
                   return (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between bg-rose-50/70 border border-rose-200/70 rounded-xl px-3 py-2"
+                      data-testid={`expired-studio-row-${p.id}`}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-rose-50/70 border border-rose-200/70 rounded-xl px-3 py-2.5"
                     >
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-text-primary truncate">{p.name}</p>
@@ -1136,14 +1194,45 @@ export function AdminDashboard({
                           {expiry ? `Expired ${daysAgo}d ago` : "No expiry date"}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleStudioRemind(p)}
-                        disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
-                        className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 text-[11px] font-bold hover:bg-rose-200/70 transition disabled:opacity-50 cursor-pointer"
-                      >
-                        {remindingStudioId === p.id ? "Sending..." : "Remind"}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleStudioRemind(p)}
+                          disabled={
+                            remindingStudioId === p.id ||
+                            remindingStudioId === "bulk" ||
+                            dismissingStudioId === p.id ||
+                            removingStudioId === p.id
+                          }
+                          className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 text-[11px] font-bold hover:bg-rose-200/70 transition disabled:opacity-50 cursor-pointer"
+                        >
+                          {remindingStudioId === p.id ? "Sending..." : "Remind"}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`dismiss-expired-studio-${p.id}`}
+                          onClick={() => handleDismissExpiredStudio(p)}
+                          disabled={
+                            dismissingStudioId === p.id ||
+                            removingStudioId === p.id
+                          }
+                          className="min-h-[32px] px-2.5 py-1 rounded-lg bg-white border border-border text-text-secondary text-[11px] font-bold hover:bg-surface-hover hover:text-text-primary transition disabled:opacity-50 cursor-pointer"
+                        >
+                          {dismissingStudioId === p.id ? "Dismissing..." : "Dismiss"}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`remove-expired-studio-${p.id}`}
+                          onClick={() => handleRemoveFromStudio(p)}
+                          disabled={
+                            removingStudioId === p.id ||
+                            dismissingStudioId === p.id
+                          }
+                          className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition disabled:opacity-50 cursor-pointer"
+                        >
+                          {removingStudioId === p.id ? "Removing..." : "Remove from Studio"}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

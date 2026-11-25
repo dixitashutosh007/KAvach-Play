@@ -555,10 +555,22 @@ function MembersView({
   };
 
   const handleRemove = async (pid: string) => {
-    if (await confirmAction({ message: "Remove this player from Studio Members?", destructive: true })) {
-      await store.updatePlayer(pid, {
-        isStudioMember: false,
-      });
+    const target = store.players.find((p) => p.id === pid);
+    const label = target?.name || "this player";
+    if (
+      await confirmAction({
+        title: "Remove from Studio",
+        message: `Remove ${label} from Studio membership? They will lose Studio membership and Studio access immediately, while their regular Club Player account and history remain intact.`,
+        confirmLabel: "Remove from Studio",
+        destructive: true,
+      })
+    ) {
+      try {
+        await store.removeStudioMembership(pid);
+        toast(`${label} removed from Studio membership.`, "success");
+      } catch (err: any) {
+        toast(err?.message || "Failed to remove Studio membership.", "error");
+      }
     }
   };
 

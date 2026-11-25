@@ -12,7 +12,7 @@
  * guard below, so a stale or tampered section key renders nothing. Firestore
  * rules remain the security boundary.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Users, ShoppingBag, PieChart, Trophy, Award, Video, Megaphone } from "lucide-react";
 import { ClubShopPanel, type ShopAdminView } from "@/components/club/ClubShopPanel";
@@ -95,6 +95,17 @@ export function ClubTab({
   }, [defaultSubTab, sections.join(",")]);
 
   const visibleTabs = CLUB_SECTIONS.filter((s) => sections.includes(s.key));
+  const tabRefs = useRef<Partial<Record<ClubSection, HTMLButtonElement | null>>>({});
+
+  useEffect(() => {
+    if (!subTab) return;
+    tabRefs.current[subTab]?.scrollIntoView?.({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [subTab]);
+
   const show = (key: ClubSection) => !denied && subTab === key && sections.includes(key);
   const shopViewFromAction = (a: string | null): ShopAdminView | null =>
     a === "products" || a === "orders" || a === "reports" || a === "store" ? a : null;
@@ -105,7 +116,7 @@ export function ClubTab({
   }, [subTab, subAction]);
 
   return (
-    <div className="space-y-4" data-testid="admin-club">
+    <div className="space-y-4 min-w-0" data-testid="admin-club">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-black font-heading text-text-primary tracking-tight">Club</h1>
       </div>
@@ -113,7 +124,7 @@ export function ClubTab({
       <div
         role="tablist"
         aria-label="Club sections"
-        className="flex flex-wrap items-center gap-1.5 bg-surface rounded-2xl p-1.5 border border-border shadow-xs"
+        className="flex flex-nowrap items-center gap-1.5 overflow-x-auto overscroll-x-contain no-scrollbar max-w-full bg-surface rounded-2xl p-1.5 border border-border shadow-xs"
         data-testid="club-sub-tabs"
       >
         {visibleTabs.map(({ key, label }) => {
@@ -122,6 +133,9 @@ export function ClubTab({
           return (
             <button
               key={key}
+              ref={(el) => {
+                tabRefs.current[key] = el;
+              }}
               type="button"
               role="tab"
               aria-selected={isActive}
@@ -132,7 +146,7 @@ export function ClubTab({
                 setSubAction(null);
                 setDenied(null);
               }}
-              className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
                 isActive
                   ? "bg-[#A30F2D] text-white shadow-xs"
                   : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"

@@ -10,10 +10,16 @@ import {
 
 const root = process.cwd();
 
-test("ClubTab uses a single consolidated navigation bar without duplicate ClubMenu", () => {
+test("ClubTab uses a single consolidated horizontally scrollable navigation bar without duplicate ClubMenu", () => {
   const tabSrc = fs.readFileSync(path.join(root, "components/ClubTab.tsx"), "utf8");
   assert.match(tabSrc, /data-testid="club-sub-tabs"/);
   assert.match(tabSrc, /role="tablist"/);
+  assert.match(tabSrc, /flex-nowrap/);
+  assert.match(tabSrc, /overflow-x-auto/);
+  assert.match(tabSrc, /no-scrollbar/);
+  assert.match(tabSrc, /shrink-0 whitespace-nowrap/);
+  assert.match(tabSrc, /scrollIntoView/);
+  assert.doesNotMatch(tabSrc, /flex-wrap/);
   assert.doesNotMatch(tabSrc, /club-menu-button|ClubMenu|data-testid="club-menu"/);
 
   for (const s of CLUB_SECTIONS) {
