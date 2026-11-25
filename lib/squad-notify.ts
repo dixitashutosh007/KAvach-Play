@@ -10,7 +10,7 @@
  * and the admin manually selects the destination chat/group and presses Send.
  */
 import type { Ground, Match, MatchPayment, Player } from "./types";
-import { formatWhatsAppDigits, parseMatchKolkataMs, resolveMatchCaptain } from "./match-captain";
+import { formatWhatsAppDigits, parseMatchKolkataMs, resolveMatchCaptain } from "./match-captain.ts";
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 

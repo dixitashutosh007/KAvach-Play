@@ -5,7 +5,7 @@
  * Player Match views. Uses `Asia/Kolkata` as the club business timezone.
  */
 import type { Match, Player } from "./types";
-import { normalizeIndianMobile } from "./utils";
+import { normalizeIndianMobile } from "./utils.ts";
 
 export const CLUB_TIMEZONE = "Asia/Kolkata";
 
@@ -71,17 +71,18 @@ export function formatWhatsAppDigits(mobile: string | undefined | null): string 
   const raw = String(mobile).trim();
   if (!raw) return null;
 
-  const normalized = normalizeIndianMobile(raw);
-  if (/^\+91\d{10}$/.test(normalized)) {
-    return normalized.slice(1); // "91XXXXXXXXXX"
-  }
-
-  // Allow explicit international E.164 numbers (+<country><number>, 10-15 digits)
-  if (raw.startsWith("+")) {
+  // Preserve explicit non-Indian international E.164 numbers (+<country><number>, 10-15 digits)
+  if (raw.startsWith("+") && !raw.startsWith("+91")) {
     const digits = raw.replace(/\D/g, "");
     if (digits.length >= 10 && digits.length <= 15) {
       return digits;
     }
+    return null;
+  }
+
+  const normalized = normalizeIndianMobile(raw);
+  if (/^\+91\d{10}$/.test(normalized)) {
+    return normalized.slice(1); // "91XXXXXXXXXX"
   }
 
   return null;
