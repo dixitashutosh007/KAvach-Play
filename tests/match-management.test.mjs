@@ -130,8 +130,8 @@ describe("Squad row actions", () => {
   const matchAdmin = { canManageFees: false, canManageSquad: true, financeClosed: false, matchFee: 700 };
   const finance = { ...matchAdmin, canManageFees: true };
   const ids = (r) => r.actions.map((a) => a.id);
-  it("unpaid regular: Match Admin collects / removes / reminds; Finance also manages plans and fee payer", () => {
-    assert.deepEqual(ids(ms.squadRowActions(pay("x"), matchAdmin)), ["markPaid", "remove", "remind"]);
+  it("unpaid regular: Club Admin removes / reminds (no markPaid); Finance also settles, manages plans and fee payer", () => {
+    assert.deepEqual(ids(ms.squadRowActions(pay("x"), matchAdmin)), ["remove", "remind"]);
     assert.deepEqual(ids(ms.squadRowActions(pay("x"), finance)), ["plan", "markPaid", "remove", "feePayer", "remind"]);
   });
   it("money collected: no plain Unpaid / removal — refund first", () => {

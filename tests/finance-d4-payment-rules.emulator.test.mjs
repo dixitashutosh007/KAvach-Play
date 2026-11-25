@@ -44,8 +44,9 @@ describe(
       await testEnv.clearFirestore();
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         const db = ctx.firestore();
-        await db.doc("appUsers/match_admin").set({ name: "Match Admin", role: "player", isMatchAdmin: true, status: "Active" });
+        await db.doc("appUsers/club_admin").set({ name: "Club Admin", role: "player", isClubAdmin: true, status: "Active" });
         await db.doc("appUsers/finance_admin").set({ name: "Finance Admin", role: "player", isFinanceAdmin: true, status: "Active" });
+        await db.doc("appUsers/super_admin").set({ name: "Super Admin", role: "player", status: "Active" });
         await db.doc("players/p1").set({ id: "p1", name: "Player One", status: "Active", inviteStatus: "Accepted" });
         await db.doc("matches/m1").set({ opponent: "XI", fee: 700, date: "2026-11-28", result: "Pending", createdAt: new Date(), updatedAt: new Date() });
         const base = { matchId: "m1", playerId: "p1", availability: "Confirmed", createdAt: new Date(), updatedAt: new Date() };
@@ -55,22 +56,22 @@ describe(
       });
     });
 
-    const ma = () => testEnv.authenticatedContext("match_admin").firestore();
+    const ca = () => testEnv.authenticatedContext("club_admin").firestore();
     const fa = () => testEnv.authenticatedContext("finance_admin").firestore();
+    const sa = () => testEnv.authenticatedContext("super_admin", { admin: true }).firestore();
     const ts = () => fs_.serverTimestamp();
 
-    it("Match Admin: marks a regular fee paid in cash", async () => {
-      await rut.assertSucceeds(ma().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualBy: "MA", updatedAt: ts() }));
+    it("Club Admin: CANNOT mark a regular or plan fee Paid, nor set paymentMethod / manualMethod / manualBy / feeCollectedAmount", async () => {
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualBy: "CA", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ status: "Paid", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/planned").update({ status: "Paid", paymentMethod: "manual", feeCollectedAmount: 500, updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ manualMethod: "cash_collected", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ manualMethod: "deposited_directly", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ feeCollectedAmount: 700, updatedAt: ts() }));
     });
-    it("Match Admin: collects a plan fee at the plan amount, not another amount", async () => {
-      await rut.assertSucceeds(ma().doc("matches/m1/payments/planned").update({ status: "Paid", paymentMethod: "manual", feeCollectedAmount: 500, updatedAt: ts() }));
-    });
-    it("Match Admin: collected amount must equal the recorded fee", async () => {
-      await rut.assertFails(ma().doc("matches/m1/payments/planned").update({ status: "Paid", paymentMethod: "manual", feeCollectedAmount: 100, updatedAt: ts() }));
-    });
-    it("Match Admin: availability and Not Playing still work", async () => {
-      await rut.assertSucceeds(ma().doc("matches/m1/payments/regular").update({ availability: "No", status: "Not Playing", updatedAt: ts() }));
-      await rut.assertSucceeds(ma().doc("matches/m1/payments/sponsored").update({ status: "Not Playing", updatedAt: ts() }));
+    it("Club Admin: availability and Not Playing still work", async () => {
+      await rut.assertSucceeds(ca().doc("matches/m1/payments/regular").update({ availability: "No", status: "Not Playing", updatedAt: ts() }));
+      await rut.assertSucceeds(ca().doc("matches/m1/payments/sponsored").update({ status: "Not Playing", updatedAt: ts() }));
     });
     for (const [field, value] of [
       ["feeOverride", 0],
@@ -79,27 +80,28 @@ describe(
       ["sponsoredBy", "p2"],
       ["financeSnapshot", { source: "auto" }],
     ]) {
-      it(`Match Admin: cannot set ${field}`, async () => {
-        await rut.assertFails(ma().doc("matches/m1/payments/regular").update({ [field]: value, updatedAt: ts() }));
+      it(`Club Admin: cannot set ${field}`, async () => {
+        await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ [field]: value, updatedAt: ts() }));
       });
     }
-    it("Match Admin: cannot settle a fee as club sponsored / part of plan, claim Razorpay, or waive", async () => {
-      await rut.assertFails(ma().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualMethod: "club_sponsored", updatedAt: ts() }));
-      await rut.assertFails(ma().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualMethod: "part_of_plan", updatedAt: ts() }));
-      await rut.assertFails(ma().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "razorpay", updatedAt: ts() }));
-      await rut.assertFails(ma().doc("matches/m1/payments/regular").update({ status: "Waived", updatedAt: ts() }));
+    it("Club Admin: cannot settle a fee as club sponsored / part of plan, claim Razorpay, or waive", async () => {
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualMethod: "club_sponsored", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualMethod: "part_of_plan", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "razorpay", updatedAt: ts() }));
+      await rut.assertFails(ca().doc("matches/m1/payments/regular").update({ status: "Waived", updatedAt: ts() }));
     });
-    it("Match Admin: cannot flip a plan-settled fee back to Unpaid", async () => {
-      await rut.assertFails(ma().doc("matches/m1/payments/sponsored").update({ status: "Unpaid", updatedAt: ts() }));
+    it("Club Admin: cannot flip a plan-settled fee back to Unpaid", async () => {
+      await rut.assertFails(ca().doc("matches/m1/payments/sponsored").update({ status: "Unpaid", updatedAt: ts() }));
     });
-    it("Match Admin: creates squad rows, but not with fee fields", async () => {
+    it("Club Admin: creates squad rows, but not with fee fields or Paid status", async () => {
       const row = { id: "new1", matchId: "m1", playerId: "p1", status: "Unpaid", availability: "Confirmed", createdAt: ts(), updatedAt: ts() };
-      await rut.assertSucceeds(ma().doc("matches/m1/payments/new1").set(row));
-      await rut.assertFails(ma().doc("matches/m1/payments/new2").set({ ...row, id: "new2", feeOverride: 0 }));
-      await rut.assertFails(ma().doc("matches/m1/payments/new3").set({ ...row, id: "new3", status: "Paid" }));
+      await rut.assertSucceeds(ca().doc("matches/m1/payments/new1").set(row));
+      await rut.assertFails(ca().doc("matches/m1/payments/new2").set({ ...row, id: "new2", feeOverride: 0 }));
+      await rut.assertFails(ca().doc("matches/m1/payments/new3").set({ ...row, id: "new3", status: "Paid" }));
     });
-    it("Finance Admin: can change fee fields", async () => {
-      await rut.assertSucceeds(fa().doc("matches/m1/payments/regular").update({ feeOverride: 300, feeOffsetAmount: 400, planTag: "Override", updatedAt: ts() }));
+    it("Finance Admin and Super Admin: can mark Paid and change fee fields", async () => {
+      await rut.assertSucceeds(fa().doc("matches/m1/payments/regular").update({ status: "Paid", paymentMethod: "manual", manualMethod: "cash_collected", manualBy: "FA", feeCollectedAmount: 700, updatedAt: ts() }));
+      await rut.assertSucceeds(sa().doc("matches/m1/payments/planned").update({ status: "Paid", paymentMethod: "manual", manualMethod: "deposited_directly", feeCollectedAmount: 500, updatedAt: ts() }));
       await rut.assertSucceeds(fa().doc("matches/m1/payments/sponsored").update({ status: "Unpaid", updatedAt: ts() }));
     });
   },

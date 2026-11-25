@@ -170,11 +170,13 @@ describe("B1: order-route merchandise payload allowlist (buildMerchOrderPayload)
       jerseyName: "DIXIT", jerseyNumber: "7", price: 700, paymentStatus: "Paid",
       orderStatus: "Awaiting Min Order Qnty", isManual: false,
     };
-    const out = buildMerchOrderPayload(shop, { ...server, playerRecordName: undefined });
+    const out = buildMerchOrderPayload(shop, { ...server, customPriceAdditions: 50, playerRecordName: undefined });
     assert.deepEqual(out, {
       playerId: "p1", playerName: "Client Name", merchId: "m1", merchName: "Club Cap", size: "L",
       spec: "Full sleeve", customSelections: { size: "L" }, customPriceAdditions: 50,
-      jerseyName: "DIXIT", jerseyNumber: "7", price: 650, orderStatus: "Awaiting Min Order Qnty",
+      jerseyName: "DIXIT", jerseyNumber: "7", quantity: 1, price: 650,
+      priceSnapshot: { unitPrice: 650, quantity: 1, totalAmount: 650, currency: "INR" },
+      trustedSource: "server", orderStatus: "Awaiting Min Order Qnty",
     });
   });
 

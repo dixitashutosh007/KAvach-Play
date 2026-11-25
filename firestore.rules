@@ -122,6 +122,19 @@ service cloud.firestore {
         ]);
     }
 
+    function appUserEntitlementKeys() {
+      return ['isStudioMember', 'studioStartDate', 'studioEndDate', 'studioPlan',
+              'lastPaidDate', 'lastPaidAmount', 'studioExpiryDate'];
+    }
+
+    function appUserSelfUpdateAllowedKeys() {
+      return ['name', 'email', 'photoURL', 'mobile', 'dob', 'locality', 'bloodGroup',
+              'emergencyContact', 'battingStyle', 'bowlingStyle', 'isWicketKeeper',
+              'chestSize', 'jerseyNumber', 'jerseyName', 'waistSize', 'kavachJoining',
+              'authProviders', 'lastLoginAt', 'firstProviderLinkedAt',
+              'dismissedExpiredStudioAlerts', '_ping', 'updatedAt'];
+    }
+
     match /appUsers/{userId} {
       // R2-A: an account doc is readable by its owner; listing/reading other accounts is
       // limited to active administrators (isAnyAdmin covers the Super Admin claim).
@@ -135,6 +148,7 @@ service cloud.firestore {
             isSignedIn()
             && request.auth.uid == userId
             && !incoming().keys().hasAny(['status'])
+            && !incoming().keys().hasAny(appUserEntitlementKeys())
           )
         );
       allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['playerId'])
@@ -142,8 +156,8 @@ service cloud.firestore {
         && (
           isSuperAdmin() || (
             isSignedIn()
-            && (request.auth.uid == userId || isClubAdmin())
-            && !incoming().diff(existing()).affectedKeys().hasAny(['status'])
+            && request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly(appUserSelfUpdateAllowedKeys())
           )
         );
       allow delete: if isSuperAdmin();
@@ -286,23 +300,23 @@ service cloud.firestore {
         && data.status in ['Unpaid', 'Not Playing'];
     }
 
-    // What a Match Admin may change on an existing payment.
+    // What a Club Admin may change on an existing payment: squad & availability ONLY.
+    // Financial settlement (status: 'Paid', paymentMethod, manualMethod, manualBy,
+    // feeCollectedAmount) is strictly restricted to Finance Admin / Super Admin.
     function isMatchAdminPaymentUpdate(matchId) {
       let changed = incoming().diff(existing()).affectedKeys();
-      return changed.hasOnly(['status', 'availability', 'tacticalNote', 'availabilityNote',
-                              'paymentMethod', 'manualMethod', 'manualBy', 'feeCollectedAmount', 'updatedAt'])
-        && incoming().status in ['Paid', 'Unpaid', 'Not Playing']
-        // No gateway claims: Razorpay payments are confirmed by the server.
-        && (!changed.hasAny(['paymentMethod']) || incoming().get('paymentMethod', 'manual') == 'manual')
-        // Only real collection methods; plan / club sponsorship is a Finance decision.
-        && (!changed.hasAny(['manualMethod'])
-            || incoming().get('manualMethod', 'cash_collected') in ['cash_collected', 'deposited_directly'])
-        // Collected amount must be the recorded fee (plan fee, else the match fee).
-        && (!changed.hasAny(['feeCollectedAmount'])
-            || incoming().feeCollectedAmount == existing().get('feeOverride',
-                 get(/databases/$(database)/documents/matches/$(matchId)).data.fee))
-        // A fee settled by a plan / club sponsorship can only be marked Not Playing.
-        && (!isPlanSettled(existing()) || incoming().status == existing().status || incoming().status == 'Not Playing');
+      return changed.hasOnly(['status', 'availability', 'tacticalNote', 'availabilityNote', 'updatedAt'])
+        && (
+          incoming().status == existing().status
+          || (
+            incoming().status in ['Unpaid', 'Not Playing']
+            && existing().status in ['Unpaid', 'Not Playing']
+          )
+          || (
+            isPlanSettled(existing())
+            && incoming().status == 'Not Playing'
+          )
+        );
     }
 
     function isValidMatchPayment(data) {
@@ -732,24 +746,23 @@ service cloud.firestore {
     }
 
     // Shop orders: every admin (incl. Finance) may READ them — they are payment
-    // records in Finance / Payment History. Managing orders (status, edits,
-    // deletion) is Club Admin / Super Admin only.
+    // records in Finance / Payment History. Players cannot create orders directly
+    // in Firestore (player orders go through /api/razorpay/order + webhook).
+    // Manual orders and order management are Club Admin / Super Admin only.
     match /merchOrders/{orderId} {
       allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.playerId));
-      allow create: if isSignedIn()
-        && isShopEnabled()
+      allow create: if isClubAdmin()
         && isValidId(orderId)
         && isValidMerchOrder(incoming())
-        && isSelf(incoming().playerId)
-        && incoming().paymentStatus == 'Unpaid'
-        && incoming().orderStatus == 'Order Placed'
+        && incoming().price >= 0
         && incoming().createdAt == request.time;
       allow update: if isClubAdmin() || (
         isSignedIn()
         && isSelf(existing().playerId)
         && isValidMerchOrder(incoming())
         && !incoming().diff(existing()).affectedKeys().hasAny([
-          'orderStatus', 'merchId', 'merchName', 'paymentStatus', 'price', 'playerId', 'createdAt'
+          'orderStatus', 'merchId', 'merchName', 'paymentStatus', 'price', 'playerId', 'createdAt',
+          'isManual', 'intentId', 'razorpayPaymentId', 'gatewayPaymentId', 'priceSnapshot', 'trustedSource', 'quantity'
         ])
       );
       allow delete: if isClubAdmin();

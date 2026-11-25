@@ -1317,7 +1317,7 @@ function optionalBoundedString(value: unknown, field: string, max: number): stri
  */
 export function buildMerchOrderPayload(
   clientPayload: any,
-  server: { merchId: string; merchName: string; price: number; playerId: string; playerRecordName?: string },
+  server: { merchId: string; merchName: string; price: number; customPriceAdditions?: number; playerId: string; playerRecordName?: string },
 ): Record<string, any> {
   const src = clientPayload && typeof clientPayload === "object" ? clientPayload : {};
 
@@ -1345,7 +1345,6 @@ export function buildMerchOrderPayload(
   }
 
   const rawNumber = typeof src.jerseyNumber === "number" ? String(src.jerseyNumber) : src.jerseyNumber;
-  const additions = Number(src.customPriceAdditions);
   const orderStatus = (MERCH_CHECKOUT_ORDER_STATUSES as readonly string[]).includes(src.orderStatus)
     ? src.orderStatus
     : "Order Placed";
@@ -1358,10 +1357,18 @@ export function buildMerchOrderPayload(
     size: optionalBoundedString(src.size, "size", 50),
     spec: optionalBoundedString(src.spec, "spec", 200),
     customSelections,
-    customPriceAdditions: Number.isFinite(additions) && additions > 0 ? additions : undefined,
+    customPriceAdditions: server.customPriceAdditions && server.customPriceAdditions > 0 ? server.customPriceAdditions : undefined,
     jerseyName: optionalBoundedString(src.jerseyName, "jerseyName", 30),
     jerseyNumber: optionalBoundedString(rawNumber, "jerseyNumber", 10),
+    quantity: 1,
     price: server.price,
+    priceSnapshot: {
+      unitPrice: server.price,
+      quantity: 1,
+      totalAmount: server.price,
+      currency: "INR",
+    },
+    trustedSource: "server",
     orderStatus,
   };
   for (const key of Object.keys(payload)) {
@@ -1591,15 +1598,49 @@ export async function derivePayableAmount(
         if (mSnap.exists) {
           const mData = mSnap.data() || {};
           if (mData.playerId !== playerId) continue; // Boundary check
-          if (mData.paymentStatus === "Paid") continue;
+          if (mData.paymentStatus !== "Unpaid" && mData.paymentStatus !== "Failed") continue;
+          if (!mData.merchId || typeof mData.merchId !== "string") continue;
 
-          const price = Number(mData.price || 0);
-          if (price > 0) {
-            calculatedAmount += price;
+          // P1-01: Reject untrusted/legacy non-manual orders without server provenance
+          const isTrustedOrder =
+            mData.isManual === true ||
+            mData.trustedSource === "server" ||
+            (typeof mData.intentId === "string" && mData.intentId.trim().length > 0);
+          if (!isTrustedOrder) continue;
+
+          // Verify catalogue item exists
+          const catSnap = await db.collection("merchandises").doc(mData.merchId).get();
+          if (!catSnap.exists) continue;
+          const catData = catSnap.data() || {};
+
+          let verifiedPrice: number;
+          if (mData.isManual === true) {
+            const p = Number(mData.price);
+            if (!Number.isFinite(p) || p <= 0) continue;
+            verifiedPrice = p;
+          } else {
+            // Non-manual order: recompute authoritative price from catalogue and reject mismatch
+            try {
+              const authoritativePrice = calculateAuthoritativeMerchPrice(
+                catData,
+                mData.customSelections || {},
+              );
+              const snapshotAmount = Number(mData.priceSnapshot?.totalAmount ?? mData.price);
+              if (!Number.isFinite(snapshotAmount) || snapshotAmount !== authoritativePrice) {
+                continue;
+              }
+              verifiedPrice = authoritativePrice;
+            } catch {
+              continue;
+            }
+          }
+
+          if (verifiedPrice > 0) {
+            calculatedAmount += verifiedPrice;
             verifiedItems.push({
               type: "merch",
               merchId: item.merchId,
-              amount: price,
+              amount: verifiedPrice,
             });
           }
         }
@@ -1685,10 +1726,18 @@ export async function derivePayableAmount(
       throw new Error("Merchandise item not found.");
     }
     const merch = merchSnap.data() || {};
+    if (merch.status === "Not Accepting Orders" || merch.isHidden === true) {
+      throw new Error("This merchandise item is not currently available for purchase.");
+    }
+    if (orderPayload?.quantity !== undefined && Number(orderPayload.quantity) !== 1) {
+      throw new Error("Invalid merchandise quantity. Only 1 item per order is supported.");
+    }
     const calculatedPrice = calculateAuthoritativeMerchPrice(
       merch,
       orderPayload?.customSelections || {},
     );
+    const basePrice = Number(merch.basePrice ?? merch.price ?? 0);
+    const calculatedAdditions = Math.max(0, calculatedPrice - basePrice);
 
     if (calculatedPrice <= 0) {
       throw new Error("Payable merchandise amount must be greater than zero.");
@@ -1717,6 +1766,7 @@ export async function derivePayableAmount(
           merchId,
           merchName: merch.name || "Club Merchandise",
           price: calculatedPrice,
+          customPriceAdditions: calculatedAdditions,
           playerId,
           playerRecordName,
         }),

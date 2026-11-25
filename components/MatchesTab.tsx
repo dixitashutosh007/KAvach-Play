@@ -2152,8 +2152,11 @@ export function MatchPayments({
     });
   const paymentName = (p: MatchPayment) => p.guestName || store.players.find((x) => x.id === p.playerId)?.name || "Player";
 
-  /** Existing manual "mark paid" workflow (cash), including the automatic late fee. */
+  /** Existing manual "mark paid" workflow (cash), including the automatic late fee. Finance/Super Admin only. */
   const markPaidCash = async (payment: MatchPayment) => {
+    if (!canOverrideFees) {
+      throw new Error("Only Finance Admin or Super Admin can mark match payments as Paid.");
+    }
     await store.updatePaymentStatus(payment.id, "Paid", match.id, undefined, "manual", appUser?.name || "Admin");
     const exempted = store.otherFees.some(
       (f: any) => f.playerId === payment.playerId && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(match.id) && f.status !== "Cancelled",

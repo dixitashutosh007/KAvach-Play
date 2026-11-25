@@ -1,19 +1,27 @@
-import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
+import { NextResponse } from "next/server.js";
+import { authorizeEmailRequest, createSmtpTransport, isBlockedSmtpHost, validateEmailFields } from "../../../../lib/email-auth.ts";
+import { requireRole } from "../../../../lib/server-auth.ts";
+import { getServerFirestore } from "../../../../lib/server-db.ts";
+import { resolveAuthorizedDueReminder } from "../../../../lib/reminder-server.ts";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    // Only signed-in admins can trigger email sends. This closes the
-    // external-callable surface that link-preview crawlers were hitting.
-    // Auth guard is evaluated FIRST before reading body or database (Phase 5).
-    const { requireRole } = await import("@/lib/server-auth");
+    // Only signed-in admins can trigger email sends. Auth guard is evaluated FIRST.
     const guard = await requireRole(req, ["clubAdmin", "financeAdmin", "superAdmin"]);
     if (!guard.ok) return guard.response;
 
-    const body = await req.json();
-    const { authorizeEmailRequest } = await import("@/lib/email-auth");
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "Malformed JSON payload." }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: "Request body must be a JSON object." }, { status: 400 });
+    }
+
     const emailAuth = authorizeEmailRequest(
       {
         superAdmin: guard.roles.has("superAdmin"),
@@ -26,16 +34,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: emailAuth.error }, { status: emailAuth.status });
     }
 
-    let { to, subject, text, html, config } = body;
+    let { to, subject, text, html } = body;
     const isDueReminder = body?.action === "due_reminder";
     let safeHtml = emailAuth.isFinanceDueReminderOnly || isDueReminder ? undefined : html;
-    let activeConfig = emailAuth.isFinanceDueReminderOnly || isDueReminder ? undefined : config;
+    // Security (P1-05): Never accept client-supplied SMTP/email `config` from any caller.
+    // Trusted configuration always comes from Firestore `appConfig/default` + server env vars.
+    let activeConfig: Record<string, any> | undefined;
 
-    // All due_reminder calls (Finance Admin, Club Admin, Super Admin) MUST resolve
-    // recipient, dues amount, link, and template server-side from playerId.
     if (emailAuth.isFinanceDueReminderOnly || isDueReminder) {
-      const { getServerFirestore } = await import("@/lib/server-db");
-      const { resolveAuthorizedDueReminder } = await import("@/lib/reminder-server");
       const origin = new URL(req.url).origin;
       const resolved = await resolveAuthorizedDueReminder(getServerFirestore(), {
         playerId: body?.playerId,
@@ -52,42 +58,37 @@ export async function POST(req: Request) {
       activeConfig = resolved.appConfig;
     }
 
-    // If no config is passed directly from a workspace setting test,
-    // load SMTP & Resend settings securely from database
     if (!activeConfig) {
       try {
-        const { getServerFirestore } = await import("@/lib/server-db");
         const docSnap = await getServerFirestore().collection("appConfig").doc("default").get();
         if (docSnap.exists) {
-          activeConfig = docSnap.data();
+          activeConfig = docSnap.data() || {};
         }
       } catch (dbErr) {
-        console.warn("Could not fetch appConfig from Firestore inside send route:", dbErr);
+        console.warn("[email/send] Could not fetch appConfig from Firestore:", dbErr instanceof Error ? dbErr.message : "unknown");
       }
     }
 
-    // Determine the email provider and settings
-    const provider = activeConfig?.emailProvider || "resend";
-    const recipients = Array.isArray(to) ? to : [to];
-
-    if (recipients.length === 0 || !recipients[0]) {
-      return NextResponse.json({
-        success: false,
-        error: "No recipients specified."
-      }, { status: 400 });
+    const validated = validateEmailFields({ to, subject, text, html: safeHtml });
+    if (!validated.ok) {
+      return NextResponse.json({ success: false, error: validated.error }, { status: validated.status });
     }
 
+    const provider = activeConfig?.emailProvider || "resend";
+    const { recipients } = validated;
+
     if (provider === "resend") {
-      // Secret is server-side only (env var). Never trust a key that came
-      // through the DB-backed appConfig, which is publicly readable.
       const activeResendKey = process.env.RESEND_API_KEY;
-      const activeSender = activeConfig?.resendSender || "Kavach Play <onboarding@resend.dev>";
+      const activeSender =
+        typeof activeConfig?.resendSender === "string" && activeConfig.resendSender.trim()
+          ? activeConfig.resendSender.trim()
+          : "Kavach Play <onboarding@resend.dev>";
 
       if (!activeResendKey) {
-        return NextResponse.json({
-          success: false,
-          error: "Resend API Key is not configured. Please provide a key in settings."
-        }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Resend API Key is not configured." },
+          { status: 500 },
+        );
       }
 
       const res = await fetch("https://api.resend.com/emails", {
@@ -99,64 +100,78 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           from: activeSender,
           to: recipients,
-          subject: subject,
-          text: text,
-          html: safeHtml || text.replace(/\n/g, "<br>"),
+          subject: validated.subject,
+          text: validated.text,
+          html: validated.html || validated.text.replace(/\n/g, "<br>"),
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return NextResponse.json({
-          success: false,
-          error: data.message || "Resend API connection failed."
-        });
+        return NextResponse.json(
+          { success: false, error: "Email delivery failed via Resend." },
+          { status: 502 },
+        );
       }
 
       return NextResponse.json({ success: true, data });
     } else {
-      // SMTP provider option. Host/port/user can live in appConfig (public
-      // info); the PASSWORD must be a server-side env var.
-      const smtpHost = activeConfig?.smtpHost || process.env.SMTP_HOST;
-      const smtpPort = parseInt(activeConfig?.smtpPort || process.env.SMTP_PORT || "587", 10);
-      const smtpUser = activeConfig?.smtpUser || process.env.SMTP_USER;
+      // Trusted server-side SMTP configuration only (appConfig/default + env vars).
+      const smtpHost = typeof activeConfig?.smtpHost === "string" && activeConfig.smtpHost.trim()
+        ? activeConfig.smtpHost.trim()
+        : (process.env.SMTP_HOST || "").trim();
+      const smtpPort = parseInt(String(activeConfig?.smtpPort || process.env.SMTP_PORT || "587"), 10);
+      const smtpUser = typeof activeConfig?.smtpUser === "string" && activeConfig.smtpUser.trim()
+        ? activeConfig.smtpUser.trim()
+        : (process.env.SMTP_USER || "").trim();
       const smtpPassword = process.env.SMTP_PASSWORD;
-      const smtpFrom = activeConfig?.smtpFrom || smtpUser;
+      const smtpFrom = (typeof activeConfig?.smtpFrom === "string" && activeConfig.smtpFrom.trim()
+        ? activeConfig.smtpFrom.trim()
+        : smtpUser);
 
-      if (!smtpHost || !smtpUser || !smtpPassword) {
-        return NextResponse.json({
-          success: false,
-          error: "SMTP details are incomplete. Host and User can be set in App Configuration; the password must be set as the SMTP_PASSWORD env var."
-        });
+      if (!smtpHost || !smtpUser || !smtpPassword || !Number.isFinite(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+        return NextResponse.json(
+          { success: false, error: "SMTP configuration is incomplete or not configured." },
+          { status: 500 },
+        );
+      }
+
+      if (isBlockedSmtpHost(smtpHost)) {
+        return NextResponse.json(
+          { success: false, error: "Configured SMTP host is not permitted." },
+          { status: 400 },
+        );
       }
 
       let effectiveSecure = !!activeConfig?.smtpSecure;
-      // Auto-correct secure flag for well-known ports to prevent SSL wrong version number errors
-      if (smtpPort === 587) effectiveSecure = false; // Port 587 uses STARTTLS (secure: false)
-      if (smtpPort === 465) effectiveSecure = true;  // Port 465 uses Implicit TLS (secure: true)
+      if (smtpPort === 587) effectiveSecure = false;
+      if (smtpPort === 465) effectiveSecure = true;
 
-      const transporter = nodemailer.createTransport({
-        host: smtpHost.trim(),
+      const transporter = createSmtpTransport({
+        host: smtpHost,
         port: smtpPort,
         secure: effectiveSecure,
         auth: {
-          user: smtpUser.trim(),
-          pass: smtpPassword.replace(/\s+/g, ''),
+          user: smtpUser,
+          pass: smtpPassword.replace(/\s+/g, ""),
         },
       });
 
       const info = await transporter.sendMail({
         from: smtpFrom,
         to: recipients.join(", "),
-        subject: subject,
-        text: text,
-        html: safeHtml || text.replace(/\n/g, "<br>"),
+        subject: validated.subject,
+        text: validated.text,
+        html: validated.html || validated.text.replace(/\n/g, "<br>"),
       });
 
       return NextResponse.json({ success: true, messageId: info.messageId });
     }
   } catch (err: any) {
-    console.error("Email Sending Route Error:", err);
-    return NextResponse.json({ success: false, error: err.message || "An error occurred while sending the email" });
+    console.error("[email/send] Delivery failed:", err instanceof Error ? err.name : "Error");
+    return NextResponse.json(
+      { success: false, error: "An error occurred while sending the email." },
+      { status: 500 },
+    );
   }
 }

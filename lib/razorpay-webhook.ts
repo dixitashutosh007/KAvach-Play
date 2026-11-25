@@ -285,7 +285,16 @@ export function pickStoredMerchOrderFields(orderPayload: any, intentAmount: unkn
   if (Number.isFinite(additions) && additions > 0) out.customPriceAdditions = additions;
   const price = Number(src.price);
   const amount = Number(intentAmount);
-  out.price = Number.isFinite(price) && price > 0 ? price : Number.isFinite(amount) ? amount : 0;
+  const resolvedPrice = Number.isFinite(price) && price > 0 ? price : Number.isFinite(amount) ? amount : 0;
+  out.price = resolvedPrice;
+  out.quantity = 1;
+  out.priceSnapshot = {
+    unitPrice: resolvedPrice,
+    quantity: 1,
+    totalAmount: resolvedPrice,
+    currency: "INR",
+  };
+  out.trustedSource = "server";
   out.orderStatus = STORED_MERCH_ORDER_STATUSES.includes(src.orderStatus) ? src.orderStatus : "Order Placed";
   return out;
 }

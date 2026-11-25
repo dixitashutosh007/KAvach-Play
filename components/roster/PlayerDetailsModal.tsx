@@ -526,7 +526,7 @@ export function PlayerDetailsModal({
                             className="flex items-center justify-between text-[#171C26] border-b border-border pb-1 last:border-0"
                           >
                             <div className="flex items-center gap-2 truncate">
-                              {isAdmin && (
+                              {canViewFinance && (
                                 <input
                                   type="checkbox"
                                   checked={false}
@@ -548,7 +548,7 @@ export function PlayerDetailsModal({
                           className="flex items-center justify-between text-[#171C26] border-b border-border pb-1 last:border-0"
                         >
                           <div className="flex items-center gap-2 truncate">
-                            {isAdmin && (
+                            {canViewFinance && (
                               <input
                                 type="checkbox"
                                 checked={false}
@@ -582,7 +582,7 @@ export function PlayerDetailsModal({
                               className="flex items-center justify-between text-[#171C26] border-b border-border pb-1 last:border-0"
                             >
                               <div className="flex items-center gap-2 truncate">
-                                {isAdmin &&
+                                {canViewFinance &&
                                   (isRealMoneyPayment(p, m.fee) ? (
                                     <input
                                       type="checkbox"

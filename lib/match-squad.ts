@@ -77,7 +77,7 @@ export function squadRowActions(p: MatchPayment, ctx: RowActionContext): { share
   }
 
   if (!share.paid) {
-    if (share.contribution > 0) actions.push({ id: "markPaid", label: `Mark Paid (cash) · ₹${share.contribution.toLocaleString("en-IN")}` });
+    if (ctx.canManageFees && share.contribution > 0) actions.push({ id: "markPaid", label: `Mark Paid (cash) · ₹${share.contribution.toLocaleString("en-IN")}` });
   } else if (share.realMoney) {
     if (ctx.canManageFees) actions.push({ id: "refund", label: "Refund / reverse payment…" });
     else actions.push({ id: "refund", label: "Mark Unpaid", disabledReason: `₹${share.collectedAmount.toLocaleString("en-IN")} was collected — a Finance Admin must record the refund first.` });
