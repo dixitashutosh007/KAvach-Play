@@ -57,7 +57,7 @@ export function aggregateKavachStats(
 
   for (const s of filtered) {
     const player = playerMap.get(s.playerId);
-    if (player && (player.disabled || player.mergedInto)) continue;
+    if (!player || player.disabled || player.mergedInto) continue;
     const runs = typeof s.runs === "number" && Number.isFinite(s.runs) ? s.runs : 0;
     const wickets = typeof s.wickets === "number" && Number.isFinite(s.wickets) ? s.wickets : 0;
     totalRuns += runs;

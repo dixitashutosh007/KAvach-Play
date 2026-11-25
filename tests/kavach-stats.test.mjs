@@ -8,6 +8,7 @@ const players = [
   { id: "p-1", name: "Arjun", kavachId: "KAV-01" },
   { id: "p-2", name: "Rohan", kavachId: "KAV-02" },
   { id: "p-disabled", name: "Old", disabled: true },
+  { id: "p-merged", name: "Dup", mergedInto: "p-1" },
 ];
 
 const playerStats = [
@@ -15,6 +16,8 @@ const playerStats = [
   { id: "s-2", playerId: "p-1", year: 2026, runs: 410, wickets: 5 },
   { id: "s-3", playerId: "p-2", year: 2026, runs: 190, wickets: 14 },
   { id: "s-4", playerId: "p-disabled", year: 2026, runs: 999, wickets: 99 },
+  { id: "s-5", playerId: "p-merged", year: 2026, runs: 500, wickets: 50 },
+  { id: "s-6", playerId: "p-missing", year: 2026, runs: 777, wickets: 77 },
 ];
 
 test("getAvailableStatYears returns sorted descending unique years", () => {

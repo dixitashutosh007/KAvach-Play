@@ -84,25 +84,41 @@ test("searchPlayerAccessibleData returns matches, grounds, polls, posts, and pub
   // Active polls included; inactive polls excluded
   assert.deepEqual(res.polls.map((p) => p.id), ["poll-1"]);
 
-  // Disabled & merged players excluded; phone/email stripped from returned player
+  // Disabled & merged players excluded; private PII stripped from returned player
   assert.equal(res.players.length, 1);
   assert.equal(res.players[0].id, "p-1");
-  assert.equal("phone" in res.players[0], false);
-  assert.equal("email" in res.players[0], false);
+  for (const key of ["phone", "email", "dob", "chestSize", "jerseyNumber", "authUid", "paymentHistory"]) {
+    assert.equal(key in res.players[0], false);
+  }
 });
 
-test("searchPlayerAccessibleData never matches on private phone or email and respects feature flags", () => {
+test("searchPlayerAccessibleData enforces destination-screen eligibility and feature flags", () => {
   const phoneRes = searchPlayerAccessibleData({ ...baseInput, query: "9998887776" });
   assert.equal(phoneRes?.players.length, 0);
+
+  const emailRes = searchPlayerAccessibleData({ ...baseInput, query: "royal@secret.com" });
+  assert.equal(emailRes?.players.length, 0);
 
   const gpayRes = searchPlayerAccessibleData({ ...baseInput, query: "9222222222" });
   assert.equal(gpayRes?.grounds.length, 0);
 
-  const disabledFlagsRes = searchPlayerAccessibleData({
+  const orgPhoneRes = searchPlayerAccessibleData({ ...baseInput, query: "9111111111" });
+  assert.equal(orgPhoneRes?.grounds.length, 0);
+
+  // Searching by ground name still excludes ineligible squad-assigned matches for non-admins
+  const groundQueryRes = searchPlayerAccessibleData({ ...baseInput, query: "Royal Oval Ground" });
+  assert.deepEqual(groundQueryRes?.matches.map((m) => m.id), ["m-open"]);
+
+  // Unlinked user (mePlayer = null) cannot discover matches (consistent with destination screen)
+  const unlinkedRes = searchPlayerAccessibleData({ ...baseInput, mePlayer: null, query: "Royal" });
+  assert.deepEqual(unlinkedRes?.matches.map((m) => m.id), []);
+
+  // Disabled features hide associated results
+  const disabledAllPosts = searchPlayerAccessibleData({
     ...baseInput,
     query: "royal",
-    isFeatureEnabled: (k) => k !== "polls" && k !== "announcements",
+    isFeatureEnabled: (k) => k !== "polls" && k !== "announcements" && k !== "feed",
   });
-  assert.equal(disabledFlagsRes?.polls.length, 0);
-  assert.deepEqual(disabledFlagsRes?.announcements.map((a) => a.id), ["f-1"]);
+  assert.equal(disabledAllPosts?.polls.length, 0);
+  assert.equal(disabledAllPosts?.announcements.length, 0);
 });
