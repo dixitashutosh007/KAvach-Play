@@ -281,6 +281,55 @@ describe("FND-03: Server-side due reminder resolver (Firestore Emulator)", { ski
       assert.equal((await callRoute(emailRoute.POST, "financeAdmin", { action: "due_reminder", playerId: pid })).status, 400);
       assert.equal((await callRoute(waRoute.POST, "clubAdmin", { action: "due_reminder", playerId: pid })).status, 400);
       assert.equal(capturedFetches.length, 0);
+
+      // 4. Match-specific WhatsApp reminder resolves ONLY that match's outstanding balance
+      const m1Id = "match_spec_1";
+      const m2Id = "match_spec_2";
+      await db.collection("matches").doc(m1Id).set({
+        id: m1Id,
+        opponent: "Match One",
+        date: "2026-11-20",
+        fee: 500,
+        result: "Pending",
+      });
+      await db.collection("matches").doc(m2Id).set({
+        id: m2Id,
+        opponent: "Match Two",
+        date: "2026-11-27",
+        fee: 400,
+        result: "Pending",
+      });
+      await db.collection("matches").doc(m1Id).collection("payments").doc("mp1").set({
+        id: "mp1",
+        matchId: m1Id,
+        playerId: pid,
+        status: "Unpaid",
+      });
+      await db.collection("matches").doc(m2Id).collection("payments").doc("mp2").set({
+        id: "mp2",
+        matchId: m2Id,
+        playerId: pid,
+        status: "Unpaid",
+      });
+      await db.collection("otherFees").doc("of1").set({
+        id: "of1",
+        playerId: pid,
+        title: "No Show",
+        amount: 200,
+        status: "Unpaid",
+      });
+
+      capturedFetches.length = 0;
+      const specRes = await callRoute(waRoute.POST, "financeAdmin", {
+        action: "due_reminder",
+        playerId: pid,
+        matchId: m1Id,
+        amount: 1, // ignored; server must compute 500
+      });
+      assert.equal(specRes.status, 200);
+      assert.equal(capturedFetches.length, 1);
+      const specParams = capturedFetches[0].body.template.components[0].parameters.map((p) => p.text);
+      assert.deepEqual(specParams, ["Real Player", "500", `https://play.kavachcricket.com/pay/${pid}`]);
     } finally {
       globalThis.fetch = origFetch;
       if (origResend === undefined) delete process.env.RESEND_API_KEY;

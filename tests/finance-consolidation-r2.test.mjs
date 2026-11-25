@@ -6,6 +6,7 @@ import {
   partitionMatchFinancePlayers,
   summarizePlayerFinancialProfile,
 } from "../lib/match-finance.ts";
+import { isAdminDestinationVisible } from "../lib/admin-navigation.ts";
 
 const root = process.cwd();
 
@@ -92,4 +93,27 @@ test("Finance workspace has 7 consolidated sections and DuesAndRemindersTab dele
   const duesSrc = fs.readFileSync(path.join(root, "components/DuesAndRemindersTab.tsx"), "utf8");
   assert.doesNotMatch(duesSrc, /handleSaveRemindersConfig/);
   assert.match(duesSrc, /finance-email-templates-shortcut/);
+});
+
+test("Release 2.1: desktop expandable details, complete player profile history, match-specific reminder, and Club Admin Finance denial", () => {
+  const finSrc = fs.readFileSync(path.join(root, "components/FinanceTab.tsx"), "utf8");
+  assert.match(finSrc, /expand-match-finance-desktop-/);
+  assert.match(finSrc, /match-finance-desktop-details-/);
+  assert.match(finSrc, /toggle-all-profile-matches/);
+  assert.match(finSrc, /player-profile-other-fees/);
+  assert.match(finSrc, /action:\s*"due_reminder",\s*playerId,\s*matchId/);
+
+  // Club Admin-only user has NO access to Finance workspace
+  assert.equal(
+    isAdminDestinationVisible("finance", { isSuperAdmin: false, isClubAdmin: true, isFinanceAdmin: false }),
+    false,
+  );
+  assert.equal(
+    isAdminDestinationVisible("finance", { isSuperAdmin: false, isClubAdmin: false, isFinanceAdmin: true }),
+    true,
+  );
+  assert.equal(
+    isAdminDestinationVisible("finance", { isSuperAdmin: true, isClubAdmin: false, isFinanceAdmin: true }),
+    true,
+  );
 });

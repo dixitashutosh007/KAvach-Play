@@ -664,6 +664,7 @@ export interface PlayerFinancialProfile {
     amount: number;
     status: string;
     comment?: string;
+    date?: string;
   }[];
 }
 
@@ -748,6 +749,11 @@ export function summarizePlayerFinancialProfile(
     if (f.status === "Unpaid") {
       otherFeesOutstanding += Number(f.amount) || 0;
     }
+    const rawTs = f.createdAt?.seconds
+      ? new Date(f.createdAt.seconds * 1000).toISOString().slice(0, 10)
+      : typeof f.createdAt === "string"
+        ? f.createdAt.slice(0, 10)
+        : undefined;
     otherFeeEntries.push({
       id: f.id,
       title,
@@ -755,6 +761,7 @@ export function summarizePlayerFinancialProfile(
       amount: Number(f.amount) || 0,
       status: f.status,
       comment: f.comment,
+      date: rawTs,
     });
   }
 

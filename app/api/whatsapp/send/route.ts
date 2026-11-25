@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       const origin = new URL(req.url).origin;
       const resolved = await resolveAuthorizedDueReminder(db, {
         playerId: body?.playerId,
+        matchId: body?.matchId,
         channel: "whatsapp",
         origin,
       });

@@ -1,5 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { calculatePlayerDues } from "./player-dues.ts";
+import { classifyMatchPayment } from "./match-finance.ts";
+import { isMatchBillable } from "./matchBillable.ts";
 import type { Match, MatchPayment, OtherFee, Player } from "./types.ts";
 
 export interface AuthorizedReminderPayload {
@@ -29,10 +31,12 @@ export async function resolveAuthorizedDueReminder(
   db: Firestore,
   {
     playerId,
+    matchId,
     channel,
     origin,
   }: {
     playerId: unknown;
+    matchId?: unknown;
     channel: "email" | "whatsapp";
     origin: string;
   },
@@ -47,7 +51,21 @@ export async function resolveAuthorizedDueReminder(
     return { ok: false, status: 400, error: "Valid playerId is required for due reminders." };
   }
 
+  const hasMatchId = matchId !== undefined && matchId !== null && String(matchId).trim() !== "";
+  if (hasMatchId) {
+    if (
+      typeof matchId !== "string" ||
+      matchId.includes("/") ||
+      matchId === "." ||
+      matchId === ".."
+    ) {
+      return { ok: false, status: 400, error: "Valid matchId is required for match reminders." };
+    }
+  }
+
   const pid = playerId.trim();
+  const mid = hasMatchId ? String(matchId).trim() : null;
+
   const [playerSnap, paymentsSnap, otherFeesSnap, appConfigSnap] = await Promise.all([
     db.collection("players").doc(pid).get(),
     db.collection("payments").where("playerId", "==", pid).get(),
@@ -67,31 +85,76 @@ export async function resolveAuthorizedDueReminder(
   const playerPayments = paymentsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MatchPayment[];
   const playerOtherFees = otherFeesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OtherFee[];
 
-  const matchIds = Array.from(
-    new Set(playerPayments.map((p) => p.matchId).filter((id): id is string => Boolean(id))),
-  );
-  const matchSnaps = await Promise.all(
-    matchIds.map((mid) => db.collection("matches").doc(mid).get()),
-  );
-  const matches = matchSnaps
-    .filter((s) => s.exists)
-    .map((s) => ({ id: s.id, ...(s.data() as any) })) as Match[];
+  let resolvedAmount = 0;
+  let duesText = "";
 
-  const dues = calculatePlayerDues([player], playerPayments, matches, playerOtherFees);
-  if (!dues.hasDues || dues.totalDue <= 0) {
-    return { ok: false, status: 400, error: "Player has no verified outstanding dues." };
+  if (mid) {
+    const [matchSnap, nestedPaySnap] = await Promise.all([
+      db.collection("matches").doc(mid).get(),
+      db.collection("matches").doc(mid).collection("payments").where("playerId", "==", pid).get(),
+    ]);
+    if (!matchSnap.exists) {
+      return { ok: false, status: 404, error: "Target match record not found." };
+    }
+    const match = { id: matchSnap.id, ...(matchSnap.data() as any) } as Match;
+    if (!isMatchBillable(match)) {
+      return { ok: false, status: 400, error: "This match is not billable (abandoned or zero fee)." };
+    }
+    const nestedPayments = nestedPaySnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MatchPayment[];
+    const matchRecords =
+      nestedPayments.length > 0
+        ? nestedPayments
+        : playerPayments.filter((p) => p.matchId === mid);
+
+    const activeRecords = matchRecords.filter(
+      (p) =>
+        !p.guestName &&
+        p.status !== "Not Playing" &&
+        p.status !== "Waived" &&
+        p.availability !== "No",
+    );
+    if (activeRecords.length === 0) {
+      return { ok: false, status: 400, error: "Player has no active billable obligation for this match." };
+    }
+
+    const matchDue = activeRecords.reduce(
+      (sum, p) => sum + classifyMatchPayment(p, match.fee || 0).outstanding,
+      0,
+    );
+    if (matchDue <= 0) {
+      return { ok: false, status: 400, error: "Player has no outstanding dues for this match." };
+    }
+
+    resolvedAmount = matchDue;
+    duesText = `vs ${match.opponent || "Match"} (₹${matchDue})`;
+  } else {
+    const matchIds = Array.from(
+      new Set(playerPayments.map((p) => p.matchId).filter((id): id is string => Boolean(id))),
+    );
+    const matchSnaps = await Promise.all(
+      matchIds.map((mId) => db.collection("matches").doc(mId).get()),
+    );
+    const matches = matchSnaps
+      .filter((s) => s.exists)
+      .map((s) => ({ id: s.id, ...(s.data() as any) })) as Match[];
+
+    const dues = calculatePlayerDues([player], playerPayments, matches, playerOtherFees);
+    if (!dues.hasDues || dues.totalDue <= 0) {
+      return { ok: false, status: 400, error: "Player has no verified outstanding dues." };
+    }
+
+    resolvedAmount = dues.totalDue;
+    const duesParts = [
+      ...dues.billableMatchPayments.map((item) => `vs ${item.match.opponent || "Match"} (₹${item.fee})`),
+      ...dues.unpaidOtherFees.map((f) => `${f.title || "Fee"} (₹${f.amount})`),
+    ];
+    duesText = duesParts.join(", ") || `₹${resolvedAmount} pending`;
   }
 
   const appConfig = appConfigSnap.exists ? (appConfigSnap.data() as Record<string, any>) : {};
   const clubName = String(appConfig.clubName || "KAvach Play");
   const playerName = String(player.name || "Player");
   const link = `${origin.replace(/\/$/, "")}/pay/${pid}`;
-
-  const duesParts = [
-    ...dues.billableMatchPayments.map((item) => `vs ${item.match.opponent || "Match"} (₹${item.fee})`),
-    ...dues.unpaidOtherFees.map((f) => `${f.title || "Fee"} (₹${f.amount})`),
-  ];
-  const duesText = duesParts.join(", ") || `₹${dues.totalDue} pending`;
 
   if (channel === "email") {
     const email = typeof player.email === "string" ? player.email.trim() : "";
@@ -103,7 +166,7 @@ export async function resolveAuthorizedDueReminder(
       String(s || "")
         .replace(/{{clubName}}/g, clubName)
         .replace(/{{playerName}}/g, playerName)
-        .replace(/{{amount}}/g, String(dues.totalDue))
+        .replace(/{{amount}}/g, String(resolvedAmount))
         .replace(/{{duesText}}/g, duesText)
         .replace(/{{link}}/g, link);
 
@@ -111,7 +174,7 @@ export async function resolveAuthorizedDueReminder(
       ok: true,
       playerId: pid,
       playerName,
-      amount: dues.totalDue,
+      amount: resolvedAmount,
       duesText,
       link,
       email,
@@ -130,7 +193,7 @@ export async function resolveAuthorizedDueReminder(
     ok: true,
     playerId: pid,
     playerName,
-    amount: dues.totalDue,
+    amount: resolvedAmount,
     duesText,
     link,
     mobile,
