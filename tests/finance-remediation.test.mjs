@@ -6,8 +6,10 @@ import {
   buildMatchFinancialStatement,
   classifyMatchPayment,
   collectedMoney,
+  summarizeClubFinanceOverview,
   summarizeMatchFinance,
 } from "../lib/match-finance.ts";
+import { isMatchBillable } from "../lib/matchBillable.ts";
 import { buildTransactionsLedger } from "../lib/transactions-ledger.ts";
 import { calculatePlayerDues } from "../lib/player-dues.ts";
 import { authorizeEmailRequest } from "../lib/email-auth.ts";
@@ -196,4 +198,84 @@ test("F5: Finance navigation consolidation, Settings shortcut, and D-22 role iso
   const pageSrc = fs.readFileSync(path.join(root, "app/page.tsx"), "utf8");
   assert.match(pageSrc, /onNavigateToSettings=\{isSuperAdmin \? \(\) => setActiveTab\("settings"\) : undefined\}/);
   assert.match(pageSrc, /activeTab === "settings" && \(\s*isSuperAdmin \?/);
+});
+
+test("FND-01: Club overview includes unpaid-only and sub-only matches, excludes waived-only matches", () => {
+  const mUnpaidOnly = { id: "m-unpaid", date: "2026-11-22", opponent: "A", fee: 500, result: "Pending" };
+  const mWaivedOnly = { id: "m-waived", date: "2026-11-23", opponent: "B", fee: 500, result: "Pending" };
+  const mMixed = { id: "m-mixed", date: "2026-11-24", opponent: "C", fee: 500, result: "Pending" };
+  const mSubOnly = { id: "m-sub", date: "2026-11-25", opponent: "D", fee: 500, result: "Pending" };
+  const mEmpty = { id: "m-empty", date: "2026-11-26", opponent: "E", fee: 500, result: "Pending" };
+
+  const allMatches = [mUnpaidOnly, mWaivedOnly, mMixed, mSubOnly, mEmpty];
+  const pList = [
+    { id: "p1", name: "P1" },
+    { id: "p2", name: "P2" },
+  ];
+  const payList = [
+    { id: "x1", matchId: "m-unpaid", playerId: "p1", status: "Unpaid" },
+    { id: "x2", matchId: "m-unpaid", playerId: "p2", status: "Unpaid" },
+    { id: "x3", matchId: "m-waived", playerId: "p1", status: "Waived" },
+    { id: "x4", matchId: "m-mixed", playerId: "p1", status: "Paid" },
+    { id: "x5", matchId: "m-mixed", playerId: "p2", status: "Unpaid" },
+    { id: "x6", matchId: "m-sub", playerId: "p1", status: "Paid", manualMethod: "part_of_plan" },
+  ];
+
+  const reportData = allMatches.map((m) => summarizeMatchFinance(m, payList.filter((p) => p.matchId === m.id), pList));
+  const overview = summarizeClubFinanceOverview(reportData, isMatchBillable);
+
+  // mUnpaidOnly (1000 expected), mMixed (1000 expected), mSubOnly (500 expected) included; mWaivedOnly & mEmpty excluded
+  assert.deepEqual(
+    overview.includedMatches.map((d) => d.match.id),
+    ["m-unpaid", "m-mixed", "m-sub"],
+  );
+  assert.equal(overview.totalExpected, 2500);
+  assert.equal(overview.actualCashReceived, 500);
+  assert.equal(overview.subscriptionCovered, 500);
+  assert.equal(overview.outstanding, 1500);
+  assert.equal(overview.actualCashReceived + overview.subscriptionCovered + overview.outstanding, overview.totalExpected);
+});
+
+test("FND-02: Assigned Fees Ledger uses authorized due_reminder endpoints without wa.me bypass", () => {
+  const financeTab = fs.readFileSync(path.join(root, "components/FinanceTab.tsx"), "utf8");
+  assert.doesNotMatch(financeTab, /wa\.me/);
+  assert.match(financeTab, /\/api\/whatsapp\/send/);
+  assert.match(financeTab, /fee\.status === "Unpaid" && p\?\.mobile/);
+  assert.match(financeTab, /fee\.status === "Unpaid" && p\?\.email/);
+
+  const duesTab = fs.readFileSync(path.join(root, "components/DuesAndRemindersTab.tsx"), "utf8");
+  assert.match(duesTab, /\{isSuperAdmin && \(\s*<button[\s\S]*?WA \(Manual\)/);
+});
+
+test("FND-04 & FND-05: Paid partial receipts retain unpaid balance and feeOffsetAmount reconciles cleanly", () => {
+  // FND-04: Paid record with explicit feeCollectedAmount < expected and no feeOffsetAmount retains remaining balance
+  const partialPaid = classifyMatchPayment(
+    { id: "pp1", matchId: "m1", playerId: "p1", status: "Paid", feeCollectedAmount: 200 },
+    500,
+  );
+  assert.equal(partialPaid.expectedContribution, 500);
+  assert.equal(partialPaid.cashReceived, 200);
+  assert.equal(partialPaid.outstanding, 300);
+  assert.equal(partialPaid.isSettled, false);
+
+  // FND-05: Partial club sponsorship via feeOffsetAmount (no feeOverride)
+  const partialClubOffset = classifyMatchPayment(
+    { id: "co1", matchId: "m1", playerId: "p1", status: "Paid", feeOffsetAmount: 200, feeCollectedAmount: 300 },
+    500,
+  );
+  assert.equal(partialClubOffset.clubSponsored, 200);
+  assert.equal(partialClubOffset.expectedContribution, 300);
+  assert.equal(partialClubOffset.cashReceived, 300);
+  assert.equal(partialClubOffset.outstanding, 0);
+  assert.equal(partialClubOffset.isSettled, true);
+
+  // FND-05: Full club sponsorship
+  const fullClub = classifyMatchPayment(
+    { id: "co2", matchId: "m1", playerId: "p2", status: "Paid", manualMethod: "club_sponsored" },
+    500,
+  );
+  assert.equal(fullClub.clubSponsored, 500);
+  assert.equal(fullClub.expectedContribution, 0);
+  assert.equal(fullClub.cashReceived, 0);
+  assert.equal(fullClub.outstanding, 0);
 });

@@ -52,9 +52,11 @@ export function calculatePlayerDues(
 
   const myPlayerIds = new Set(myPlayers.map((p) => p.id));
 
-  // 1. Unpaid match payments for my players (canonical classification)
+  // 1. Unpaid or under-collected match payments for my players (canonical classification)
   const candidatePayments = (payments || []).filter(
-    (p) => myPlayerIds.has(p.playerId) && p.status === "Unpaid",
+    (p) =>
+      myPlayerIds.has(p.playerId) &&
+      (p.status === "Unpaid" || (p.status === "Paid" && p.feeCollectedAmount !== undefined)),
   );
 
   const billableMatchPayments: BillableMatchPaymentItem[] = [];

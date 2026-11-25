@@ -134,11 +134,21 @@ export function classifyMatchPayment(
   }
 
   // Standard cash / Razorpay / partial / unpaid obligation.
-  const expected = p.feeOverride !== undefined ? Math.max(0, Math.round(Number(p.feeOverride) || 0)) : fee;
+  // FND-05: feeOffsetAmount is club-funded sponsorship; when feeOverride is absent,
+  // the player's billable contribution is (fee - clubOffset).
+  const hasExplicitOffset = p.feeOffsetAmount !== undefined && Number(p.feeOffsetAmount) > 0;
   const clubOffset =
     p.feeOffsetAmount !== undefined
       ? Math.max(0, Math.round(Number(p.feeOffsetAmount) || 0))
-      : 0;
+      : p.feeOverride !== undefined && Number(p.feeOverride) < fee
+        ? Math.max(0, fee - Math.max(0, Math.round(Number(p.feeOverride) || 0)))
+        : 0;
+  const expected =
+    p.feeOverride !== undefined
+      ? Math.max(0, Math.round(Number(p.feeOverride) || 0))
+      : hasExplicitOffset
+        ? Math.max(0, fee - clubOffset)
+        : fee;
 
   let cashReceived = 0;
   if (status === "Paid") {
@@ -151,7 +161,9 @@ export function classifyMatchPayment(
     cashReceived = Math.min(expected, Math.max(0, Math.round(Number(p.feeCollectedAmount) || 0)));
   }
 
-  const outstanding = status === "Paid" ? 0 : Math.max(0, expected - cashReceived);
+  // FND-04: A Paid record with explicit feeCollectedAmount < expected must NOT
+  // silently clear the remaining unpaid balance.
+  const outstanding = Math.max(0, expected - cashReceived);
   const isRazorpay =
     p.paymentMethod === "razorpay" &&
     (Boolean(p.razorpayPaymentId) || (!p.manualMethod && !p.manualBy));
@@ -466,4 +478,58 @@ export function netResultLabel(net: number | null): { label: string; tone: "surp
   if (net > 0) return { label: "Net Surplus", tone: "surplus" };
   if (net < 0) return { label: "Net Loss", tone: "loss" };
   return { label: "Break-even", tone: "even" };
+}
+
+/**
+ * Canonical Club Finance Overview aggregation (FND-01).
+ * Includes every billable match with eligible obligations (including 100%-unpaid
+ * matches), excludes matches with only Waived/Not-Playing/Cancelled players from
+ * Expected, and preserves historical cash collected on abandoned matches without
+ * adding abandoned matches to billable Expected or Outstanding totals.
+ */
+export function summarizeClubFinanceOverview(
+  reportData: MatchFinanceSummary[],
+  isBillableFn: (match: Match) => boolean,
+) {
+  const includedMatches = reportData.filter((d) => {
+    const hasObligations =
+      d.matchFeeTotal > 0 ||
+      d.totalDue > 0 ||
+      d.paidCount > 0 ||
+      d.unpaidCount > 0 ||
+      d.feeOffset > 0;
+    if (isBillableFn(d.match)) {
+      return hasObligations;
+    }
+    // Non-billable / abandoned matches appear only if historical cash/sub was recorded
+    return d.feeCollected > 0 || d.subscriptionCovered > 0;
+  });
+
+  const billableMatches = includedMatches.filter((d) => isBillableFn(d.match));
+  const totalExpected = billableMatches.reduce((s, d) => s + d.matchFeeTotal, 0);
+  const actualCashReceived = includedMatches.reduce((s, d) => s + d.feeCollected, 0);
+  const billableCashReceived = billableMatches.reduce((s, d) => s + d.feeCollected, 0);
+  const subscriptionCovered = billableMatches.reduce((s, d) => s + d.subscriptionCovered, 0);
+  const sponsored = billableMatches.reduce((s, d) => s + d.feeOffset, 0);
+  const outstanding = billableMatches.reduce((s, d) => s + d.totalDue, 0);
+
+  const cashCollectionPct =
+    totalExpected > 0 ? Math.round((billableCashReceived * 10000) / totalExpected) / 100 : null;
+  const settlementPct =
+    totalExpected > 0
+      ? Math.round(((billableCashReceived + subscriptionCovered) * 10000) / totalExpected) / 100
+      : null;
+
+  return {
+    includedMatches,
+    matchCount: includedMatches.length,
+    billableMatchCount: billableMatches.length,
+    totalExpected,
+    actualCashReceived,
+    subscriptionCovered,
+    sponsored,
+    outstanding,
+    cashCollectionPct,
+    settlementPct,
+  };
 }

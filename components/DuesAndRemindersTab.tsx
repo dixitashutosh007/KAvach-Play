@@ -559,21 +559,23 @@ export function DuesAndRemindersTab({
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0 pl-7 sm:pl-0">
                                   <span className={`font-mono text-sm mr-2 ${item.isLateFee ? "text-orange-400" : "text-red-400"}`}>₹{item.amount}</span>
-                                  <button
-                                    onClick={() => {
-                                      if (!item.player.mobile) {
-                                        toast("Player does not have a mobile number saved.", "success");
-                                        return;
-                                      }
-                                      const link = `${window.location.origin}/pay/${item.player.id}`;
-                                      const text = `Hi ${item.player.name}, this is a gentle reminder regarding your pending due of ₹${item.amount} for ${item.desc}.\n\nPlease clear it at your earliest convenience using this link: ${link}`;
-                                      const encodedText = encodeURIComponent(text);
-                                      window.open(`https://wa.me/${item.player.mobile.replace("+", "")}?text=${encodedText}`, "_blank");
-                                    }}
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
-                                  >
-                                    WA (Manual)
-                                  </button>
+                                  {isSuperAdmin && (
+                                    <button
+                                      onClick={() => {
+                                        if (!item.player.mobile) {
+                                          toast("Player does not have a mobile number saved.", "success");
+                                          return;
+                                        }
+                                        const link = `${window.location.origin}/pay/${item.player.id}`;
+                                        const text = `Hi ${item.player.name}, this is a gentle reminder regarding your pending due of ₹${item.amount} for ${item.desc}.\n\nPlease clear it at your earliest convenience using this link: ${link}`;
+                                        const encodedText = encodeURIComponent(text);
+                                        window.open(`https://wa.me/${item.player.mobile.replace("+", "")}?text=${encodedText}`, "_blank");
+                                      }}
+                                      className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                                    >
+                                      WA (Manual)
+                                    </button>
+                                  )}
                                   <button
                                     onClick={async () => {
                                       if (!item.player.mobile) {

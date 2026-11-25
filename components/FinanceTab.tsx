@@ -8,7 +8,7 @@
  */
 import { authedFetch } from "@/lib/authed-fetch";
 import { isMatchBillable } from "@/lib/matchBillable";
-import { summarizeMatchFinance } from "@/lib/match-finance";
+import { summarizeMatchFinance, summarizeClubFinanceOverview } from "@/lib/match-finance";
 import { useState, useMemo, useEffect } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Match, MatchPayment, Player, SubscriptionPlan } from "@/lib/types";
@@ -967,61 +967,54 @@ function OtherFeesAdmin({ store }: { store: ReturnType<typeof useStore> }) {
                       ₹{fee.amount}
                     </span>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {!isPaid && p?.mobile && (
+                      {fee.status === "Unpaid" && p?.mobile && (
                         <button
-                          onClick={() => {
-                             const link = `${window.location.origin}/pay/${p.id}`;
-                             const text = `Hi ${p.name}, gentle reminder to clear your due of ₹${fee.amount} for ${fee.title}.\n\nPlease clear them at your earliest convenience using this link: ${link}`;
-                             const encodedText = encodeURIComponent(text);
-                             window.open(`https://wa.me/${p.mobile.replace("+", "")}?text=${encodedText}`, "_blank");
+                          onClick={async () => {
+                            try {
+                              const res = await authedFetch("/api/whatsapp/send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  action: "due_reminder",
+                                  playerId: p.id,
+                                }),
+                              });
+                              const data = await res.json().catch(() => ({}));
+                              if (!res.ok) {
+                                throw new Error(data.error || "Failed to send WhatsApp reminder.");
+                              }
+                              toast("WhatsApp reminder sent successfully!", "success");
+                            } catch (e: any) {
+                              toast(`Failed: ${e.message || "Failed to send WhatsApp reminder."}`, "error");
+                            }
                           }}
-                          className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                          className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap cursor-pointer"
                         >
                           WA Remind
                         </button>
                       )}
-                      {!isPaid && p?.email && (
+                      {fee.status === "Unpaid" && p?.email && (
                         <button
                           onClick={async () => {
-                            const link = `${window.location.origin}/pay/${p.id}`;
-                            const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || {
-                              subject: "Pending Fee Reminder - {{clubName}}",
-                              body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
-                            };
-                            const renderTpl = (txt: string) => {
-                              return txt
-                                .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
-                                .replace(/{{playerName}}/g, p.name || "Player")
-                                .replace(/{{amount}}/g, `₹${fee.amount}`)
-                                .replace(/{{duesText}}/g, fee.title || "outstanding fee")
-                                .replace(/{{link}}/g, link);
-                            };
                             try {
                               const res = await authedFetch("/api/email/send", {
                                 method: "POST",
+                                headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
-                                  to: [p.email],
-                                  subject: renderTpl(reminderTemplate.subject),
-                                  text: renderTpl(reminderTemplate.body),
-                                  config: store.appConfig,
-                                })
+                                  action: "due_reminder",
+                                  playerId: p.id,
+                                }),
                               });
-                              
-                              if (!res.ok) {
-                                const errData = await res.json().catch(() => ({}));
-                                throw new Error(errData.error || "Network error");
-                              }
-                              
-                              const data = await res.json();
-                              if (!data.success) {
-                                throw new Error(data.error || "Failed to send");
+                              const data = await res.json().catch(() => ({}));
+                              if (!res.ok || !data.success) {
+                                throw new Error(data.error || "Failed to send email reminder.");
                               }
                               toast("Email reminder sent successfully!", "success");
                             } catch (e: any) {
                               toast(`Failed: ${e.message || "Failed to send email reminder."}`, "error");
                             }
                           }}
-                          className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap"
+                          className="bg-accent/20 hover:bg-accent/30 text-accent font-bold text-[9px] uppercase tracking-widest px-2 py-1 rounded transition whitespace-nowrap cursor-pointer"
                         >
                           Email Remind
                         </button>
@@ -1156,14 +1149,13 @@ function AdminFinanceView({
       .filter((d) => !searchPlayer || d.hasResults); // If searching, hide matches with no matches
   }, [filteredMatches, store.payments, store.players, searchPlayer]);
 
-  const grandTotalCollected = reportData.reduce((t, d) => t + d.feeCollected, 0);
-  const grandTotalDue = reportData
-    .filter((d) => isMatchBillable(d.match))
-    .reduce((t, d) => t + d.totalDue, 0);
-
-  const collectedMatches = useMemo(() => {
-    return reportData.filter((d) => d.feeCollected > 0 || d.feeOffset > 0 || d.paidCount > 0);
-  }, [reportData]);
+  const clubOverview = useMemo(
+    () => summarizeClubFinanceOverview(reportData, isMatchBillable),
+    [reportData],
+  );
+  const grandTotalCollected = clubOverview.actualCashReceived;
+  const grandTotalDue = clubOverview.outstanding;
+  const collectedMatches = clubOverview.includedMatches;
 
 
   return (
@@ -1205,11 +1197,11 @@ function AdminFinanceView({
         <div className="space-y-4">
           {/* Club Finance Overview -> Match-wise -> Player-wise */}
           {(() => {
-            const totalExpected = collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0);
-            const totalSub = collectedMatches.reduce((s, d) => s + d.subscriptionCovered, 0);
-            const totalSponsored = collectedMatches.reduce((s, d) => s + d.feeOffset, 0);
-            const cashPct = totalExpected > 0 ? Math.round((grandTotalCollected * 10000) / totalExpected) / 100 : null;
-            const settledPct = totalExpected > 0 ? Math.round(((grandTotalCollected + totalSub) * 10000) / totalExpected) / 100 : null;
+            const totalExpected = clubOverview.totalExpected;
+            const totalSub = clubOverview.subscriptionCovered;
+            const totalSponsored = clubOverview.sponsored;
+            const cashPct = clubOverview.cashCollectionPct;
+            const settledPct = clubOverview.settlementPct;
             return (
               <div
                 data-testid="club-finance-overview"
