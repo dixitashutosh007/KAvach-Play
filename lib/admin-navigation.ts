@@ -2,11 +2,10 @@
  * Admin persona navigation model (D-18).
  *
  * The Admin persona has six primary destinations — Home, Match Center, Club,
- * Finance, Design Studio, Settings — in that order, on desktop and mobile. Each
- * destination and each Club section is shown only to roles the EXISTING
- * permission model already authorises; nothing here grants access. Firestore
- * rules and server-side RBAC remain the security boundary, and every screen keeps
- * its own guard in app/page.tsx.
+ * Finance, Design Studio, Settings — in that order, on desktop and mobile. All
+ * six destinations remain visible to every Admin role (D-18); nothing here grants
+ * access. Firestore rules and server-side RBAC remain the security boundary, and
+ * every screen keeps its own AccessDenied guard in app/page.tsx.
  *
  * Inputs are the *effective* flags computed in app/page.tsx (Super Admin claim
  * already folded into each role flag).
@@ -14,8 +13,8 @@
  * D-22: the active roles are exactly Super Admin, Club Admin and Finance Admin.
  * Match Admin, Studio Admin and Designer are retired into Club Admin (Match
  * Center, Studio and Design Studio are Club Admin areas); their legacy flags open
- * nothing. Destinations a role cannot use are hidden from the menu; if one is opened
- * directly, the screen shows a polite access-denied message (no silent redirect).
+ * nothing. If an admin opens a destination their role cannot use, the screen
+ * shows a polite access-denied message (no silent redirect).
  */
 
 export interface AdminCapabilities {

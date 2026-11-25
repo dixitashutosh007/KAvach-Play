@@ -78,9 +78,9 @@ export function MobileBottomNav({
 
   if (persona === "admin") {
     // Admin Primary Navigation (D-18): Home | Match Center | Club | Finance |
-    // Design Studio | Settings, filtered by the existing permission model — the
-    // same config and order as the desktop sidebar. No More drawer: club
-    // features live in Club's own section bar.
+    // Design Studio | Settings — all six destinations remain visible to every
+    // admin role, matching the desktop sidebar; unauthorized screens show
+    // AccessDenied. No More drawer: club features live in Club's section bar.
     const caps: AdminCapabilities = {
       isSuperAdmin: !!adminPermissions?.isSuperAdmin,
       isClubAdmin: !!adminPermissions?.isClubAdmin,

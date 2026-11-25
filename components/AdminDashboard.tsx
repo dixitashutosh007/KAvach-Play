@@ -279,20 +279,40 @@ export function AdminDashboard({
         new Date(`${b.date}T${b.time || "00:00"}`).getTime(),
     );
 
+    const activeMembers = players.filter(
+      (p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending",
+    );
+
     return up.map((m) => {
       const matchRecs = payments.filter((p) => p.matchId === m.id);
-      let squadCount = 0;
-      let yesCount = 0;
-      let maybeCount = 0;
-      matchRecs.forEach((p) => {
-        if (p.status !== "Not Playing") squadCount++;
-        if (p.availability === "Confirmed") yesCount++;
-        else if (p.availability === "Tentative") maybeCount++;
+      const recByPlayer = new Map(matchRecs.map((p) => [p.playerId, p]));
+      const squadCount = matchRecs.filter((p) => p.status !== "Not Playing").length;
+
+      let confirmedCount = 0;
+      let tentativeCount = 0;
+      let outCount = 0;
+      let unrespondedCount = 0;
+
+      activeMembers.forEach((member) => {
+        const av = recByPlayer.get(member.id)?.availability;
+        if (av === "Confirmed") confirmedCount++;
+        else if (av === "Tentative") tentativeCount++;
+        else if (av === "No") outCount++;
+        else unrespondedCount++;
       });
+
       const ground = grounds.find((g) => g.id === m.groundId);
-      return { match: m, ground, squadCount, yesCount, maybeCount };
+      return {
+        match: m,
+        ground,
+        squadCount,
+        confirmedCount,
+        tentativeCount,
+        outCount,
+        unrespondedCount,
+      };
     });
-  }, [canSeeClub, matches, payments, grounds]);
+  }, [canSeeClub, matches, payments, players, grounds]);
 
   const nextMatchItem = upcomingMatchesWithReadiness[0] || null;
 
@@ -585,14 +605,18 @@ export function AdminDashboard({
             tone: "bg-brand-surface text-brand",
             onClick: () => setActiveTab("club", "invite_player"),
           },
-          {
-            id: "announcements",
-            label: "Announcements",
-            sub: "Publish & pin",
-            icon: Megaphone,
-            tone: "bg-blue-50 text-blue-700",
-            onClick: () => setActiveTab("club", "announcements"),
-          },
+          ...(isSuperAdmin
+            ? [
+                {
+                  id: "announcements",
+                  label: "Announcements",
+                  sub: "Publish & pin",
+                  icon: Megaphone,
+                  tone: "bg-blue-50 text-blue-700",
+                  onClick: () => setActiveTab("club", "announcements"),
+                },
+              ]
+            : []),
         ]
       : []),
     ...(canSeeFinance && !canSeeClub
@@ -604,22 +628,6 @@ export function AdminDashboard({
             icon: Bell,
             tone: "bg-brand-surface text-brand",
             onClick: () => setActiveTab("finance", "dues"),
-          },
-          {
-            id: "match-fees",
-            label: "Match Fees",
-            sub: "Collect & reconcile",
-            icon: IndianRupee,
-            tone: "bg-emerald-50 text-emerald-700",
-            onClick: () => setActiveTab("finance", "matches"),
-          },
-          {
-            id: "activity-log",
-            label: "Activity Log",
-            sub: "Finance audit trail",
-            icon: PieChart,
-            tone: "bg-blue-50 text-blue-700",
-            onClick: () => setActiveTab("finance", "activity"),
           },
         ]
       : []),
@@ -780,7 +788,7 @@ export function AdminDashboard({
                   vs {nextMatchItem.match.opponent}
                 </p>
                 <p className="text-[11px] font-bold text-emerald-700 mt-1">
-                  {nextMatchItem.yesCount} Yes ·{" "}
+                  {nextMatchItem.confirmedCount} Confirmed ·{" "}
                   {nextMatchItem.squadCount > 0 ? `Squad ${nextMatchItem.squadCount}` : "Squad Open"}
                 </p>
               </>
@@ -894,7 +902,7 @@ export function AdminDashboard({
                 </div>
               ) : (
                 <div className="flex overflow-x-auto md:grid md:grid-cols-2 gap-3 pb-2 md:pb-0 snap-x no-scrollbar">
-                  {upcomingMatchesWithReadiness.slice(0, 4).map(({ match: m, ground, squadCount, yesCount, maybeCount }) => (
+                  {upcomingMatchesWithReadiness.slice(0, 4).map(({ match: m, ground, squadCount, confirmedCount, tentativeCount, outCount, unrespondedCount }) => (
                     <div
                       key={m.id}
                       className="min-w-[290px] md:min-w-0 snap-center bg-surface rounded-2xl border border-border border-l-4 border-l-brand p-4 shadow-xs shrink-0 flex flex-col justify-between gap-3"
@@ -921,11 +929,23 @@ export function AdminDashboard({
                         <p className="text-xs text-text-secondary truncate mt-0.5">
                           {m.format || "Match"} · {ground?.name || "Ground TBD"}
                         </p>
-                        <div className="mt-2.5 bg-surface-hover border border-border rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px]">
-                          <span className="text-text-secondary font-semibold">Availability</span>
-                          <span className="font-bold text-text-primary">
-                            <span className="text-emerald-700">{yesCount} Yes</span> · {maybeCount} Maybe
-                          </span>
+                        <div className="mt-2.5 bg-surface-hover border border-border rounded-xl px-2.5 py-2 grid grid-cols-4 gap-1 text-center">
+                          <div>
+                            <span className="block text-xs font-black text-emerald-700 tabular-nums">{confirmedCount}</span>
+                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Confirmed</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-black text-amber-700 tabular-nums">{tentativeCount}</span>
+                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Tentative</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-black text-rose-700 tabular-nums">{outCount}</span>
+                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Out</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-black text-text-muted tabular-nums">{unrespondedCount}</span>
+                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Pending</span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-1.5">
@@ -959,13 +979,6 @@ export function AdminDashboard({
                 </div>
               )}
             </section>
-          )}
-
-          {/* Club Performance Widget — Club / Super Admin (Desktop left col, or inline) */}
-          {canSeeClub && (
-            <div className="hidden lg:block">
-              <ClubPerformanceWidget canManage />
-            </div>
           )}
         </div>
 
@@ -1192,36 +1205,33 @@ export function AdminDashboard({
             </section>
           )}
 
-          {/* Announcements Shortcut & Mobile Club Performance — Club / Super Admin */}
+          {/* Announcements Shortcut — Club / Super Admin */}
           {canSeeClub && (
-            <>
-              <button
-                type="button"
-                data-testid="admin-home-announcements-link"
-                onClick={() => setActiveTab("club", "announcements")}
-                className="w-full min-h-[52px] bg-surface flex items-center justify-between p-3.5 rounded-2xl border border-border hover:bg-surface-hover transition shadow-xs cursor-pointer"
-              >
-                <span className="flex items-center gap-3 text-left">
-                  <span className="w-9 h-9 rounded-xl bg-brand-surface text-brand flex items-center justify-center shrink-0">
-                    <Bell className="w-4 h-4" aria-hidden="true" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-bold text-text-primary">Club Announcements</span>
-                    <span className="block text-xs text-text-secondary">
-                      Publish, edit and pin announcements in Club
-                    </span>
+            <button
+              type="button"
+              data-testid="admin-home-announcements-link"
+              onClick={() => setActiveTab("club", "announcements")}
+              className="w-full min-h-[52px] bg-surface flex items-center justify-between p-3.5 rounded-2xl border border-border hover:bg-surface-hover transition shadow-xs cursor-pointer"
+            >
+              <span className="flex items-center gap-3 text-left">
+                <span className="w-9 h-9 rounded-xl bg-brand-surface text-brand flex items-center justify-center shrink-0">
+                  <Bell className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-text-primary">Club Announcements</span>
+                  <span className="block text-xs text-text-secondary">
+                    Publish, edit and pin announcements in Club
                   </span>
                 </span>
-                <ChevronRight className="w-4 h-4 text-text-muted" aria-hidden="true" />
-              </button>
-
-              <div className="lg:hidden">
-                <ClubPerformanceWidget canManage />
-              </div>
-            </>
+              </span>
+              <ChevronRight className="w-4 h-4 text-text-muted" aria-hidden="true" />
+            </button>
           )}
         </div>
       </div>
+
+      {/* Club Performance Widget — single instance rendered for both mobile and desktop */}
+      {canSeeClub && <ClubPerformanceWidget canManage />}
 
       {/* Match Picker Modal for Add Squad / Edit & Calendar */}
       {matchPickerMode && (
@@ -1275,7 +1285,7 @@ export function AdminDashboard({
                 : "Or select an upcoming match to edit/manage:"}
             </p>
             <div className="max-h-64 overflow-y-auto divide-y divide-border border border-border rounded-xl">
-              {upcomingMatchesWithReadiness.map(({ match: m, ground, squadCount, yesCount }) => (
+              {upcomingMatchesWithReadiness.map(({ match: m, ground, squadCount, confirmedCount }) => (
                 <button
                   key={m.id}
                   type="button"
@@ -1288,7 +1298,7 @@ export function AdminDashboard({
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-text-primary truncate">vs {m.opponent}</p>
                     <p className="text-[11px] text-text-secondary truncate">
-                      {formatDate(m.date)} · {ground?.name || "TBD"} · {yesCount} Yes
+                      {formatDate(m.date)} · {ground?.name || "TBD"} · {confirmedCount} Confirmed
                     </p>
                   </div>
                   <span className="text-xs font-bold text-brand shrink-0">

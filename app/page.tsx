@@ -1026,8 +1026,9 @@ export default function Home() {
               ) : (
                 <div className="space-y-1">
                   {/* Admin Primary Navigation (D-18): Home, Match Center, Club,
-                      Finance, Design Studio, Settings — same config and order as
-                      the mobile bar, filtered by the existing permission model. */}
+                      Finance, Design Studio, Settings — all six destinations
+                      remain visible to every admin role; unauthorized screens
+                      are protected by AccessDenied guards. */}
                   {getAdminPrimaryNav(adminCaps, (f) => isFeatureEnabled(f)).map((item) => {
                     const IconComp = ADMIN_NAV_ICONS[item.tab];
                     const isActive = getAdminNavParent(activeTab) === item.tab;
@@ -1118,6 +1119,7 @@ export default function Home() {
             )}
 
             {persona === "admin" &&
+              (isSuperAdmin || isClubAdmin) &&
               store.players.filter((p) => p.inviteStatus === "Pending" || p.inviteStatus === "Unverified").filter(p => !p.disabled).length >
                 0 &&
               activeTab !== "studio" && activeTab !== "club" && (
