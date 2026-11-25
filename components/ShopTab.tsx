@@ -57,7 +57,16 @@ export function ShopTab({
   const [adminSubTab, setAdminSubTab] = useState<"merchandise" | "orders">(initialView === "orders" ? "orders" : "merchandise");
   // Follow Club Menu entry points while the Shop is already open.
   useEffect(() => {
-    if (!isAdmin || !initialView) return;
+    if (!isAdmin) {
+      if (view === "admin" || view === "global-list") {
+        setView("catalog");
+      }
+      if (showReportModal) {
+        setShowReportModal(false);
+      }
+      return;
+    }
+    if (!initialView) return;
     if (initialView === "products" || initialView === "orders") {
       setView("admin");
       setAdminSubTab(initialView === "orders" ? "orders" : "merchandise");
@@ -896,7 +905,11 @@ export function ShopTab({
     }
   };
 
-  const myOrders = store.merchOrders.filter((o) => o.playerId === playerProfile?.id || o.playerId === user?.uid);
+  const myOrders = store.merchOrders.filter(
+    (o) =>
+      (Boolean(playerProfile?.id) && o.playerId === playerProfile?.id) ||
+      (Boolean(user?.uid) && o.playerId === user?.uid),
+  );
 
   return (
     <div className="space-y-6" id="shop-tab-container">
@@ -930,14 +943,16 @@ export function ShopTab({
           >
             My Orders ({myOrders.length})
           </button>
-          <button
-            onClick={() => setView("global-list")}
-            className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1 whitespace-nowrap ${
-              view === "global-list" ? "bg-accent text-text-accent shadow-lg" : "text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            Club ({store.merchOrders.length})
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setView("global-list")}
+              className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-1 whitespace-nowrap ${
+                view === "global-list" ? "bg-accent text-text-accent shadow-lg" : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              Club ({store.merchOrders.length})
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => setView("admin")}
@@ -2126,7 +2141,7 @@ export function ShopTab({
         </div>
       )}
 
-      {view === "global-list" && (
+      {isAdmin && view === "global-list" && (
         <div className="space-y-6">
           <div className="bg-surface p-5 rounded-2xl border border-border space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
@@ -2440,8 +2455,8 @@ export function ShopTab({
         </div>
       )}
 
-      {/* WhatsApp Report Modal */}
-      {showReportModal && (
+      {/* WhatsApp Report Modal (Admin only) */}
+      {isAdmin && showReportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-surface w-full max-w-lg border border-border rounded-2xl overflow-hidden shadow-2xl">
             <div className="bg-gradient-to-r from-accent/10 to-surface-hover px-5 py-4 flex items-center justify-between border-b border-border">
