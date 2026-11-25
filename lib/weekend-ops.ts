@@ -345,18 +345,81 @@ export function validatePotwMessage(raw: unknown): { ok: true; value: string } |
 }
 
 /**
- * Banner visibility: the newest award only, for 7 days from its award time.
- * A newer award replaces it immediately; without one it expires after 7 days.
+ * Banner visibility: the newest non-historical award only, for 7 days from its
+ * original `createdAt` timestamp. Missing/invalid `createdAt` is never substituted
+ * with `nowMs` and is safely excluded.
  */
-export function activePotwPost<T extends { id: string; kind?: string; createdAt?: unknown }>(posts: readonly T[], nowMs: number, toMillis: (v: unknown) => number | null): T | null {
+export function activePotwPost<
+  T extends {
+    id: string;
+    kind?: string;
+    createdAt?: unknown;
+    historical?: boolean;
+    potw?: { weekendId?: string; historical?: boolean } | null;
+  },
+>(posts: readonly T[], nowMs: number, toMillis: (v: unknown) => number | null): T | null {
+  if (!Number.isFinite(nowMs)) return null;
   const awards = posts
-    .filter((p) => p.kind === "potw")
+    .filter((p) => p.kind === "potw" && !p.historical && !p.potw?.historical)
     .map((p) => ({ p, at: toMillis(p.createdAt) }))
-    .filter((x): x is { p: T; at: number } => x.at !== null)
-    .sort((a, b) => b.at - a.at);
+    .filter((x): x is { p: T; at: number } => x.at !== null && Number.isFinite(x.at))
+    .sort((a, b) => b.at - a.at || String(b.p.potw?.weekendId || b.p.id).localeCompare(String(a.p.potw?.weekendId || a.p.id)));
   const latest = awards[0];
   if (!latest) return null;
   return nowMs - latest.at < POTW_BANNER_DAYS * DAY && latest.at <= nowMs + 5 * 60 * 1000 ? latest.p : null;
+}
+
+export interface PlayerHomePotwDisplay {
+  postId: string;
+  playerId: string;
+  playerName: string;
+  photoURL?: string;
+  message: string;
+  weekendId?: string;
+  weekendLabel?: string;
+  awardedAtMs: number;
+}
+
+/**
+ * Pure selector for the Player Home POTW announcement section.
+ * Reuses `activePotwPost()` and never falls back to `Date.now()` for missing timestamps.
+ */
+export function selectPlayerHomePotw<
+  T extends {
+    id: string;
+    kind?: string;
+    createdAt?: unknown;
+    historical?: boolean;
+    potw?: {
+      playerId?: string;
+      playerName?: string;
+      photoURL?: string;
+      message?: string;
+      weekendId?: string;
+      weekendLabel?: string;
+      historical?: boolean;
+    } | null;
+  },
+>(posts: readonly T[], nowMs: number, toMillis: (v: unknown) => number | null): PlayerHomePotwDisplay | null {
+  const post = activePotwPost(posts, nowMs, toMillis);
+  const potw = post?.potw;
+  if (!post || !potw?.playerName?.trim()) return null;
+  const awardedAtMs = toMillis(post.createdAt);
+  if (awardedAtMs === null) return null;
+  const photoURL =
+    typeof potw.photoURL === "string" && potw.photoURL.startsWith("https://")
+      ? potw.photoURL
+      : undefined;
+  return {
+    postId: post.id,
+    playerId: String(potw.playerId || ""),
+    playerName: potw.playerName.trim(),
+    photoURL,
+    message: (potw.message || "").trim(),
+    weekendId: potw.weekendId,
+    weekendLabel: potw.weekendLabel,
+    awardedAtMs,
+  };
 }
 
 // ── CricHeroes link ─────────────────────────────────────────────────────────

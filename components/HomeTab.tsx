@@ -42,6 +42,7 @@ import { availabilityBlockMessage, PROFILE_LINK_MESSAGES } from "@/lib/profile-l
 // Modular Phase 2.1 Subcomponents
 import { PlayerHomeHeader } from "./home/PlayerHomeHeader";
 import { CampaignHeroBanner } from "./home/CampaignHeroBanner";
+import { PotwHomeSection } from "./home/PotwHomeSection";
 import { PersonalPaymentCard } from "./home/PersonalPaymentCard";
 import { UpcomingMatchesSection } from "./home/UpcomingMatchesSection";
 import { JerseyInfographic } from "./matches/JerseyInfographic";
@@ -71,6 +72,12 @@ export function HomeTab({
 }) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const { posts = [], players = [], matches = [], grounds = [], polls = [], payments = [], appConfig } = store;
 
@@ -443,6 +450,9 @@ export function HomeTab({
             isFeatureEnabled={isFeatureEnabled}
             onNavigate={handleNavigate}
           />
+
+          {/* Dedicated Player of the Week Announcement (7-day window, live replacement) */}
+          <PotwHomeSection posts={posts} nowMs={nowMs} />
 
           {/* Personal Payment Summary (Pay Now uses the existing payments flow) */}
           <PersonalPaymentCard

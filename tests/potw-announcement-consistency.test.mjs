@@ -7,7 +7,9 @@ import {
   executeBadgeDelete,
   getPotwWeekendIdFromBadge,
   getPotwWeekendIdFromPost,
+  selectPlayerHomePotw,
 } from "../lib/weekend-ops.ts";
+import { toMillis } from "../lib/club-feed.ts";
 
 const root = process.cwd();
 
@@ -139,4 +141,95 @@ test("useStore & app/page.tsx keep Club posts live, prevent duplicate deletes, a
   assert.match(storeSrc, /\/api\/admin\/player-of-weekend\?weekendId=/);
   assert.match(storeSrc, /if \(k === "kind" \|\| k === "potw"\) continue;/);
   assert.match(pageSrc, /POSTS_TABS = new Set\(\["home", "club"\]\)/);
+});
+
+test("Player Home POTW selector: 7-day expiry, immediate replacement, historical exclusion, and live updates", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const NOW = Date.parse("2026-11-25T10:00:00Z");
+
+  const mkPotw = (id, ageMs, overrides = {}) => ({
+    id,
+    kind: "potw",
+    isAnnouncement: true,
+    createdAt: new Date(NOW - ageMs).toISOString(),
+    potw: {
+      playerId: `player_${id}`,
+      playerName: `Winner ${id}`,
+      photoURL: "https://example.com/photo.jpg",
+      message: `Message ${id}`,
+      weekendId: "2026-11-21",
+      weekendLabel: "Nov 21–22, 2026",
+      ...(overrides.potw || {}),
+    },
+    ...overrides,
+  });
+
+  const normalAnnouncement = {
+    id: "ann-1",
+    isAnnouncement: true,
+    title: "Kit Distribution",
+    text: "Collect kits",
+    createdAt: new Date(NOW - 1000).toISOString(),
+  };
+  const feedPost = {
+    id: "feed-1",
+    isAnnouncement: false,
+    text: "Great net session",
+    createdAt: new Date(NOW - 1000).toISOString(),
+  };
+
+  // 1. No POTW announcement exists
+  assert.equal(selectPlayerHomePotw([normalAnnouncement, feedPost], NOW, toMillis), null);
+
+  // 2. One current POTW announcement is displayed
+  const single = mkPotw("p1", 2 * DAY_MS);
+  const resSingle = selectPlayerHomePotw([normalAnnouncement, single, feedPost], NOW, toMillis);
+  assert.ok(resSingle);
+  assert.equal(resSingle.postId, "p1");
+  assert.equal(resSingle.playerName, "Winner p1");
+  assert.equal(resSingle.photoURL, "https://example.com/photo.jpg");
+  assert.equal(resSingle.message, "Message p1");
+  assert.equal(resSingle.weekendLabel, "Nov 21–22, 2026");
+
+  // 3 & 4. Multiple POTW posts -> newest eligible replaces older immediately
+  const older = mkPotw("old", 4 * DAY_MS);
+  const newer = mkPotw("new", 1 * 60 * 60 * 1000);
+  assert.equal(selectPlayerHomePotw([older, newer], NOW, toMillis)?.postId, "new");
+
+  // 5. Visible just before 7-day boundary
+  assert.equal(selectPlayerHomePotw([mkPotw("edge", 7 * DAY_MS - 1)], NOW, toMillis)?.postId, "edge");
+
+  // 6. Hidden at and after 7-day boundary
+  assert.equal(selectPlayerHomePotw([mkPotw("exact", 7 * DAY_MS)], NOW, toMillis), null);
+  assert.equal(selectPlayerHomePotw([mkPotw("past", 7 * DAY_MS + 1000)], NOW, toMillis), null);
+
+  // 7. Historical awards never appear on Player Home
+  const hist1 = mkPotw("h1", 1000, { historical: true });
+  const hist2 = mkPotw("h2", 1000, { potw: { playerName: "Hist", historical: true } });
+  assert.equal(selectPlayerHomePotw([hist1, hist2], NOW, toMillis), null);
+
+  // 8. Missing or invalid createdAt is handled safely (never substitutes NOW)
+  for (const badCreatedAt of [undefined, null, "not-a-date", {}]) {
+    const bad = mkPotw("bad", 1000, { createdAt: badCreatedAt });
+    assert.equal(selectPlayerHomePotw([bad], NOW, toMillis), null);
+  }
+
+  // 9. Editing current POTW updates visible announcement
+  const edited = mkPotw("new", 1 * 60 * 60 * 1000, {
+    potw: { playerId: "p2", playerName: "Aashna", photoURL: "https://example.com/aashna.jpg", message: "4 wickets!", weekendLabel: "Nov 21–22, 2026" },
+  });
+  const resEdited = selectPlayerHomePotw([older, edited], NOW, toMillis);
+  assert.equal(resEdited?.playerName, "Aashna");
+  assert.equal(resEdited?.message, "4 wickets!");
+  assert.equal(resEdited?.photoURL, "https://example.com/aashna.jpg");
+
+  // 10. Deleting current POTW removes it (when no other active POTW exists)
+  assert.equal(selectPlayerHomePotw([normalAnnouncement, feedPost], NOW, toMillis), null);
+
+  // 11. Deleting an older POTW does not remove the current announcement
+  assert.equal(selectPlayerHomePotw([edited, normalAnnouncement], NOW, toMillis)?.postId, "new");
+
+  // 12. Unsafe photoURL is stripped so fallback avatar renders
+  const unsafePhoto = mkPotw("unsafe", 1000, { potw: { playerName: "Safe Fallback", photoURL: "javascript:alert(1)" } });
+  assert.equal(selectPlayerHomePotw([unsafePhoto], NOW, toMillis)?.photoURL, undefined);
 });
