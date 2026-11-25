@@ -69,12 +69,6 @@ export function AdminDashboard({
   const [financeTab, setFinanceTab] = useState<FinanceSnapshotTab>("dues");
   const [remindingStudioId, setRemindingStudioId] = useState<string | null>(null);
 
-  // Pending member approvals (Club / Super Admin)
-  const pendingApprovalsCount = useMemo(() => {
-    if (!canSeeClub) return 0;
-    return players.filter((p) => !p.disabled && p.inviteStatus === "Pending").length;
-  }, [players, canSeeClub]);
-
   // Financial summaries (Finance / Super Admin only)
   const { totalDueAmount, duePlayersCount, topDuePlayers } = useMemo(() => {
     if (!canSeeFinance) {
@@ -677,58 +671,29 @@ export function AdminDashboard({
         )}
       </div>
 
-      {/* Attention Strip */}
-      {(pendingApprovalsCount > 0 || weekendPending > 0) && (
-        <div
-          className={`grid gap-2.5 ${
-            pendingApprovalsCount > 0 && weekendPending > 0 ? "md:grid-cols-2" : "grid-cols-1"
-          }`}
-          data-testid="admin-attention-strip"
-        >
-          {pendingApprovalsCount > 0 && canSeeClub && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("club", "players")}
-              className="w-full min-h-[44px] bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-left hover:bg-amber-100/70 transition cursor-pointer"
-            >
-              <span className="flex items-center gap-2.5 min-w-0">
-                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                <span className="min-w-0">
-                  <span className="block text-xs font-bold text-text-primary">
-                    {pendingApprovalsCount} Pending Member Approval{pendingApprovalsCount === 1 ? "" : "s"}
-                  </span>
-                  <span className="block text-[11px] text-text-secondary truncate">
-                    New registrations awaiting review in Roster
-                  </span>
+      {/* Attention Strip (Weekend Ops — Pending Approvals is already rendered by app/page.tsx) */}
+      {weekendPending > 0 && (
+        <div className="grid grid-cols-1 gap-2.5" data-testid="admin-attention-strip">
+          <button
+            type="button"
+            onClick={handleWeekendClick}
+            className="w-full min-h-[44px] bg-brand-surface border border-brand/20 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-left hover:bg-brand-surface/80 transition cursor-pointer"
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Clock className="w-4 h-4 text-brand shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-xs font-bold text-text-primary">
+                  {weekendPending} Weekend Ops Task{weekendPending === 1 ? "" : "s"} Pending
+                </span>
+                <span className="block text-[11px] text-text-secondary truncate">
+                  {canSeeClub ? "Match results, POTW or fee tasks due" : "Weekend financial tasks due"}
                 </span>
               </span>
-              <span className="text-xs font-extrabold text-amber-800 inline-flex items-center gap-0.5 shrink-0">
-                Review <ChevronRight className="w-4 h-4" />
-              </span>
-            </button>
-          )}
-          {weekendPending > 0 && (
-            <button
-              type="button"
-              onClick={handleWeekendClick}
-              className="w-full min-h-[44px] bg-brand-surface border border-brand/20 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-left hover:bg-brand-surface/80 transition cursor-pointer"
-            >
-              <span className="flex items-center gap-2.5 min-w-0">
-                <Clock className="w-4 h-4 text-brand shrink-0" />
-                <span className="min-w-0">
-                  <span className="block text-xs font-bold text-text-primary">
-                    {weekendPending} Weekend Ops Task{weekendPending === 1 ? "" : "s"} Pending
-                  </span>
-                  <span className="block text-[11px] text-text-secondary truncate">
-                    {canSeeClub ? "Match results, POTW or fee tasks due" : "Weekend financial tasks due"}
-                  </span>
-                </span>
-              </span>
-              <span className="text-xs font-extrabold text-brand inline-flex items-center gap-0.5 shrink-0">
-                Open <ChevronRight className="w-4 h-4" />
-              </span>
-            </button>
-          )}
+            </span>
+            <span className="text-xs font-extrabold text-brand inline-flex items-center gap-0.5 shrink-0">
+              Open <ChevronRight className="w-4 h-4" />
+            </span>
+          </button>
         </div>
       )}
 
@@ -863,19 +828,15 @@ export function AdminDashboard({
         }`}
       >
         {/* Primary Operational Column */}
-        <div className={canSeeClub && canSeeFinance ? "lg:col-span-7 space-y-5" : "space-y-5"}>
+        <div className={canSeeClub && canSeeFinance ? "lg:col-span-7 space-y-5 min-w-0" : "space-y-5 min-w-0"}>
           {/* Unified Quick Actions */}
-          <section data-testid="admin-quick-actions">
+          <section data-testid="admin-quick-actions" className="min-w-0">
             <div className="flex items-center justify-between mb-2.5">
               <h2 className="text-xs font-black uppercase tracking-wider text-text-secondary">
                 Quick Actions
               </h2>
             </div>
-            <div
-              className={`grid gap-2.5 ${
-                canSeeClub ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-4"
-              }`}
-            >
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {quickActions.map((act) => {
                 const Icon = act.icon;
                 return (
@@ -884,7 +845,7 @@ export function AdminDashboard({
                     type="button"
                     data-testid={`quick-action-${act.id}`}
                     onClick={act.onClick}
-                    className="min-h-[56px] bg-surface rounded-xl border border-border p-2.5 sm:p-3 flex items-center gap-2.5 text-left hover:bg-surface-hover hover:border-brand/30 transition shadow-xs cursor-pointer"
+                    className="w-full min-w-0 min-h-[56px] bg-surface rounded-xl border border-border p-2.5 sm:p-3 flex items-center gap-2.5 text-left hover:bg-surface-hover hover:border-brand/30 transition shadow-xs cursor-pointer"
                   >
                     <span
                       className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${act.tone}`}
@@ -1009,7 +970,7 @@ export function AdminDashboard({
         </div>
 
         {/* Secondary / Summary Column */}
-        <div className={canSeeClub && canSeeFinance ? "lg:col-span-5 space-y-4" : "space-y-4"}>
+        <div className={canSeeClub && canSeeFinance ? "lg:col-span-5 space-y-4 min-w-0" : "space-y-4 min-w-0"}>
           {/* Finance Snapshot — Finance / Super Admin */}
           {canSeeFinance && (
             <section
