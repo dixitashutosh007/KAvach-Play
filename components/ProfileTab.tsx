@@ -19,6 +19,7 @@ import Image from "next/image";
 import { PlayerFinanceView } from "./FinanceTab";
 import { ProfilePerformanceCard, ProfileStudioCard } from "./profile/ProfileHubCards";
 import { PlayerProfileHub } from "./profile/PlayerProfileHub";
+import { ClubActionCentre } from "@/components/action-centre/ClubActionCentre";
 import { PollInteraction, PollResults } from "./OpinionTab";
 import { AuthProviderBadges } from "./AuthProviderBadges";
 import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet, BadgeShowcase } from "./BadgeIcon";
@@ -42,7 +43,7 @@ export function ProfileTab({
   /** "player" renders the Player persona Profile hub (D-16 / D-20). */
   persona?: "admin" | "player";
   /** Opens a secondary destination from the Profile (studio, finance, badges, leaderboard). */
-  onNavigate?: (tab: string) => void;
+  onNavigate?: (tab: string, action?: string) => void;
   /** D-20: Profile opens from the header avatar; Back returns to the previous screen. */
   onBack?: () => void;
 }) {
@@ -311,7 +312,7 @@ export function ProfileTab({
         <h2 className="text-lg font-bold tracking-tight text-text-primary">
           Personal Profile
         </h2>
-        {!isEditing && (
+      {!isEditing && (
           <button
             onClick={() => setIsEditing(true)}
             className="rounded-full bg-surface-hover px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-text-primary hover:bg-surface-hover transition"
@@ -744,6 +745,16 @@ export function ProfileTab({
           <OpinionResults store={store} playerId={linkedPlayer.id} />
         </div>
       )}
+
+      {!isEditing &&
+        (appUser?.isClubAdmin || appUser?.role === "admin") && (
+          <ClubActionCentre
+            enabled={true}
+            compact={true}
+            showPopup={false}
+            onNavigate={(tab, action) => onNavigate?.(tab, action)}
+          />
+        )}
 
       {!isEditing && (
         <div className="pt-6 pb-2 space-y-4">

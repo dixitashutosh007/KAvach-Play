@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert } from "lucide-react";
 import { formatDate, computeLateFees } from "@/lib/utils";
@@ -42,6 +42,13 @@ export function DuesAndRemindersTab({
   const [emailTemplate, setEmailTemplate] = useState(
     store.appConfig?.emailTemplates?.due_reminder || defaultTemplate
   );
+
+  useEffect(() => {
+    const saved = store.appConfig?.emailTemplates?.due_reminder;
+    if (saved && (saved.subject || saved.body)) {
+      setEmailTemplate(saved);
+    }
+  }, [store.appConfig?.emailTemplates?.due_reminder]);
 
   const [isEmailSubOpen, setIsEmailSubOpen] = useState(true);
 

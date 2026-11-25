@@ -126,6 +126,8 @@ export type AppUser = {
   firstProviderLinkedAt?: Record<string, string>;
   /** Admin Home dismissed expired-Studio alert map: playerId -> dismissed expiry key. */
   dismissedExpiredStudioAlerts?: Record<string, string>;
+  /** Club Admin Weekly Action Centre per-admin popup dismissals: actionId -> weekId. */
+  dismissedActionCentrePopups?: Record<string, string>;
 };
 
 export type Ground = {
@@ -195,6 +197,8 @@ export type Match = {
   playerOfTheMatch?: string;
   potmId?: string;
   captainId?: string;
+  squadShareInitiatedAt?: any;
+  squadShareInitiatedBy?: string;
   topPerformerIds?: string[];
   bestBatsman?: string;
   bestBowler?: string;

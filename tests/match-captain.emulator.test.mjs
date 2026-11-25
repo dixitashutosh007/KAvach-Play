@@ -72,7 +72,7 @@ describe("Match Captain Management — server API & Firestore rules", { skip }, 
     }
   });
 
-  it("assigns captain outside squad without altering squad payments, changes captain, and removes captain", async () => {
+  it("atomically adds captain to squad, preserves existing squad/financials on change/clear, rejects unavailable/inactive, and handles concurrency", async () => {
     await db.collection("matches").doc("m_cap_1").set({
       id: "m_cap_1",
       groundId: "g1",
@@ -97,6 +97,12 @@ describe("Match Captain Management — server API & Firestore rules", { skip }, 
       mobile: "9876543211",
       inviteStatus: "Verified",
     });
+    await db.collection("players").doc("p_unavail").set({
+      id: "p_unavail",
+      name: "Unavailable Player",
+      mobile: "9876543219",
+      inviteStatus: "Verified",
+    });
     await db.collection("players").doc("p_disabled").set({
       id: "p_disabled",
       name: "Disabled Player",
@@ -118,20 +124,54 @@ describe("Match Captain Management — server API & Firestore rules", { skip }, 
       mergeStatus: "completed",
     });
 
-    // Assign non-squad player as captain
+    // Existing Paid squad record for p_squad (financials must remain untouched)
+    await db.collection("matches").doc("m_cap_1").collection("payments").doc("pay_squad_1").set({
+      id: "pay_squad_1",
+      matchId: "m_cap_1",
+      playerId: "p_squad",
+      status: "Paid",
+      availability: "Confirmed",
+      feeOverride: 250,
+    });
+
+    // Explicit unavailable ("No") record for p_unavail
+    await db.collection("matches").doc("m_cap_1").collection("payments").doc("pay_unavail_1").set({
+      id: "pay_unavail_1",
+      matchId: "m_cap_1",
+      playerId: "p_unavail",
+      status: "Not Playing",
+      availability: "No",
+    });
+
+    // 1. Assign non-squad player as captain -> automatically added to squad
     const res1 = await postCaptain({ matchId: "m_cap_1", captainId: "p_non_squad" }, CLUB);
     assert.equal(res1.status, 200);
     const j1 = await res1.json();
     assert.equal(j1.captainId, "p_non_squad");
+    assert.equal(j1.squadAction, "added_to_squad");
 
     const mAfter1 = (await db.collection("matches").doc("m_cap_1").get()).data();
     assert.equal(mAfter1.captainId, "p_non_squad");
 
-    // Verify no payment/squad doc was created for the non-squad captain
-    const paySnap = await db.collection("matches").doc("m_cap_1").collection("payments").get();
-    assert.equal(paySnap.size, 0);
+    const nonSquadPaySnap = await db
+      .collection("matches")
+      .doc("m_cap_1")
+      .collection("payments")
+      .where("playerId", "==", "p_non_squad")
+      .get();
+    assert.equal(nonSquadPaySnap.size, 1);
+    assert.equal(nonSquadPaySnap.docs[0].data().status, "Unpaid");
 
-    // Reject inactive/disabled, pending signup, and completed-merge players
+    // 2. Reject unavailable ("No") player without overriding status
+    const resUnavail = await postCaptain({ matchId: "m_cap_1", captainId: "p_unavail" }, CLUB);
+    assert.equal(resUnavail.status, 400);
+    const unavailPay = (
+      await db.collection("matches").doc("m_cap_1").collection("payments").doc("pay_unavail_1").get()
+    ).data();
+    assert.equal(unavailPay.status, "Not Playing");
+    assert.equal(unavailPay.availability, "No");
+
+    // 3. Reject inactive/disabled, pending signup, and completed-merge players
     const resDisabled = await postCaptain({ matchId: "m_cap_1", captainId: "p_disabled" }, SUPER);
     assert.equal(resDisabled.status, 400);
     const resPending = await postCaptain({ matchId: "m_cap_1", captainId: "p_pending" }, SUPER);
@@ -139,17 +179,66 @@ describe("Match Captain Management — server API & Firestore rules", { skip }, 
     const resMergeDone = await postCaptain({ matchId: "m_cap_1", captainId: "p_merge_done" }, SUPER);
     assert.equal(resMergeDone.status, 400);
 
-    // Change captain
+    // 4. Change captain to p_squad (already in squad) -> no duplicate, financials preserved, previous captain stays in squad
     const res2 = await postCaptain({ matchId: "m_cap_1", captainId: "p_squad" }, SUPER);
     assert.equal(res2.status, 200);
+    const j2 = await res2.json();
+    assert.equal(j2.squadAction, "already_in_squad");
     const mAfter2 = (await db.collection("matches").doc("m_cap_1").get()).data();
     assert.equal(mAfter2.captainId, "p_squad");
 
-    // Remove captain
+    const squadPaySnap = await db
+      .collection("matches")
+      .doc("m_cap_1")
+      .collection("payments")
+      .where("playerId", "==", "p_squad")
+      .get();
+    assert.equal(squadPaySnap.size, 1);
+    assert.equal(squadPaySnap.docs[0].data().status, "Paid");
+    assert.equal(squadPaySnap.docs[0].data().feeOverride, 250);
+
+    const prevCapPaySnap = await db
+      .collection("matches")
+      .doc("m_cap_1")
+      .collection("payments")
+      .where("playerId", "==", "p_non_squad")
+      .get();
+    assert.equal(prevCapPaySnap.size, 1);
+    assert.equal(prevCapPaySnap.docs[0].data().status, "Unpaid");
+
+    // 5. Concurrent captain assignments -> no duplicate squad rows
+    const [conc1, conc2] = await Promise.all([
+      postCaptain({ matchId: "m_cap_1", captainId: "p_non_squad" }, CLUB),
+      postCaptain({ matchId: "m_cap_1", captainId: "p_non_squad" }, SUPER),
+    ]);
+    assert.equal(conc1.status, 200);
+    assert.equal(conc2.status, 200);
+    const afterConcPay = await db
+      .collection("matches")
+      .doc("m_cap_1")
+      .collection("payments")
+      .where("playerId", "==", "p_non_squad")
+      .get();
+    assert.equal(afterConcPay.size, 1);
+
+    // 6. Clear captain -> captainId removed, player remains in squad
     const res3 = await postCaptain({ matchId: "m_cap_1", captainId: null }, CLUB);
     assert.equal(res3.status, 200);
     const mAfter3 = (await db.collection("matches").doc("m_cap_1").get()).data();
     assert.equal(mAfter3.captainId, undefined);
+    const afterClearPay = await db
+      .collection("matches")
+      .doc("m_cap_1")
+      .collection("payments")
+      .where("playerId", "==", "p_non_squad")
+      .get();
+    assert.equal(afterClearPay.size, 1);
+
+    // 7. Audit log distinguishes newly added vs already in squad
+    const auditSnap = await db.collection("auditLogs").where("entityId", "==", "m_cap_1").get();
+    const summaries = auditSnap.docs.map((d) => d.data().summary);
+    assert.ok(summaries.some((s) => s.includes("(newly added to squad)")));
+    assert.ok(summaries.some((s) => s.includes("(already in squad)")));
   });
 
   it("enforces Firestore rules for captainId on matches/{matchId}", async () => {

@@ -39,6 +39,7 @@ import {
 } from "./festive/IndependenceDay";
 import { computeMatchAvailabilityReadiness } from "@/lib/match-readiness";
 import { SquadNotifyModal } from "@/components/matches/SquadNotifyModal";
+import { ClubActionCentre } from "@/components/action-centre/ClubActionCentre";
 import {
   getKolkataDayKey,
   getUpcomingMatchesMissingCaptain,
@@ -912,6 +913,15 @@ export function AdminDashboard({
               })}
             </div>
           </section>
+
+          {/* Club Admin Weekly Action Centre */}
+          {canSeeClub && (
+            <ClubActionCentre
+              enabled={canSeeClub}
+              onNavigate={(tab, action) => setActiveTab(tab, action)}
+              refreshTrigger={matches}
+            />
+          )}
 
           {/* Today & Upcoming Matches — Club / Super Admin */}
           {canSeeClub && shouldShowFridayCaptainReminder(matches, canSeeClub, kolkataNowMs) && (() => {

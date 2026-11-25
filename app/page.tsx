@@ -1492,9 +1492,18 @@ export default function Home() {
                     )}
                     {/* Global admin screens reached from the header. */}
                     {activeTab === "notifications" && (
-                      <NotificationsTab store={store} persona={persona} />
+                      <NotificationsTab
+                        store={store}
+                        persona={persona}
+                        onNavigate={(tab, action) => setActiveTab(tab, action)}
+                      />
                     )}
-                    {activeTab === "profile" && <ProfileTab store={store} />}
+                    {activeTab === "profile" && (
+                      <ProfileTab
+                        store={store}
+                        onNavigate={(tab, action) => setActiveTab(tab, action)}
+                      />
+                    )}
                   </motion.div>
                 </AnimatePresence>
               </div>

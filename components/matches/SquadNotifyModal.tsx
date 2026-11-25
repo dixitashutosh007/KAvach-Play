@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CalendarDays, MapPin, MessageSquare, Shield, Users, X } from "lucide-react";
 import type { Ground, Match, MatchPayment, Player } from "@/lib/types";
+import { authedFetch } from "@/lib/authed-fetch";
 import { resolveMatchCaptain } from "@/lib/match-captain";
 import {
   buildDefaultSquadNotifyMessage,
@@ -69,6 +70,11 @@ export function SquadNotifyModal({
       resolution,
     });
     const url = buildSquadWhatsAppUrl(message);
+    authedFetch("/api/admin/action-centre", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "record_share", matchId: match.id }),
+    }).catch(() => {});
     window.open(url, "_blank", "noopener,noreferrer");
     onClose();
   };

@@ -4,16 +4,23 @@ import { Bell, Check, Trash2, Mail, Info } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
+import { ClubActionCentre } from "@/components/action-centre/ClubActionCentre";
 
 export function NotificationsTab({
   store,
   persona,
+  onNavigate,
 }: {
   store: ReturnType<typeof useStore>;
   persona?: "admin" | "player";
+  onNavigate?: (tab: string, action?: string) => void;
 }) {
   const { user } = useAuth();
   const isAdmin = persona === "admin";
+  const currentAppUser = store.appUsers.find((u) => u.id === user?.uid);
+  const canSeeClubActionCentre =
+    isAdmin &&
+    Boolean(currentAppUser?.isClubAdmin || currentAppUser?.role === "admin");
   const { notifications, loadMoreNotifications, notificationsHasMore, notificationsLoadingMore } = store;
 
   // Filter notifications based on role
@@ -75,6 +82,15 @@ export function NotificationsTab({
           </button>
         )}
       </div>
+
+      {canSeeClubActionCentre && (
+        <ClubActionCentre
+          enabled={true}
+          compact={true}
+          showPopup={false}
+          onNavigate={(tab, action) => onNavigate?.(tab, action)}
+        />
+      )}
 
       <div className="space-y-3">
         {myNotifications.length === 0 ? (
