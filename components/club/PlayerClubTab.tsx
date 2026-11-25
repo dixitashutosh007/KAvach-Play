@@ -15,7 +15,7 @@
  * own all-time rank and total in each circuit (e.g. #20 · 500 wins). A circuit
  * without records shows "Not available" — nothing is invented.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trophy, Award, BarChart3, Activity, Megaphone, ChevronRight, Users, Medal, ShoppingBag } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { useClubStats } from "@/hooks/useClubStats";
@@ -26,6 +26,7 @@ import { computeWinRate, formatWinRate } from "@/lib/club-stats";
 import { CLUB_ANNOUNCEMENT_PREVIEW, CLUB_PULSE_PREVIEW } from "@/lib/club-feed";
 import { rankLeaderboard, countBadgesByPlayer } from "@/lib/leaderboard";
 import { getAnnouncementDisplay } from "@/components/home/announcementDisplay";
+import { getAvailableStatYears, aggregateKavachStats } from "@/lib/kavach-stats";
 
 type Section = "all" | "announcements" | "pulse" | "stats";
 
@@ -44,6 +45,13 @@ export function PlayerClubTab({
   const nonce = store.refreshNonce ?? 0;
   const pulseOn = isFeatureEnabled("opinion");
   const show = (s: Exclude<Section, "all">) => section === "all" || section === s;
+  const statsVisible = show("stats");
+
+  useEffect(() => {
+    if (statsVisible) {
+      store.ensurePlayerStats?.();
+    }
+  }, [statsVisible, store]);
 
   const chips: { key: Section; label: string }[] = [
     { key: "all", label: "All" },
@@ -80,7 +88,16 @@ export function PlayerClubTab({
         ))}
       </div>
 
-      {show("stats") && <ClubAtAGlance />}
+      {show("stats") && (
+        <>
+          <ClubInfoCard
+            clubName={store.appConfig?.clubName || "KAvach Cricket Club"}
+            activePlayersCount={store.players.filter((p) => !p.disabled && !p.mergedInto).length}
+          />
+          <ClubAtAGlance />
+          <KavachStatsSection playerStats={store.playerStats || []} players={store.players || []} />
+        </>
+      )}
 
       {section === "all" && tiles.length > 0 && (
         <div className="grid grid-cols-4 gap-2" data-testid="club-tiles">
@@ -170,6 +187,148 @@ function SectionHeader({ icon: Icon, title, hint, action, onAction, testId }: { 
         </button>
       )}
     </div>
+  );
+}
+
+function ClubInfoCard({ clubName, activePlayersCount }: { clubName: string; activePlayersCount: number }) {
+  return (
+    <section
+      data-testid="club-info-card"
+      className="rounded-2xl bg-surface border border-border px-4 py-3.5 flex items-center justify-between gap-3"
+    >
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-scarlet">Club Info</p>
+        <p className="text-base font-black text-text-primary truncate">{clubName}</p>
+        <p className="text-xs text-text-secondary">Registered club members: {activePlayersCount}</p>
+      </div>
+    </section>
+  );
+}
+
+function KavachStatsSection({
+  playerStats,
+  players,
+}: {
+  playerStats: ReturnType<typeof useStore>["playerStats"];
+  players: ReturnType<typeof useStore>["players"];
+}) {
+  const years = useMemo(() => getAvailableStatYears(playerStats), [playerStats]);
+  const [selectedYear, setSelectedYear] = useState<"overall" | number>("overall");
+
+  const activeYear: "overall" | number =
+    selectedYear === "overall" || years.includes(selectedYear) ? selectedYear : "overall";
+
+  const summary = useMemo(
+    () => aggregateKavachStats(playerStats, players, activeYear),
+    [playerStats, players, activeYear],
+  );
+
+  return (
+    <section className="flex flex-col gap-2.5" data-testid="club-kavach-stats">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <SectionHeader icon={Trophy} title="KAvach Stats" hint={activeYear === "overall" ? "Overall" : String(activeYear)} />
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="KAvach Stats period">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeYear === "overall"}
+            data-testid="kavach-stats-overall"
+            onClick={() => setSelectedYear("overall")}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
+              activeYear === "overall"
+                ? "bg-scarlet text-white border-scarlet"
+                : "bg-surface text-text-primary border-border hover:bg-surface-hover"
+            }`}
+          >
+            Overall
+          </button>
+          {years.map((yr) => (
+            <button
+              key={yr}
+              type="button"
+              role="tab"
+              aria-selected={activeYear === yr}
+              data-testid={`kavach-stats-year-${yr}`}
+              onClick={() => setSelectedYear(yr)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                activeYear === yr
+                  ? "bg-scarlet text-white border-scarlet"
+                  : "bg-surface text-text-primary border-border hover:bg-surface-hover"
+              }`}
+            >
+              {yr}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!summary.hasData ? (
+        <StateCard text="No KAvach player statistics recorded for this period yet." />
+      ) : (
+        <div className="rounded-2xl bg-surface border border-border p-4 space-y-4">
+          <div className="grid grid-cols-3 gap-2 text-center border-b border-border pb-3">
+            <div>
+              <p className="text-[11px] font-semibold text-text-secondary">Total Runs</p>
+              <p className="text-lg font-black text-text-primary tabular-nums" data-testid="kavach-stats-runs">
+                {summary.totalRuns.toLocaleString("en-IN")}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-text-secondary">Total Wickets</p>
+              <p className="text-lg font-black text-text-primary tabular-nums" data-testid="kavach-stats-wickets">
+                {summary.totalWickets.toLocaleString("en-IN")}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-text-secondary">Players</p>
+              <p className="text-lg font-black text-text-primary tabular-nums" data-testid="kavach-stats-players">
+                {summary.contributorsCount}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">Top Run Scorers</p>
+              {summary.topScorers.length === 0 ? (
+                <p className="text-xs text-text-muted">No batting records yet.</p>
+              ) : (
+                <ol className="space-y-1.5">
+                  {summary.topScorers.map((p, idx) => (
+                    <li key={p.playerId} className="flex items-center justify-between text-xs">
+                      <span className="truncate font-semibold text-text-primary">
+                        <span className="text-scarlet font-black mr-1.5">#{idx + 1}</span>
+                        {p.name}
+                      </span>
+                      <span className="font-bold tabular-nums text-text-primary">{p.runs}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">Top Wicket Takers</p>
+              {summary.topWicketTakers.length === 0 ? (
+                <p className="text-xs text-text-muted">No bowling records yet.</p>
+              ) : (
+                <ol className="space-y-1.5">
+                  {summary.topWicketTakers.map((p, idx) => (
+                    <li key={p.playerId} className="flex items-center justify-between text-xs">
+                      <span className="truncate font-semibold text-text-primary">
+                        <span className="text-scarlet font-black mr-1.5">#{idx + 1}</span>
+                        {p.name}
+                      </span>
+                      <span className="font-bold tabular-nums text-text-primary">{p.wickets}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
