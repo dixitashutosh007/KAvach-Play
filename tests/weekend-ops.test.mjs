@@ -229,8 +229,8 @@ describe("Historical Data Completion (separate from the recurring prompts)", () 
 describe("server routes keep the approved authority", () => {
   const src = (f) => fs.readFileSync(f, "utf-8");
   const roles = src("lib/weekend-ops-server.ts");
-  it("results: Super Admin + Match Admin only (Club Admin not added before role consolidation)", () => {
-    assert.match(roles, /RESULT_RECORDER_ROLES = \["superAdmin", "matchAdmin"\] as const/);
+  it("results: Super Admin + Club Admin (D-22 absorbed Match Admin)", () => {
+    assert.match(roles, /RESULT_RECORDER_ROLES = \["superAdmin", "clubAdmin"\] as const/);
     assert.match(src("app/api/admin/weekend-results/route.ts"), /requireRole\(req, \[\.\.\.RESULT_RECORDER_ROLES\]\)/);
   });
   it("award: the existing badge authority; fees: the existing Finance guard on the unchanged ledger route", () => {

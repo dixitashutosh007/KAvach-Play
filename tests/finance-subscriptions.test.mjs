@@ -192,8 +192,8 @@ describe("Sponsorship report", () => {
 describe("Server routes", () => {
   const subs = src("app/api/finance/subscriptions/route.ts");
   const rep = src("app/api/finance/reports/sponsorship/route.ts");
-  it("subscriptions: view for Club/Finance/Super; changes Finance/Super only", () => {
-    assert.match(subs, /export async function GET[\s\S]*?requireRole\(req, \["superAdmin", "financeAdmin", "clubAdmin"\]\)/);
+  it("subscriptions: Finance/Super only for GET and POST (DEF-R3-001)", () => {
+    assert.match(subs, /export async function GET[\s\S]*?requireFinanceAdmin\(req\)/);
     assert.match(subs, /export async function POST[\s\S]*?const guard = await requireFinanceAdmin\(req\);\s*if \(!guard\.ok\) return guard\.response;/);
   });
   it("payment amount is the period's own amount, never from the request", () => {
@@ -214,8 +214,8 @@ describe("Server routes", () => {
     assert.ok((subs.match(/await audit\(tx,/g) || []).length >= 5);
     assert.ok(!/tx\.delete\(|\.ref\.delete\(|\)\.delete\(\)/.test(subs));
   });
-  it("report: Club/Finance/Super, bounded range, shared report rules", () => {
-    assert.match(rep, /requireRole\(req, \["superAdmin", "financeAdmin", "clubAdmin"\]\)/);
+  it("report: Finance/Super only, bounded range, shared report rules (DEF-R3-001)", () => {
+    assert.match(rep, /requireFinanceAdmin\(req\)/);
     assert.match(rep, /const MAX_DAYS = 366;/);
     assert.match(rep, /buildSponsorshipReport\(\{ from, to, matches, payments, periods \}\)/);
   });

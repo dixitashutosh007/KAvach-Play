@@ -287,7 +287,7 @@ describe("Add / Edit Match form", () => {
     for (const f of ["resultMarginType: match.resultMarginType", "potmId: match.potmId", "topPerformerIds: match.topPerformerIds", "bestBatsman: match.bestBatsman", "bestBowler: match.bestBowler"]) {
       assert.ok(edit.includes(f), f);
     }
-    assert.match(tab, /const processedData = \{\s*\.\.\.formData,/);
+    assert.match(tab, /const processedData = \{\s*\.\.\.matchFields,/);
   });
   it("mobile sheet: scrollable; footer sticks inside the sheet (never fixed over the page); 44–48px controls", () => {
     assert.match(modal, /max-h-\[100dvh\] sm:max-h-\[92vh\] overflow-y-auto/);

@@ -131,7 +131,7 @@ describe("Announcement composer", () => {
     assert.match(club, /show\("announcements"\) && isClubAdmin && \(\s*<AdminAnnouncementsManager/);
     assert.match(src("lib/admin-navigation.ts"), /\{ key: "announcements", label: "Announcements", allowed: \(c\) => c\.isClubAdmin \}/);
     assert.match(admin, /const canPublishAnnouncements = Boolean\(hasAdminClaim \|\| appUser\?\.isClubAdmin\);/);
-    assert.match(page, /const isClubAdmin = isSuperAdmin \|\| appUser\?\.isClubAdmin;/);
+    assert.match(page, /const isClubAdmin = isSuperAdmin \|\| !!appUser\?\.isClubAdmin;/);
     assert.match(page, /const isSuperAdmin = !!hasAdminClaim;/);
     // Player Home has no publishing path at all.
     const home = src("components/HomeTab.tsx");

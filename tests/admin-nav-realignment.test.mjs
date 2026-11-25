@@ -64,30 +64,30 @@ function caps(raw) {
   };
 }
 
-// D-19: Match Admin and Studio Admin are retired into Club Admin; until the
-// migration runs, the legacy flags still open Match Center / Club → Studio.
+// D-22: Active roles are strictly Super Admin, Club Admin, Finance Admin.
+// Retired Match Admin, Studio Admin, and Designer flags grant nothing.
 const CLUB_ALL = ["players", "studio", "announcements", "pulse", "leaderboard", "badges", "shop"];
 const MATRIX = {
   "Super Admin": { raw: { super: true }, nav: ["home", "matches", "club", "finance", "design", "settings"], club: CLUB_ALL, landing: { tab: "home" } },
   "Club Admin": { raw: { club: true }, nav: ["home", "matches", "club", "design"], club: CLUB_ALL, landing: { tab: "home" } },
   "Finance Admin": { raw: { finance: true }, nav: ["home", "finance"], club: [], landing: { tab: "finance" } },
-  Designer: { raw: { designer: true }, nav: ["home", "design"], club: [], landing: { tab: "design" } },
-  "Legacy Match Admin (pre-migration)": { raw: { match: true }, nav: ["home", "matches"], club: [], landing: { tab: "matches" } },
-  "Legacy Studio Admin (pre-migration)": { raw: { studio: true }, nav: ["home", "club"], club: ["studio"], landing: { tab: "club", action: "studio" } },
-  "Finance Admin + Designer": { raw: { finance: true, designer: true }, nav: ["home", "finance", "design"], club: [], landing: { tab: "finance" } },
+  Designer: { raw: { designer: true }, nav: [], club: [], landing: { tab: "home" } },
+  "Legacy Match Admin (retired)": { raw: { match: true }, nav: [], club: [], landing: { tab: "home" } },
+  "Legacy Studio Admin (retired)": { raw: { studio: true }, nav: [], club: [], landing: { tab: "home" } },
+  "Finance Admin + Designer (retired)": { raw: { finance: true, designer: true }, nav: ["home", "finance"], club: [], landing: { tab: "finance" } },
   "Club Admin + Finance Admin": { raw: { club: true, finance: true }, nav: ["home", "matches", "club", "finance", "design"], club: CLUB_ALL, landing: { tab: "finance" } },
   "Club Admin + Designer": { raw: { club: true, designer: true }, nav: ["home", "matches", "club", "design"], club: CLUB_ALL, landing: { tab: "home" } },
 };
 
-describe("D-18/D-19 configuration", () => {
+describe("D-18/D-19/D-22 configuration", () => {
   it("defines exactly six destinations in the approved order", () => {
     assert.deepEqual(nav.ADMIN_PRIMARY_NAV.map((i) => i.label), ["Home", "Match Center", "Club", "Finance", "Design Studio", "Settings"]);
   });
-  it("Finance: Finance/Super only; Design Studio: Designer/Club/Super only; Settings: Super only", () => {
+  it("Finance: Finance/Super only; Design Studio: Club/Super only (D-22); Settings: Super only", () => {
     for (const [role, m] of Object.entries(MATRIX)) {
       const c = caps(m.raw);
       assert.equal(nav.isAdminDestinationVisible("finance", c), !!(m.raw.finance || m.raw.super), `${role} finance`);
-      assert.equal(nav.isAdminDestinationVisible("design", c), !!(m.raw.designer || m.raw.club || m.raw.super), `${role} design`);
+      assert.equal(nav.isAdminDestinationVisible("design", c), !!(m.raw.club || m.raw.super), `${role} design`);
       assert.equal(nav.isAdminDestinationVisible("settings", c), !!m.raw.super, `${role} settings`);
     }
   });
@@ -98,9 +98,12 @@ describe("D-18/D-19 configuration", () => {
     assert.equal(nav.isAdminDestinationVisible("club", c), false);
     assert.equal(nav.isAdminDestinationVisible("matches", c), false);
   });
-  it("D-19: Home is shown to every admin role; Match Center and Club to Club Admins", () => {
-    for (const raw of [{ super: true }, { club: true }, { finance: true }, { designer: true }, { match: true }, { studio: true }]) {
+  it("D-19/D-22: Home is shown to active admin roles only; Match Center and Club to Club Admins", () => {
+    for (const raw of [{ super: true }, { club: true }, { finance: true }]) {
       assert.equal(nav.isAdminDestinationVisible("home", caps(raw)), true, JSON.stringify(raw));
+    }
+    for (const raw of [{ designer: true }, { match: true }, { studio: true }]) {
+      assert.equal(nav.isAdminDestinationVisible("home", caps(raw)), false, JSON.stringify(raw));
     }
     assert.equal(nav.isAdminDestinationVisible("home", caps({})), false, "non-admins never see Admin Home");
     assert.equal(nav.isAdminDestinationVisible("matches", caps({ club: true })), true);

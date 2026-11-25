@@ -37,7 +37,7 @@ describe(
         const db = ctx.firestore();
         const now = new Date();
         await db.doc("grounds/g1").set({ name: "RBC" });
-        await db.doc("appUsers/ma").set({ name: "MA", role: "player", isMatchAdmin: true, status: "Active" });
+        await db.doc("appUsers/ma").set({ name: "CA", role: "player", isClubAdmin: true, status: "Active" });
         await db.doc("appUsers/fa").set({ name: "FA", role: "player", isFinanceAdmin: true, status: "Active" });
         await db.doc("appUsers/pl").set({ name: "PL", role: "player", playerId: "p1", status: "Active" });
         await db.doc("players/p1").set({ id: "p1", name: "P1", authUid: "pl", status: "Active", inviteStatus: "Accepted" });
@@ -92,7 +92,7 @@ describe(
       await rut.assertFails(as("ma").doc("matches/closed/payments/cOut").update({ status: "Unpaid", updatedAt: ts() }));
       await rut.assertFails(as("pl").doc("matches/closed/payments/cOut").update({ status: "Unpaid", availability: "Yes", updatedAt: ts() }));
       await rut.assertFails(as("fa").doc("matches/closed/payments/cUnpaid").update({ feeOverride: 300, updatedAt: ts() }));
-      await rut.assertSucceeds(as("ma").doc("matches/closed/payments/cUnpaid").update({ status: "Paid", paymentMethod: "manual", manualBy: "MA", updatedAt: ts() }));
+      await rut.assertSucceeds(as("fa").doc("matches/closed/payments/cUnpaid").update({ status: "Paid", paymentMethod: "manual", manualBy: "FA", updatedAt: ts() }));
     });
     it("C2: unpaid player on a closed match can be removed", async () => {
       await rut.assertSucceeds(as("ma").doc("matches/closed/payments/cUnpaid").update({ status: "Not Playing", updatedAt: ts() }));

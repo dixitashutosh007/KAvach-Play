@@ -146,17 +146,17 @@ describe("Phase 5: Core Auth & Server-Side Security Verification", () => {
       assert.ok(data.error.includes("requires one of [financeAdmin, superAdmin]"));
     });
 
-    it("authorizes Match Admin for Match Admin operations", async () => {
+    it("authorizes Club Admin for Match Admin operations (D-22)", async () => {
       const req = new Request("http://localhost:3000/api/calendar/sync", {
         method: "POST",
         headers: {
-          "x-test-uid": "match_admin_user",
-          "x-test-role": "matchAdmin",
+          "x-test-uid": "club_admin_user",
+          "x-test-role": "clubAdmin",
         },
       });
       const res = await requireMatchAdmin(req);
       assert.equal(res.ok, true);
-      assert.ok(res.roles.has("matchAdmin"));
+      assert.ok(res.roles.has("clubAdmin"));
     });
   });
 

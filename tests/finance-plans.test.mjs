@@ -144,8 +144,8 @@ describe("Assignment lifecycle", () => {
 
 describe("Server API: authorisation, no deletes, all-or-nothing, audited", () => {
   const route = src("app/api/finance/assignments/route.ts");
-  it("GET: Club, Match, Finance and Super Admins only; POST: Finance and Super Admin only", () => {
-    assert.match(route, /export async function GET[\s\S]*?requireRole\(req, \["superAdmin", "financeAdmin", "clubAdmin", "matchAdmin"\]\)/);
+  it("GET and POST: Finance and Super Admin only (DEF-R3-001)", () => {
+    assert.match(route, /export async function GET[\s\S]*?requireFinanceAdmin\(req\)/);
     assert.match(route, /export async function POST[\s\S]*?const guard = await requireFinanceAdmin\(req\);\s*if \(!guard\.ok\) return guard\.response;/);
   });
   it("assign: transaction, overlap incl. legacy blocks the whole request (409), nothing written", () => {
@@ -194,10 +194,12 @@ describe("UI wiring", () => {
     assert.ok(!/feePlanIds:/.test(ed));
     assert.match(ed, /<PlayerFinancePlanSummary player=\{player\} plans=\{store\.feePlans \|\| \[\]\} \/>/);
   });
-  it("roster shows the current plan only once assignments loaded", () => {
+  it("roster shows the current plan only for Finance/Super Admin once assignments loaded", () => {
     const pt = src("components/PlayersTab.tsx");
-    assert.match(pt, /const showPlans = isAdmin && !plansLoading && !plansError;/);
-    assert.match(pt, /data-testid=\{`roster-finance-plan-\$\{player\.id\}`\}/);
+    const modal = src("components/roster/PlayerDetailsModal.tsx");
+    assert.match(pt, /const showPlans = canViewFinance && !plansLoading && !plansError;/);
+    assert.match(pt, /planSummary=\{showPlans \? currentPlanFor\(selectedPlayer\) : null\}/);
+    assert.match(modal, /Finance Plan: \{planSummary\.name\}/);
   });
   it("Match Details applies every plan type through the shared rule on the server (Stage 3)", () => {
     const mpa = src("lib/match-plan-application.ts");

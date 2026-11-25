@@ -227,10 +227,8 @@ describe("Overrides", () => {
 
 describe("Server route /api/finance/match-plans", () => {
   const route = src("app/api/finance/match-plans/route.ts");
-  it("roles: preview incl. Club Admin; apply Match/Finance/Super; overrides Finance/Super only", () => {
-    assert.match(route, /action === "preview"\s*\? await requireRole\(req, \["superAdmin", "financeAdmin", "clubAdmin", "matchAdmin"\]\)/);
-    assert.match(route, /action === "apply"\s*\? await requireRole\(req, \["superAdmin", "financeAdmin", "matchAdmin"\]\)/);
-    assert.match(route, /action === "override" \|\| action === "clearOverride"\s*\? await requireFinanceAdmin\(req\)/);
+  it("roles: Finance/Super only for preview, apply, override, and clearOverride (DEF-R3-001)", () => {
+    assert.match(route, /action === "preview" \|\| action === "apply" \|\| action === "override" \|\| action === "clearOverride"\s*\?\s*await requireFinanceAdmin\(req\)/);
     assert.match(route, /if \(!guard\) return NextResponse\.json\(\{ error: "Unknown action\." \}, \{ status: 400 \}\);/);
   });
   it("amounts come from Firestore via the shared rules, inside a transaction", () => {
@@ -256,9 +254,9 @@ describe("Server route /api/finance/match-plans", () => {
 
 describe("UI", () => {
   const tab = src("components/MatchesTab.tsx");
-  it("Adjust fee only for Finance/Super Admins; apply for Match/Finance/Super; server re-checks", () => {
+  it("Adjust fee only for Finance/Super Admins; squad management for Club/Finance/Super; server re-checks", () => {
     assert.match(tab, /const canOverrideFees = isAdmin && Boolean\(hasAdminClaim \|\| appUser\?\.isFinanceAdmin\);/);
-    assert.match(tab, /const canApplyPlans = isAdmin && Boolean\(hasAdminClaim \|\| appUser\?\.isFinanceAdmin \|\| appUser\?\.isMatchAdmin\);/);
+    assert.match(tab, /const canApplyPlans = isAdmin && Boolean\(hasAdminClaim \|\| appUser\?\.isFinanceAdmin \|\| appUser\?\.isClubAdmin\);/);
     assert.match(src("lib/match-squad.ts"), /if \(ctx\.canManageFees && !isGuest && !p\.sponsoredBy && !p\.sponsoring\) \{[\s\S]*?!isOverridable\(p\)/);
   });
   it("old client-side plan writes are gone from Match Details", () => {

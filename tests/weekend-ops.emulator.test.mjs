@@ -114,24 +114,24 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
 
   // ── Feature A: results ──
 
-  it("WO-01 results: unauthenticated 401; player, Finance Admin and Club Admin 403 (not broadened)", async () => {
+  it("WO-01 results: unauthenticated 401; player, Finance Admin and retired Match Admin 403 (D-22)", async () => {
     const mid = await seedMatch();
     const body = { results: [{ matchId: mid, result: "KAvach Won" }] };
     assert.equal((await postResults({ now: SUN_1930 }, body)).status, 401);
-    for (const who of [PL, FA, CA]) assert.equal((await postResults({ ...who, now: SUN_1930 }, body)).status, 403, who.roles || "player");
+    for (const who of [PL, FA, MA]) assert.equal((await postResults({ ...who, now: SUN_1930 }, body)).status, 403, who.roles || "player");
     assert.equal((await match(mid)).result, "Pending");
   });
 
-  it("WO-02 Match Admin and Super Admin record an eligible result, audited", async () => {
+  it("WO-02 Club Admin and Super Admin record an eligible result, audited", async () => {
     const a = await seedMatch();
     const b = await seedMatch({ date: "2026-11-21" });
-    const r = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: a, result: "KAvach Won" }] });
+    const r = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: a, result: "KAvach Won" }] });
     assert.equal(r.status, 200);
     assert.deepEqual(r.json.outcomes, [{ matchId: a, status: "saved", result: "KAvach Won" }]);
     assert.equal((await match(a)).result, "KAvach Won");
     const log = await audits(a);
     assert.equal(log.length, 1);
-    assert.equal(log[0].actorId, MA.uid);
+    assert.equal(log[0].actorId, CA.uid);
     assert.deepEqual(log[0].changes, [{ field: "result", oldValue: "Pending", newValue: "KAvach Won" }]);
     const r2 = await postResults({ ...SA, now: SUN_1930 }, { results: [{ matchId: b, result: "Tie" }] });
     assert.equal(r2.json.outcomes[0].status, "saved");
@@ -139,9 +139,9 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
 
   it("WO-03 never overwrites: a recorded result is a conflict; the same value is a no-op", async () => {
     const mid = await seedMatch({ result: "KAvach Lost" });
-    const r = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] });
+    const r = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] });
     assert.deepEqual(r.json.outcomes, [{ matchId: mid, status: "conflict", existingResult: "KAvach Lost" }]);
-    const same = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Lost" }] });
+    const same = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Lost" }] });
     assert.equal(same.json.outcomes[0].status, "unchanged");
     assert.equal((await match(mid)).result, "KAvach Lost");
     assert.equal((await audits(mid)).length, 0);
@@ -151,7 +151,7 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
     const early = await seedMatch({ date: "2026-11-22", time: "14:00" }); // eligible from Monday 00:00
     const nofmt = await seedMatch({ format: "" });
     const ok = await seedMatch();
-    const r = await postResults({ ...MA, now: SUN_1930 }, {
+    const r = await postResults({ ...CA, now: SUN_1930 }, {
       results: [
         { matchId: early, result: "KAvach Won" },
         { matchId: nofmt, result: "KAvach Won" },
@@ -170,13 +170,13 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
       ["invalid", "Invalid or duplicate match id."],
     ]);
     for (const m of [early, nofmt, ok]) assert.equal((await match(m)).result, "Pending");
-    assert.equal((await postResults({ ...MA, now: SUN_1930 }, { results: [] })).status, 400);
+    assert.equal((await postResults({ ...CA, now: SUN_1930 }, { results: [] })).status, 400);
   });
 
   it("WO-05 partial save: valid rows are saved, others reported, nothing else changes", async () => {
     const a = await seedMatch();
     const done = await seedMatch({ result: "Tie" });
-    const r = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: a, result: "KAvach Lost" }, { matchId: done, result: "KAvach Won" }] });
+    const r = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: a, result: "KAvach Lost" }, { matchId: done, result: "KAvach Won" }] });
     assert.deepEqual(r.json.outcomes.map((o) => o.status), ["saved", "conflict"]);
     assert.equal((await match(a)).result, "KAvach Lost");
     assert.equal((await match(done)).result, "Tie");
@@ -185,7 +185,7 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
   it("WO-06 two admins at once with different results: exactly one is saved, the other is a conflict", async () => {
     const mid = await seedMatch();
     const [x, y] = await Promise.all([
-      postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] }),
+      postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] }),
       postResults({ ...SA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Lost" }] }),
     ]);
     const statuses = [x.json.outcomes[0].status, y.json.outcomes[0].status].sort();
@@ -204,10 +204,10 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
   }
   const pay = async (mid, pid) => (await db.doc(`matches/${mid}/payments/${pid}`).get()).data();
 
-  it("WO-07 Abandoned by a Match Admin runs the existing waiver on the server: unpaid waived, paid preserved, audited", async () => {
+  it("WO-07 Abandoned by a Club Admin runs the existing waiver on the server: unpaid waived, paid preserved, audited", async () => {
     const mid = await seedMatch();
     await seedPayments(mid);
-    const r = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
+    const r = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
     assert.deepEqual(r.json.outcomes[0], { matchId: mid, status: "saved", result: "Abandoned", waiver: { status: "applied", waived: 2, paidPreserved: 1 } });
     for (const p of ["p_unpaid_1", "p_unpaid_2"]) {
       const d = await pay(mid, p);
@@ -225,19 +225,19 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
     const log = await audits(mid);
     assert.equal(log.length, 2);
     const waiverLog = log.find((l) => l.action === "status_change");
-    assert.equal(waiverLog.actorId, MA.uid);
+    assert.equal(waiverLog.actorId, CA.uid);
     assert.match(waiverLog.summary, /waived 2 unpaid match-fee obligation\(s\) \(₹1200\); 1 paid record\(s\) preserved/);
   });
 
   it("WO-08 the waiver is idempotent and safely retryable (results route and Finance route share it)", async () => {
     const mid = await seedMatch();
     await seedPayments(mid);
-    await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
+    await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
     // A late unpaid obligation appears (e.g. squad change) → a retry waives only it.
     await db.doc(`matches/${mid}/payments/p_late`).set({ id: "p_late", matchId: mid, playerId: "pl5", status: "Unpaid", createdAt: new Date(), updatedAt: new Date() });
-    const retry = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
+    const retry = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
     assert.deepEqual(retry.json.outcomes[0], { matchId: mid, status: "unchanged", result: "Abandoned", waiver: { status: "applied", waived: 1, paidPreserved: 1 } });
-    const again = await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
+    const again = await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "Abandoned" }] });
     assert.equal(again.json.outcomes[0].waiver.waived, 0);
     // Finance route: same mechanism, nothing left to waive.
     const fin = await call(reconcile.POST, { ...FA, body: { matchId: mid } });
@@ -246,8 +246,8 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
     assert.equal(fin.json.alreadyWaivedCount, 3);
     assert.equal(fin.json.paidPreservedCount, 1);
     assert.equal((await audits(mid)).filter((l) => l.action === "status_change").length, 2); // no audit for no-op runs
-    // Match Admin still cannot call the Finance route directly.
-    assert.equal((await call(reconcile.POST, { ...MA, body: { matchId: mid } })).status, 403);
+    // Club Admin still cannot call the Finance route directly.
+    assert.equal((await call(reconcile.POST, { ...CA, body: { matchId: mid } })).status, 403);
   });
 
   it("WO-09 Finance reconcile route keeps its behaviour (dry run writes nothing) and now audits", async () => {
@@ -343,41 +343,42 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
 
   // ── Prompts: schedule, roles, pending state ──
 
-  it("WO-14 prompt sections follow verified roles; players are denied", async () => {
+  it("WO-14 prompt sections follow verified roles; players and retired roles are denied", async () => {
     assert.equal((await call(prompts.GET, { ...PL, now: TUE_0900 })).status, 403);
+    assert.equal((await call(prompts.GET, { ...MA, now: TUE_0900 })).status, 403);
     assert.equal((await call(prompts.GET, { now: TUE_0900 })).status, 401);
     const keys = async (who) => Object.keys((await call(prompts.GET, { ...who, now: TUE_0900 })).json).filter((k) => ["results", "potw", "fees"].includes(k)).sort();
-    assert.deepEqual(await keys(MA), ["results"]);
-    assert.deepEqual(await keys(CA), ["potw"]);
+    assert.deepEqual(await keys(CA), ["potw", "results"]);
     assert.deepEqual(await keys(FA), ["fees"]);
     assert.deepEqual(await keys(SA), ["fees", "potw", "results"]);
-    assert.deepEqual(await keys({ uid: "u_mf", roles: "matchAdmin,financeAdmin" }), ["fees", "results"]);
+    assert.deepEqual(await keys({ uid: "u_mf", roles: "matchAdmin,financeAdmin" }), ["fees"]);
+    assert.deepEqual(await keys({ uid: "u_cf", roles: "clubAdmin,financeAdmin" }), ["fees", "potw", "results"]);
   });
 
   it("WO-15 results prompt: due from Sunday 19:00, clears once recorded; backfill queue is explicit and role-gated", async () => {
     const mid = await seedMatch({ date: "2026-11-21" });
     const old = await seedMatch({ date: "2026-10-03" });
     const nofmt = await seedMatch({ date: "2026-11-21", format: "" });
-    const ids = async (now) => (await call(prompts.GET, { ...MA, now })).json.results.items.map((i) => i.id);
+    const ids = async (now) => (await call(prompts.GET, { ...CA, now })).json.results.items.map((i) => i.id);
     assert.equal((await ids(ist("2026-11-22", "18:59"))).includes(mid), false); // not due before Sunday 19:00
-    const due = await call(prompts.GET, { ...MA, now: SUN_1930 });
+    const due = await call(prompts.GET, { ...CA, now: SUN_1930 });
     assert.ok(due.json.results.items.some((i) => i.id === mid));
     assert.ok(!due.json.results.items.some((i) => i.id === old)); // never in the recurring prompt
     assert.ok(due.json.results.exceptions.some((e) => e.id === nofmt && e.reason === "missing_or_unknown_format"));
     assert.ok(due.json.pending.results >= 1);
-    await postResults({ ...MA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] });
+    await postResults({ ...CA, now: SUN_1930 }, { results: [{ matchId: mid, result: "KAvach Won" }] });
     assert.equal((await ids(SUN_1930)).includes(mid), false); // cleared for every admin
-    const bf = await call(prompts.GET, { ...MA, now: SUN_1930, query: "?view=history" });
+    const bf = await call(prompts.GET, { ...CA, now: SUN_1930, query: "?view=history" });
     assert.ok(bf.json.results.items.some((i) => i.id === old));
     assert.ok(!bf.json.results.items.some((i) => i.id === mid)); // recorded → gone
     assert.ok(!bf.json.results.exceptions.some((e) => e.id === nofmt)); // in the recurring prompt's window → not duplicated
-    // History sections follow roles: Finance sees fees only, Club Admin POTW only — never results.
+    // History sections follow roles: Finance sees fees only, Club Admin sees POTW + results.
     const fin = await call(prompts.GET, { ...FA, now: SUN_1930, query: "?view=history" });
     assert.deepEqual(Object.keys(fin.json).filter((k) => ["results", "fees", "potw"].includes(k)), ["fees"]);
     const club = await call(prompts.GET, { ...CA, now: SUN_1930, query: "?view=history" });
-    assert.deepEqual(Object.keys(club.json).filter((k) => ["results", "fees", "potw"].includes(k)), ["potw"]);
+    assert.deepEqual(Object.keys(club.json).filter((k) => ["results", "fees", "potw"].includes(k)).sort(), ["potw", "results"]);
     assert.equal((await call(prompts.GET, { ...PL, now: SUN_1930, query: "?view=history" })).status, 403);
-    assert.equal((await call(prompts.GET, { ...MA, now: SUN_1930, query: "?view=other" })).status, 400);
+    assert.equal((await call(prompts.GET, { ...CA, now: SUN_1930, query: "?view=other" })).status, 400);
   });
 
   it("WO-16 Player of the Weekend prompt: open Monday 08:00–Friday 23:59, pending until awarded", async () => {
@@ -442,8 +443,8 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
     assert.ok(!h0.results.items.some((i) => i.id === recent));
     assert.ok(!h0.fees.items.some((i) => i.id === recent));
     assert.equal(h0.results.count, h0.results.items.length);
-    // Partial completion by a Match Admin; another admin (Super) sees the smaller list.
-    const save = await postResults({ ...MA, now: TUE_0900 }, { source: "backfill", results: [{ matchId: r1, result: "KAvach Lost" }] });
+    // Partial completion by a Club Admin; another admin (Super) sees the smaller list.
+    const save = await postResults({ ...CA, now: TUE_0900 }, { source: "backfill", results: [{ matchId: r1, result: "KAvach Lost" }] });
     assert.equal(save.json.outcomes[0].status, "saved");
     const h1 = await hist({ uid: "u_other_super", roles: "superAdmin" });
     assert.equal(h1.results.count, h0.results.count - 1);
@@ -502,7 +503,7 @@ describe("Weekend match operations — routes on the emulator", { skip }, () => 
   it("WO-20 results in one request are saved concurrently: all independent rows saved and audited; duplicates rejected; order kept", async () => {
     const ids = [];
     for (let i = 0; i < 6; i++) ids.push(await seedMatch({ date: "2026-09-26" }));
-    const r = await postResults({ ...MA, now: TUE_0900 }, {
+    const r = await postResults({ ...CA, now: TUE_0900 }, {
       source: "backfill",
       results: [...ids.map((matchId, i) => ({ matchId, result: i % 2 ? "KAvach Won" : "Tie" })), { matchId: ids[0], result: "KAvach Lost" }],
     });

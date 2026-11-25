@@ -80,17 +80,17 @@ describe("Shared finance calculation (Finance report == Match Centre panel)", ()
   });
   it("collected excludes club-sponsored; sponsored offset counted; due sums Unpaid only", () => {
     assert.equal(s.feeCollected, 500);
-    // existing semantics: ₹500 club-sponsored + ₹200 fee-override discount (500 → 300)
+    // ₹500 club-sponsored + ₹200 feeOverride discount (500 - 300) = ₹700
     assert.equal(s.feeOffset, 700);
     assert.equal(s.totalDue, 800);
     assert.deepEqual(s.paidPlayers, ["Asha", "Ravi"]);
-    assert.deepEqual(s.unpaidPlayers, ["Kiran", "Meera", "Dev"]);
+    assert.deepEqual(s.unpaidPlayers, ["Kiran", "Meera"]);
   });
   it("FinanceTab now calls the shared function (no inline duplicate)", () => {
     const fin = src("components/FinanceTab.tsx");
     assert.match(fin, /return summarizeMatchFinance\(match, paymentsForMatch, store\.players\);/);
     assert.ok(!/let feeCollected = 0;/.test(fin));
-    assert.match(src("lib/match-finance.ts"), /let feeCollected = 0;/);
+    assert.match(src("lib/match-finance.ts"), /const feeCollected = statement\.actualCashReceived;/);
   });
 });
 
@@ -135,13 +135,14 @@ describe("Payment Details panel (lazy)", () => {
     assert.equal(formatINR(125000), "₹1,25,000");
   });
 
-  it("paid / unpaid / waived players are classified without duplicates", () => {
+  it("paid / unpaid players are classified without duplicates and waived is excluded", () => {
     const html = panel({ defaultOpen: true });
     const section = (id) => text(html.slice(html.indexOf(`data-testid="${id}"`), html.indexOf("</ul>", html.indexOf(`data-testid="${id}"`))));
     assert.match(section("paid-players"), /Paid Players \(2\).*Asha.*Ravi/);
     assert.match(section("unpaid-players"), /Unpaid Players \(2\).*Kiran.*₹500 due.*Meera.*₹300 due/);
-    assert.match(section("waived-players"), /Waived \(1\).*Dev/);
+    assert.ok(!html.includes('data-testid="waived-players"'));
     assert.ok(!section("unpaid-players").includes("Dev"));
+    assert.ok(!section("paid-players").includes("Dev"));
     assert.ok(!section("paid-players").includes("Kiran"));
     assert.ok(!text(html).includes("Neha"), "Not Playing excluded");
   });

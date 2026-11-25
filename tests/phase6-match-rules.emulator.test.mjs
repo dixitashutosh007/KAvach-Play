@@ -67,11 +67,11 @@ describe(
           updatedAt: new Date(),
         });
 
-        // 2. Seed Match Admin appUser
+        // 2. Seed Club Admin appUser (D-22 absorbed Match Admin into Club Admin)
         await adminDb.collection("appUsers").doc("admin_match_uid").set({
-          name: "Match Admin",
+          name: "Club Admin",
           role: "player",
-          isMatchAdmin: true,
+          isClubAdmin: true,
           status: "Active",
         });
 
@@ -357,8 +357,12 @@ describe(
       // Player Two (non-admin) CANNOT read Player One's payment record (Scope D data privacy)
       await assertFails(p1PayDocRef(playerTwo).get());
 
-      // Match Admin CAN read Player One's payment record for match management
-      await assertSucceeds(p1PayDocRef(matchAdmin).get());
+      // Club Admin (without Finance/Super Admin) CANNOT read another player's payment record
+      await assertFails(p1PayDocRef(matchAdmin).get());
+
+      // Super Admin CAN read Player One's payment record
+      const superAdmin = testEnv.authenticatedContext("super_admin_uid", { admin: true }).firestore();
+      await assertSucceeds(p1PayDocRef(superAdmin).get());
     });
 
     // ── 9. Match Discussion & Comments ──

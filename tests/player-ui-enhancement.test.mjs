@@ -94,8 +94,8 @@ describe("Player Directory privacy (R2-B owner principle)", () => {
   });
   it("the Directory renders only toPublicPlayer() output (source check)", () => {
     const dir = src("components/club/PlayerDirectory.tsx");
-    assert.match(dir, /const page = matches\.slice\(0, visible\)\.map\(\(p\) => toPublicPlayer\(p\)\);/);
-    assert.match(dir, /return p \? toPublicPlayer\(p\) : null;/);
+    assert.match(dir, /resolvePublicDirectoryPlayer/);
+    assert.match(src("lib/club-feed.ts"), /return toPublicPlayer\(p\);/);
     for (const k of ["\\.mobile", "\\.email", "\\.dob", "bloodGroup", "emergencyContact", "\\.locality"]) {
       assert.doesNotMatch(dir, new RegExp(k), k);
     }

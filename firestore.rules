@@ -28,7 +28,9 @@ service cloud.firestore {
           (exists(/databases/$(database)/documents/players/$(playerId)) &&
            get(/databases/$(database)/documents/players/$(playerId)).data.get('disabled', false) != true &&
            (get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == request.auth.uid ||
-            (request.auth.uid == playerId && get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', request.auth.uid) == request.auth.uid)))
+            (request.auth.uid == playerId &&
+             getUserData().get('playerId', null) == null &&
+             get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == null)))
         );
     }
 
@@ -408,9 +410,9 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      allow read, delete: if isSuperAdmin();
+      allow read: if isSuperAdmin();
       allow create: if isAnyAdmin();
-      allow update: if false;
+      allow update, delete: if false;
     }
 
     match /paymentLinks/{linkId} {
@@ -602,9 +604,19 @@ service cloud.firestore {
     }
 
     match /players/{playerId} {
-      allow read: if isSignedIn();
+      allow read: if isAnyAdmin() || isSelf(playerId);
       allow create: if !incoming().keys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
-        && (isAnyAdmin() || isSelf(playerId));
+        && (
+          isAnyAdmin()
+          || isSelf(playerId)
+          || (
+            isSignedIn()
+            && isAccountActive()
+            && request.auth.uid == playerId
+            && getUserData().get('playerId', null) == null
+            && !exists(/databases/$(database)/documents/players/$(playerId))
+          )
+        );
       allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
         && (
           isAnyAdmin()

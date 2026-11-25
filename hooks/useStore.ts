@@ -443,6 +443,111 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     // role-checking works. The full collection is loaded on demand via
     // ensureAllAppUsers() when an admin tab needs it. This keeps 100+ PII
     // docs out of every player's browser.
+    let disposed = false;
+    let activePlayersMode: string | null = null;
+    let activePlayersUnsub: () => void = () => {};
+    let cachedHasAdminClaim = false;
+
+    const filterDemoPlayers = (list: Player[]) =>
+      list.filter((p) => {
+        const nameLower = (p.name || "").toLowerCase();
+        const emailLower = (p.email || "").toLowerCase();
+        return !nameLower.includes("demo") && !emailLower.includes("demo");
+      });
+
+    const syncPlayersSubscription = (selfDoc: AppUser | null, hasClaim: boolean) => {
+      if (disposed) return;
+      const isAdminRole =
+        selfDoc?.status !== "Disabled" &&
+        (hasClaim || selfDoc?.isClubAdmin === true || selfDoc?.isFinanceAdmin === true);
+      const targetPlayerId = selfDoc?.playerId || user.uid;
+      const nextMode = isAdminRole ? "admin" : `player:${targetPlayerId}`;
+      if (activePlayersMode === nextMode) return;
+
+      activePlayersMode = nextMode;
+      activePlayersUnsub();
+
+      if (isAdminRole) {
+        activePlayersUnsub = onSnapshot(
+          collection(db, "players"),
+          (snapshot) => {
+            setPlayers(
+              filterDemoPlayers(
+                snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Player),
+              ),
+            );
+            setPlayersLoaded(true);
+          },
+          (err) => {
+            handleFirestoreError(err, OperationType.LIST, "players");
+            setPlayersLoaded(true);
+          },
+        );
+        return;
+      }
+
+      // DEF-R3-003: Non-admin players subscribe ONLY to their own player record(s)
+      // and load public non-PII projections from /api/players/public.
+      let publicPlayers: Player[] = [];
+      const ownById = new Map<string, Player>();
+
+      const emitMergedPlayers = () => {
+        const merged = new Map<string, Player>();
+        for (const pub of publicPlayers) merged.set(pub.id, pub);
+        for (const [id, own] of ownById.entries()) merged.set(id, own);
+        setPlayers(filterDemoPlayers(Array.from(merged.values())));
+      };
+
+      const unsubAuthQuery = onSnapshot(
+        query(collection(db, "players"), where("authUid", "==", user.uid)),
+        (snapshot) => {
+          ownById.clear();
+          snapshot.docs.forEach((d) => ownById.set(d.id, { id: d.id, ...d.data() } as Player));
+          emitMergedPlayers();
+          setPlayersLoaded(true);
+        },
+        () => {
+          setPlayersLoaded(true);
+        },
+      );
+
+      const unsubSelfDoc = onSnapshot(
+        doc(db, "players", targetPlayerId),
+        (snap) => {
+          if (snap.exists()) {
+            ownById.set(snap.id, { id: snap.id, ...snap.data() } as Player);
+            emitMergedPlayers();
+          }
+          setPlayersLoaded(true);
+        },
+        () => {
+          setPlayersLoaded(true);
+        },
+      );
+
+      (async () => {
+        try {
+          const res = await authedFetch("/api/players/public");
+          if (res.ok && !disposed) {
+            const data = await res.json();
+            if (Array.isArray(data?.players)) {
+              publicPlayers = data.players as Player[];
+              emitMergedPlayers();
+            }
+          }
+        } catch {
+          // Non-fatal: own player doc still loads
+        } finally {
+          if (!disposed) setPlayersLoaded(true);
+        }
+      })();
+
+      activePlayersUnsub = () => {
+        unsubAuthQuery();
+        unsubSelfDoc();
+      };
+    };
+
     const unsubAppUsers = onSnapshot(
       doc(db, "appUsers", user.uid),
       (selfSnap) => {
@@ -450,10 +555,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           setSelfAppUserStatus("missing");
           // Drop any stale copy so role checks never use a deleted document.
           setAppUsers((prev) => prev.filter((u) => u.id !== user.uid));
+          syncPlayersSubscription(null, cachedHasAdminClaim);
           return;
         }
         setSelfAppUserStatus("present");
         const selfDoc = { id: selfSnap.id, ...selfSnap.data() } as AppUser;
+        syncPlayersSubscription(selfDoc, cachedHasAdminClaim);
         const nameLower = (selfDoc.name || "").toLowerCase();
         const emailLower = (selfDoc.email || "").toLowerCase();
         if (nameLower.includes("demo") || emailLower.includes("demo")) return;
@@ -465,8 +572,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (err) => {
         setSelfAppUserStatus("error");
         handleFirestoreError(err, OperationType.LIST, "appUsers/self");
+        syncPlayersSubscription(null, cachedHasAdminClaim);
       },
     );
+
+    user.getIdTokenResult()
+      .then((tr) => {
+        cachedHasAdminClaim = tr.claims?.admin === true;
+        if (cachedHasAdminClaim && !disposed) {
+          syncPlayersSubscription(null, true);
+        }
+      })
+      .catch(() => {});
 
     // grounds — one-shot; refreshed by mutation methods below.
     (async () => {
@@ -481,25 +598,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
     // tournaments — now lazy, see ensureTournaments()
 
-    const unsubPlayers = onSnapshot(
-      collection(db, "players"),
-      (snapshot) => {
-        setPlayers(
-          snapshot.docs
-            .map((doc) => ({ id: doc.id, ...doc.data() }) as Player)
-            .filter((p) => {
-              const nameLower = (p.name || "").toLowerCase();
-              const emailLower = (p.email || "").toLowerCase();
-              return !nameLower.includes("demo") && !emailLower.includes("demo");
-            }),
-        );
-        setPlayersLoaded(true);
-      },
-      (err) => {
-        handleFirestoreError(err, OperationType.LIST, "players");
-        setPlayersLoaded(true);
-      },
-    );
+    const unsubPlayers = () => {
+      disposed = true;
+      activePlayersUnsub();
+    };
 
     // playerStats and posts — now lazy, see ensurePlayerStats() / ensurePosts()
     const unsubStats = () => {};

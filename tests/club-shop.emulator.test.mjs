@@ -156,7 +156,11 @@ describe("Club Shop — server enforcement and admin toggle", { skip }, () => {
     await toggle(false);
     const s = await seed();
     const orderId = id("mo_unpaid");
-    await db.collection("merchOrders").doc(orderId).set({ playerId: s.playerId, playerName: "Shop Player", merchId: s.merchId, merchName: "Club Cap", price: 499, paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: new Date() });
+    await db.collection("merchOrders").doc(orderId).set({
+      playerId: s.playerId, playerName: "Shop Player", merchId: s.merchId, merchName: "Club Cap", price: 499,
+      paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: new Date(),
+      trustedSource: "server", intentId: `intent_${orderId}`, priceSnapshot: { totalAmount: 499 },
+    });
     const before = createCalls.length;
     const res = await orderPOST(
       new Request("http://localhost/api/razorpay/order", {
@@ -205,19 +209,23 @@ describe("Club Shop — Firestore rules (merchOrders create)", { skip }, () => {
     });
   };
 
-  it("SHOP-R1 Shop enabled: a player may place their own unpaid order (existing rule)", async () => {
+  it("SHOP-R1 Shop enabled: direct client merchOrders creation by a player is denied (server order API required)", async () => {
     await setShop(true);
-    await rut.assertSucceeds(playerOrder("o_enabled"));
+    await rut.assertFails(playerOrder("o_enabled"));
   });
   it("SHOP-R2 Shop disabled: the same direct write is denied", async () => {
     await setShop(false);
     await rut.assertFails(playerOrder("o_disabled"));
   });
   it("SHOP-R3 Shop disabled: the player can still read their existing order", async () => {
-    await setShop(true);
-    await rut.assertSucceeds(playerOrder("o_keep"));
+    const { doc, setDoc, getDoc } = await import("firebase/firestore");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "merchOrders/o_keep"), {
+        id: "o_keep", playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap",
+        price: 499, paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: new Date(),
+      });
+    });
     await setShop(false);
-    const { doc, getDoc } = await import("firebase/firestore");
     await rut.assertSucceeds(getDoc(doc(testEnv.authenticatedContext("p_uid").firestore(), "merchOrders/o_keep")));
   });
 
@@ -277,14 +285,20 @@ describe("Club Shop — Firestore rules (merchOrders create)", { skip }, () => {
     });
     await rut.assertFails(getDoc(doc(p, "merchOrders/o_other")));
     await rut.assertFails(updateDoc(doc(p, "merchOrders/o_other"), { orderStatus: "Fulfilled" }));
-    // Admins only buy as themselves: no admin may create an order for another player.
+    // Finance Admin cannot create merchOrders; Club Admin may create Unpaid manual orders (without server-only payment keys).
     const fin = testEnv.authenticatedContext("fin_uid").firestore();
     const club = testEnv.authenticatedContext("club_uid").firestore();
-    for (const [who, d] of [["fin", fin], ["club", club]]) {
-      await rut.assertFails(setDoc(doc(d, "merchOrders", "o_for_p1_" + who), {
-        id: "o_for_p1_" + who, playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap", price: 499,
-        paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: serverTimestamp(),
-      }));
-    }
+    await rut.assertFails(setDoc(doc(fin, "merchOrders", "o_for_p1_fin"), {
+      id: "o_for_p1_fin", playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap", price: 499,
+      paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: serverTimestamp(),
+    }));
+    await rut.assertFails(setDoc(doc(club, "merchOrders", "o_for_p1_club_paid"), {
+      id: "o_for_p1_club_paid", playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap", price: 499,
+      paymentStatus: "Paid", razorpayPaymentId: "pay_fake", trustedSource: "server", orderStatus: "Order Placed", createdAt: serverTimestamp(),
+    }));
+    await rut.assertSucceeds(setDoc(doc(club, "merchOrders", "o_for_p1_club"), {
+      id: "o_for_p1_club", playerId: "p1", playerName: "P", merchId: "m_cap", merchName: "Cap", price: 499,
+      paymentStatus: "Unpaid", orderStatus: "Order Placed", createdAt: serverTimestamp(),
+    }));
   });
 });

@@ -244,7 +244,7 @@ describe("UI", () => {
     assert.match(tab, /data-testid="match-form-fee-locked"/);
     assert.match(tab, /if \(before && before\.financeStatus === "closed"\) processedData\.fee = Number\(before\.fee\) \|\| 0;/);
     assert.match(tab, /disabled=\{statement\.financeClosed && !addingSquad\}/);
-    assert.match(src("components/PlayersTab.tsx"), /isRealMoneyPayment\(p, m\.fee\) \? \(/);
+    assert.match(src("components/roster/PlayerDetailsModal.tsx"), /isRealMoneyPayment\(p, m\.fee\) \? \(/);
   });
   it("Match Details uses the live match from the store", () => {
     assert.match(src("components/MatchesTab.tsx"), /match=\{store\.matches\.find\(\(m\) => m\.id === selectedMatch\.id\) \|\| selectedMatch\}/);

@@ -44,10 +44,11 @@ describe("Firestore Security Rules — AST Syntax Validation", () => {
   });
 
   it("enforces SEC-001: appUsers keys cannot be escalated by non-superadmins", () => {
-    assert.match(rulesContent, /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(\['role', 'isSuperAdmin', 'isStudioAdmin'/);
+    assert.match(rulesContent, /function roleKeys\(\)/);
     assert.match(rulesContent, /'isDesigner', 'canDesign'/);
-    // Enforce that create rules also forbid isDesigner, admin flags, and playerId
-    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(\['isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin', 'isDesigner', 'canDesign', 'status', 'playerId'\]\)/);
+    assert.match(rulesContent, /!incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(roleKeys\(\)\)/);
+    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(roleKeys\(\)\.removeAll\(\['role'\]\)\)/);
+    assert.match(rulesContent, /!incoming\(\)\.keys\(\)\.hasAny\(\['playerId'\]\)/);
     // Enforce that isSuperAdmin strictly relies on auth token custom claim and no longer has appUsers.role fallback
     assert.match(rulesContent, /request\.auth\.token\.get\('admin', false\) == true;/);
     assert.ok(!rulesContent.includes("data.role == 'admin'"), "legacy appUsers.role fallback must be completely removed");
@@ -170,16 +171,13 @@ describe("Firestore Security Rules — Emulator Integration Tests", { skip: !emu
     await assertFails(otherUserDoc.set({ name: "Hacked", role: "player" }));
     await assertFails(otherUserDoc.update({ name: "Hacked" }));
 
-    // SuperAdmin with admin claim CAN manage roles, status, and specialist flags
+    // SuperAdmin with admin claim CAN manage status, but roleKeys() are server-written only (Phase 1 / D-22)
     const adminContext = testEnv.authenticatedContext("admin_1", { admin: true });
     await assertSucceeds(adminContext.firestore().collection("appUsers").doc("user_123").update({
-      isStudioAdmin: true,
-      isMatchAdmin: true,
-      isFinanceAdmin: true,
-      isClubAdmin: true,
-      isDesigner: true,
-      canDesign: true,
       status: "Active",
+    }));
+    await assertFails(adminContext.firestore().collection("appUsers").doc("user_123").update({
+      isClubAdmin: true,
       role: "admin",
     }));
   });

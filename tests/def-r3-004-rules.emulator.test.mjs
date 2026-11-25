@@ -301,11 +301,11 @@ describe("DEF-R3-004: Firestore Security Rules — Positive & Negative Tests", {
       await assertFails(superAdmin.collection("auditLogs").doc("log_1").update({ action: "tampered" }));
       await assertFails(p1.collection("auditLogs").doc("log_1").update({ action: "tampered" }));
 
-      // Non-Super-Admin cannot read or delete; Super Admin can delete
+      // Non-Super-Admin cannot read or delete; Super Admin cannot delete (strictly append-only)
       await assertFails(club.collection("auditLogs").doc("log_1").get());
       await assertFails(club.collection("auditLogs").doc("log_1").delete());
       await assertFails(p1.collection("auditLogs").doc("log_1").set({ action: "fake" }));
-      await assertSucceeds(superAdmin.collection("auditLogs").doc("log_1").delete());
+      await assertFails(superAdmin.collection("auditLogs").doc("log_1").delete());
     });
   });
 

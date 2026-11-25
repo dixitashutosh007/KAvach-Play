@@ -194,9 +194,11 @@ describe(
       // A. Bootstrap Super Admin (custom claim { admin: true }, NO appUsers doc exists yet)
       const bootstrapAdmin = testEnv.authenticatedContext("uid_bootstrap_admin", { admin: true }).firestore();
       await assertSucceeds(
+        bootstrapAdmin.collection("appConfig").doc("bootstrap_test").set({ clubName: "KAvach Cricket Club" }),
+      );
+      await assertSucceeds(
         bootstrapAdmin.collection("appUsers").doc("uid_bootstrap_admin").set({
           name: "Bootstrap Super Admin",
-          role: "admin",
           status: "Active",
         }),
       );
@@ -233,17 +235,17 @@ describe(
       const { assertSucceeds, assertFails } = await import("@firebase/rules-unit-testing");
       const { serverTimestamp } = await import("firebase/firestore");
 
-      // A. Seed active Match Admin
+      // A. Seed active Club Admin (D-22 absorbed Match Admin into Club Admin)
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await context.firestore().collection("appUsers").doc("uid_match_admin").set({
-          name: "Match Admin",
+          name: "Club Admin",
           role: "player",
-          isMatchAdmin: true,
+          isClubAdmin: true,
           status: "Active",
         });
       });
 
-      const matchAdmin = testEnv.authenticatedContext("uid_match_admin").firestore();
+      const clubAdmin = testEnv.authenticatedContext("uid_match_admin").firestore();
 
       const newMatchData = {
         groundId: "ground_1",
@@ -260,35 +262,35 @@ describe(
       };
 
       // Permitted while role is active
-      await assertSucceeds(matchAdmin.collection("matches").doc("match_test_rbac_1").set(newMatchData));
+      await assertSucceeds(clubAdmin.collection("matches").doc("match_test_rbac_1").set(newMatchData));
 
-      // B. Revoke isMatchAdmin role in appUsers
+      // B. Revoke isClubAdmin role in appUsers
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await context.firestore().collection("appUsers").doc("uid_match_admin").update({
-          isMatchAdmin: false,
+          isClubAdmin: false,
         });
       });
 
       // Immediately blocked on next write (no token refresh needed)
       await assertFails(
-        matchAdmin.collection("matches").doc("match_test_rbac_2").set({
+        clubAdmin.collection("matches").doc("match_test_rbac_2").set({
           ...newMatchData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
       );
 
-      // C. Re-grant isMatchAdmin but set status: "Disabled"
+      // C. Re-grant isClubAdmin but set status: "Disabled"
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await context.firestore().collection("appUsers").doc("uid_match_admin").update({
-          isMatchAdmin: true,
+          isClubAdmin: true,
           status: "Disabled",
         });
       });
 
       // Immediately blocked because account is disabled
       await assertFails(
-        matchAdmin.collection("matches").doc("match_test_rbac_3").set({
+        clubAdmin.collection("matches").doc("match_test_rbac_3").set({
           ...newMatchData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),

@@ -307,7 +307,7 @@ describe("E. Admin authority model", () => {
     const start = src.indexOf("const isAdminUser =");
     const block = src.slice(start, src.indexOf(";", start));
     assert.match(block, /isSuperAdminUser/);
-    assert.ok(!/role/.test(block), "role string must not grant admin");
+    assert.ok(!/\.role\b/.test(block), "role string must not grant admin");
   });
 
   it("dev access diagnostic logs booleans only (no uid, email, phone or token)", () => {

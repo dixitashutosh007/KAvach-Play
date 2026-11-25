@@ -60,7 +60,7 @@ test("ARCH-003: useStore exports complete backward-compatible contract", () => {
     "payments", "ensurePayments", "updatePaymentStatus",
     "otherFees", "ensureOtherFees", "addOtherFee",
     "badges", "ensureBadges", "addBadge",
-    "appUsers", "updateAppUserRole", "updateAppUserProfile",
+    "appUsers", "updateAppUserProfile",
     "appConfig", "updateAppConfig",
     "detachDomain", "detachAllLazy",
     "isLoaded",

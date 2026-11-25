@@ -161,8 +161,9 @@ describe("Announcement permissions", () => {
   });
   it("players cannot grant themselves admin flags (rules protect appUsers permission fields)", () => {
     const rules = src("firestore.rules");
+    assert.match(rules, /function roleKeys\(\) \{\s*return \['role', 'isSuperAdmin', 'isClubAdmin', 'isFinanceAdmin', 'isStudioAdmin', 'isMatchAdmin'/);
     const block = rules.slice(rules.indexOf("match /appUsers/{userId}"), rules.indexOf("match /appUsers/{userId}") + 1200);
-    assert.match(block, /hasAny\(\['role', 'isSuperAdmin', 'isStudioAdmin', 'isMatchAdmin', 'isFinanceAdmin', 'isClubAdmin'/);
+    assert.match(block, /!incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasAny\(roleKeys\(\)\)/);
   });
 });
 
