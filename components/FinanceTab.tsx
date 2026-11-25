@@ -8,8 +8,13 @@
  */
 import { authedFetch } from "@/lib/authed-fetch";
 import { isMatchBillable } from "@/lib/matchBillable";
-import { summarizeMatchFinance, summarizeClubFinanceOverview } from "@/lib/match-finance";
-import { useState, useMemo, useEffect } from "react";
+import {
+  summarizeMatchFinance,
+  summarizeClubFinanceOverview,
+  partitionMatchFinancePlayers,
+  summarizePlayerFinancialProfile,
+} from "@/lib/match-finance";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useStore } from "@/hooks/useStore";
 import { Match, MatchPayment, Player, SubscriptionPlan } from "@/lib/types";
 import { useAuth } from "./AuthProvider";
@@ -37,6 +42,7 @@ import { PlansView } from "./PlansView";
 import { DuesAndRemindersTab } from "./DuesAndRemindersTab";
 import { AuditLogTab } from "./AuditLogTab";
 import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function FinanceTab({
   store,
@@ -1094,14 +1100,20 @@ function AdminFinanceView({
   onNavigateToSettings?: () => void;
 }) {
   const { toast } = useToast();
-  const [subTab, setSubTab] = useState<
-    "matches" | "wix" | "fee" | "razor" | "dues" | "activity"
-  >((defaultAction as any) || "matches");
+  const { confirm: confirmAction } = useConfirm();
+  type FinanceSubTab = "overview" | "matches" | "dues" | "razor" | "plans" | "fee" | "activity";
+  const normalizeSubTab = (a?: string | null): FinanceSubTab => {
+    if (a === "overview" || a === "matches" || a === "dues" || a === "razor" || a === "plans" || a === "fee" || a === "activity") {
+      return a;
+    }
+    return "overview";
+  };
+  const [subTab, setSubTab] = useState<FinanceSubTab>(normalizeSubTab(defaultAction));
   // Follow quick actions / deep links while Finance is already open (D-19:
   // Reminders = "dues", Activity Log = "activity").
   useEffect(() => {
-    if (defaultAction === "dues" || defaultAction === "activity" || defaultAction === "matches" || defaultAction === "razor" || defaultAction === "fee") {
-      setSubTab(defaultAction);
+    if (defaultAction) {
+      setSubTab(normalizeSubTab(defaultAction));
     }
   }, [defaultAction]);
   const [searchPlayer, setSearchPlayer] = useState("");
@@ -1111,6 +1123,11 @@ function AdminFinanceView({
   const [editingMatchFeeId, setEditingMatchFeeId] = useState<string | null>(null);
   const [editFeeVal, setEditFeeVal] = useState<string>("");
   const [isSavingFee, setIsSavingFee] = useState(false);
+  const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
+  const [remindingMatchPlayerKey, setRemindingMatchPlayerKey] = useState<string | null>(null);
+  const remindLockRef = useRef(false);
+  const [profileSearch, setProfileSearch] = useState("");
+  const [selectedProfilePlayerId, setSelectedProfilePlayerId] = useState<string | null>(null);
 
   const filteredMatches = useMemo(() => {
     let m = store.matches;
@@ -1157,41 +1174,189 @@ function AdminFinanceView({
   const grandTotalDue = clubOverview.outstanding;
   const collectedMatches = clubOverview.includedMatches;
 
+  const overviewExtras = useMemo(() => {
+    const unpaidOtherFees = (store.otherFees || []).filter((f) => f.status === "Unpaid");
+    const unpaidOtherFeesTotal = unpaidOtherFees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+    const playersWithDues = new Set<string>();
+    for (const f of unpaidOtherFees) {
+      if (f.playerId) playersWithDues.add(f.playerId);
+    }
+    for (const d of collectedMatches) {
+      if (!isMatchBillable(d.match)) continue;
+      for (const p of d.payments) {
+        if (p.status === "Unpaid") {
+          playersWithDues.add(p.playerId);
+        }
+      }
+    }
+    const matchesWithDuesCount = collectedMatches.filter(
+      (d) => isMatchBillable(d.match) && d.totalDue > 0,
+    ).length;
+
+    const studioMembers = (store.players || []).filter((p) => p.isStudioMember && !p.disabled);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const expiredStudioCount = studioMembers.filter((p) => {
+      const exp = p.studioExpiryDate || p.studioEndDate;
+      return !exp || exp < todayIso;
+    }).length;
+
+    return {
+      unpaidOtherFeesTotal,
+      totalActiveDues: grandTotalDue + unpaidOtherFeesTotal,
+      playersWithDuesCount: playersWithDues.size,
+      matchesWithDuesCount,
+      activeStudioCount: Math.max(0, studioMembers.length - expiredStudioCount),
+      expiredStudioCount,
+    };
+  }, [store.otherFees, store.players, collectedMatches, grandTotalDue]);
+
+  const profileSearchResults = useMemo(() => {
+    const q = profileSearch.trim().toLowerCase();
+    if (!q) return [];
+    return (store.players || [])
+      .filter(
+        (p) =>
+          !p.disabled &&
+          (p.name.toLowerCase().includes(q) ||
+            (p.kavachId && p.kavachId.toLowerCase().includes(q)) ||
+            (p.mobile && p.mobile.includes(q))),
+      )
+      .slice(0, 8);
+  }, [store.players, profileSearch]);
+
+  const selectedPlayerProfile = useMemo(() => {
+    if (!selectedProfilePlayerId) return null;
+    const pl = (store.players || []).find((p) => p.id === selectedProfilePlayerId);
+    if (!pl) return null;
+    return summarizePlayerFinancialProfile(
+      pl,
+      store.matches || [],
+      store.payments || [],
+      store.otherFees || [],
+    );
+  }, [selectedProfilePlayerId, store.players, store.matches, store.payments, store.otherFees]);
+
+  const handleSendMatchPlayerReminder = async (matchId: string, playerId: string, playerName: string, amount: number) => {
+    if (remindLockRef.current) return;
+    const ok = await confirmAction({
+      message: `Send WhatsApp payment reminder to ${playerName} for ₹${amount}?`,
+    });
+    if (!ok) return;
+    remindLockRef.current = true;
+    const key = `${matchId}:${playerId}`;
+    setRemindingMatchPlayerKey(key);
+    try {
+      const res = await authedFetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "due_reminder", playerId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to initiate reminder.");
+      toast(`WhatsApp reminder initiated for ${playerName}.`, "success");
+    } catch (err: any) {
+      toast(err?.message || "Failed to initiate WhatsApp reminder.", "error");
+    } finally {
+      remindLockRef.current = false;
+      setRemindingMatchPlayerKey(null);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex bg-surface-hover p-1.5 rounded-2xl border border-border mb-4 overflow-x-auto hide-scrollbar gap-2">
-        {[
-          "matches",
-          "dues",
-          "razor",
-          "fee",
-          "activity",
-        ].map((tab) => {
-          const active = subTab === tab;
-          const labels: Record<string, string> = {
-            matches: "Overview & Matches",
-            dues: "Player Dues",
-            razor: "Transactions",
-            wix: "Wix",
-            fee: "Fees & Plans",
-            activity: "Activity Log",
-          };
+    <div className="space-y-6" data-testid="admin-finance-workspace">
+      <div
+        role="tablist"
+        aria-label="Finance sections"
+        data-testid="finance-sub-tabs"
+        className="flex flex-nowrap bg-surface-hover p-1.5 rounded-2xl border border-border mb-4 overflow-x-auto no-scrollbar gap-1.5"
+      >
+        {(
+          [
+            { key: "overview", label: "Overview" },
+            { key: "matches", label: "Match Finance" },
+            { key: "dues", label: "Player Dues" },
+            { key: "razor", label: "Transactions" },
+            { key: "plans", label: "Studio & Plans" },
+            { key: "fee", label: "Fee Mgmt" },
+            { key: "activity", label: "Activity Log" },
+          ] as const
+        ).map((tab) => {
+          const active = subTab === tab.key;
           return (
             <button
-              key={tab}
-              onClick={() => setSubTab(tab as any)}
-              className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 text-center cursor-pointer whitespace-nowrap ${
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`finance-tab-${tab.key}`}
+              onClick={() => setSubTab(tab.key)}
+              className={`shrink-0 py-2 px-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 text-center cursor-pointer whitespace-nowrap ${
                 active
-                  ? "bg-accent text-text-accent font-extrabold shadow-[0_2px_8px_rgba(213,31,67,0.25)]"
-                  : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+                  ? "bg-[#A30F2D] text-white font-extrabold shadow-[0_2px_8px_rgba(163,15,45,0.25)]"
+                  : "text-text-secondary hover:text-text-primary hover:bg-surface"
               }`}
             >
-              {labels[tab]}
+              {tab.label}
             </button>
           );
         })}
       </div>
+
+      {subTab === "overview" && (
+        <div className="space-y-4" data-testid="finance-overview-section">
+          <div className="bg-surface rounded-2xl p-4 sm:p-5 border border-border space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-wider text-text-primary">
+                  Finance Overview
+                </h2>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Authoritative club totals across {collectedMatches.length} match{collectedMatches.length === 1 ? "" : "es"}
+                </p>
+              </div>
+              {isSuperAdmin && onNavigateToSettings && (
+                <button
+                  type="button"
+                  onClick={onNavigateToSettings}
+                  className="text-xs font-bold text-[#A30F2D] hover:underline cursor-pointer"
+                >
+                  Settings → Email Settings
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {[
+                { label: "Total Collected", value: `₹${grandTotalCollected}`, sub: "Actual cash received", target: "razor" as FinanceSubTab, tone: "text-emerald-700" },
+                { label: "Match Outstanding", value: `₹${grandTotalDue}`, sub: `${overviewExtras.matchesWithDuesCount} matches due`, target: "matches" as FinanceSubTab, tone: "text-rose-700" },
+                { label: "Club Sponsored", value: `₹${clubOverview.sponsored}`, sub: "Plans & offsets", target: "matches" as FinanceSubTab, tone: "text-amber-700" },
+                { label: "Sub Covered", value: `₹${clubOverview.subscriptionCovered}`, sub: "Monthly allocations", target: "plans" as FinanceSubTab, tone: "text-blue-700" },
+                { label: "Total Active Dues", value: `₹${overviewExtras.totalActiveDues}`, sub: `Incl. ₹${overviewExtras.unpaidOtherFeesTotal} other fees`, target: "dues" as FinanceSubTab, tone: "text-[#A30F2D]" },
+                { label: "Players with Dues", value: `${overviewExtras.playersWithDuesCount}`, sub: "Open balances", target: "dues" as FinanceSubTab, tone: "text-text-primary" },
+                { label: "Matches with Dues", value: `${overviewExtras.matchesWithDuesCount}`, sub: "Pending collections", target: "matches" as FinanceSubTab, tone: "text-text-primary" },
+                { label: "Studio Overview", value: `${overviewExtras.activeStudioCount} Active`, sub: `${overviewExtras.expiredStudioCount} expired`, target: "plans" as FinanceSubTab, tone: "text-text-primary" },
+              ].map((card) => (
+                <button
+                  key={card.label}
+                  type="button"
+                  onClick={() => setSubTab(card.target)}
+                  className="rounded-xl border border-border bg-surface-hover/60 p-3 text-left hover:border-[#A30F2D]/40 hover:bg-surface transition cursor-pointer"
+                >
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    {card.label}
+                  </span>
+                  <span className={`block text-lg font-black tabular-nums mt-1 ${card.tone}`}>
+                    {card.value}
+                  </span>
+                  <span className="block text-[11px] text-text-muted mt-0.5 truncate">
+                    {card.sub} →
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {subTab === "matches" && (
         <div className="space-y-4">
@@ -1332,6 +1497,88 @@ function AdminFinanceView({
                           </div>
                         </div>
                       )}
+
+                      <div className="pt-2 border-t border-border flex items-center justify-between gap-2 text-[11px]">
+                        <span className="text-text-muted">
+                          Actual fee: <strong className="text-text-primary">{data.actualFeePaid != null ? `₹${data.actualFeePaid}` : "Not set"}</strong>
+                          {" · "}Out: <strong className="text-rose-600">₹{data.totalDue}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`expand-match-finance-${data.match.id}`}
+                          onClick={() =>
+                            setExpandedMatchId((cur) => (cur === data.match.id ? null : data.match.id))
+                          }
+                          className="font-bold text-[#A30F2D] hover:underline cursor-pointer"
+                        >
+                          {expandedMatchId === data.match.id ? "Hide Details" : "View Players"}
+                        </button>
+                      </div>
+
+                      {expandedMatchId === data.match.id && (() => {
+                        const part = partitionMatchFinancePlayers(data.match, data.payments, store.players);
+                        return (
+                          <div className="pt-2 border-t border-border space-y-2.5 text-xs" data-testid={`match-finance-details-${data.match.id}`}>
+                            <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+                              <div className="rounded bg-surface-hover p-1.5">
+                                <span className="block text-text-muted">Paid</span>
+                                <strong className="text-emerald-700">{part.paid.length}</strong>
+                              </div>
+                              <div className="rounded bg-surface-hover p-1.5">
+                                <span className="block text-text-muted">Unpaid</span>
+                                <strong className="text-rose-700">{part.unpaid.length}</strong>
+                              </div>
+                              <div className="rounded bg-surface-hover p-1.5">
+                                <span className="block text-text-muted">Sponsored</span>
+                                <strong className="text-amber-700">{part.sponsored.length}</strong>
+                              </div>
+                            </div>
+                            {part.unpaid.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-bold uppercase text-rose-700">Unpaid ({part.unpaid.length})</p>
+                                {part.unpaid.map((u) => (
+                                  <div key={u.paymentId} className="flex items-center justify-between gap-2 rounded-lg bg-rose-50/70 px-2 py-1.5">
+                                    <span className="truncate font-semibold text-text-primary">{u.name} · {u.dueStatus}</span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="font-mono font-bold text-rose-700">₹{u.due}</span>
+                                      <button
+                                        type="button"
+                                        disabled={remindingMatchPlayerKey === `${data.match.id}:${u.playerId}`}
+                                        onClick={() => handleSendMatchPlayerReminder(data.match.id, u.playerId, u.name, u.due)}
+                                        className="px-2 py-0.5 rounded bg-[#A30F2D] text-white text-[10px] font-bold cursor-pointer disabled:opacity-50"
+                                      >
+                                        Remind
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {part.paid.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-bold uppercase text-emerald-700">Paid ({part.paid.length})</p>
+                                {part.paid.map((p) => (
+                                  <div key={p.paymentId} className="flex items-center justify-between gap-2 rounded-lg bg-surface-hover px-2 py-1">
+                                    <span className="truncate text-text-primary">{p.name}</span>
+                                    <span className="font-mono text-text-secondary shrink-0">₹{p.amount} · {p.method}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {part.sponsored.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-bold uppercase text-amber-700">Sponsored ({part.sponsored.length})</p>
+                                {part.sponsored.map((s) => (
+                                  <div key={s.paymentId} className="flex items-center justify-between gap-2 rounded-lg bg-amber-50/70 px-2 py-1">
+                                    <span className="truncate text-text-primary">{s.name} ({s.details})</span>
+                                    <span className="font-mono font-bold text-amber-700 shrink-0">₹{s.amount}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -1671,16 +1918,130 @@ function AdminFinanceView({
       )}
 
       {subTab === "dues" && (
-        <DuesAndRemindersTab
-          store={store}
-          isFinanceAdmin={true}
-          isSuperAdmin={isSuperAdmin}
-          onNavigateToSettings={onNavigateToSettings}
-        />
+        <div className="space-y-4">
+          <div className="bg-surface rounded-2xl border border-border p-4 space-y-3" data-testid="player-financial-profile-lookup">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
+                  Player Financial Profile
+                </h3>
+                <p className="text-[11px] text-text-secondary">
+                  Search by name, KAvach ID, or mobile to inspect full match &amp; fee history
+                </p>
+              </div>
+              {selectedPlayerProfile && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedProfilePlayerId(null)}
+                  className="text-xs font-bold text-[#A30F2D] hover:underline cursor-pointer"
+                >
+                  Clear Selection
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={profileSearch}
+              onChange={(e) => setProfileSearch(e.target.value)}
+              placeholder="Search player name, KAvach ID, or mobile..."
+              data-testid="player-finance-search-input"
+              className="w-full rounded-xl border border-border bg-surface-hover px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-[#A30F2D]"
+            />
+            {profileSearchResults.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {profileSearchResults.map((pl) => (
+                  <button
+                    key={pl.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedProfilePlayerId(pl.id);
+                      setProfileSearch("");
+                    }}
+                    className="px-2.5 py-1 rounded-lg border border-border bg-surface-hover text-xs font-bold text-text-primary hover:border-[#A30F2D] cursor-pointer"
+                  >
+                    {pl.name} {pl.kavachId ? `(${pl.kavachId})` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedPlayerProfile && (
+              <div className="rounded-xl border border-border bg-surface-hover/50 p-3.5 space-y-3" data-testid="player-financial-profile-card">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-black text-text-primary">{selectedPlayerProfile.player.name}</p>
+                    <p className="text-[11px] text-text-secondary">
+                      {selectedPlayerProfile.player.kavachId || selectedPlayerProfile.player.id}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-[10px] font-bold uppercase text-text-muted">Total Outstanding</span>
+                    <span className="text-base font-black text-rose-700 tabular-nums">
+                      ₹{selectedPlayerProfile.totalOutstanding}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-center">
+                  <div className="rounded-lg bg-surface p-2 border border-border">
+                    <span className="block text-[10px] text-text-muted">Match Paid</span>
+                    <strong className="text-emerald-700 tabular-nums">₹{selectedPlayerProfile.totalPaidMatches}</strong>
+                  </div>
+                  <div className="rounded-lg bg-surface p-2 border border-border">
+                    <span className="block text-[10px] text-text-muted">Sponsored</span>
+                    <strong className="text-amber-700 tabular-nums">₹{selectedPlayerProfile.totalSponsored}</strong>
+                  </div>
+                  <div className="rounded-lg bg-surface p-2 border border-border">
+                    <span className="block text-[10px] text-text-muted">Sub Covered</span>
+                    <strong className="text-blue-700 tabular-nums">₹{selectedPlayerProfile.totalSubscriptionCovered}</strong>
+                  </div>
+                  <div className="rounded-lg bg-surface p-2 border border-border">
+                    <span className="block text-[10px] text-text-muted">Other Fees Due</span>
+                    <strong className="text-rose-700 tabular-nums">₹{selectedPlayerProfile.otherFeesOutstanding}</strong>
+                  </div>
+                </div>
+                {selectedPlayerProfile.matchEntries.length > 0 && (
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {selectedPlayerProfile.matchEntries.slice(0, 6).map((me) => (
+                      <div key={me.matchId} className="flex items-center justify-between text-xs px-2 py-1 rounded bg-surface border border-border/60">
+                        <span className="truncate">{me.date} · vs {me.opponent}</span>
+                        <span className="font-mono text-[11px] shrink-0">
+                          {me.statusLabel} {me.outstanding > 0 ? `(₹${me.outstanding} due)` : me.paid > 0 ? `(₹${me.paid})` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DuesAndRemindersTab
+            store={store}
+            isFinanceAdmin={true}
+            isSuperAdmin={isSuperAdmin}
+            onNavigateToSettings={onNavigateToSettings}
+          />
+        </div>
       )}
       {subTab === "razor" && <RazorReportView store={store} />}
 
-      {subTab === "fee" && <FeeManagementView store={store} />}
+      {subTab === "plans" && (
+        <div className="space-y-6" data-testid="finance-studio-plans-section">
+          <div className="bg-surface rounded-2xl border border-border p-4 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
+                Studio Subscriptions Overview
+              </h3>
+              <p className="text-xs text-text-secondary">
+                {overviewExtras.activeStudioCount} active · {overviewExtras.expiredStudioCount} expired
+              </p>
+            </div>
+          </div>
+          <PlansView store={store} />
+          <FeePlansAdmin store={store} />
+        </div>
+      )}
+
+      {subTab === "fee" && <CreateFeeAdmin store={store} />}
 
       {/* D-19: the Activity Log (audit trail) moved here from Club. Purge controls
           stay Super Admin only; reading is enforced by Firestore rules. */}

@@ -528,3 +528,245 @@ export function summarizeClubFinanceOverview(
     settlementPct,
   };
 }
+
+export interface MatchPaidPlayerRow {
+  paymentId: string;
+  playerId: string;
+  name: string;
+  amount: number;
+  method: string;
+  reference?: string;
+  sponsoredNote?: string;
+}
+
+export interface MatchUnpaidPlayerRow {
+  paymentId: string;
+  playerId: string;
+  name: string;
+  due: number;
+  paidSoFar: number;
+  dueStatus: "Unpaid" | "Partially Paid";
+  planTag?: string;
+  sponsoredNote?: string;
+}
+
+export interface MatchSponsoredPlayerRow {
+  paymentId: string;
+  playerId: string;
+  name: string;
+  amount: number;
+  details: string;
+}
+
+/**
+ * Partitions a match's non-excluded payments into mutually exclusive
+ * Paid, Unpaid, and Sponsored lists so no payment row appears in multiple categories.
+ */
+export function partitionMatchFinancePlayers(
+  match: Match,
+  paymentsForMatch: readonly MatchPayment[],
+  players: readonly Player[],
+): {
+  paid: MatchPaidPlayerRow[];
+  unpaid: MatchUnpaidPlayerRow[];
+  sponsored: MatchSponsoredPlayerRow[];
+} {
+  const paid: MatchPaidPlayerRow[] = [];
+  const unpaid: MatchUnpaidPlayerRow[] = [];
+  const sponsored: MatchSponsoredPlayerRow[] = [];
+
+  for (const p of paymentsForMatch) {
+    const cls = classifyMatchPayment(p, match.fee || 0);
+    if (cls.category === "excluded") continue;
+
+    const player = players.find((x) => x.id === p.playerId);
+    const name = p.guestName ? `${p.guestName} (Guest)` : (player?.name || "Player");
+    const totalSponsored = cls.clubSponsored + cls.playerSponsored;
+    const sponsorName = p.sponsoredBy ? players.find((x) => x.id === p.sponsoredBy)?.name : undefined;
+    const sponsorDetails =
+      cls.playerSponsored > 0
+        ? `Sponsored by ${sponsorName || "Member"}`
+        : p.planTag || (p.manualMethod === "club_sponsored" ? "Club Sponsored" : "Club Sponsorship");
+
+    if (cls.outstanding > 0) {
+      unpaid.push({
+        paymentId: p.id,
+        playerId: p.playerId,
+        name,
+        due: cls.outstanding,
+        paidSoFar: cls.cashReceived,
+        dueStatus: cls.cashReceived > 0 ? "Partially Paid" : "Unpaid",
+        planTag: p.planTag,
+        sponsoredNote: totalSponsored > 0 ? `₹${totalSponsored} ${sponsorDetails}` : undefined,
+      });
+      continue;
+    }
+
+    if (
+      cls.category === "club_sponsored" ||
+      cls.category === "player_sponsored" ||
+      (cls.cashReceived === 0 && cls.subscriptionCovered === 0 && totalSponsored > 0)
+    ) {
+      sponsored.push({
+        paymentId: p.id,
+        playerId: p.playerId,
+        name,
+        amount: totalSponsored,
+        details: sponsorDetails,
+      });
+      continue;
+    }
+
+    if (cls.isSettled) {
+      const method =
+        cls.category === "razorpay"
+          ? "Razorpay"
+          : cls.category === "subscription_covered"
+            ? "Subscription Covered"
+            : "Cash";
+      paid.push({
+        paymentId: p.id,
+        playerId: p.playerId,
+        name,
+        amount: cls.cashReceived > 0 ? cls.cashReceived : cls.subscriptionCovered,
+        method,
+        reference: (p as any).razorpayPaymentId || (p as any).transactionId || undefined,
+        sponsoredNote: totalSponsored > 0 ? `₹${totalSponsored} ${sponsorDetails}` : undefined,
+      });
+    }
+  }
+
+  return { paid, unpaid, sponsored };
+}
+
+export interface PlayerFinancialProfile {
+  player: Player;
+  totalOutstanding: number;
+  matchOutstanding: number;
+  otherFeesOutstanding: number;
+  totalPaidMatches: number;
+  totalSponsored: number;
+  totalSubscriptionCovered: number;
+  matchEntries: {
+    matchId: string;
+    date: string;
+    opponent: string;
+    statusLabel: "Paid" | "Partially Paid" | "Unpaid" | "Waived" | "Sponsored" | "Subscription";
+    paid: number;
+    outstanding: number;
+    sponsored: number;
+    subscriptionCovered: number;
+  }[];
+  otherFeeEntries: {
+    id: string;
+    title: string;
+    category: "No Show" | "Penalty" | "Exemption" | "Ad-hoc";
+    amount: number;
+    status: string;
+    comment?: string;
+  }[];
+}
+
+export function summarizePlayerFinancialProfile(
+  player: Player,
+  matches: readonly Match[],
+  payments: readonly MatchPayment[],
+  otherFees: readonly any[],
+): PlayerFinancialProfile {
+  let matchOutstanding = 0;
+  let totalPaidMatches = 0;
+  let totalSponsored = 0;
+  let totalSubscriptionCovered = 0;
+  const matchEntries: PlayerFinancialProfile["matchEntries"] = [];
+
+  for (const p of payments) {
+    if (p.playerId !== player.id || p.status === "Not Playing") continue;
+    const match = matches.find((m) => m.id === p.matchId);
+    if (!match) continue;
+    const cls = classifyMatchPayment(p, match.fee || 0);
+    if (cls.category === "excluded") {
+      if (p.status === "Waived" || match.result === "Abandoned") {
+        matchEntries.push({
+          matchId: match.id,
+          date: match.date,
+          opponent: match.opponent || "TBD",
+          statusLabel: "Waived",
+          paid: cls.cashReceived,
+          outstanding: 0,
+          sponsored: 0,
+          subscriptionCovered: 0,
+        });
+      }
+      continue;
+    }
+
+    const sp = cls.clubSponsored + cls.playerSponsored;
+    matchOutstanding += cls.outstanding;
+    totalPaidMatches += cls.cashReceived;
+    totalSponsored += sp;
+    totalSubscriptionCovered += cls.subscriptionCovered;
+
+    const statusLabel: PlayerFinancialProfile["matchEntries"][number]["statusLabel"] =
+      cls.outstanding > 0
+        ? cls.cashReceived > 0
+          ? "Partially Paid"
+          : "Unpaid"
+        : cls.category === "club_sponsored" || cls.category === "player_sponsored"
+          ? "Sponsored"
+          : cls.category === "subscription_covered"
+            ? "Subscription"
+            : "Paid";
+
+    matchEntries.push({
+      matchId: match.id,
+      date: match.date,
+      opponent: match.opponent || "TBD",
+      statusLabel,
+      paid: cls.cashReceived,
+      outstanding: cls.outstanding,
+      sponsored: sp,
+      subscriptionCovered: cls.subscriptionCovered,
+    });
+  }
+
+  matchEntries.sort((a, b) => b.date.localeCompare(a.date));
+
+  let otherFeesOutstanding = 0;
+  const otherFeeEntries: PlayerFinancialProfile["otherFeeEntries"] = [];
+  for (const f of otherFees) {
+    if (f.playerId !== player.id || f.status === "Cancelled") continue;
+    const title = String(f.title || "");
+    const templateId = String(f.templateId || "");
+    const category: PlayerFinancialProfile["otherFeeEntries"][number]["category"] =
+      title.startsWith("Late Fee Exemption:") || templateId.startsWith("latefee_exempt_")
+        ? "Exemption"
+        : templateId.startsWith("latefee_") || title.toLowerCase().includes("penalty") || title.toLowerCase().includes("late fee")
+          ? "Penalty"
+          : title.toLowerCase().includes("no show")
+            ? "No Show"
+            : "Ad-hoc";
+    if (f.status === "Unpaid") {
+      otherFeesOutstanding += Number(f.amount) || 0;
+    }
+    otherFeeEntries.push({
+      id: f.id,
+      title,
+      category,
+      amount: Number(f.amount) || 0,
+      status: f.status,
+      comment: f.comment,
+    });
+  }
+
+  return {
+    player,
+    totalOutstanding: matchOutstanding + otherFeesOutstanding,
+    matchOutstanding,
+    otherFeesOutstanding,
+    totalPaidMatches,
+    totalSponsored,
+    totalSubscriptionCovered,
+    matchEntries,
+    otherFeeEntries,
+  };
+}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert } from "lucide-react";
 import { formatDate, computeLateFees } from "@/lib/utils";
@@ -32,39 +32,10 @@ export function DuesAndRemindersTab({
   const [isSendingBulk, setIsSendingBulk] = useState(false);
   const bulkRemindLockRef = useRef(false);
 
-  // Email template used by manual "Send Reminder" buttons. Automatic cron
-  // scheduling was removed to control Cloud Run / Lambda costs — reminders
-  // are now only sent when an admin explicitly clicks the button.
+  // Email template used by manual "Send Reminder" buttons (configured in Settings → Email Settings).
   const defaultTemplate = {
     subject: "Pending Fee Reminder - {{clubName}}",
     body: "Hi {{playerName}},\n\nThis is a friendly reminder that you have an outstanding fee of {{amount}} for: {{duesText}}.\n\nPlease log in to clear your dues at your earliest convenience using this link: {{link}}\n\nBest regards,\n{{clubName}} Admin Team",
-  };
-  const [emailTemplate, setEmailTemplate] = useState(
-    store.appConfig?.emailTemplates?.due_reminder || defaultTemplate
-  );
-
-  useEffect(() => {
-    const saved = store.appConfig?.emailTemplates?.due_reminder;
-    if (saved && (saved.subject || saved.body)) {
-      setEmailTemplate(saved);
-    }
-  }, [store.appConfig?.emailTemplates?.due_reminder]);
-
-  const [isEmailSubOpen, setIsEmailSubOpen] = useState(true);
-
-  const handleSaveRemindersConfig = async () => {
-     try {
-       await store.updateAppConfig({
-          ...store.appConfig,
-          emailTemplates: {
-             ...(store.appConfig?.emailTemplates || {}),
-             due_reminder: emailTemplate
-          },
-       });
-       toast("Email template saved.", "success");
-     } catch (e) {
-       toast("Failed to save configuration.", "error");
-     }
   };
 
   return (
