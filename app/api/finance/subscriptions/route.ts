@@ -1,7 +1,7 @@
 /**
  * Monthly Subscription periods (`/api/finance/subscriptions`).
  *
- * GET  ?month=YYYY-MM          list periods (Club, Finance, Super Admin: view)
+ * GET  ?month=YYYY-MM          list periods (Finance, Super Admin: view)
  * POST (Finance Admin / Super Admin only):
  *   { action: "createForMonth", month }                    one period per player per monthly assignment
  *   { action: "recordPayment",  periodId, method, note? }  full plan amount (server-derived), cash/upi/bank
@@ -17,7 +17,7 @@
  */
 import { NextResponse } from "next/server";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
-import { requireFinanceAdmin, requireRole } from "@/lib/server-auth";
+import { requireFinanceAdmin } from "@/lib/server-auth";
 import { getServerFirestore } from "@/lib/server-db";
 import { actorNameFor, writeServerAudit } from "@/lib/server-audit";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -35,8 +35,10 @@ const COLLECTION = "subscriptionPeriods";
 const METHODS = ["cash", "upi", "bank"] as const;
 
 class RequestError extends Error {
-  constructor(public status: number, message: string) {
+  status: number;
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
   }
 }
 const cleanText = (r: unknown) => (typeof r === "string" ? r.trim().slice(0, 300) : "");
@@ -54,7 +56,7 @@ function serialize(id: string, data: FirebaseFirestore.DocumentData) {
 }
 
 export async function GET(req: Request) {
-  const guard = await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"]);
+  const guard = await requireFinanceAdmin(req);
   if (!guard.ok) return guard.response;
   try {
     const month = new URL(req.url).searchParams.get("month");

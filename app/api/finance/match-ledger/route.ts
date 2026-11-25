@@ -29,8 +29,10 @@ const REFUND_METHODS = ["razorpay_refund", "cash", "upi", "bank"] as const;
 const MAX_AMOUNT = 10_000_000;
 
 class RequestError extends Error {
-  constructor(public status: number, message: string) {
+  status: number;
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
   }
 }
 const cleanText = (r: unknown, max = 300) => (typeof r === "string" ? r.trim().slice(0, max) : "");

@@ -1,8 +1,8 @@
 /**
  * Finance Plans for a match (`/api/finance/match-plans`).
  *
- * POST { action: "preview",  matchId }                     Club, Match, Finance, Super Admin
- * POST { action: "apply",    matchId, scope?: "all"|"refresh" }   Match, Finance, Super Admin
+ * POST { action: "preview",  matchId }                     Finance, Super Admin
+ * POST { action: "apply",    matchId, scope?: "all"|"refresh" }   Finance, Super Admin
  * POST { action: "override", matchId, paymentId, reason, contribution? | planId? | regular: true }  Finance, Super Admin
  * POST { action: "clearOverride", matchId, paymentId, reason }  back to the plan rule; Finance, Super Admin
  *
@@ -20,7 +20,7 @@
  */
 import { NextResponse } from "next/server";
 import { FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
-import { requireFinanceAdmin, requireRole } from "@/lib/server-auth";
+import { requireFinanceAdmin } from "@/lib/server-auth";
 import { getServerFirestore } from "@/lib/server-db";
 import { actorNameFor, writeServerAudit } from "@/lib/server-audit";
 import {
@@ -41,8 +41,10 @@ import { planContribution } from "@/lib/finance-plans";
 import type { FeePlan, FinancePlanAssignment, Match } from "@/lib/types";
 
 class RequestError extends Error {
-  constructor(public status: number, message: string) {
+  status: number;
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -123,13 +125,9 @@ export async function POST(req: Request) {
   }
   const action = body?.action;
   const guard =
-    action === "preview"
-      ? await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"])
-      : action === "apply"
-        ? await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"])
-        : action === "override" || action === "clearOverride"
-          ? await requireFinanceAdmin(req)
-          : null;
+    action === "preview" || action === "apply" || action === "override" || action === "clearOverride"
+      ? await requireFinanceAdmin(req)
+      : null;
   if (!guard) return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   if (!guard.ok) return guard.response;
 

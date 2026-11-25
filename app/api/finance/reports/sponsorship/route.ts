@@ -1,7 +1,7 @@
 /**
  * Sponsorship & subscription report (`/api/finance/reports/sponsorship`).
  *
- * GET ?from=YYYY-MM-DD&to=YYYY-MM-DD   (Club, Finance, Super Admin: read-only)
+ * GET ?from=YYYY-MM-DD&to=YYYY-MM-DD   (Finance, Super Admin: read-only)
  *
  * Reads matches dated in the range, their payments and the subscription
  * periods overlapping it, and builds the report with the shared pure rules
@@ -10,7 +10,7 @@
  * as "covered", never again as cash collected. Abandoned matches are excluded.
  */
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/server-auth";
+import { requireFinanceAdmin } from "@/lib/server-auth";
 import { getServerFirestore } from "@/lib/server-db";
 import { buildSponsorshipReport, type ReportMatch, type ReportPayment, type SubscriptionPeriod } from "@/lib/subscription-periods";
 
@@ -18,7 +18,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DAYS = 366;
 
 export async function GET(req: Request) {
-  const guard = await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"]);
+  const guard = await requireFinanceAdmin(req);
   if (!guard.ok) return guard.response;
   const params = new URL(req.url).searchParams;
   const from = params.get("from") || "";

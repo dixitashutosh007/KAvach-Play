@@ -1,7 +1,7 @@
 /**
  * Finance Plan assignments API (`/api/finance/assignments`).
  *
- * GET  — list every assignment (Club, Match, Finance and Super Admins: view).
+ * GET  — list every assignment (Finance Admin and Super Admin only).
  * POST — change assignments (Finance Admin and Super Admin only):
  *   { action: "assign",     planId, playerIds[], startDate, endDate|null }
  *   { action: "end",        assignmentId, endDate, reason }
@@ -16,7 +16,7 @@
  */
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { requireFinanceAdmin, requireRole } from "@/lib/server-auth";
+import { requireFinanceAdmin } from "@/lib/server-auth";
 import { getServerFirestore } from "@/lib/server-db";
 import { actorNameFor, writeServerAudit } from "@/lib/server-audit";
 import { getClubCalendarDate } from "@/lib/utils";
@@ -33,7 +33,7 @@ const COLLECTION = "financePlanAssignments";
 const MAX_PLAYERS_PER_REQUEST = 100;
 
 export async function GET(req: Request) {
-  const guard = await requireRole(req, ["superAdmin", "financeAdmin", "clubAdmin"]);
+  const guard = await requireFinanceAdmin(req);
   if (!guard.ok) return guard.response;
   try {
     const db = getServerFirestore();
@@ -55,8 +55,12 @@ export async function GET(req: Request) {
 }
 
 class RequestError extends Error {
-  constructor(public status: number, message: string, public details?: unknown) {
+  status: number;
+  details?: unknown;
+  constructor(status: number, message: string, details?: unknown) {
     super(message);
+    this.status = status;
+    this.details = details;
   }
 }
 
