@@ -175,12 +175,17 @@ describe("FND-03: Server-side due reminder resolver (Firestore Emulator)", { ski
     assert.equal(afterClear.ok, false);
   });
 
-  it("authorizeEmailRequest keeps Club/Super Admin workflows permitted and Finance Admin strictly scoped", () => {
+  it("authorizeEmailRequest permits Super Admin for all emails, scopes Finance Admin to due_reminder, and denies Club Admin-only due_reminder", () => {
     const finOnly = { superAdmin: false, clubAdmin: false, financeAdmin: true };
     const clubAdmin = { superAdmin: false, clubAdmin: true, financeAdmin: false };
+    const superAdmin = { superAdmin: true, clubAdmin: false, financeAdmin: false };
     assert.equal(authorizeEmailRequest(finOnly, { action: "due_reminder", playerId: "p1" }).ok, true);
     assert.equal(authorizeEmailRequest(finOnly, { to: ["x@y.com"], subject: "Custom", text: "Body" }).ok, false);
     assert.equal(authorizeEmailRequest(clubAdmin, { to: ["x@y.com"], subject: "Custom", text: "Body" }).ok, true);
+    const clubDue = authorizeEmailRequest(clubAdmin, { action: "due_reminder", playerId: "p1" });
+    assert.equal(clubDue.ok, false);
+    if (!clubDue.ok) assert.equal(clubDue.status, 403);
+    assert.equal(authorizeEmailRequest(superAdmin, { action: "due_reminder", playerId: "p1" }).ok, true);
   });
 
   it("FND-02-R1 & FND-03-R1: HTTP /api/email/send & /api/whatsapp/send enforce server-derived dues for all admin roles and reject manipulated/player requests", async () => {
@@ -242,8 +247,8 @@ describe("FND-03: Server-side due reminder resolver (Firestore Emulator)", { ski
       assert.equal((await callRoute(emailRoute.POST, "", { action: "due_reminder", playerId: pid })).status, 403);
       assert.equal((await callRoute(waRoute.POST, "", { action: "due_reminder", playerId: pid })).status, 403);
 
-      // 2. Finance Admin, Club Admin, and Super Admin all get server-derived recipient/amount even if client sends manipulated fields
-      for (const role of ["financeAdmin", "clubAdmin", "superAdmin"]) {
+      // 2. Finance Admin and Super Admin get server-derived recipient/amount even if client sends manipulated fields
+      for (const role of ["financeAdmin", "superAdmin"]) {
         capturedFetches.length = 0;
         const eRes = await callRoute(emailRoute.POST, role, {
           action: "due_reminder",
@@ -275,11 +280,63 @@ describe("FND-03: Server-side due reminder resolver (Firestore Emulator)", { ski
         assert.deepEqual(waParams, ["Real Player", "300", `https://play.kavachcricket.com/pay/${pid}`]);
       }
 
-      // 3. Clearing the remaining balance causes both routes to reject (400) with zero provider calls
+      // 2b. Club Admin-only is denied (403) for due_reminder on both routes with zero provider calls
+      capturedFetches.length = 0;
+      const clubEmailDue = await callRoute(emailRoute.POST, "clubAdmin", {
+        action: "due_reminder",
+        playerId: pid,
+      });
+      assert.equal(clubEmailDue.status, 403);
+      const clubWaDue = await callRoute(waRoute.POST, "clubAdmin", {
+        action: "due_reminder",
+        playerId: pid,
+      });
+      assert.equal(clubWaDue.status, 403);
+      assert.equal(capturedFetches.length, 0);
+
+      // 2c. Legitimate non-Finance Club Admin messaging remains permitted, while Finance Admin is denied non-Finance messaging
+      capturedFetches.length = 0;
+      const clubEmailAnnounce = await callRoute(emailRoute.POST, "clubAdmin", {
+        to: ["real@club.test"],
+        subject: "Match Squad Update",
+        text: "Report at 7:00 AM.",
+      });
+      assert.equal(clubEmailAnnounce.status, 200);
+      assert.equal(capturedFetches.length, 1);
+
+      capturedFetches.length = 0;
+      const clubWaCustom = await callRoute(waRoute.POST, "clubAdmin", {
+        to: "9876543210",
+        templateName: "squad_announcement",
+        params: ["Match One"],
+      });
+      assert.equal(clubWaCustom.status, 200);
+      assert.equal(capturedFetches.length, 1);
+
+      capturedFetches.length = 0;
+      assert.equal(
+        (await callRoute(emailRoute.POST, "financeAdmin", {
+          to: ["real@club.test"],
+          subject: "Club News",
+          text: "Hello",
+        })).status,
+        403,
+      );
+      assert.equal(
+        (await callRoute(waRoute.POST, "financeAdmin", {
+          to: "9876543210",
+          templateName: "squad_announcement",
+          params: ["Match One"],
+        })).status,
+        403,
+      );
+      assert.equal(capturedFetches.length, 0);
+
+      // 3. Clearing the remaining balance causes authorized roles to reject (400) with zero provider calls
       await db.collection("payments").doc(payId).update({ feeCollectedAmount: 500 });
       capturedFetches.length = 0;
       assert.equal((await callRoute(emailRoute.POST, "financeAdmin", { action: "due_reminder", playerId: pid })).status, 400);
-      assert.equal((await callRoute(waRoute.POST, "clubAdmin", { action: "due_reminder", playerId: pid })).status, 400);
+      assert.equal((await callRoute(waRoute.POST, "superAdmin", { action: "due_reminder", playerId: pid })).status, 400);
       assert.equal(capturedFetches.length, 0);
 
       // 4. Match-specific WhatsApp reminder resolves ONLY that match's outstanding balance

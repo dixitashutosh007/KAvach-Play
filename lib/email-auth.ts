@@ -19,7 +19,9 @@ export type EmailAuthResult =
 
 /**
  * Server-side authorization policy for `/api/email/send`:
- * - Super Admin & Club Admin: authorized for all email workflows.
+ * - Super Admin: authorized for all email workflows.
+ * - Club Admin-only (without Super Admin or Finance Admin): authorized for
+ *   legitimate non-Finance Club Admin emails, but DENIED `action: "due_reminder"` (HTTP 403).
  * - Finance Admin (without Club/Super Admin): strictly limited to explicit
  *   `action: "due_reminder"` payment reminders with non-empty subject/text and
  *   a single recipient. Arbitrary email sending is rejected (HTTP 403).
@@ -29,7 +31,22 @@ export function authorizeEmailRequest(
   roles: EmailCallerRoles,
   body: EmailRequestPayload,
 ): EmailAuthResult {
-  if (roles.superAdmin || roles.clubAdmin) {
+  if (roles.superAdmin) {
+    return { ok: true, isFinanceDueReminderOnly: false };
+  }
+
+  if (roles.clubAdmin && !roles.financeAdmin) {
+    if (body?.action === "due_reminder") {
+      return {
+        ok: false,
+        status: 403,
+        error: "Forbidden: Club Admins without Finance Admin privileges cannot send financial due reminders.",
+      };
+    }
+    return { ok: true, isFinanceDueReminderOnly: false };
+  }
+
+  if (roles.clubAdmin && roles.financeAdmin && body?.action !== "due_reminder") {
     return { ok: true, isFinanceDueReminderOnly: false };
   }
 

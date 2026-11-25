@@ -36,18 +36,24 @@ test("authorizeEmailRequest permits Finance Admin strictly for due_reminder", ()
   if (!multiRecipient.ok) assert.equal(multiRecipient.status, 400);
 });
 
-test("authorizeEmailRequest permits Club Admin and Super Admin for all email workflows", () => {
+test("authorizeEmailRequest permits Super Admin for all emails, and scopes Club Admin to non-Finance emails", () => {
   const clubRoles = { superAdmin: false, clubAdmin: true, financeAdmin: false };
   const superRoles = { superAdmin: true, clubAdmin: false, financeAdmin: false };
 
-  for (const roles of [clubRoles, superRoles]) {
-    const res1 = authorizeEmailRequest(roles, arbitraryEmail);
-    assert.equal(res1.ok, true);
-    if (res1.ok) assert.equal(res1.isFinanceDueReminderOnly, false);
+  const clubArbitrary = authorizeEmailRequest(clubRoles, arbitraryEmail);
+  assert.equal(clubArbitrary.ok, true);
+  if (clubArbitrary.ok) assert.equal(clubArbitrary.isFinanceDueReminderOnly, false);
 
-    const res2 = authorizeEmailRequest(roles, baseDueReminder);
-    assert.equal(res2.ok, true);
-  }
+  const clubDueReminder = authorizeEmailRequest(clubRoles, baseDueReminder);
+  assert.equal(clubDueReminder.ok, false);
+  if (!clubDueReminder.ok) assert.equal(clubDueReminder.status, 403);
+
+  const superArbitrary = authorizeEmailRequest(superRoles, arbitraryEmail);
+  assert.equal(superArbitrary.ok, true);
+  if (superArbitrary.ok) assert.equal(superArbitrary.isFinanceDueReminderOnly, false);
+
+  const superDueReminder = authorizeEmailRequest(superRoles, baseDueReminder);
+  assert.equal(superDueReminder.ok, true);
 });
 
 test("authorizeEmailRequest denies ordinary Player even for due_reminder", () => {

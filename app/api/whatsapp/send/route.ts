@@ -9,8 +9,23 @@ export async function POST(req: Request) {
     if (!guard.ok) return guard.response;
 
     const body = await req.json();
-    const isSuperOrClub = guard.roles.has("superAdmin") || guard.roles.has("clubAdmin");
-    const isFinanceOnly = !isSuperOrClub && guard.roles.has("financeAdmin");
+    const isSuper = guard.roles.has("superAdmin");
+    const isClub = guard.roles.has("clubAdmin");
+    const isFinance = guard.roles.has("financeAdmin");
+    const isDueReminder = body?.action === "due_reminder";
+
+    if (isDueReminder && !isSuper && !isFinance) {
+      return NextResponse.json(
+        { error: "Forbidden: Finance Admin or Super Admin privileges required for financial due reminders." },
+        { status: 403 },
+      );
+    }
+    if (!isDueReminder && !isSuper && !isClub) {
+      return NextResponse.json(
+        { error: "Forbidden: Finance Admins may only send due_reminder WhatsApp notifications." },
+        { status: 403 },
+      );
+    }
 
     const db = getServerFirestore();
 
@@ -20,15 +35,7 @@ export async function POST(req: Request) {
     let link = body?.link;
     let appConfig: Record<string, any> = {};
 
-    const isDueReminder = body?.action === "due_reminder";
-    if (isFinanceOnly && !isDueReminder) {
-      return NextResponse.json(
-        { error: "Forbidden: Finance Admins may only send due_reminder WhatsApp notifications." },
-        { status: 403 },
-      );
-    }
-
-    if (isFinanceOnly || isDueReminder) {
+    if (isDueReminder) {
       const { resolveAuthorizedDueReminder } = await import("@/lib/reminder-server");
       const origin = new URL(req.url).origin;
       const resolved = await resolveAuthorizedDueReminder(db, {
