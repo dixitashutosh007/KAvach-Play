@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { searchPlayerAccessibleData } from "../lib/player-search.ts";
-import { createSearchReadinessCoordinator } from "../lib/search-readiness.ts";
+import {
+  createLazyLoadRegistry,
+  createSearchReadinessCoordinator,
+  LazyLoadCancelledError,
+} from "../lib/search-readiness.ts";
 
 const root = process.cwd();
 const NOW = Date.parse("2026-11-25T12:00:00Z");
@@ -344,6 +348,99 @@ test("Search readiness coordinator cancels stale requests on query change, clear
   coord.dispose();
   await coord.startQuery("after-unmount");
   assert.equal(states.length, countBeforeDispose);
+});
+
+test("Lazy registry settles pending posts/polls promises on detach, blocks stale callbacks, and supports restart", async () => {
+  const registry = createLazyLoadRegistry();
+  let postsApplyCount = 0;
+  let pollsApplyCount = 0;
+  let postControlsList = [];
+  let pollControlsList = [];
+
+  const pPosts = registry.ensureListener("posts", (c) => {
+    postControlsList.push(c);
+    return () => {};
+  });
+  const pPolls = registry.ensureListener("polls", (c) => {
+    pollControlsList.push(c);
+    return () => {};
+  });
+
+  // Detach both before their first snapshot arrives
+  registry.detach("posts");
+  registry.detachAll();
+
+  await assert.rejects(pPosts, (err) => err instanceof LazyLoadCancelledError && err.domainKey === "posts");
+  await assert.rejects(pPolls, (err) => err instanceof LazyLoadCancelledError && err.domainKey === "polls");
+
+  // Stale listener callbacks after detach MUST NOT mutate state
+  postControlsList[0].onData(() => { postsApplyCount++; });
+  pollControlsList[0].onData(() => { pollsApplyCount++; });
+  assert.equal(postsApplyCount, 0);
+  assert.equal(pollsApplyCount, 0);
+
+  // Restart after detach creates fresh listeners and resolves cleanly
+  const pPosts2 = registry.ensureListener("posts", (c) => {
+    postControlsList.push(c);
+    return () => {};
+  });
+  assert.equal(registry.hasActiveListener("posts"), true);
+  // Old listener error after new listener is registered MUST NOT delete the new listener's entry
+  postControlsList[0].onError(new Error("late old error"));
+  assert.equal(registry.hasActiveListener("posts"), true);
+
+  postControlsList[1].onData(() => { postsApplyCount++; });
+  await pPosts2;
+  assert.equal(postsApplyCount, 1);
+});
+
+test("Lazy registry clearAll cancels pending tournaments one-shot and coordinator restarts cleanly without error", async () => {
+  const registry = createLazyLoadRegistry();
+  let tournamentsSetCount = 0;
+  let tournDef = deferred();
+  let postControls = null;
+
+  const states = [];
+  const coord = createSearchReadinessCoordinator(
+    () => ({
+      ensurePosts: () =>
+        registry.ensureListener("posts", (c) => {
+          postControls = c;
+          return () => {};
+        }),
+      ensurePolls: () => Promise.resolve(),
+      ensureTournaments: () =>
+        registry.ensureOneShot("tournaments", async (isStale) => {
+          await tournDef.promise;
+          if (isStale()) return;
+          tournamentsSetCount++;
+        }),
+    }),
+    (s) => states.push(s),
+  );
+
+  // Start search while posts & tournaments are pending, then simulate user/refresh clearAll()
+  const runPromise = coord.startQuery("royal");
+  assert.equal(states.at(-1).status, "loading");
+
+  // Reset tournDef for the automatic restart before clearAll triggers restart
+  const oldTournDef = tournDef;
+  tournDef = deferred();
+  registry.clearAll();
+
+  // Stale one-shot resolving after clearAll must NOT mutate tournaments
+  oldTournDef.resolve();
+  await Promise.resolve();
+  assert.equal(tournamentsSetCount, 0);
+
+  // Automatic restart re-acquired fresh loaders; resolve them now
+  tournDef.resolve();
+  postControls.onData(() => {});
+  await runPromise;
+
+  assert.equal(states.some((s) => s.status === "error"), false);
+  assert.equal(states.at(-1).status, "ready");
+  assert.equal(tournamentsSetCount, 1);
 });
 
 test("Global Search UI & AppHeader wire readiness coordinator, lazy-loading, and player-only entry", () => {
