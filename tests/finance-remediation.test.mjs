@@ -180,3 +180,20 @@ test("F3: reminder authorization enforces action=due_reminder and server-side du
   const playerIdMatches = duesTab.match(/playerId:\s*(?:data|item)\.player\.id/g) || [];
   assert.equal(playerIdMatches.length, 4);
 });
+
+test("F5: Finance navigation consolidation, Settings shortcut, and D-22 role isolation", () => {
+  const financeTab = fs.readFileSync(path.join(root, "components/FinanceTab.tsx"), "utf8");
+  assert.match(financeTab, /data-testid="club-finance-overview"/);
+  assert.match(financeTab, /data-testid="overview-to-player-dues"/);
+  assert.match(financeTab, /persona === "admin" && isFinanceAdmin !== false/);
+
+  const duesTab = fs.readFileSync(path.join(root, "components/DuesAndRemindersTab.tsx"), "utf8");
+  // Duplicate email_template subtab removed from Finance
+  assert.doesNotMatch(duesTab, /key:\s*"email_template"/);
+  // Settings shortcut is gated on isSuperAdmin
+  assert.match(duesTab, /isSuperAdmin && onNavigateToSettings/);
+
+  const pageSrc = fs.readFileSync(path.join(root, "app/page.tsx"), "utf8");
+  assert.match(pageSrc, /onNavigateToSettings=\{isSuperAdmin \? \(\) => setActiveTab\("settings"\) : undefined\}/);
+  assert.match(pageSrc, /activeTab === "settings" && \(\s*isSuperAdmin \?/);
+});

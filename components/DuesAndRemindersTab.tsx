@@ -8,10 +8,20 @@ import type { ManualPaymentMethod } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 
-export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { store: any; isFinanceAdmin: boolean; isSuperAdmin?: boolean }) {
+export function DuesAndRemindersTab({
+  store,
+  isFinanceAdmin,
+  isSuperAdmin,
+  onNavigateToSettings,
+}: {
+  store: any;
+  isFinanceAdmin: boolean;
+  isSuperAdmin?: boolean;
+  onNavigateToSettings?: () => void;
+}) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
-  const [subTab, setSubTab] = useState<"dues_report" | "dues_table" | "email_template">("dues_report");
+  const [subTab, setSubTab] = useState<"dues_report" | "dues_table">("dues_report");
 
   // Dues Report State
   const [dueType, setDueType] = useState<"all" | "matches" | "others" | "latefees">("all");
@@ -52,85 +62,37 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 bg-surface-hover p-1 rounded-xl border border-border overflow-x-auto hide-scrollbar">
-        {[
-          { key: "dues_report", label: "Report" },
-          { key: "dues_table", label: "Table View" },
-          { key: "email_template", label: "Email Template" },
-        ].map((tab) => {
-          const active = subTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setSubTab(tab.key as any)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest whitespace-nowrap transition-all ${
-                active ? "bg-accent text-text-accent shadow-lg shadow-accent/20" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-
-      {subTab === "email_template" && (
-        <div className="bg-surface p-6 rounded-2xl border border-border space-y-6">
-          <div className="bg-amber-500/5 border border-amber-500/20 text-amber-200/80 text-[11px] px-3 py-2 rounded-lg leading-snug">
-            Automated cron-based reminders were removed to control server costs. Reminders are now sent only when an admin clicks the per-player <b className="text-amber-100">Send Email</b> or <b className="text-amber-100">Send WhatsApp</b> button in the Report tab. Use this section to edit the template body those buttons will send.
-          </div>
-
-          <div className="border border-border rounded-xl bg-surface-hover overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setIsEmailSubOpen(!isEmailSubOpen)}
-              className="w-full flex items-center justify-between p-3 bg-surface-hover hover:bg-surface-hover transition focus:outline-none border-b border-border"
-            >
-              <h4 className="text-[11px] font-bold uppercase tracking-widest text-text-primary">Email Template</h4>
-              {isEmailSubOpen ? <ChevronDown className="w-4 h-4 text-text-secondary" /> : <ChevronRight className="w-4 h-4 text-text-secondary" />}
-            </button>
-            {isEmailSubOpen && (
-              <div className="p-4 space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-1">Subject</label>
-                  <input
-                    type="text"
-                    value={emailTemplate.subject}
-                    onChange={(e) => setEmailTemplate({ ...emailTemplate, subject: e.target.value })}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-text-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-1">Body</label>
-                  <textarea
-                    value={emailTemplate.body}
-                    onChange={(e) => setEmailTemplate({ ...emailTemplate, body: e.target.value })}
-                    rows={10}
-                    className="w-full bg-surface-hover border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent text-text-primary custom-scrollbar leading-relaxed"
-                  />
-                  <div className="mt-3 text-xs text-text-muted space-y-1">
-                    <div className="font-bold uppercase tracking-widest mb-2 text-text-secondary">Available Variables:</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{clubName}}'}</span>
-                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{playerName}}'}</span>
-                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{amount}}'}</span>
-                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{duesText}}'}</span>
-                      <span className="bg-surface-hover px-2 py-1 rounded">{'{{link}}'}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={handleSaveRemindersConfig}
-            className="bg-accent text-text-accent font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-xl hover:bg-accent/90 transition shadow-lg shadow-accent/20 w-full"
-          >
-            Save Email Template
-          </button>
+      <div className="flex items-center justify-between gap-3 bg-surface-hover p-1 rounded-xl border border-border overflow-x-auto hide-scrollbar">
+        <div className="flex items-center gap-2">
+          {[
+            { key: "dues_report", label: "Report" },
+            { key: "dues_table", label: "Table View" },
+          ].map((tab) => {
+            const active = subTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setSubTab(tab.key as any)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest whitespace-nowrap transition-all cursor-pointer ${
+                  active ? "bg-accent text-text-accent shadow-lg shadow-accent/20" : "text-text-muted hover:bg-surface-hover hover:text-text-primary"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-      )}
+        {isSuperAdmin && onNavigateToSettings && (
+          <button
+            type="button"
+            data-testid="finance-email-templates-shortcut"
+            onClick={onNavigateToSettings}
+            className="px-3 py-1.5 text-xs font-bold text-scarlet hover:underline whitespace-nowrap cursor-pointer"
+          >
+            Email Templates (Settings) →
+          </button>
+        )}
+      </div>
 
 
       {subTab === "dues_table" && (

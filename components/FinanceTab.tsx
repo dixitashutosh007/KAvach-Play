@@ -44,17 +44,26 @@ export function FinanceTab({
   isFinanceAdmin,
   isSuperAdmin,
   defaultAction,
+  onNavigateToSettings,
 }: {
   store: ReturnType<typeof useStore>;
   persona: "admin" | "player";
   isFinanceAdmin?: boolean;
   isSuperAdmin?: boolean;
   defaultAction?: string | null;
+  onNavigateToSettings?: () => void;
 }) {
   const { user } = useAuth();
 
   if (persona === "admin" && isFinanceAdmin !== false) {
-    return <AdminFinanceView store={store} defaultAction={defaultAction} isSuperAdmin={isSuperAdmin} />;
+    return (
+      <AdminFinanceView
+        store={store}
+        defaultAction={defaultAction}
+        isSuperAdmin={isSuperAdmin}
+        onNavigateToSettings={onNavigateToSettings}
+      />
+    );
   } else {
     return <PlayerFinanceView store={store} userId={user?.uid} />;
   }
@@ -1080,7 +1089,17 @@ function FeeManagementView({ store }: { store: ReturnType<typeof useStore> }) {
   );
 }
 
-function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: ReturnType<typeof useStore>; defaultAction?: string | null; isSuperAdmin?: boolean }) {
+function AdminFinanceView({
+  store,
+  defaultAction,
+  isSuperAdmin,
+  onNavigateToSettings,
+}: {
+  store: ReturnType<typeof useStore>;
+  defaultAction?: string | null;
+  isSuperAdmin?: boolean;
+  onNavigateToSettings?: () => void;
+}) {
   const { toast } = useToast();
   const [subTab, setSubTab] = useState<
     "matches" | "wix" | "fee" | "razor" | "dues" | "activity"
@@ -1159,11 +1178,11 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
         ].map((tab) => {
           const active = subTab === tab;
           const labels: Record<string, string> = {
-            matches: "Match Fees",
-            dues: "Dues",
+            matches: "Overview & Matches",
+            dues: "Player Dues",
             razor: "Transactions",
             wix: "Wix",
-            fee: "Other Fees",
+            fee: "Fees & Plans",
             activity: "Activity Log",
           };
           return (
@@ -1184,6 +1203,63 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
 
       {subTab === "matches" && (
         <div className="space-y-4">
+          {/* Club Finance Overview -> Match-wise -> Player-wise */}
+          {(() => {
+            const totalExpected = collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0);
+            const totalSub = collectedMatches.reduce((s, d) => s + d.subscriptionCovered, 0);
+            const totalSponsored = collectedMatches.reduce((s, d) => s + d.feeOffset, 0);
+            const cashPct = totalExpected > 0 ? Math.round((grandTotalCollected * 10000) / totalExpected) / 100 : null;
+            const settledPct = totalExpected > 0 ? Math.round(((grandTotalCollected + totalSub) * 10000) / totalExpected) / 100 : null;
+            return (
+              <div
+                data-testid="club-finance-overview"
+                className="bg-surface rounded-xl p-4 border border-border space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-extrabold uppercase tracking-widest text-accent">
+                      Club Finance Overview
+                    </h3>
+                    <p className="text-[11px] text-text-secondary">
+                      Club totals across {collectedMatches.length} match{collectedMatches.length === 1 ? "" : "es"}
+                      {cashPct !== null ? ` · ${cashPct}% cash · ${settledPct ?? 0}% settled` : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="overview-to-player-dues"
+                    onClick={() => setSubTab("dues")}
+                    className="text-xs font-bold text-scarlet hover:underline cursor-pointer"
+                  >
+                    Player-wise Dues →
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                  <div className="bg-surface-hover p-2.5 rounded-lg">
+                    <div className="text-[9px] uppercase tracking-wider text-text-muted font-bold">Expected</div>
+                    <div className="font-mono font-bold text-text-primary mt-0.5">₹{totalExpected}</div>
+                  </div>
+                  <div className="bg-surface-hover p-2.5 rounded-lg">
+                    <div className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Actual Cash</div>
+                    <div className="font-mono font-bold text-emerald-400 mt-0.5">₹{grandTotalCollected}</div>
+                  </div>
+                  <div className="bg-surface-hover p-2.5 rounded-lg">
+                    <div className="text-[9px] uppercase tracking-wider text-blue-400 font-bold">Sub Covered</div>
+                    <div className="font-mono font-bold text-blue-400 mt-0.5">₹{totalSub}</div>
+                  </div>
+                  <div className="bg-surface-hover p-2.5 rounded-lg">
+                    <div className="text-[9px] uppercase tracking-wider text-amber-400 font-bold">Sponsored</div>
+                    <div className="font-mono font-bold text-amber-400 mt-0.5">₹{totalSponsored}</div>
+                  </div>
+                  <div className="bg-surface-hover p-2.5 rounded-lg">
+                    <div className="text-[9px] uppercase tracking-wider text-red-400 font-bold">Outstanding</div>
+                    <div className="font-mono font-bold text-red-400 mt-0.5">₹{grandTotalDue}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="bg-surface rounded-xl p-4 border border-border overflow-visible">
             <h3 className="text-[12px] font-bold uppercase tracking-widest text-accent mb-4">
               Match Fee Accounting
@@ -1597,7 +1673,14 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
         </div>
       )}
 
-      {subTab === "dues" && <DuesAndRemindersTab store={store} isFinanceAdmin={true} isSuperAdmin={isSuperAdmin} />}
+      {subTab === "dues" && (
+        <DuesAndRemindersTab
+          store={store}
+          isFinanceAdmin={true}
+          isSuperAdmin={isSuperAdmin}
+          onNavigateToSettings={onNavigateToSettings}
+        />
+      )}
       {subTab === "razor" && <RazorReportView store={store} />}
 
       {subTab === "fee" && <FeeManagementView store={store} />}

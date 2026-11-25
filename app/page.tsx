@@ -1410,6 +1410,7 @@ export default function Home() {
                           isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                           isSuperAdmin={isSuperAdmin}
                           defaultAction={tabAction}
+                          onNavigateToSettings={isSuperAdmin ? () => setActiveTab("settings") : undefined}
                         />
                       ) : (
                         <AccessDenied feature="Finance" requiredRole="Finance Admins" />
