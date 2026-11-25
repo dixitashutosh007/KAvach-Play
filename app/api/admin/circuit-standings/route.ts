@@ -20,6 +20,7 @@ import {
   circuitInfo,
   formatStanding,
   isCircuitKey,
+  LEGACY_FALLBACK_KEYS,
   readStoredStanding,
   validateCircuitStandingInput,
 } from "../../../../lib/circuit-standings.ts";
@@ -71,18 +72,26 @@ export async function PUT(req: Request) {
       const ref = db.collection(CIRCUIT_STANDINGS_COLLECTION).doc(v.circuit);
       const snap = await tx.get(ref);
       const before = snap.exists ? readStoredStanding(v.circuit, snap.data()) : null;
-      if (before && before.rank === v.rank && before.value === v.value) return { changed: false };
-      tx.set(ref, { circuit: v.circuit, rank: v.rank, value: v.value, updatedAt: FieldValue.serverTimestamp(), updatedBy: g.uid });
+      const activeBefore = before && !before.cleared && before.rank !== null ? before : null;
+      if (activeBefore && activeBefore.rank === v.rank && activeBefore.value === v.value) return { changed: false };
+      tx.set(ref, {
+        circuit: v.circuit,
+        rank: v.rank,
+        value: v.value,
+        cleared: false,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: g.uid,
+      });
       const changes: { field: string; oldValue?: string; newValue?: string }[] = [];
       // Firestore rejects `undefined`, so a first save records only the new values.
-      if (before?.rank !== v.rank) changes.push({ field: "rank", ...(before ? { oldValue: String(before.rank) } : {}), newValue: String(v.rank) });
-      if (before?.value !== v.value) changes.push({ field: "value", ...(before ? { oldValue: String(before.value) } : {}), newValue: String(v.value) });
+      if (activeBefore?.rank !== v.rank) changes.push({ field: "rank", ...(activeBefore?.rank != null ? { oldValue: String(activeBefore.rank) } : {}), newValue: String(v.rank) });
+      if (activeBefore?.value !== v.value) changes.push({ field: "value", ...(activeBefore ? { oldValue: String(activeBefore.value) } : {}), newValue: String(v.value) });
       await writeServerAudit(
         db,
         {
           actorId: g.uid,
           actorName,
-          action: before ? "updated" : "created",
+          action: activeBefore ? "updated" : "created",
           entity: "circuit_standing",
           entityId: v.circuit,
           entityLabel: label(v.circuit),
@@ -111,10 +120,46 @@ export async function DELETE(req: Request) {
     const actorName = await actorNameFor(db, g.uid);
     await db.runTransaction(async (tx) => {
       const ref = db.collection(CIRCUIT_STANDINGS_COLLECTION).doc(circuit);
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpError(404, "That circuit has no standing to clear.");
-      const before = readStoredStanding(circuit, snap.data());
-      tx.delete(ref);
+      const legacyRefs = LEGACY_FALLBACK_KEYS[circuit].map((k) =>
+        db.collection(CIRCUIT_STANDINGS_COLLECTION).doc(k),
+      );
+      const [snap, ...legacySnaps] = await Promise.all([tx.get(ref), ...legacyRefs.map((r) => tx.get(r))]);
+      const before = snap.exists ? readStoredStanding(circuit, snap.data()) : null;
+
+      if (before?.cleared) {
+        throw new HttpError(404, "That ranking has already been cleared.");
+      }
+
+      let legacyBefore = null;
+      if (!before) {
+        for (let i = 0; i < legacySnaps.length; i++) {
+          const ls = legacySnaps[i];
+          if (ls.exists) {
+            const parsed = readStoredStanding(LEGACY_FALLBACK_KEYS[circuit][i], ls.data());
+            if (parsed) {
+              legacyBefore = parsed;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!before && !legacyBefore) {
+        throw new HttpError(404, "That circuit has no standing to clear.");
+      }
+
+      const effectiveBefore = before ?? legacyBefore;
+      // Write explicit cleared tombstone on the canonical doc; preserve historical legacy docs untouched.
+      tx.set(ref, {
+        circuit,
+        rank: null,
+        value: 0,
+        cleared: true,
+        clearedAt: FieldValue.serverTimestamp(),
+        clearedBy: g.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: g.uid,
+      });
       await writeServerAudit(
         db,
         {
@@ -124,12 +169,12 @@ export async function DELETE(req: Request) {
           entity: "circuit_standing",
           entityId: circuit,
           entityLabel: label(circuit),
-          changes: before
+          changes: effectiveBefore && effectiveBefore.rank !== null
             ? [
-                { field: "rank", oldValue: String(before.rank) },
-                { field: "value", oldValue: String(before.value) },
+                { field: "rank", oldValue: String(effectiveBefore.rank) },
+                { field: "cleared", oldValue: "false", newValue: "true" },
               ]
-            : [],
+            : [{ field: "cleared", oldValue: "false", newValue: "true" }],
           summary: `Circuit standing ${label(circuit)} cleared.`,
         },
         tx,

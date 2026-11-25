@@ -338,7 +338,7 @@ export function ClubAtAGlance() {
   const rate = stats ? computeWinRate(stats.matchesPlayed, stats.matchesWon) : null;
   const circuit = useCircuitStandings();
   const byCircuit = standingsByCircuit(circuit.standings);
-  const anySaved = circuit.standings.length > 0;
+  const anySaved = Object.keys(byCircuit).length > 0;
   return (
     <section data-testid="club-at-a-glance" className="rounded-2xl overflow-hidden border border-border bg-surface" aria-labelledby="club-glance-title">
       <div className="bg-[#171C26] text-white px-4 py-4">
@@ -376,7 +376,7 @@ export function ClubAtAGlance() {
                 <Medal className="w-5 h-5 text-muted-gold shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-text-primary leading-tight">{c.metric}</span>
-                  {st ? (
+                  {st && st.rank !== null ? (
                     <span className="block text-sm font-black text-scarlet leading-tight tabular-nums" data-testid={`club-circuit-${c.key}-standing`}>
                       #{st.rank.toLocaleString("en-IN")}
                     </span>

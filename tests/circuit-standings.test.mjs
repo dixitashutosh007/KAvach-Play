@@ -89,6 +89,17 @@ describe("Stored rankings & legacy fallback", () => {
       { circuit: "india", rank: 7, value: 0 },
     ]);
     assert.equal(withActive.india?.rank, 7);
+
+    // Explicit cleared tombstone suppresses legacy fallback without deleting legacy records
+    const clearedIndia = standingsByCircuit([
+      { circuit: "india-wins", rank: 12, value: 500 },
+      { circuit: "india-played", rank: 15, value: 700 },
+      { circuit: "india", rank: null, value: 0, cleared: true },
+      { circuit: "bangalore-wins", rank: 4, value: 115 },
+    ]);
+    assert.equal(clearedIndia.india, undefined);
+    assert.equal(clearedIndia.bangalore?.rank, 4);
+    assert.equal(formatStanding({ circuit: "india", rank: null, value: 0, cleared: true }), "");
     assert.equal(formatStanding(ok), "#20");
   });
 });

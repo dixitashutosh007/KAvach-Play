@@ -52,8 +52,9 @@ export function isStoredCircuitKey(key: unknown): key is AnyStoredCircuitKey {
 
 export interface CircuitStanding {
   circuit: AnyStoredCircuitKey;
-  rank: number;
+  rank: number | null;
   value: number;
+  cleared?: boolean;
 }
 
 export type CircuitStandingValidation =
@@ -96,33 +97,57 @@ export function validateCircuitStandingInput(input: unknown): CircuitStandingVal
   return { ok: true, value: { circuit: body.circuit, rank: rank.value, value: value.value } };
 }
 
-/** Defensive read of a stored standing (active or legacy doc id); null when malformed. */
+/** Defensive read of a stored standing (active, cleared tombstone, or legacy doc id); null when malformed. */
 export function readStoredStanding(id: string, data: unknown): CircuitStanding | null {
   if (!isStoredCircuitKey(id) || !data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.circuit !== id) return null;
+  if (isCircuitKey(id) && d.cleared === true) {
+    return { circuit: id, rank: null, value: 0, cleared: true };
+  }
   if (!Number.isSafeInteger(d.rank) || (d.rank as number) < 1) return null;
   const value = Number.isSafeInteger(d.value) && (d.value as number) >= 0 ? (d.value as number) : 0;
   return { circuit: id, rank: d.rank as number, value };
 }
 
+/** Legacy fallback keys per canonical ranking key (ordered by precedence). */
+export const LEGACY_FALLBACK_KEYS: Record<CircuitKey, readonly AnyStoredCircuitKey[]> = {
+  bangalore: ["bangalore-wins", "bangalore-played"],
+  india: ["india-wins", "india-played"],
+};
+
 /**
- * Map stored standings to the two active ranking keys (`bangalore`, `india`),
- * falling back to legacy `-wins` then `-played` records when the new key has
- * not been written yet.
+ * Map stored standings to the two active ranking keys (`bangalore`, `india`):
+ * - If canonical doc has `cleared: true`, suppress legacy fallback (returns undefined).
+ * - If canonical doc has a rank, return canonical value.
+ * - Otherwise fall back to legacy `-wins` then `-played` records.
  */
 export function standingsByCircuit(all: CircuitStanding[]): Partial<Record<CircuitKey, CircuitStanding>> {
   const byRaw = new Map<string, CircuitStanding>();
   for (const s of all) byRaw.set(s.circuit, s);
 
   const out: Partial<Record<CircuitKey, CircuitStanding>> = {};
-  const bangalore = byRaw.get("bangalore") ?? byRaw.get("bangalore-wins") ?? byRaw.get("bangalore-played");
-  if (bangalore) out.bangalore = { ...bangalore, circuit: "bangalore" };
-  const india = byRaw.get("india") ?? byRaw.get("india-wins") ?? byRaw.get("india-played");
-  if (india) out.india = { ...india, circuit: "india" };
+  for (const key of CIRCUIT_KEYS) {
+    const canonical = byRaw.get(key);
+    if (canonical?.cleared) {
+      continue;
+    }
+    if (canonical && canonical.rank !== null) {
+      out[key] = canonical;
+      continue;
+    }
+    for (const legacyKey of LEGACY_FALLBACK_KEYS[key]) {
+      const legacy = byRaw.get(legacyKey);
+      if (legacy && legacy.rank !== null) {
+        out[key] = { ...legacy, circuit: key };
+        break;
+      }
+    }
+  }
   return out;
 }
 
 export function formatStanding(s: CircuitStanding): string {
+  if (s.cleared || s.rank === null) return "";
   return `#${s.rank.toLocaleString("en-IN")}`;
 }

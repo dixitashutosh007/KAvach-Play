@@ -37,7 +37,6 @@ const labelCls = "text-[11px] font-bold uppercase tracking-wider text-text-muted
 export function CircuitStandingsAdmin() {
   const { standings, loading, error } = useCircuitStandings();
   const saved = standingsByCircuit(standings);
-  const hasExactDoc = (key: CircuitKey) => standings.some((s) => s.circuit === key);
 
   return (
     <section
@@ -71,7 +70,7 @@ export function CircuitStandingsAdmin() {
             key={c.key}
             circuit={c.key}
             saved={saved[c.key] ?? null}
-            canClear={hasExactDoc(c.key)}
+            canClear={Boolean(saved[c.key])}
             loading={loading}
           />
         ))}
@@ -170,7 +169,7 @@ function RankingCard({
           className="text-xs font-semibold text-text-muted tabular-nums"
           data-testid={`${t}-saved`}
         >
-          {loading ? "Loading…" : saved ? `#${saved.rank.toLocaleString("en-IN")}` : "Not set"}
+          {loading ? "Loading…" : saved && saved.rank !== null ? `#${saved.rank.toLocaleString("en-IN")}` : "Not set"}
         </span>
       </div>
 

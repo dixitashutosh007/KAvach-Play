@@ -124,19 +124,66 @@ describe("Circuit Standings — server API", { skip }, () => {
     assert.equal((await get("india")).rank, 18);
   });
 
-  it("CS-05 clear: Finance denied; Club/Super clear it, audited; 404 when already cleared; others untouched", async () => {
+  it("CS-05 clear: Finance denied; Club/Super write cleared tombstone, audited; 404 when already cleared; others untouched", async () => {
     assert.equal((await call("DELETE", { circuit: "bangalore" }, FIN)).status, 403);
     assert.ok(await get("bangalore"));
     const r = await call("DELETE", { circuit: "bangalore" }, SUPER);
     assert.equal(r.status, 200);
-    assert.equal(await get("bangalore"), null);
+    const tomb = await get("bangalore");
+    assert.equal(tomb.cleared, true);
+    assert.equal(tomb.rank, null);
     assert.equal((await call("DELETE", { circuit: "bangalore" })).status, 404);
     const a = (await audits("bangalore")).find((x) => x.action === "deleted");
     assert.equal(a.actorId, "u_super");
-    assert.equal(await count(), 1);
-    // Setting it again re-creates it.
+    assert.equal((await get("india")).rank, 18);
+    // Setting it again overrides the tombstone.
     assert.equal((await call("PUT", { circuit: "bangalore", rank: 4 })).status, 200);
-    assert.equal(await count(), 2);
+    assert.equal((await get("bangalore")).cleared, false);
+    assert.equal((await get("bangalore")).rank, 4);
+  });
+
+  it("CS-06 legacy fallback suppression: clearing canonical or legacy-only ranking suppresses fallback and preserves legacy docs", async () => {
+    const { readStoredStanding, standingsByCircuit } = await import("../lib/circuit-standings.ts");
+    // Seed legacy docs without canonical docs
+    await db.doc("circuitStandings/bangalore").delete().catch(() => {});
+    await db.doc("circuitStandings/india").delete().catch(() => {});
+    await db.doc("circuitStandings/bangalore-wins").set({ circuit: "bangalore-wins", rank: 9, value: 100 });
+    await db.doc("circuitStandings/india-wins").set({ circuit: "india-wins", rank: 22, value: 400 });
+
+    const loadEffective = async () => {
+      const snap = await db.collection("circuitStandings").get();
+      const parsed = snap.docs
+        .map((d) => readStoredStanding(d.id, d.data()))
+        .filter(Boolean);
+      return standingsByCircuit(parsed);
+    };
+
+    // 1. Legacy-only Bangalore & India displayed
+    let eff = await loadEffective();
+    assert.equal(eff.bangalore?.rank, 9);
+    assert.equal(eff.india?.rank, 22);
+
+    // 2. Saving canonical Bangalore overrides legacy
+    assert.equal((await call("PUT", { circuit: "bangalore", rank: 3 })).status, 200);
+    eff = await loadEffective();
+    assert.equal(eff.bangalore?.rank, 3);
+    assert.equal(eff.india?.rank, 22);
+
+    // 3. Clearing canonical Bangalore suppresses legacy fallback (does not resurrect rank 9), India unaffected
+    assert.equal((await call("DELETE", { circuit: "bangalore" })).status, 200);
+    eff = await loadEffective();
+    assert.equal(eff.bangalore, undefined);
+    assert.equal(eff.india?.rank, 22);
+    // Historical legacy doc preserved
+    assert.equal((await get("bangalore-wins")).rank, 9);
+
+    // 4. Clearing legacy-only India works directly, suppresses fallback on fresh read, and preserves legacy doc
+    assert.equal((await call("DELETE", { circuit: "india" })).status, 200);
+    eff = await loadEffective();
+    assert.equal(eff.india, undefined);
+    assert.equal((await get("india-wins")).rank, 22);
+    const indiaAudit = (await audits("india")).find((x) => x.action === "deleted");
+    assert.ok(indiaAudit);
   });
 });
 
