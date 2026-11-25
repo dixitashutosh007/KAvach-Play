@@ -72,7 +72,6 @@ import {
   type AdminCapabilities,
 } from "@/lib/admin-navigation";
 import { ADMIN_NAV_ICONS } from "@/components/layout/MobileBottomNav";
-import { ClubPerformanceWidget } from "@/components/home/ClubPerformanceWidget";
 import { AccessDenied, PERMISSION_DENIED_MESSAGE } from "@/components/ui/AccessDenied";
 
 import { useTheme } from "@/hooks/useTheme";
@@ -1358,43 +1357,14 @@ export default function Home() {
                         (studio, grounds, opinion, leaderboard, shop, badges, players). */}
                     {activeTab === "home" && (
                       isAdminDestinationVisible("home", adminCaps) ? (
-                        <div className="space-y-6">
-                          {/* D-19: Home for every admin. Dashboard tiles are role-gated;
-                              anything beyond a role's rights shows a polite denial. */}
-                          <AdminDashboard
-                            store={store}
-                            setActiveTab={setActiveTab}
-                            isSuperAdmin={isSuperAdmin}
-                            isFinanceAdmin={isFinanceAdmin}
-                            isMatchAdmin={isMatchAdmin}
-                            isStudioAdmin={isStudioAdmin}
-                            isClubAdmin={isClubAdmin}
-                          />
-                          {/* Club Performance widget with its management hint (moved from
-                              Player Home in D-16). Announcement management lives in
-                              Club → Announcements (D-18); this shortcut opens it.
-                              Club/Super Admin only (D-19). */}
-                          {(isSuperAdmin || isClubAdmin) && (
-                          <div className="max-w-4xl mx-auto w-full px-4 space-y-4" data-testid="admin-home-club-panel">
-                            <button
-                              type="button"
-                              data-testid="admin-home-announcements-link"
-                              onClick={() => setActiveTab("club", "announcements")}
-                              className="w-full min-h-[44px] bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition cursor-pointer"
-                            >
-                              <span className="flex items-center gap-3 text-left">
-                                <Bell className="w-5 h-5 text-accent" aria-hidden="true" />
-                                <span>
-                                  <span className="block text-sm font-bold text-text-primary">Club Announcements</span>
-                                  <span className="block text-xs text-text-secondary">Publish, edit and pin announcements in Club</span>
-                                </span>
-                              </span>
-                              <ChevronRight className="w-4 h-4 text-text-muted" aria-hidden="true" />
-                            </button>
-                            <ClubPerformanceWidget canManage />
-                          </div>
-                          )}
-                        </div>
+                        <AdminDashboard
+                          store={store}
+                          setActiveTab={setActiveTab}
+                          isSuperAdmin={isSuperAdmin}
+                          isFinanceAdmin={isFinanceAdmin}
+                          isClubAdmin={isClubAdmin}
+                          weekendPending={weekendPending}
+                        />
                       ) : (
                         <AccessDenied feature="Admin Home" requiredRole="administrators" />
                       )

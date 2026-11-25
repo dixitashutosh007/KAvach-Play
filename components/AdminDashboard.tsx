@@ -1,97 +1,151 @@
+"use client";
+
 import { useStore } from "@/hooks/useStore";
 import { useMemo, useState } from "react";
-import { Match, Player, MatchPayment, OtherFee } from "@/lib/types";
-import { IndianRupee, Bell, Plus, Users, Landmark, Search, PlusCircle, ArrowRight, PieChart, MessageSquare, X, UserX, Send, Award, Target, Minus, UserPlus, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Match, Player } from "@/lib/types";
+import {
+  IndianRupee,
+  Bell,
+  Plus,
+  Users,
+  CalendarDays,
+  Search,
+  PlusCircle,
+  ArrowRight,
+  PieChart,
+  MessageSquare,
+  X,
+  UserX,
+  Send,
+  Award,
+  Target,
+  Minus,
+  UserPlus,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Edit3,
+  Megaphone,
+} from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { format, isPast, parseISO } from "date-fns";
 import { formatDate, normalizeIndianMobile } from "@/lib/utils";
-import { db } from "@/lib/firebase";
-import { doc, updateDoc } from "firebase/firestore";
 import {
   IndependenceDayBanner,
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
+import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+
+type FinanceSnapshotTab = "dues" | "txns" | "compliance";
+type MatchPickerMode = "squad" | "edit" | null;
 
 export function AdminDashboard({
   store,
   setActiveTab,
   isSuperAdmin = false,
   isFinanceAdmin = false,
-  isMatchAdmin = false,
-  isStudioAdmin = false,
   isClubAdmin = false,
+  weekendPending = 0,
 }: {
   store: ReturnType<typeof useStore>;
   setActiveTab: (tab: any, action?: string) => void;
   isSuperAdmin?: boolean;
   isFinanceAdmin?: boolean;
-  isMatchAdmin?: boolean;
-  isStudioAdmin?: boolean;
   isClubAdmin?: boolean;
+  weekendPending?: number;
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
-  const { matches, payments, players, otherFees } = store;
+  const { matches, payments, players, otherFees, grounds } = store;
+
+  const canSeeClub = isSuperAdmin || isClubAdmin;
+  const canSeeFinance = isSuperAdmin || isFinanceAdmin;
+
   const [showCatchModal, setShowCatchModal] = useState(false);
+  const [matchPickerMode, setMatchPickerMode] = useState<MatchPickerMode>(null);
+  const [financeTab, setFinanceTab] = useState<FinanceSnapshotTab>("dues");
   const [remindingStudioId, setRemindingStudioId] = useState<string | null>(null);
 
-  const { totalDueMatch, totalDueFee, duePlayersCount, topDuePlayers } = useMemo(() => {
+  // Pending member approvals (Club / Super Admin)
+  const pendingApprovalsCount = useMemo(() => {
+    if (!canSeeClub) return 0;
+    return players.filter((p) => !p.disabled && p.inviteStatus === "Pending").length;
+  }, [players, canSeeClub]);
+
+  // Financial summaries (Finance / Super Admin only)
+  const { totalDueAmount, duePlayersCount, topDuePlayers } = useMemo(() => {
+    if (!canSeeFinance) {
+      return { totalDueAmount: 0, duePlayersCount: 0, topDuePlayers: [] };
+    }
     let matchDue = 0;
     let feeDue = 0;
     const dueByPlayer = new Map<string, number>();
 
-    payments.forEach(p => {
-        if (p.status === "Unpaid") {
-            const match = matches.find(m => m.id === p.matchId);
-            if (match && match.result !== "Abandoned" && match.fee) {
-                const amt = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-                matchDue += amt;
-                dueByPlayer.set(p.playerId, (dueByPlayer.get(p.playerId) || 0) + amt);
-            }
+    payments.forEach((p) => {
+      if (p.status === "Unpaid") {
+        const match = matches.find((m) => m.id === p.matchId);
+        if (match && match.result !== "Abandoned" && match.fee) {
+          const amt = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+          matchDue += amt;
+          dueByPlayer.set(p.playerId, (dueByPlayer.get(p.playerId) || 0) + amt);
         }
+      }
     });
 
-    otherFees.forEach(f => {
-        if (f.status === "Unpaid") {
-             feeDue += f.amount;
-             dueByPlayer.set(f.playerId, (dueByPlayer.get(f.playerId) || 0) + f.amount);
-        }
+    otherFees.forEach((f) => {
+      if (f.status === "Unpaid") {
+        feeDue += f.amount;
+        dueByPlayer.set(f.playerId, (dueByPlayer.get(f.playerId) || 0) + f.amount);
+      }
     });
 
     const sorted = [...dueByPlayer.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([pid, amount]) => ({
-        player: players.find(p => p.id === pid),
+        player: players.find((p) => p.id === pid),
         amount,
       }))
-      .filter(d => d.player);
+      .filter((d) => d.player);
 
     return {
-        totalDueMatch: matchDue,
-        totalDueFee: feeDue,
-        duePlayersCount: dueByPlayer.size,
-        topDuePlayers: sorted,
+      totalDueAmount: matchDue + feeDue,
+      duePlayersCount: dueByPlayer.size,
+      topDuePlayers: sorted,
     };
-  }, [matches, payments, players, otherFees]);
+  }, [canSeeFinance, matches, payments, players, otherFees]);
 
-  const recentTransactions = useMemo(() => {
-    const txns: { id: string; playerName: string; amount: number; type: string; date: number; method?: string }[] = [];
+  const { recentTransactions, collected30d } = useMemo(() => {
+    if (!canSeeFinance) return { recentTransactions: [], collected30d: 0 };
+    const txns: {
+      id: string;
+      playerName: string;
+      amount: number;
+      type: string;
+      date: number;
+      method?: string;
+    }[] = [];
+    const thirtyDaysAgo = Date.now() - 30 * 86400000;
+    let recentSum = 0;
 
-    payments.forEach(p => {
+    payments.forEach((p) => {
       if (p.status === "Paid" && p.updatedAt) {
-        const match = matches.find(m => m.id === p.matchId);
-        const player = players.find(pl => pl.id === p.playerId);
+        const match = matches.find((m) => m.id === p.matchId);
+        const player = players.find((pl) => pl.id === p.playerId);
         if (match && player) {
-          const ts = typeof p.updatedAt === "object" && "seconds" in p.updatedAt
-            ? p.updatedAt.seconds * 1000
-            : new Date(p.updatedAt as any).getTime();
+          const ts =
+            typeof p.updatedAt === "object" && "seconds" in p.updatedAt
+              ? p.updatedAt.seconds * 1000
+              : new Date(p.updatedAt as any).getTime();
+          const amt = p.feeOverride !== undefined ? p.feeOverride : match.fee || 0;
+          if (ts >= thirtyDaysAgo) recentSum += amt;
           txns.push({
             id: p.id,
             playerName: player.name,
-            amount: p.feeOverride !== undefined ? p.feeOverride : (match.fee || 0),
+            amount: amt,
             type: "Match Fee",
             date: ts,
             method: p.paymentMethod,
@@ -100,13 +154,15 @@ export function AdminDashboard({
       }
     });
 
-    otherFees.forEach(f => {
+    otherFees.forEach((f) => {
       if (f.status === "Paid" && f.updatedAt) {
-        const player = players.find(pl => pl.id === f.playerId);
+        const player = players.find((pl) => pl.id === f.playerId);
         if (player) {
-          const ts = typeof f.updatedAt === "object" && "seconds" in f.updatedAt
-            ? f.updatedAt.seconds * 1000
-            : new Date(f.updatedAt as any).getTime();
+          const ts =
+            typeof f.updatedAt === "object" && "seconds" in f.updatedAt
+              ? f.updatedAt.seconds * 1000
+              : new Date(f.updatedAt as any).getTime();
+          if (ts >= thirtyDaysAgo) recentSum += f.amount;
           txns.push({
             id: f.id,
             playerName: player.name,
@@ -118,41 +174,19 @@ export function AdminDashboard({
       }
     });
 
-    return txns.sort((a, b) => b.date - a.date).slice(0, 10);
-  }, [matches, payments, players, otherFees]);
-
-  const { expiredStudioMembers, renewalDueMembers } = useMemo(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const oneWeekLater = new Date(now);
-    oneWeekLater.setDate(oneWeekLater.getDate() + 7);
-
-    const expired: Player[] = [];
-    const renewalDue: Player[] = [];
-
-    players.filter(p => p.isStudioMember && !p.disabled).forEach(p => {
-      const expiryStr = p.studioExpiryDate || p.studioEndDate;
-      if (!expiryStr) {
-        expired.push(p);
-        return;
-      }
-      const expiryDate = new Date(expiryStr);
-      expiryDate.setHours(23, 59, 59, 999);
-
-      if (expiryDate < now) {
-        expired.push(p);
-      } else if (expiryDate <= oneWeekLater) {
-        renewalDue.push(p);
-      }
-    });
-
-    return { expiredStudioMembers: expired, renewalDueMembers: renewalDue };
-  }, [players]);
+    return {
+      recentTransactions: txns.sort((a, b) => b.date - a.date).slice(0, 6),
+      collected30d: recentSum,
+    };
+  }, [canSeeFinance, matches, payments, players, otherFees]);
 
   const matchCompliance = useMemo(() => {
+    if (!canSeeFinance) {
+      return { overall: 0, totalPaid: 0, totalCompliant: 0, perMatch: [] };
+    }
     const now = new Date();
     const recentPastMatches = matches
-      .filter(m => {
+      .filter((m) => {
         const matchDate = new Date(m.date);
         return matchDate < now && m.result !== "Abandoned";
       })
@@ -162,8 +196,8 @@ export function AdminDashboard({
     let totalPaid = 0;
     let totalCompliant = 0;
 
-    const perMatch = recentPastMatches.map(m => {
-      const matchPayments = payments.filter(p => p.matchId === m.id && p.status === "Paid");
+    const perMatch = recentPastMatches.map((m) => {
+      const matchPayments = payments.filter((p) => p.matchId === m.id && p.status === "Paid");
       const matchDate = new Date(m.date);
       const fourDaysLater = new Date(matchDate);
       fourDaysLater.setDate(fourDaysLater.getDate() + 4);
@@ -172,14 +206,13 @@ export function AdminDashboard({
       let compliant = 0;
       const total = matchPayments.length;
 
-      matchPayments.forEach(p => {
+      matchPayments.forEach((p) => {
         if (p.updatedAt) {
-          const paidDate = typeof p.updatedAt === "object" && "seconds" in p.updatedAt
-            ? new Date(p.updatedAt.seconds * 1000)
-            : new Date(p.updatedAt as any);
-          if (paidDate <= fourDaysLater) {
-            compliant++;
-          }
+          const paidDate =
+            typeof p.updatedAt === "object" && "seconds" in p.updatedAt
+              ? new Date(p.updatedAt.seconds * 1000)
+              : new Date(p.updatedAt as any);
+          if (paidDate <= fourDaysLater) compliant++;
         }
       });
 
@@ -200,13 +233,80 @@ export function AdminDashboard({
       totalCompliant,
       perMatch: perMatch.slice(0, 5),
     };
-  }, [matches, payments]);
+  }, [canSeeFinance, matches, payments]);
 
+  // Studio metrics & alerts (Club / Super Admin only)
+  const { activeStudioCount, expiredStudioMembers, renewalDueMembers } = useMemo(() => {
+    if (!canSeeClub) {
+      return { activeStudioCount: 0, expiredStudioMembers: [], renewalDueMembers: [] };
+    }
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const oneWeekLater = new Date(now);
+    oneWeekLater.setDate(oneWeekLater.getDate() + 7);
+
+    const studioMembers = players.filter((p) => p.isStudioMember && !p.disabled);
+    const expired: Player[] = [];
+    const renewalDue: Player[] = [];
+
+    studioMembers.forEach((p) => {
+      const expiryStr = p.studioExpiryDate || p.studioEndDate;
+      if (!expiryStr) {
+        expired.push(p);
+        return;
+      }
+      const expiryDate = new Date(expiryStr);
+      expiryDate.setHours(23, 59, 59, 999);
+
+      if (expiryDate < now) {
+        expired.push(p);
+      } else if (expiryDate <= oneWeekLater) {
+        renewalDue.push(p);
+      }
+    });
+
+    return {
+      activeStudioCount: Math.max(0, studioMembers.length - expired.length),
+      expiredStudioMembers: expired,
+      renewalDueMembers: renewalDue,
+    };
+  }, [canSeeClub, players]);
+
+  // Upcoming matches + readiness counts (Club / Super Admin)
+  const upcomingMatchesWithReadiness = useMemo(() => {
+    if (!canSeeClub) return [];
+    const up = matches.filter((m) => {
+      const timeStr = m.time || "00:00";
+      return !isPast(new Date(`${m.date}T${timeStr}`));
+    });
+    up.sort(
+      (a, b) =>
+        new Date(`${a.date}T${a.time || "00:00"}`).getTime() -
+        new Date(`${b.date}T${b.time || "00:00"}`).getTime(),
+    );
+
+    return up.map((m) => {
+      const matchRecs = payments.filter((p) => p.matchId === m.id);
+      let squadCount = 0;
+      let yesCount = 0;
+      let maybeCount = 0;
+      matchRecs.forEach((p) => {
+        if (p.status !== "Not Playing") squadCount++;
+        if (p.availability === "Confirmed") yesCount++;
+        else if (p.availability === "Tentative") maybeCount++;
+      });
+      const ground = grounds.find((g) => g.id === m.groundId);
+      return { match: m, ground, squadCount, yesCount, maybeCount };
+    });
+  }, [canSeeClub, matches, payments, grounds]);
+
+  const nextMatchItem = upcomingMatchesWithReadiness[0] || null;
+
+  // Modals state
   const [isGroupRemindModalOpen, setIsGroupRemindModalOpen] = useState(false);
   const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
   const [selectedRemindMatch, setSelectedRemindMatch] = useState<Match | null>(null);
 
-  // "Add No Show" quick-action modal state.
   const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(false);
   const [noShowAmount, setNoShowAmount] = useState<number>(0);
   const [noShowComment, setNoShowComment] = useState("");
@@ -270,55 +370,39 @@ export function AdminDashboard({
       setIsSavingNoShow(false);
     }
   };
-  
+
   const handleGroupRemind = () => {
     if (!selectedRemindMatch) return;
-    
-    const ground = store.grounds.find(g => g.id === selectedRemindMatch.groundId);
-    
+    const ground = store.grounds.find((g) => g.id === selectedRemindMatch.groundId);
+
     let text = `🏏 *Upcoming Match Reminder* 🏏\n`;
     text += `*Date*: ${formatDate(selectedRemindMatch.date)}\n`;
-    text += `*Time*: ${selectedRemindMatch.time || 'TBD'}\n`;
-    text += `*Ground*: ${ground?.name || 'TBD'}\n`;
-    if (ground?.mapUrl) {
-       text += `*Location*: ${ground.mapUrl}\n`;
-    }
-    
-    if (groupRemindCustomMsg.trim()) {
-       text += `\n${groupRemindCustomMsg.trim()}\n`;
-    }
-    
+    text += `*Time*: ${selectedRemindMatch.time || "TBD"}\n`;
+    text += `*Ground*: ${ground?.name || "TBD"}\n`;
+    if (ground?.mapUrl) text += `*Location*: ${ground.mapUrl}\n`;
+    if (groupRemindCustomMsg.trim()) text += `\n${groupRemindCustomMsg.trim()}\n`;
     text += `\n*Squad*:\n`;
-    
+
     const matchPayments = store.payments.filter(
-      (p) => p.matchId === selectedRemindMatch.id && store.players.some((pl) => pl.id === p.playerId)
+      (p) => p.matchId === selectedRemindMatch.id && store.players.some((pl) => pl.id === p.playerId),
     );
-    const playing = matchPayments.filter(p => p.status !== "Not Playing");
-    playing.forEach(p => {
-       const player = store.players.find(pl => pl.id === p.playerId);
-       if (player?.mobile) {
-           let mob = player.mobile.replace(/\D/g, '');
-           if (mob.startsWith('0') && mob.length === 11) mob = "91" + mob.substring(1);
-           else if (mob.length === 10) mob = "91" + mob;
-           text += `@+${mob} `;
-       } else if (player) {
-           text += `${player.name} `;
-       }
+    const playing = matchPayments.filter((p) => p.status !== "Not Playing");
+    playing.forEach((p) => {
+      const player = store.players.find((pl) => pl.id === p.playerId);
+      if (player?.mobile) {
+        let mob = player.mobile.replace(/\D/g, "");
+        if (mob.startsWith("0") && mob.length === 11) mob = "91" + mob.substring(1);
+        else if (mob.length === 10) mob = "91" + mob;
+        text += `@+${mob} `;
+      } else if (player) {
+        text += `${player.name} `;
+      }
     });
-    
-    const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     setIsGroupRemindModalOpen(false);
   };
 
-  /**
-   * Compose a per-match WhatsApp broadcast in the exact format the club
-   * uses. Every player who is not explicitly "Not Playing" is tagged
-   * using their mobile number, normalized to +91XXXXXXXXXX so WhatsApp
-   * can actually resolve the mention (this was flaky before because
-   * some numbers were stored as "9876543210", others as "919876543210",
-   * others with a leading 0).
-   */
   const handleNotifyMatch = (m: Match) => {
     const ground = store.grounds.find((g) => g.id === m.groundId);
     const startTimeLabel = m.time
@@ -343,10 +427,6 @@ export function AdminDashboard({
       const player = store.players.find((pl) => pl.id === pay.playerId);
       if (!player) continue;
       const normalized = normalizeIndianMobile(player.mobile);
-      // normalizeIndianMobile returns +91XXXXXXXXXX for anything that
-      // parses to 10 valid Indian digits, and returns the original
-      // (unparsable) string otherwise — so this exact-length check
-      // guarantees we never emit a broken mention tag.
       if (/^\+91\d{10}$/.test(normalized)) {
         tags.push(`@${normalized}`);
       } else {
@@ -359,8 +439,7 @@ export function AdminDashboard({
       text += `\n\n_Could not tag (no valid mobile on file): ${untagged.join(", ")}_`;
     }
 
-    const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encoded}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
   const handleStudioRemind = async (p: Player) => {
@@ -391,12 +470,12 @@ export function AdminDashboard({
   };
 
   const handleBulkStudioRemind = async (membersList: Player[]) => {
-    const withMobile = membersList.filter(p => p.mobile);
+    const withMobile = membersList.filter((p) => p.mobile);
     if (withMobile.length === 0) {
       toast("No players have mobile numbers.", "error");
       return;
     }
-    if (!await confirmAction({ message: `Send WhatsApp reminder to ${withMobile.length} player(s)?` })) return;
+    if (!(await confirmAction({ message: `Send WhatsApp reminder to ${withMobile.length} player(s)?` }))) return;
 
     setRemindingStudioId("bulk");
     let sent = 0;
@@ -412,43 +491,185 @@ export function AdminDashboard({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ to: p.mobile, daysLeft, playerName: p.name }),
         });
-        if (res.ok) sent++; else failed++;
+        if (res.ok) sent++;
+        else failed++;
       } catch {
         failed++;
       }
     }
     setRemindingStudioId(null);
-    toast(`Sent: ${sent}${failed > 0 ? `, Failed: ${failed}` : ""}`, "error");
+    toast(`Sent: ${sent}${failed > 0 ? `, Failed: ${failed}` : ""}`, failed > 0 ? "error" : "success");
   };
 
-  const totalDueAmount = totalDueMatch + totalDueFee;
+  const roleLabels = [
+    isSuperAdmin ? "Super Admin" : null,
+    !isSuperAdmin && isClubAdmin ? "Club Admin" : null,
+    !isSuperAdmin && isFinanceAdmin ? "Finance Admin" : null,
+  ].filter(Boolean) as string[];
 
-  const upcomingMatches = useMemo(() => {
-     const up: Match[] = [];
-     matches.forEach(m => {
-        const timeStr = m.time || "00:00";
-        const dateObj = new Date(`${m.date}T${timeStr}`);
-        if (!isPast(dateObj)) up.push(m);
-     });
-     up.sort((a,b) => new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime());
-     return up;
-  }, [matches]);
+  const totalStudioAlerts = expiredStudioMembers.length + renewalDueMembers.length;
+
+  // Quick actions list (role-gated, zero duplicates)
+  const quickActions = [
+    ...(canSeeClub
+      ? [
+          {
+            id: "add-squad",
+            label: "Add Squad",
+            sub: "Pick match & squad",
+            icon: Users,
+            tone: "bg-brand-surface text-brand",
+            onClick: () => {
+              if (upcomingMatchesWithReadiness.length === 1) {
+                setActiveTab("matches", `match_${upcomingMatchesWithReadiness[0].match.id}`);
+              } else if (upcomingMatchesWithReadiness.length > 1) {
+                setMatchPickerMode("squad");
+              } else {
+                setActiveTab("matches");
+              }
+            },
+          },
+          {
+            id: "edit-calendar",
+            label: "Edit / Calendar",
+            sub: "Fixtures & schedule",
+            icon: Edit3,
+            tone: "bg-blue-50 text-blue-700",
+            onClick: () => {
+              if (upcomingMatchesWithReadiness.length > 0) {
+                setMatchPickerMode("edit");
+              } else {
+                setActiveTab("matches", "calendar");
+              }
+            },
+          },
+          {
+            id: "add-studio",
+            label: "Add to Studio",
+            sub: "Enroll net member",
+            icon: PlusCircle,
+            tone: "bg-amber-50 text-amber-700",
+            onClick: () => setActiveTab("club", "studio:add_player"),
+          },
+          {
+            id: "record-catch",
+            label: "Record Catch",
+            sub: "Stunning / Dropped",
+            icon: Target,
+            tone: "bg-emerald-50 text-emerald-700",
+            onClick: () => setShowCatchModal(true),
+          },
+        ]
+      : []),
+    ...(canSeeFinance
+      ? [
+          {
+            id: "add-no-show",
+            label: "Add No Show",
+            sub: "Fine absentees",
+            icon: UserX,
+            tone: "bg-amber-50 text-amber-700",
+            onClick: () => setIsNoShowModalOpen(true),
+          },
+        ]
+      : []),
+    ...(canSeeClub
+      ? [
+          {
+            id: "grant-badge",
+            label: "Grant Badge",
+            sub: "Award milestone",
+            icon: Award,
+            tone: "bg-yellow-50 text-yellow-700",
+            onClick: () => setActiveTab("club", "badges_grant"),
+          },
+          {
+            id: "invite-players",
+            label: "Invite Players",
+            sub: "WhatsApp invite",
+            icon: UserPlus,
+            tone: "bg-brand-surface text-brand",
+            onClick: () => setActiveTab("club", "invite_player"),
+          },
+          {
+            id: "announcements",
+            label: "Announcements",
+            sub: "Publish & pin",
+            icon: Megaphone,
+            tone: "bg-blue-50 text-blue-700",
+            onClick: () => setActiveTab("club", "announcements"),
+          },
+        ]
+      : []),
+    ...(canSeeFinance && !canSeeClub
+      ? [
+          {
+            id: "send-reminders",
+            label: "Send Reminders",
+            sub: `Notify ${duePlayersCount} player${duePlayersCount === 1 ? "" : "s"}`,
+            icon: Bell,
+            tone: "bg-brand-surface text-brand",
+            onClick: () => setActiveTab("finance", "dues"),
+          },
+          {
+            id: "match-fees",
+            label: "Match Fees",
+            sub: "Collect & reconcile",
+            icon: IndianRupee,
+            tone: "bg-emerald-50 text-emerald-700",
+            onClick: () => setActiveTab("finance", "matches"),
+          },
+          {
+            id: "activity-log",
+            label: "Activity Log",
+            sub: "Finance audit trail",
+            icon: PieChart,
+            tone: "bg-blue-50 text-blue-700",
+            onClick: () => setActiveTab("finance", "activity"),
+          },
+        ]
+      : []),
+  ];
+
+  const handleWeekendClick = () => {
+    if (canSeeClub) setActiveTab("matches");
+    else setActiveTab("finance");
+  };
 
   return (
-    <div className="flex flex-col gap-6 p-4 max-w-4xl mx-auto w-full pb-24">
-      {/* Independence Day greeting — date-gated (13–16 Aug), dismissible */}
+    <div className="flex flex-col gap-4 w-full" data-testid="admin-home">
       {isIndependenceDayWindow() && (
         <IndependenceDayBanner clubName={store.appConfig?.clubName} />
       )}
 
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-2">
-           Admin Dashboard
-        </h2>
+      {/* Tier 1: Header & Operational Attention Strip */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-black font-heading tracking-tight text-text-primary">
+              Admin Home
+            </h1>
+            {roleLabels.map((role) => (
+              <span
+                key={role}
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-surface text-brand"
+              >
+                {role}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-text-secondary mt-0.5">
+            {isSuperAdmin
+              ? "Club operations, match readiness, studio memberships & finance overview"
+              : canSeeClub
+                ? "Match operations, squad readiness, roster & studio overview"
+                : "Dues, collections, compliance & financial operations"}
+          </p>
+        </div>
         {isSuperAdmin && (
           <a
             href="/admin-tools"
-            className="text-xs text-text-muted hover:text-text-primary transition flex items-center gap-1"
+            className="min-h-[36px] px-3 rounded-xl border border-border bg-surface text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-surface-hover transition inline-flex items-center gap-1.5 shrink-0"
           >
             <Search className="w-3.5 h-3.5" />
             Admin Tools
@@ -456,409 +677,701 @@ export function AdminDashboard({
         )}
       </div>
 
-      {/* Finance: Total Dues + Add No Show + Send Reminders */}
-      {isFinanceAdmin && (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-surface rounded-xl border border-border p-4 flex flex-col justify-between cursor-pointer hover:bg-surface-hover transition" onClick={() => setActiveTab("finance", "dues")}>
-                <div>
-                    <IndianRupee className="w-8 h-8 text-rose-500 bg-rose-500/10 p-1.5 rounded-lg mb-2" />
-                    <p className="text-xs text-text-secondary font-bold uppercase tracking-widest mt-1">Total Dues</p>
-                    <h3 className="text-2xl font-black text-rose-400">₹{totalDueAmount}</h3>
-                </div>
-                <div className="mt-3 flex flex-col xl:flex-row xl:items-center justify-between gap-1 xl:gap-2 text-[10px] xl:text-xs font-bold text-text-muted bg-surface-hover p-2 rounded-lg">
-                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {duePlayersCount} Players Due</span>
-                    <span className="text-rose-400 flex items-center gap-1">Notify <ArrowRight className="w-3 h-3" /></span>
-                </div>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <button onClick={() => setActiveTab("finance", "dues")} className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-rose-500/10 transition group">
-                 <div className="bg-rose-500/20 text-rose-400 p-2 rounded-lg">
-                     <Bell className="w-5 h-5 group-hover:scale-110 transition" />
-                 </div>
-                 <div className="text-left">
-                     <p className="font-bold text-text-primary text-sm">Send Reminders</p>
-                     <p className="text-[10px] text-text-muted">Notify accounts</p>
-                 </div>
-              </button>
-              <button
-                onClick={() => setIsNoShowModalOpen(true)}
-                className="bg-surface p-4 rounded-xl border border-orange-500/40 bg-orange-500/5 flex items-center gap-3 hover:bg-orange-500/10 transition group"
-              >
-                 <div className="bg-orange-500/20 text-orange-400 p-2 rounded-lg">
-                     <UserX className="w-5 h-5 group-hover:scale-110 transition" />
-                 </div>
-                 <div className="text-left">
-                     <p className="font-bold text-text-primary text-sm">Add No Show</p>
-                     <p className="text-[10px] text-text-muted">Fine Absentees</p>
-                 </div>
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Matches: Add Match + Assign Fees + Calendar + Poll */}
-      {isMatchAdmin && (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setActiveTab("matches", "add_match")}
-              className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
-            >
-                <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
-                    <Plus className="w-5 h-5 group-hover:scale-110 transition" />
-                </div>
-                <div className="text-left">
-                    <p className="font-bold text-text-primary text-sm">Add New Match</p>
-                    <p className="text-[10px] text-text-muted">Schedule a fixture</p>
-                </div>
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => setActiveTab("matches", "calendar")} className="bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition">
-               <div className="flex items-center gap-3">
-                   <div className="bg-purple-500/20 text-purple-400 p-2 rounded-lg">
-                       <Landmark className="w-5 h-5" />
-                   </div>
-                   <div className="text-left">
-                       <p className="text-sm font-bold text-text-primary">View Calendar</p>
-                       <p className="text-[10px] text-text-muted uppercase font-black tracking-widest mt-0.5">All Fixtures</p>
-                   </div>
-               </div>
-               <ArrowRight className="w-4 h-4 text-text-primary/30" />
-            </button>
-            <button onClick={() => setActiveTab("club", "pulse")} className="bg-surface flex items-center justify-between p-4 rounded-xl border border-border hover:bg-surface-hover transition">
-               <div className="flex items-center gap-3">
-                   <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
-                       <PieChart className="w-5 h-5" />
-                   </div>
-                   <div className="text-left">
-                       <p className="text-sm font-bold text-text-primary">Start a Poll</p>
-                       <p className="text-[10px] text-text-muted uppercase font-black tracking-widest mt-0.5">Gather Opinion</p>
-                   </div>
-               </div>
-               <ArrowRight className="w-4 h-4 text-text-primary/30" />
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Badge + Catches + Invite shortcuts */}
-      {(isClubAdmin || isMatchAdmin) && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <button
-            onClick={() => setActiveTab("club", "badges_grant")}
-            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-yellow-500/10 transition group"
-          >
-            <div className="bg-yellow-500/20 text-yellow-400 p-2 rounded-lg">
-              <Award className="w-5 h-5 group-hover:scale-110 transition" />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-text-primary text-sm">Grant Badge</p>
-              <p className="text-[10px] text-text-muted">Grant to players</p>
-            </div>
-          </button>
-          <button
-            onClick={() => setShowCatchModal(true)}
-            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-teal-500/10 transition group"
-          >
-            <div className="bg-teal-500/20 text-teal-400 p-2 rounded-lg">
-              <Target className="w-5 h-5 group-hover:scale-110 transition" />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-text-primary text-sm">Record Catches</p>
-              <p className="text-[10px] text-text-muted">Drop / Stunning</p>
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab("club", "invite_player")}
-            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
-          >
-            <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
-              <UserPlus className="w-5 h-5 group-hover:scale-110 transition" />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-text-primary text-sm">Invite Player</p>
-              <p className="text-[10px] text-text-muted">WhatsApp invite</p>
-            </div>
-          </button>
-        </div>
-      )}
-
-      {/* Studio: Add to Studio */}
-      {isStudioAdmin && (
-        <button
-          onClick={() => setActiveTab("studio", "add_player")}
-          className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-amber-500/10 transition group w-full"
+      {/* Attention Strip */}
+      {(pendingApprovalsCount > 0 || weekendPending > 0) && (
+        <div
+          className={`grid gap-2.5 ${
+            pendingApprovalsCount > 0 && weekendPending > 0 ? "md:grid-cols-2" : "grid-cols-1"
+          }`}
+          data-testid="admin-attention-strip"
         >
-            <div className="bg-amber-500/20 text-amber-400 p-2 rounded-lg">
-                <PlusCircle className="w-5 h-5 group-hover:scale-110 transition" />
-            </div>
-            <div className="text-left">
-                <p className="font-bold text-text-primary text-sm">Add to Studio</p>
-                <p className="text-[10px] text-text-muted">Add a new member</p>
-            </div>
-        </button>
-      )}
-      
-      {/* Club Admin: Players + Invite (D-19: Reminders moved to Finance) */}
-      {isClubAdmin && !isSuperAdmin && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <button
-            onClick={() => setActiveTab("club", "players")}
-            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-sky-500/10 transition group"
-          >
-              <div className="bg-sky-500/20 text-sky-400 p-2 rounded-lg">
-                  <Users className="w-5 h-5 group-hover:scale-110 transition" />
-              </div>
-              <div className="text-left">
-                  <p className="font-bold text-text-primary text-sm">Manage Players</p>
-                  <p className="text-[10px] text-text-muted">Directory & profiles</p>
-              </div>
-          </button>
-          <button
-            onClick={() => setActiveTab("club", "invite_player")}
-            className="bg-surface p-4 rounded-xl border border-border flex items-center gap-3 hover:bg-emerald-500/10 transition group"
-          >
-              <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg">
-                  <UserPlus className="w-5 h-5 group-hover:scale-110 transition" />
-              </div>
-              <div className="text-left">
-                  <p className="font-bold text-text-primary text-sm">Invite Player</p>
-                  <p className="text-[10px] text-text-muted">WhatsApp invite</p>
-              </div>
-          </button>
-        </div>
-      )}
-
-      {/* Studio Subscription Alerts — Studio/Super admin */}
-      {isStudioAdmin && expiredStudioMembers.length > 0 && (
-        <div className="bg-surface rounded-xl border border-red-500/30 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <h3 className="text-sm font-bold text-red-400 uppercase tracking-widest">Expired Subscriptions</h3>
-            </div>
-            <span className="bg-red-500/20 text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{expiredStudioMembers.length}</span>
-          </div>
-          <div className="space-y-2">
-            {expiredStudioMembers.map(p => {
-              const expiry = p.studioExpiryDate || p.studioEndDate;
-              const daysAgo = expiry ? Math.abs(Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))) : null;
-              return (
-                <div key={p.id} className="flex items-center justify-between bg-red-500/5 rounded-lg px-3 py-2 border border-red-500/10">
-                  <div>
-                    <p className="text-sm font-bold text-text-primary">{p.name}</p>
-                    <p className="text-[10px] text-text-muted">{expiry ? `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago` : "No expiry date"}</p>
-                  </div>
-                  <button
-                    onClick={() => handleStudioRemind(p)}
-                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
-                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Send className="w-3 h-3" />
-                    {remindingStudioId === p.id ? "Sending..." : "Notify"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          {expiredStudioMembers.length > 1 && (
+          {pendingApprovalsCount > 0 && canSeeClub && (
             <button
-              onClick={() => handleBulkStudioRemind(expiredStudioMembers)}
-              disabled={!!remindingStudioId}
-              className="mt-3 w-full bg-red-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-400 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+              type="button"
+              onClick={() => setActiveTab("club", "players")}
+              className="w-full min-h-[44px] bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-left hover:bg-amber-100/70 transition cursor-pointer"
             >
-              <Send className="w-3.5 h-3.5" />
-              Notify All ({expiredStudioMembers.length})
+              <span className="flex items-center gap-2.5 min-w-0">
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold text-text-primary">
+                    {pendingApprovalsCount} Pending Member Approval{pendingApprovalsCount === 1 ? "" : "s"}
+                  </span>
+                  <span className="block text-[11px] text-text-secondary truncate">
+                    New registrations awaiting review in Roster
+                  </span>
+                </span>
+              </span>
+              <span className="text-xs font-extrabold text-amber-800 inline-flex items-center gap-0.5 shrink-0">
+                Review <ChevronRight className="w-4 h-4" />
+              </span>
+            </button>
+          )}
+          {weekendPending > 0 && (
+            <button
+              type="button"
+              onClick={handleWeekendClick}
+              className="w-full min-h-[44px] bg-brand-surface border border-brand/20 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-left hover:bg-brand-surface/80 transition cursor-pointer"
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <Clock className="w-4 h-4 text-brand shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold text-text-primary">
+                    {weekendPending} Weekend Ops Task{weekendPending === 1 ? "" : "s"} Pending
+                  </span>
+                  <span className="block text-[11px] text-text-secondary truncate">
+                    {canSeeClub ? "Match results, POTW or fee tasks due" : "Weekend financial tasks due"}
+                  </span>
+                </span>
+              </span>
+              <span className="text-xs font-extrabold text-brand inline-flex items-center gap-0.5 shrink-0">
+                Open <ChevronRight className="w-4 h-4" />
+              </span>
             </button>
           )}
         </div>
       )}
 
-      {isStudioAdmin && renewalDueMembers.length > 0 && (
-        <div className="bg-surface rounded-xl border border-amber-500/30 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-400" />
-              <h3 className="text-sm font-bold text-amber-400 uppercase tracking-widest">Renewal Due (7 Days)</h3>
+      {/* Tier 2: Role-Specific KPI Cards */}
+      <div
+        className={`grid gap-3 ${
+          canSeeClub && canSeeFinance ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2"
+        }`}
+        data-testid="admin-kpi-grid"
+      >
+        {canSeeFinance && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("finance", "dues")}
+            className="bg-surface rounded-2xl border border-border p-3.5 sm:p-4 text-left hover:border-brand/30 transition shadow-xs cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-text-secondary">
+                Total Due
+              </span>
+              <IndianRupee className="w-4 h-4 text-accent" />
             </div>
-            <span className="bg-amber-500/20 text-amber-400 text-xs font-black px-2 py-0.5 rounded-full">{renewalDueMembers.length}</span>
-          </div>
-          <div className="space-y-2">
-            {renewalDueMembers.map(p => {
-              const expiry = p.studioExpiryDate || p.studioEndDate;
-              const daysLeft = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24)) : 0;
-              return (
-                <div key={p.id} className="flex items-center justify-between bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
-                  <div>
-                    <p className="text-sm font-bold text-text-primary">{p.name}</p>
-                    <p className="text-[10px] text-text-muted">{daysLeft === 0 ? "Expires today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}</p>
-                  </div>
+            <p className="text-xl sm:text-2xl font-black text-brand mt-1.5 tabular-nums">
+              ₹{totalDueAmount.toLocaleString("en-IN")}
+            </p>
+            <p className="text-[11px] text-text-secondary mt-1">
+              {duePlayersCount} player{duePlayersCount === 1 ? "" : "s"} ·{" "}
+              <span className="font-bold text-accent">Notify ›</span>
+            </p>
+          </button>
+        )}
+
+        {canSeeFinance && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("finance")}
+            className="bg-surface rounded-2xl border border-border p-3.5 sm:p-4 text-left hover:border-brand/30 transition shadow-xs cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-text-secondary">
+                Collections (30d)
+              </span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+            </div>
+            <p className="text-xl sm:text-2xl font-black text-text-primary mt-1.5 tabular-nums">
+              ₹{collected30d.toLocaleString("en-IN")}
+            </p>
+            <p className="text-[11px] text-text-secondary mt-1">
+              Compliance:{" "}
+              <span
+                className={`font-bold ${
+                  matchCompliance.overall >= 75
+                    ? "text-emerald-700"
+                    : matchCompliance.overall >= 50
+                      ? "text-amber-700"
+                      : "text-rose-700"
+                }`}
+              >
+                {matchCompliance.overall}%
+              </span>
+            </p>
+          </button>
+        )}
+
+        {canSeeClub && (
+          <button
+            type="button"
+            onClick={() =>
+              nextMatchItem
+                ? setActiveTab("matches", `match_${nextMatchItem.match.id}`)
+                : setActiveTab("matches")
+            }
+            className="bg-surface rounded-2xl border border-border p-3.5 sm:p-4 text-left hover:border-brand/30 transition shadow-xs cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-text-secondary">
+                Next Match
+              </span>
+              <CalendarDays className="w-4 h-4 text-emerald-700" />
+            </div>
+            {nextMatchItem ? (
+              <>
+                <p className="text-sm sm:text-base font-extrabold text-text-primary mt-1.5 truncate">
+                  vs {nextMatchItem.match.opponent}
+                </p>
+                <p className="text-[11px] font-bold text-emerald-700 mt-1">
+                  {nextMatchItem.yesCount} Yes ·{" "}
+                  {nextMatchItem.squadCount > 0 ? `Squad ${nextMatchItem.squadCount}` : "Squad Open"}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-text-primary mt-1.5">No upcoming match</p>
+                <p className="text-[11px] text-accent font-bold mt-1">Schedule ›</p>
+              </>
+            )}
+          </button>
+        )}
+
+        {canSeeClub && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("club", "studio")}
+            className="bg-surface rounded-2xl border border-border p-3.5 sm:p-4 text-left hover:border-brand/30 transition shadow-xs cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-text-secondary">
+                Studio Nets
+              </span>
+              <Users className="w-4 h-4 text-amber-700" />
+            </div>
+            <p className="text-xl sm:text-2xl font-black text-text-primary mt-1.5 tabular-nums">
+              {activeStudioCount} Active
+            </p>
+            <p
+              className={`text-[11px] font-bold mt-1 ${
+                totalStudioAlerts > 0 ? "text-rose-700" : "text-text-secondary"
+              }`}
+            >
+              {totalStudioAlerts > 0
+                ? `${expiredStudioMembers.length} Expired · ${renewalDueMembers.length} Due 7d`
+                : "All memberships current"}
+            </p>
+          </button>
+        )}
+      </div>
+
+      {/* Tier 3 & Tier 4 Desktop 2-Column Split (Left 7 / Right 5 for Super Admin; clean stack for single-domain roles) */}
+      <div
+        className={`grid gap-5 items-start ${
+          canSeeClub && canSeeFinance ? "lg:grid-cols-12" : "grid-cols-1"
+        }`}
+      >
+        {/* Primary Operational Column */}
+        <div className={canSeeClub && canSeeFinance ? "lg:col-span-7 space-y-5" : "space-y-5"}>
+          {/* Unified Quick Actions */}
+          <section data-testid="admin-quick-actions">
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-xs font-black uppercase tracking-wider text-text-secondary">
+                Quick Actions
+              </h2>
+            </div>
+            <div
+              className={`grid gap-2.5 ${
+                canSeeClub ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-4"
+              }`}
+            >
+              {quickActions.map((act) => {
+                const Icon = act.icon;
+                return (
                   <button
-                    onClick={() => handleStudioRemind(p)}
-                    disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
-                    className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                    key={act.id}
+                    type="button"
+                    data-testid={`quick-action-${act.id}`}
+                    onClick={act.onClick}
+                    className="min-h-[56px] bg-surface rounded-xl border border-border p-2.5 sm:p-3 flex items-center gap-2.5 text-left hover:bg-surface-hover hover:border-brand/30 transition shadow-xs cursor-pointer"
                   >
-                    <Send className="w-3 h-3" />
-                    {remindingStudioId === p.id ? "Sending..." : "Remind"}
+                    <span
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${act.tone}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-bold text-text-primary leading-tight truncate">
+                        {act.label}
+                      </span>
+                      <span className="block text-[10px] text-text-secondary truncate mt-0.5">
+                        {act.sub}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Today & Upcoming Matches — Club / Super Admin */}
+          {canSeeClub && (
+            <section data-testid="admin-upcoming-matches">
+              <div className="flex items-center justify-between mb-2.5">
+                <h2 className="text-xs font-black uppercase tracking-wider text-text-secondary">
+                  Today &amp; Upcoming Matches
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("matches")}
+                  className="text-xs font-bold text-accent hover:underline cursor-pointer"
+                >
+                  Open Match Center ›
+                </button>
+              </div>
+              {upcomingMatchesWithReadiness.length === 0 ? (
+                <div className="bg-surface rounded-2xl border border-border p-6 text-center">
+                  <p className="text-sm text-text-secondary mb-3">No upcoming fixtures scheduled.</p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("matches", "add_match")}
+                    className="min-h-[40px] px-4 rounded-xl bg-accent text-text-accent text-xs font-bold inline-flex items-center gap-1.5 hover:bg-accent/90 transition cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Schedule Match
                   </button>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+              ) : (
+                <div className="flex overflow-x-auto md:grid md:grid-cols-2 gap-3 pb-2 md:pb-0 snap-x no-scrollbar">
+                  {upcomingMatchesWithReadiness.slice(0, 4).map(({ match: m, ground, squadCount, yesCount, maybeCount }) => (
+                    <div
+                      key={m.id}
+                      className="min-w-[290px] md:min-w-0 snap-center bg-surface rounded-2xl border border-border border-l-4 border-l-brand p-4 shadow-xs shrink-0 flex flex-col justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-surface text-brand uppercase">
+                            {format(parseISO(m.date), "EEE, d MMM")}
+                            {m.time ? ` · ${format(parseISO(`${m.date}T${m.time}`), "h:mm a")}` : ""}
+                          </span>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              squadCount > 0
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {squadCount > 0 ? `Squad ${squadCount}` : "Squad Open"}
+                          </span>
+                        </div>
+                        <p className="text-base font-extrabold text-text-primary truncate">
+                          vs {m.opponent}
+                        </p>
+                        <p className="text-xs text-text-secondary truncate mt-0.5">
+                          {m.format || "Match"} · {ground?.name || "Ground TBD"}
+                        </p>
+                        <div className="mt-2.5 bg-surface-hover border border-border rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px]">
+                          <span className="text-text-secondary font-semibold">Availability</span>
+                          <span className="font-bold text-text-primary">
+                            <span className="text-emerald-700">{yesCount} Yes</span> · {maybeCount} Maybe
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleNotifyMatch(m)}
+                          className="flex-1 min-h-[36px] bg-accent hover:bg-accent/90 text-text-accent rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer"
+                        >
+                          <Send className="w-3 h-3" /> Notify
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedRemindMatch(m);
+                            setIsGroupRemindModalOpen(true);
+                          }}
+                          className="flex-1 min-h-[36px] bg-brand-surface hover:bg-brand-surface/80 text-brand rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer"
+                        >
+                          <MessageSquare className="w-3 h-3" /> Remind
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("matches", `match_${m.id}`)}
+                          className="flex-1 min-h-[36px] bg-surface-hover hover:bg-border/50 text-text-primary border border-border rounded-lg text-xs font-bold transition cursor-pointer"
+                        >
+                          Squad
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
-      {/* Match Fee Payment Compliance — Finance/Super only */}
-      {isFinanceAdmin && matchCompliance.perMatch.length > 0 && (
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-sm font-bold text-text-primary uppercase tracking-widest">Payment Compliance</h3>
+          {/* Club Performance Widget — Club / Super Admin (Desktop left col, or inline) */}
+          {canSeeClub && (
+            <div className="hidden lg:block">
+              <ClubPerformanceWidget canManage />
             </div>
-            <span className={`text-lg font-black ${matchCompliance.overall >= 75 ? "text-emerald-400" : matchCompliance.overall >= 50 ? "text-amber-400" : "text-red-400"}`}>
-              {matchCompliance.overall}%
-            </span>
-          </div>
-          <p className="text-[10px] text-text-muted mb-3">Paid within 4 days of match = compliant</p>
-          <div className="space-y-2">
-            {matchCompliance.perMatch.map(({ match, compliant, total, rate }) => (
-              <div key={match.id} className="flex items-center justify-between bg-surface-hover rounded-lg px-3 py-2 border border-border">
-                <div>
-                  <p className="text-xs font-bold text-text-primary">vs {match.opponent}</p>
-                  <p className="text-[10px] text-text-muted">{formatDate(match.date)}</p>
-                </div>
-                <div className="text-right">
-                  <span className={`text-sm font-black ${rate >= 75 ? "text-emerald-400" : rate >= 50 ? "text-amber-400" : "text-red-400"}`}>{rate}%</span>
-                  <p className="text-[10px] text-text-primary/30">{compliant}/{total} on time</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Top 5 Dues — Finance/Super only */}
-      {isFinanceAdmin && topDuePlayers.length > 0 && (
-        <div className="mt-4" data-testid="top-dues-section">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-bold text-text-primary tracking-tight">Top Dues</h3>
-            <button onClick={() => setActiveTab("finance", "dues")} className="text-xs text-accent hover:underline">View All</button>
-          </div>
-          <div className="bg-surface rounded-xl border border-border divide-y divide-border overflow-hidden">
-            {topDuePlayers.map((d, i) => (
-              <div key={d.player!.id} className="flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition">
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-black text-text-primary/30 w-4">{i + 1}</span>
-                  <div>
-                    <p className="text-sm font-bold text-text-primary">{d.player!.name}</p>
-                    <p className="text-[10px] text-text-muted font-mono">{d.player!.mobile || ""}</p>
+        {/* Secondary / Summary Column */}
+        <div className={canSeeClub && canSeeFinance ? "lg:col-span-5 space-y-4" : "space-y-4"}>
+          {/* Finance Snapshot — Finance / Super Admin */}
+          {canSeeFinance && (
+            <section
+              className="bg-surface rounded-2xl border border-border p-4 shadow-xs"
+              data-testid="admin-finance-snapshot"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-extrabold text-text-primary">Finance Snapshot</h2>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("finance")}
+                  className="text-xs font-bold text-accent hover:underline cursor-pointer"
+                >
+                  Open Finance ›
+                </button>
+              </div>
+
+              {/* Segmented Tabs */}
+              <div
+                role="tablist"
+                aria-label="Finance snapshot"
+                className="flex gap-1 bg-surface-hover p-1 rounded-xl border border-border mb-3"
+              >
+                {[
+                  { key: "dues" as FinanceSnapshotTab, label: `Top Dues (${topDuePlayers.length})` },
+                  { key: "txns" as FinanceSnapshotTab, label: "Recent Txns" },
+                  { key: "compliance" as FinanceSnapshotTab, label: "Compliance" },
+                ].map((t) => (
+                  <button
+                    key={t.key}
+                    role="tab"
+                    aria-selected={financeTab === t.key}
+                    onClick={() => setFinanceTab(t.key)}
+                    className={`flex-1 min-h-[34px] rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                      financeTab === t.key
+                        ? "bg-surface text-text-primary shadow-xs border border-border"
+                        : "text-text-secondary hover:text-text-primary"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {financeTab === "dues" && (
+                <div className="divide-y divide-border" data-testid="top-dues-section">
+                  {topDuePlayers.length === 0 ? (
+                    <p className="text-xs text-text-secondary py-4 text-center">No outstanding player dues.</p>
+                  ) : (
+                    topDuePlayers.map((d, i) => (
+                      <div key={d.player!.id} className="flex items-center justify-between py-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-[10px] font-black text-text-muted w-4">{i + 1}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-text-primary truncate">{d.player!.name}</p>
+                            <p className="text-[10px] text-text-secondary font-mono">{d.player!.mobile || ""}</p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-black text-brand tabular-nums">
+                          ₹{d.amount.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {financeTab === "txns" && (
+                <div className="divide-y divide-border" data-testid="recent-transactions-section">
+                  {recentTransactions.length === 0 ? (
+                    <p className="text-xs text-text-secondary py-4 text-center">No recent transactions recorded.</p>
+                  ) : (
+                    recentTransactions.map((txn) => (
+                      <div key={txn.id} className="flex items-center justify-between py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-text-primary truncate">{txn.playerName}</p>
+                          <p className="text-[10px] text-text-secondary">
+                            {txn.type}
+                            {txn.method ? ` · ${txn.method}` : ""} · {format(new Date(txn.date), "dd MMM")}
+                          </p>
+                        </div>
+                        <span className="text-xs font-black text-emerald-700 tabular-nums">
+                          ₹{txn.amount.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {financeTab === "compliance" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-surface-hover rounded-xl px-3 py-2 border border-border">
+                    <span className="text-xs font-semibold text-text-secondary">
+                      4-day post-match compliance
+                    </span>
+                    <span className="text-sm font-black text-emerald-700">{matchCompliance.overall}%</span>
                   </div>
+                  {matchCompliance.perMatch.length === 0 ? (
+                    <p className="text-xs text-text-secondary py-3 text-center">No recent completed matches.</p>
+                  ) : (
+                    matchCompliance.perMatch.map(({ match, compliant, total, rate }) => (
+                      <div
+                        key={match.id}
+                        className="flex items-center justify-between py-1.5 border-b border-border last:border-b-0"
+                      >
+                        <div>
+                          <p className="text-xs font-bold text-text-primary">vs {match.opponent}</p>
+                          <p className="text-[10px] text-text-secondary">{formatDate(match.date)}</p>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className={`text-xs font-black ${
+                              rate >= 75 ? "text-emerald-700" : rate >= 50 ? "text-amber-700" : "text-rose-700"
+                            }`}
+                          >
+                            {rate}%
+                          </span>
+                          <p className="text-[10px] text-text-secondary">{compliant}/{total} on time</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-                <span className="text-sm font-black text-rose-400">₹{d.amount}</span>
+              )}
+            </section>
+          )}
+
+          {/* Studio Alerts — Club / Super Admin (Compact, actionable) */}
+          {canSeeClub && totalStudioAlerts > 0 && (
+            <section
+              className="bg-surface rounded-2xl border border-rose-200 p-4 shadow-xs"
+              data-testid="admin-studio-alerts"
+            >
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-700" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-rose-800">
+                    Studio Alerts ({totalStudioAlerts})
+                  </h2>
+                </div>
+                {expiredStudioMembers.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleBulkStudioRemind(expiredStudioMembers)}
+                    disabled={!!remindingStudioId}
+                    className="px-2.5 py-1 rounded-lg bg-accent text-text-accent text-[11px] font-bold hover:bg-accent/90 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    Notify Expired ({expiredStudioMembers.length})
+                  </button>
+                )}
               </div>
-            ))}
+
+              <div className="space-y-2">
+                {expiredStudioMembers.slice(0, 3).map((p) => {
+                  const expiry = p.studioExpiryDate || p.studioEndDate;
+                  const daysAgo = expiry
+                    ? Math.abs(Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24)))
+                    : null;
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between bg-rose-50/70 border border-rose-200/70 rounded-xl px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-text-primary truncate">{p.name}</p>
+                        <p className="text-[10px] text-rose-700 font-medium">
+                          {expiry ? `Expired ${daysAgo}d ago` : "No expiry date"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleStudioRemind(p)}
+                        disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
+                        className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 text-[11px] font-bold hover:bg-rose-200/70 transition disabled:opacity-50 cursor-pointer"
+                      >
+                        {remindingStudioId === p.id ? "Sending..." : "Remind"}
+                      </button>
+                    </div>
+                  );
+                })}
+                {renewalDueMembers.slice(0, 2).map((p) => {
+                  const expiry = p.studioExpiryDate || p.studioEndDate;
+                  const daysLeft = expiry
+                    ? Math.ceil((new Date(expiry).getTime() - Date.now()) / (1000 * 3600 * 24))
+                    : 0;
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between bg-amber-50/70 border border-amber-200/70 rounded-xl px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-text-primary truncate">{p.name}</p>
+                        <p className="text-[10px] text-amber-800 font-medium">
+                          {daysLeft === 0 ? "Expires today" : `Expires in ${daysLeft}d`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleStudioRemind(p)}
+                        disabled={remindingStudioId === p.id || remindingStudioId === "bulk"}
+                        className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 text-[11px] font-bold hover:bg-amber-200/70 transition disabled:opacity-50 cursor-pointer"
+                      >
+                        {remindingStudioId === p.id ? "Sending..." : "Remind"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {totalStudioAlerts > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("club", "studio")}
+                  className="mt-2.5 w-full text-center text-xs font-bold text-accent hover:underline cursor-pointer"
+                >
+                  View all {totalStudioAlerts} in Studio ›
+                </button>
+              )}
+            </section>
+          )}
+
+          {/* Announcements Shortcut & Mobile Club Performance — Club / Super Admin */}
+          {canSeeClub && (
+            <>
+              <button
+                type="button"
+                data-testid="admin-home-announcements-link"
+                onClick={() => setActiveTab("club", "announcements")}
+                className="w-full min-h-[52px] bg-surface flex items-center justify-between p-3.5 rounded-2xl border border-border hover:bg-surface-hover transition shadow-xs cursor-pointer"
+              >
+                <span className="flex items-center gap-3 text-left">
+                  <span className="w-9 h-9 rounded-xl bg-brand-surface text-brand flex items-center justify-center shrink-0">
+                    <Bell className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-bold text-text-primary">Club Announcements</span>
+                    <span className="block text-xs text-text-secondary">
+                      Publish, edit and pin announcements in Club
+                    </span>
+                  </span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-text-muted" aria-hidden="true" />
+              </button>
+
+              <div className="lg:hidden">
+                <ClubPerformanceWidget canManage />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Match Picker Modal for Add Squad / Edit & Calendar */}
+      {matchPickerMode && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
+          onClick={() => setMatchPickerMode(null)}
+        >
+          <div
+            className="bg-surface border border-border rounded-2xl w-full max-w-md p-5 relative shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-text-primary">
+                {matchPickerMode === "squad" ? "Add Squad to Match" : "Edit Match or View Calendar"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setMatchPickerMode(null)}
+                className="text-text-muted hover:text-text-primary p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {matchPickerMode === "edit" && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMatchPickerMode(null);
+                    setActiveTab("matches", "calendar");
+                  }}
+                  className="min-h-[42px] rounded-xl bg-accent text-text-accent text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-accent/90 transition cursor-pointer"
+                >
+                  <CalendarDays className="w-4 h-4" /> View Calendar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMatchPickerMode(null);
+                    setActiveTab("matches", "add_match");
+                  }}
+                  className="min-h-[42px] rounded-xl bg-brand-surface text-brand text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-brand-surface/80 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> New Match
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-text-secondary">
+              {matchPickerMode === "squad"
+                ? "Select an upcoming match to manage its squad:"
+                : "Or select an upcoming match to edit/manage:"}
+            </p>
+            <div className="max-h-64 overflow-y-auto divide-y divide-border border border-border rounded-xl">
+              {upcomingMatchesWithReadiness.map(({ match: m, ground, squadCount, yesCount }) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setMatchPickerMode(null);
+                    setActiveTab("matches", `match_${m.id}`);
+                  }}
+                  className="w-full p-3 text-left hover:bg-surface-hover flex items-center justify-between gap-2 transition cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-text-primary truncate">vs {m.opponent}</p>
+                    <p className="text-[11px] text-text-secondary truncate">
+                      {formatDate(m.date)} · {ground?.name || "TBD"} · {yesCount} Yes
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold text-brand shrink-0">
+                    {squadCount > 0 ? `${squadCount} in squad` : "Open"} ›
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
-
-      {/* Recent Transactions — Finance/Super only */}
-      {isFinanceAdmin && recentTransactions.length > 0 && (
-        <div className="mt-4" data-testid="recent-transactions-section">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-bold text-text-primary tracking-tight">Recent Transactions</h3>
-            <button onClick={() => setActiveTab("finance")} className="text-xs text-accent hover:underline">View All</button>
-          </div>
-          <div className="bg-surface rounded-xl border border-border divide-y divide-border overflow-hidden">
-            {recentTransactions.map((txn) => (
-              <div key={txn.id} className="flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition">
-                <div>
-                  <p className="text-sm font-bold text-text-primary">{txn.playerName}</p>
-                  <p className="text-[10px] text-text-muted">{txn.type}{txn.method ? ` • ${txn.method}` : ""}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-black text-emerald-400">₹{txn.amount}</span>
-                  <p className="text-[10px] text-text-primary/30">{format(new Date(txn.date), "dd MMM")}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Swipe Pane for matches — Match/Super only */}
-      {isMatchAdmin && <div className="mt-4">
-        <div className="flex items-center justify-between mb-4">
-           <h3 className="text-lg font-bold text-text-primary tracking-tight">Upcoming Matches</h3>
-           <span className="text-xs text-text-muted hover:text-text-primary cursor-pointer" onClick={() => setActiveTab("matches")}>View All</span>
-        </div>
-        <div className="flex overflow-x-auto gap-4 pb-4 snap-x no-scrollbar">
-           {upcomingMatches.length === 0 ? (
-               <div className="text-text-muted text-sm bg-surface p-6 rounded-xl w-full text-center border border-border">No upcoming matches</div>
-           ) : (
-               upcomingMatches.map(m => (
-                   <div key={m.id} className="min-w-[280px] snap-center bg-surface p-5 rounded-2xl border border-border shrink-0">
-                       <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">{format(parseISO(m.date), "MMM d, yyyy")}</p>
-                       <p className="text-lg font-bold text-text-primary mb-2">vs {m.opponent}</p>
-                       <p className="text-xs font-medium text-text-secondary mb-4">{m.format} • {m.time ? format(parseISO(`${m.date}T${m.time}`), "h:mm a") : "Time TBD"}</p>
-                       <div className="space-y-2">
-                           <button
-                             onClick={() => handleNotifyMatch(m)}
-                             className="w-full bg-accent hover:opacity-90 text-text-accent py-2 rounded-lg text-xs font-black uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow"
-                             title="Share match alert on WhatsApp with players tagged"
-                           >
-                             <Send className="w-3.5 h-3.5" /> Notify
-                           </button>
-                           <div className="flex gap-2">
-                               <button onClick={() => {
-                                 setSelectedRemindMatch(m);
-                                 setIsGroupRemindModalOpen(true);
-                               }} className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Remind</button>
-                               <button onClick={() => setActiveTab("matches", `match_${m.id}`)} className="flex-1 bg-surface-hover hover:bg-surface-hover text-text-primary py-2 rounded-lg text-xs font-bold transition">Manage</button>
-                           </div>
-                       </div>
-                   </div>
-               ))
-           )}
-        </div>
-      </div>}
 
       {/* Group Remind Modal */}
       {isGroupRemindModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-sm p-4 relative shadow-2xl animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-5 relative shadow-2xl">
             <button
               onClick={() => setIsGroupRemindModalOpen(false)}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition"
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-2">
+            <h3 className="text-sm font-extrabold uppercase tracking-wider text-brand mb-2 flex items-center gap-2">
               <MessageSquare className="w-4 h-4" /> Remind Group
             </h3>
             <p className="text-xs text-text-secondary mb-4 leading-relaxed">
-              This will open WhatsApp with the match details and squad list. You can select your club's WhatsApp group to send the message.
+              This will open WhatsApp with the match details and squad list. Select your club&apos;s WhatsApp group to send.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-1">
                   Optional Custom Message
                 </label>
                 <textarea
                   value={groupRemindCustomMsg}
                   onChange={(e) => setGroupRemindCustomMsg(e.target.value)}
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500/50 text-text-primary placeholder-text-muted"
+                  className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand text-text-primary"
                   placeholder="e.g., Please reach 15 mins early!"
                   rows={3}
                 />
               </div>
               <button
                 onClick={handleGroupRemind}
-                className="w-full bg-emerald-500 text-black font-bold py-2.5 rounded-lg hover:bg-emerald-400 transition shadow flex items-center justify-center gap-2"
+                className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-xl hover:bg-accent/90 transition shadow flex items-center justify-center gap-2 cursor-pointer"
               >
                 Continue to WhatsApp
               </button>
@@ -869,28 +1382,25 @@ export function AdminDashboard({
 
       {/* Add No Show Modal */}
       {isNoShowModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-md p-5 relative shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-5 relative shadow-2xl max-h-[90vh] flex flex-col">
             <button
               onClick={resetNoShow}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition"
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition cursor-pointer"
               disabled={isSavingNoShow}
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-sm font-bold uppercase tracking-widest text-orange-400 mb-3 flex items-center gap-2">
+            <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-700 mb-2 flex items-center gap-2">
               <UserX className="w-4 h-4" /> Add No Show Fee
             </h3>
-            <p className="text-[11px] text-text-secondary mb-4 leading-relaxed">
-              Charges an <span className="text-orange-400 font-bold">Other Fee</span>
-              {" "}called <em>No Show</em> to every selected player. Add a
-              comment (e.g. the match date) so players know what the fine
-              is for.
+            <p className="text-xs text-text-secondary mb-4 leading-relaxed">
+              Charges an <span className="text-amber-700 font-bold">Other Fee</span> called <em>No Show</em> to every selected player.
             </p>
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-1">
                   Amount (₹) *
                 </label>
                 <input
@@ -899,21 +1409,21 @@ export function AdminDashboard({
                   value={noShowAmount || ""}
                   onChange={(e) => setNoShowAmount(Number(e.target.value))}
                   placeholder="e.g. 200"
-                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-text-primary placeholder-text-muted"
+                  className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand text-text-primary"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-1">
                   Selected
                 </label>
-                <div className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary h-[38px] flex items-center">
+                <div className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary h-[38px] flex items-center">
                   {noShowSelected.length} player(s)
                 </div>
               </div>
             </div>
 
             <div className="mb-3">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-1">
                 Comment (visible to players)
               </label>
               <input
@@ -921,13 +1431,13 @@ export function AdminDashboard({
                 value={noShowComment}
                 onChange={(e) => setNoShowComment(e.target.value)}
                 placeholder="e.g. No show for match vs Titans on 12 Aug"
-                className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-text-primary placeholder-text-muted"
+                className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand text-text-primary"
               />
             </div>
 
             <div className="mb-3 flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                   Select Players
                 </label>
                 <button
@@ -939,10 +1449,9 @@ export function AdminDashboard({
                         : noShowFiltered.map((p) => p.id),
                     )
                   }
-                  className="text-orange-400 text-[10px] uppercase font-bold tracking-wider hover:underline"
+                  className="text-accent text-[10px] uppercase font-bold tracking-wider hover:underline cursor-pointer"
                 >
-                  {noShowSelected.length === noShowFiltered.length &&
-                  noShowFiltered.length > 0
+                  {noShowSelected.length === noShowFiltered.length && noShowFiltered.length > 0
                     ? "Deselect All"
                     : "Select All Filtered"}
                 </button>
@@ -952,21 +1461,19 @@ export function AdminDashboard({
                 placeholder="Search players..."
                 value={noShowSearch}
                 onChange={(e) => setNoShowSearch(e.target.value)}
-                className="w-full bg-surface-hover border border-border rounded-t-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/50 text-text-primary placeholder-text-muted"
+                className="w-full bg-surface-hover border border-border rounded-t-xl px-3 py-2 text-sm focus:outline-none focus:border-brand text-text-primary"
               />
-              <div className="flex-1 overflow-y-auto min-h-[8rem] max-h-[16rem] border border-t-0 border-border rounded-b-lg bg-surface-hover p-2 flex flex-col gap-1">
+              <div className="flex-1 overflow-y-auto min-h-[8rem] max-h-[16rem] border border-t-0 border-border rounded-b-xl bg-surface-hover p-2 flex flex-col gap-1">
                 {noShowFiltered.length === 0 && (
-                  <div className="text-xs text-text-muted italic p-2 text-center">
-                    No players found.
-                  </div>
+                  <div className="text-xs text-text-secondary italic p-2 text-center">No players found.</div>
                 )}
                 {noShowFiltered.map((p) => (
                   <label
                     key={p.id}
-                    className={`flex items-center gap-2 p-2 rounded cursor-pointer transition ${
+                    className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition ${
                       noShowSelected.includes(p.id)
-                        ? "bg-orange-500/20 border border-orange-500/40 text-text-primary"
-                        : "hover:bg-surface-hover border border-transparent text-text-secondary"
+                        ? "bg-amber-50 border border-amber-300 text-text-primary"
+                        : "hover:bg-surface border border-transparent text-text-secondary"
                     }`}
                   >
                     <input
@@ -974,17 +1481,13 @@ export function AdminDashboard({
                       checked={noShowSelected.includes(p.id)}
                       onChange={() =>
                         setNoShowSelected((prev) =>
-                          prev.includes(p.id)
-                            ? prev.filter((x) => x !== p.id)
-                            : [...prev, p.id],
+                          prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id],
                         )
                       }
-                      className="accent-orange-500"
+                      className="accent-amber-600"
                     />
                     <span className="text-xs truncate flex-1">{p.name}</span>
-                    <span className="text-[10px] text-text-muted font-mono">
-                      {p.mobile || ""}
-                    </span>
+                    <span className="text-[10px] text-text-secondary font-mono">{p.mobile || ""}</span>
                   </label>
                 ))}
               </div>
@@ -993,7 +1496,7 @@ export function AdminDashboard({
             <button
               onClick={handleSaveNoShow}
               disabled={isSavingNoShow}
-              className="w-full bg-orange-500 text-black font-bold py-2.5 rounded-lg hover:bg-orange-400 transition shadow flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-xl hover:bg-accent/90 transition shadow flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSavingNoShow
                 ? "Saving..."
@@ -1005,12 +1508,8 @@ export function AdminDashboard({
 
       {/* Record Catches Modal */}
       {showCatchModal && (
-        <RecordCatchesModal
-          store={store}
-          onClose={() => setShowCatchModal(false)}
-        />
+        <RecordCatchesModal store={store} onClose={() => setShowCatchModal(false)} />
       )}
-
     </div>
   );
 }
@@ -1031,7 +1530,10 @@ function RecordCatchesModal({
   const [isSaving, setIsSaving] = useState(false);
 
   const activePlayers = useMemo(
-    () => store.players.filter((p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending").sort((a, b) => a.name.localeCompare(b.name)),
+    () =>
+      store.players
+        .filter((p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending")
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [store.players],
   );
 
@@ -1049,9 +1551,7 @@ function RecordCatchesModal({
     : activePlayers;
 
   const togglePlayer = (id: string) => {
-    setSelectedPlayers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setSelectedPlayers((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     if (!playerCounts[id]) setPlayerCounts((c) => ({ ...c, [id]: 1 }));
   };
 
@@ -1087,39 +1587,55 @@ function RecordCatchesModal({
   const isValid = selectedPlayers.length > 0 && (matchId || comment.trim());
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-surface rounded-xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface rounded-2xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-text-primary flex items-center gap-2">
-            <Target className="w-5 h-5 text-teal-400" />
+            <Target className="w-5 h-5 text-emerald-700" />
             Record Catches
           </h3>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Type toggle */}
         <div className="flex gap-2">
           <button
             onClick={() => setCatchType("stunning")}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "stunning" ? "bg-emerald-500 text-black" : "border border-border text-text-muted hover:text-text-primary"}`}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+              catchType === "stunning"
+                ? "bg-emerald-600 text-white"
+                : "border border-border text-text-secondary hover:text-text-primary"
+            }`}
           >
             Stunning Catch
           </button>
           <button
             onClick={() => setCatchType("dropped")}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${catchType === "dropped" ? "bg-red-500 text-white" : "border border-border text-text-muted hover:text-text-primary"}`}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+              catchType === "dropped"
+                ? "bg-rose-600 text-white"
+                : "border border-border text-text-secondary hover:text-text-primary"
+            }`}
           >
             Dropped Catch
           </button>
         </div>
 
-        {/* Match selection */}
         <div>
-          <label className="text-[10px] text-text-muted uppercase tracking-widest mb-1 block">Match (optional)</label>
+          <label className="text-[10px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+            Match (optional)
+          </label>
           <select
             value={matchId}
             onChange={(e) => setMatchId(e.target.value)}
-            className="w-full bg-surface-hover border border-border rounded-lg px-2 py-2 text-sm text-text-primary"
+            className="w-full bg-surface-hover border border-border rounded-xl px-2.5 py-2 text-sm text-text-primary"
           >
             <option value="">— Select a match —</option>
             {recentMatches.map((m) => (
@@ -1130,48 +1646,59 @@ function RecordCatchesModal({
           </select>
         </div>
 
-        {/* Comment */}
         <div>
-          <label className="text-[10px] text-text-muted uppercase tracking-widest mb-1 block">Comment {!matchId && <span className="text-red-400">(required if no match)</span>}</label>
+          <label className="text-[10px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+            Comment {!matchId && <span className="text-rose-600">(required if no match)</span>}
+          </label>
           <input
             type="text"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="e.g. Practice session"
-            className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-primary/30"
+            className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary"
           />
         </div>
 
-        {/* Player search */}
         <div>
-          <label className="text-[10px] text-text-muted uppercase tracking-widest mb-1 block">Select Players</label>
+          <label className="text-[10px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+            Select Players
+          </label>
           <div className="relative mb-2">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-primary/30" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
             <input
               type="text"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
               placeholder="Search players..."
-              className="w-full bg-surface-hover border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-text-primary placeholder:text-text-primary/30"
+              className="w-full bg-surface-hover border border-border rounded-xl pl-8 pr-3 py-1.5 text-sm text-text-primary"
             />
           </div>
 
-          {/* Selected chips */}
           {selectedPlayers.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-2">
               {selectedPlayers.map((pid) => {
                 const p = activePlayers.find((x) => x.id === pid);
                 return (
-                  <span key={pid} className="inline-flex items-center gap-1 bg-teal-500/20 text-teal-300 text-xs px-2 py-0.5 rounded-full">
+                  <span
+                    key={pid}
+                    className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-2 py-0.5 rounded-full"
+                  >
                     {p?.name}
                     <span className="font-bold mx-1">x{playerCounts[pid] || 1}</span>
-                    <button className="flex items-center" onClick={() => updateCount(pid, -1)} disabled={(playerCounts[pid] || 1) <= 1}>
+                    <button
+                      className="flex items-center cursor-pointer"
+                      onClick={() => updateCount(pid, -1)}
+                      disabled={(playerCounts[pid] || 1) <= 1}
+                    >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <button className="flex items-center" onClick={() => updateCount(pid, 1)}>
+                    <button className="flex items-center cursor-pointer" onClick={() => updateCount(pid, 1)}>
                       <Plus className="w-3 h-3" />
                     </button>
-                    <button onClick={() => setSelectedPlayers((prev) => prev.filter((x) => x !== pid))} className="ml-1 hover:text-text-primary">
+                    <button
+                      onClick={() => setSelectedPlayers((prev) => prev.filter((x) => x !== pid))}
+                      className="ml-1 hover:text-text-primary cursor-pointer"
+                    >
                       <X className="w-3 h-3" />
                     </button>
                   </span>
@@ -1180,14 +1707,13 @@ function RecordCatchesModal({
             </div>
           )}
 
-          {/* Player list */}
-          <div className="max-h-40 overflow-y-auto space-y-0.5 border border-border rounded-lg p-1">
+          <div className="max-h-40 overflow-y-auto space-y-0.5 border border-border rounded-xl p-1">
             {filtered.map((p) => (
               <label
                 key={p.id}
-                className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition text-xs ${
+                className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition text-xs ${
                   selectedPlayers.includes(p.id)
-                    ? "bg-teal-500/20 border border-teal-500/40 text-text-primary"
+                    ? "bg-emerald-50 border border-emerald-200 text-text-primary"
                     : "hover:bg-surface-hover border border-transparent text-text-secondary"
                 }`}
               >
@@ -1195,7 +1721,7 @@ function RecordCatchesModal({
                   type="checkbox"
                   checked={selectedPlayers.includes(p.id)}
                   onChange={() => togglePlayer(p.id)}
-                  className="accent-teal-500"
+                  className="accent-emerald-600"
                 />
                 <span className="truncate flex-1">{p.name}</span>
               </label>
@@ -1206,10 +1732,10 @@ function RecordCatchesModal({
         <button
           onClick={handleSave}
           disabled={isSaving || !isValid}
-          className={`w-full font-bold py-2.5 rounded-lg transition shadow flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+          className={`w-full font-bold py-2.5 rounded-xl transition shadow flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
             catchType === "stunning"
-              ? "bg-emerald-500 text-black hover:bg-emerald-400"
-              : "bg-red-500 text-white hover:bg-red-400"
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : "bg-accent text-text-accent hover:bg-accent/90"
           }`}
         >
           {isSaving
