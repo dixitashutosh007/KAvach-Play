@@ -394,9 +394,9 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      allow read: if isSuperAdmin();
-      allow create, update: if isAnyAdmin();
-      allow delete: if isSuperAdmin();
+      allow read, delete: if isSuperAdmin();
+      allow create: if isAnyAdmin();
+      allow update: if false;
     }
 
     match /paymentLinks/{linkId} {
@@ -505,10 +505,11 @@ service cloud.firestore {
 
     match /catchLog/{entryId} {
       allow read: if isSignedIn();
-      allow create: if isMatchAdmin() || isClubAdmin()
+      allow create: if (isMatchAdmin() || isClubAdmin())
         && incoming().playerId is string
         && incoming().type is string
-        && incoming().count is int;
+        && incoming().count is int
+        && exists(/databases/$(database)/documents/players/$(incoming().playerId));
       allow delete: if isClubAdmin();
     }
 
@@ -520,21 +521,15 @@ service cloud.firestore {
     }
 
     match /notifications/{notifId} {
-      // A user can read any notification (client filters to their own). Since
-      // read is broad, keep the write surface tight: only the notification's
-      // owner or an admin can modify/delete. Broadcast notifs (userId ==
-      // "admin"/"all") are admin-owned by definition.
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && (
-        incoming().userId == request.auth.uid ||
-        isAnyAdmin() ||
-        incoming().userId == "admin" ||
-        incoming().userId == "all"
-      );
+      allow read: if isAnyAdmin()
+        || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all'));
+      allow create: if isAnyAdmin()
+        || (isSignedIn()
+            && incoming().userId == request.auth.uid
+            && !(incoming().userId in ['admin', 'all']));
       allow update: if isSignedIn() && (
         existing().userId == request.auth.uid ||
-        isAnyAdmin() ||
-        (existing().userId in ["admin", "all"] && isAnyAdmin())
+        isAnyAdmin()
       );
       allow delete: if isSignedIn() && (
         existing().userId == request.auth.uid ||
@@ -753,10 +748,9 @@ service cloud.firestore {
         isSignedIn()
         && isSelf(existing().playerId)
         && isValidMerchOrder(incoming())
-        && incoming().paymentStatus == existing().paymentStatus
-        && incoming().price == existing().price
-        && incoming().playerId == existing().playerId
-        && incoming().createdAt == existing().createdAt
+        && !incoming().diff(existing()).affectedKeys().hasAny([
+          'orderStatus', 'merchId', 'merchName', 'paymentStatus', 'price', 'playerId', 'createdAt'
+        ])
       );
       allow delete: if isClubAdmin();
     }
@@ -779,6 +773,7 @@ service cloud.firestore {
     match /pollResponses/{responseId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
+        && isSelf(incoming().playerId)
         && isValidId(responseId)
         && isValidPollResponse(incoming())
         && exists(/databases/$(database)/documents/polls/$(incoming().pollId))
@@ -788,6 +783,8 @@ service cloud.firestore {
         && isSelf(existing().playerId)
         && isValidId(responseId)
         && isValidPollResponse(incoming())
+        && incoming().playerId == existing().playerId
+        && incoming().pollId == existing().pollId
         && exists(/databases/$(database)/documents/polls/$(incoming().pollId))
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time;
