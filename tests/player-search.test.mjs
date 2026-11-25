@@ -397,49 +397,112 @@ test("Lazy registry settles pending posts/polls promises on detach, blocks stale
 test("Lazy registry clearAll cancels pending tournaments one-shot and coordinator restarts cleanly without error", async () => {
   const registry = createLazyLoadRegistry();
   let tournamentsSetCount = 0;
-  let tournDef = deferred();
-  let postControls = null;
+  const tournDefs = [deferred(), deferred()];
+  const tournPromises = [];
+  const postControlsList = [];
+  const pollControlsList = [];
+  let postsCalls = 0;
+  let pollsCalls = 0;
+  let tournamentsCalls = 0;
+
+  const firstRoundStarted = deferred();
+  const secondRoundStarted = deferred();
+  const checkStarted = () => {
+    if (postsCalls === 1 && pollsCalls === 1 && tournamentsCalls === 1) {
+      firstRoundStarted.resolve();
+    }
+    if (postsCalls === 2 && pollsCalls === 2 && tournamentsCalls === 2) {
+      secondRoundStarted.resolve();
+    }
+  };
 
   const states = [];
   const coord = createSearchReadinessCoordinator(
     () => ({
-      ensurePosts: () =>
-        registry.ensureListener("posts", (c) => {
-          postControls = c;
+      ensurePosts: () => {
+        postsCalls++;
+        const p = registry.ensureListener("posts", (c) => {
+          postControlsList.push(c);
           return () => {};
-        }),
-      ensurePolls: () => Promise.resolve(),
-      ensureTournaments: () =>
-        registry.ensureOneShot("tournaments", async (isStale) => {
-          await tournDef.promise;
+        });
+        checkStarted();
+        return p;
+      },
+      ensurePolls: () => {
+        pollsCalls++;
+        const p = registry.ensureListener("polls", (c) => {
+          pollControlsList.push(c);
+          return () => {};
+        });
+        checkStarted();
+        return p;
+      },
+      ensureTournaments: () => {
+        const idx = tournamentsCalls++;
+        const p = registry.ensureOneShot("tournaments", async (isStale) => {
+          await tournDefs[idx].promise;
           if (isStale()) return;
           tournamentsSetCount++;
-        }),
+        });
+        tournPromises.push(p);
+        checkStarted();
+        return p;
+      },
     }),
     (s) => states.push(s),
   );
 
-  // Start search while posts & tournaments are pending, then simulate user/refresh clearAll()
   const runPromise = coord.startQuery("royal");
   assert.equal(states.at(-1).status, "loading");
 
-  // Reset tournDef for the automatic restart before clearAll triggers restart
-  const oldTournDef = tournDef;
-  tournDef = deferred();
+  // Wait until all 3 first-round loaders have actually started and registered
+  await firstRoundStarted.promise;
+  assert.equal(tournPromises.length, 1);
+  assert.equal(registry.hasActiveListener("posts"), true);
+  assert.equal(registry.hasActiveListener("polls"), true);
+
+  let firstTournSettled = false;
+  const firstTournObserved = tournPromises[0]
+    .catch(() => {})
+    .finally(() => {
+      firstTournSettled = true;
+    });
+  await Promise.resolve();
+  assert.equal(firstTournSettled, false, "original tournaments operation must still be pending before clearAll()");
+
+  // Cancel all in-flight operations
   registry.clearAll();
 
-  // Stale one-shot resolving after clearAll must NOT mutate tournaments
-  oldTournDef.resolve();
+  await assert.rejects(
+    tournPromises[0],
+    (err) => err instanceof LazyLoadCancelledError && err.domainKey === "tournaments",
+  );
+  await firstTournObserved;
+  assert.equal(firstTournSettled, true);
+
+  // Resolving the original deferred tournaments operation afterwards must NOT update state
+  tournDefs[0].resolve();
   await Promise.resolve();
   assert.equal(tournamentsSetCount, 0);
 
-  // Automatic restart re-acquired fresh loaders; resolve them now
-  tournDef.resolve();
-  postControls.onData(() => {});
+  // Wait for coordinator's automatic restart to invoke distinct second-round loaders
+  await secondRoundStarted.promise;
+  assert.equal(tournPromises.length, 2);
+  assert.notEqual(tournPromises[1], tournPromises[0]);
+  assert.equal(postControlsList.length, 2);
+  assert.notEqual(postControlsList[1], postControlsList[0]);
+  assert.equal(pollControlsList.length, 2);
+  assert.notEqual(pollControlsList[1], pollControlsList[0]);
+
+  // Complete restarted operations
+  tournDefs[1].resolve();
+  pollControlsList[1].onData(() => {});
+  postControlsList[1].onData(() => {});
   await runPromise;
 
   assert.equal(states.some((s) => s.status === "error"), false);
   assert.equal(states.at(-1).status, "ready");
+  assert.equal(states.at(-1).readyQuery, "royal");
   assert.equal(tournamentsSetCount, 1);
 });
 
