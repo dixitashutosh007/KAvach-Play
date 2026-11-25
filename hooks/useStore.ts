@@ -11,6 +11,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { createLazyLoadRegistry } from "@/lib/search-readiness";
+import { executeAnnouncementDelete } from "@/lib/weekend-ops";
 import {
   Ground,
   Match,
@@ -2530,7 +2531,10 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     try {
       const oldPost = posts.find((p) => p.id === postId);
       const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
-      for (const [k, v] of Object.entries(fields)) payload[k] = v === undefined ? deleteField() : v;
+      for (const [k, v] of Object.entries(fields)) {
+        if (k === "kind" || k === "potw") continue;
+        payload[k] = v === undefined ? deleteField() : v;
+      }
       await updateDoc(doc(db, "posts", postId), payload);
       logAudit({
         ...getActor(),
@@ -2555,24 +2559,60 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   /** Deletes a post and reports success (rules restrict deletes to admins). */
   const deleteAnnouncement = async (postId: string): Promise<boolean> => {
     const oldPost = posts.find((p) => p.id === postId);
-    try {
-      await deleteDoc(doc(db, "posts", postId));
-      logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted announcement` });
-      return true;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
-      return false;
-    }
+    return executeAnnouncementDelete({
+      post: oldPost,
+      deleteViaPotwApi: async (weekendId) => {
+        try {
+          const res = await authedFetch(
+            `/api/admin/player-of-weekend?weekendId=${encodeURIComponent(weekendId)}`,
+            { method: "DELETE" },
+          );
+          return res.ok;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+          return false;
+        }
+      },
+      deleteDirectDoc: async () => {
+        try {
+          await deleteDoc(doc(db, "posts", postId));
+          logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted announcement` });
+          return true;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+          return false;
+        }
+      },
+    });
   };
 
   const deletePost = async (postId: string) => {
     const oldPost = posts.find(p => p.id === postId);
-    try {
-      await deleteDoc(doc(db, "posts", postId));
-      logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted post` });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
-    }
+    await executeAnnouncementDelete({
+      post: oldPost,
+      deleteViaPotwApi: async (weekendId) => {
+        try {
+          const res = await authedFetch(
+            `/api/admin/player-of-weekend?weekendId=${encodeURIComponent(weekendId)}`,
+            { method: "DELETE" },
+          );
+          return res.ok;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+          return false;
+        }
+      },
+      deleteDirectDoc: async () => {
+        try {
+          await deleteDoc(doc(db, "posts", postId));
+          logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted post` });
+          return true;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+          return false;
+        }
+      },
+    });
   };
 
   const addComment = async (

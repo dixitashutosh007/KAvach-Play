@@ -404,3 +404,39 @@ export function linkHostLabel(href: string): string {
     return "";
   }
 }
+
+/**
+ * Authoritatively identifies a POTW announcement from its `kind` and `potw.weekendId` metadata.
+ * Never infers POTW status from title or text.
+ */
+export function getPotwWeekendIdFromPost(
+  post: { kind?: unknown; potw?: { weekendId?: unknown } | null } | null | undefined,
+): string | null {
+  if (!post || post.kind !== "potw") return null;
+  const raw = post.potw?.weekendId;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Routes announcement deletion through the POTW API for POTW announcements
+ * (atomically deleting badge, announcement, and notification) and falls back to
+ * direct deletion only for non-POTW announcements. Never falls back to direct
+ * deletion when the POTW API fails.
+ */
+export async function executeAnnouncementDelete({
+  post,
+  deleteViaPotwApi,
+  deleteDirectDoc,
+}: {
+  post: { kind?: unknown; potw?: { weekendId?: unknown } | null } | null | undefined;
+  deleteViaPotwApi: (weekendId: string) => Promise<boolean>;
+  deleteDirectDoc: () => Promise<boolean>;
+}): Promise<boolean> {
+  const weekendId = getPotwWeekendIdFromPost(post);
+  if (weekendId) {
+    return await deleteViaPotwApi(weekendId);
+  }
+  return await deleteDirectDoc();
+}

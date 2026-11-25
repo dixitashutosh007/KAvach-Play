@@ -309,4 +309,59 @@ describe("Admin Club Recognition & KAvach Stats — Emulator transactions", { sk
     assert.equal(delHist.status, 200);
     assert.equal((await db.collection("badges").doc(`potw_${histWeekend}`).get()).exists, false);
   });
+
+  it("POTW recipient change to unlinked player removes old notification without creating a new one", async () => {
+    const pLinked = uid("player");
+    const pUnlinked = uid("player");
+    const uLinked = uid("user");
+    const weekendId = "2026-11-14";
+
+    await Promise.all([
+      db.collection("players").doc(pLinked).set({ name: "Linked Player" }),
+      db.collection("players").doc(pUnlinked).set({ name: "Unlinked Player" }),
+      db.collection("appUsers").doc(uLinked).set({ playerId: pLinked, email: "linked@test.com", role: "player" }),
+      db.collection("matches").doc(uid("match")).set({ date: weekendId, result: "KAvach Won" }),
+    ]);
+
+    // Award to linked player (creates badge, post, notification)
+    await db.collection("badges").doc(`potw_${weekendId}`).set({
+      badgeType: "player_of_the_weekend",
+      playerId: pLinked,
+      playerName: "Linked Player",
+      weekendId,
+    });
+    await db.collection("posts").doc(`potw_${weekendId}`).set({
+      kind: "potw",
+      isAnnouncement: true,
+      potw: { playerId: pLinked, playerName: "Linked Player", weekendId },
+      text: "Linked Player — Great",
+    });
+    await db.collection("notifications").doc(`potw_${weekendId}`).set({
+      userId: uLinked,
+      title: "POTW",
+      metadata: { kind: "potw", weekendId },
+    });
+
+    // Change recipient to unlinked player
+    const editRes = await call(potwRoute.PATCH, "PATCH", {
+      now: MON_0900,
+      body: { weekendId, playerId: pUnlinked, message: "Unlinked star" },
+    });
+    assert.equal(editRes.status, 200);
+
+    const badgeSnap = await db.collection("badges").doc(`potw_${weekendId}`).get();
+    assert.equal(badgeSnap.data().playerId, pUnlinked);
+    const postSnap = await db.collection("posts").doc(`potw_${weekendId}`).get();
+    assert.equal(postSnap.data().potw.playerId, pUnlinked);
+    assert.equal((await db.collection("notifications").doc(`potw_${weekendId}`).get()).exists, false);
+
+    // Retract cleans up badge & post and writes audit entry
+    const delRes = await call(potwRoute.DELETE, "DELETE", {
+      now: MON_0900,
+      query: `?weekendId=${weekendId}`,
+    });
+    assert.equal(delRes.status, 200);
+    assert.equal((await db.collection("badges").doc(`potw_${weekendId}`).get()).exists, false);
+    assert.equal((await db.collection("posts").doc(`potw_${weekendId}`).get()).exists, false);
+  });
 });
