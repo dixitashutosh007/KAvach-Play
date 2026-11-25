@@ -364,4 +364,49 @@ describe("Admin Club Recognition & KAvach Stats — Emulator transactions", { sk
     assert.equal((await db.collection("badges").doc(`potw_${weekendId}`).get()).exists, false);
     assert.equal((await db.collection("posts").doc(`potw_${weekendId}`).get()).exists, false);
   });
+
+  it("POTW same-player edit: preserves notification when linked login exists, deletes stale notification when unlinked", async () => {
+    const p1 = uid("player");
+    const u1 = uid("user");
+    const weekendId = "2026-11-21";
+
+    await Promise.all([
+      db.collection("players").doc(p1).set({ name: "Same Player" }),
+      db.collection("appUsers").doc(u1).set({ playerId: p1, email: "same@test.com", role: "player" }),
+    ]);
+
+    const createRes = await call(potwRoute.POST, "POST", {
+      now: MON_0900,
+      body: { weekendId, playerId: p1, message: "Initial" },
+    });
+    assert.equal(createRes.status, 200);
+
+    // Edit same player while linked login still exists -> notification stays associated with u1
+    const editLinked = await call(potwRoute.PATCH, "PATCH", {
+      now: MON_0900,
+      body: { weekendId, playerId: p1, message: "Updated while linked" },
+    });
+    assert.equal(editLinked.status, 200);
+    let notifSnap = await db.collection("notifications").doc(`potw_${weekendId}`).get();
+    assert.equal(notifSnap.exists, true);
+    assert.equal(notifSnap.data().userId, u1);
+    assert.equal(notifSnap.data().message, "Updated while linked");
+
+    // Remove linked login, then edit same player -> stale notification is deleted; badge & post remain
+    await db.collection("appUsers").doc(u1).delete();
+    const editUnlinked = await call(potwRoute.PATCH, "PATCH", {
+      now: MON_0900,
+      body: { weekendId, playerId: p1, message: "Updated after unlink" },
+    });
+    assert.equal(editUnlinked.status, 200);
+
+    notifSnap = await db.collection("notifications").doc(`potw_${weekendId}`).get();
+    assert.equal(notifSnap.exists, false);
+    const badgeSnap = await db.collection("badges").doc(`potw_${weekendId}`).get();
+    assert.equal(badgeSnap.exists, true);
+    assert.equal(badgeSnap.data().note, "Updated after unlink");
+    const postSnap = await db.collection("posts").doc(`potw_${weekendId}`).get();
+    assert.equal(postSnap.exists, true);
+    assert.equal(postSnap.data().potw.message, "Updated after unlink");
+  });
 });

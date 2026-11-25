@@ -333,7 +333,7 @@ export async function PATCH(req: Request) {
         });
       }
 
-      if (oldBadge.playerId !== body.playerId && notifSnap.exists) {
+      if (notifSnap.exists && (oldBadge.playerId !== body.playerId || !recipientUid)) {
         tx.delete(notifRef);
       }
       if (recipientUid) {
