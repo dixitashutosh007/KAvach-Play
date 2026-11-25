@@ -69,8 +69,17 @@ describe("Phase 1 Workstream B: Merchandise Order & Payment Integrity", () => {
           paymentStatus: "Unpaid",
           orderStatus: "Order Placed",
         },
-        trusted_manual: {
-          id: "trusted_manual",
+        manual_underpriced: {
+          id: "manual_underpriced",
+          playerId: "p1",
+          merchId: "jersey1",
+          price: 1,
+          isManual: true,
+          paymentStatus: "Unpaid",
+          orderStatus: "Order Placed",
+        },
+        manual_valid_offline: {
+          id: "manual_valid_offline",
           playerId: "p1",
           merchId: "jersey1",
           price: 1400,
@@ -78,12 +87,38 @@ describe("Phase 1 Workstream B: Merchandise Order & Payment Integrity", () => {
           paymentStatus: "Unpaid",
           orderStatus: "Order Placed",
         },
+        server_tampered_snapshot: {
+          id: "server_tampered_snapshot",
+          playerId: "p1",
+          merchId: "jersey1",
+          customSelections: { Sleeve: "Full" },
+          price: 1200,
+          priceSnapshot: { unitPrice: 1200, quantity: 1, totalAmount: 1200, currency: "INR" },
+          trustedSource: "server",
+          intentId: "intent_tampered",
+          paymentStatus: "Unpaid",
+          orderStatus: "Order Placed",
+        },
+        server_valid_unpaid: {
+          id: "server_valid_unpaid",
+          playerId: "p1",
+          merchId: "jersey1",
+          customSelections: { Sleeve: "Full" },
+          price: 1400,
+          priceSnapshot: { unitPrice: 1400, quantity: 1, totalAmount: 1400, currency: "INR" },
+          trustedSource: "server",
+          intentId: "intent_valid_1",
+          paymentStatus: "Failed",
+          orderStatus: "Order Placed",
+        },
         other_player_order: {
           id: "other_player_order",
           playerId: "p2",
           merchId: "jersey1",
           price: 1200,
-          isManual: true,
+          trustedSource: "server",
+          intentId: "intent_p2",
+          priceSnapshot: { unitPrice: 1200, quantity: 1, totalAmount: 1200, currency: "INR" },
           paymentStatus: "Unpaid",
         },
       },
@@ -151,15 +186,18 @@ describe("Phase 1 Workstream B: Merchandise Order & Payment Integrity", () => {
     );
   });
 
-  it("rejects untrusted/tampered merchOrders in finance_dues", async () => {
-    await assert.rejects(
-      derivePayableAmount(baseDb(), "uid1", {
-        type: "finance_dues",
-        playerId: "p1",
-        items: [{ type: "merch", merchId: "evil_untrusted" }],
-      }),
-      /Total calculated payable dues must be greater than zero/i,
-    );
+  it("rejects untrusted and manual (isManual: true) merchOrders in finance_dues", async () => {
+    for (const id of ["evil_untrusted", "manual_underpriced", "manual_valid_offline", "server_tampered_snapshot"]) {
+      await assert.rejects(
+        derivePayableAmount(baseDb(), "uid1", {
+          type: "finance_dues",
+          playerId: "p1",
+          items: [{ type: "merch", merchId: id }],
+        }),
+        /Total calculated payable dues must be greater than zero/i,
+        `Expected ${id} to be rejected in finance_dues`,
+      );
+    }
   });
 
   it("rejects another player's merchOrder in finance_dues", async () => {
@@ -173,11 +211,11 @@ describe("Phase 1 Workstream B: Merchandise Order & Payment Integrity", () => {
     );
   });
 
-  it("allows trusted admin-created manual merchOrders in finance_dues", async () => {
+  it("allows valid server-created merchOrders with matching catalogue price & snapshot in finance_dues", async () => {
     const res = await derivePayableAmount(baseDb(), "uid1", {
       type: "finance_dues",
       playerId: "p1",
-      items: [{ type: "merch", merchId: "trusted_manual" }],
+      items: [{ type: "merch", merchId: "server_valid_unpaid" }],
     });
     assert.equal(res.amount, 1400);
   });

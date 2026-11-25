@@ -8,7 +8,7 @@ const rulesContent = fs.readFileSync(path.resolve(__dirname, "../firestore.rules
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
 
 describe(
-  "Phase 1 Security Rules: merchOrders & appUsers hardening",
+  "Phase 1 Security Rules: merchOrders, appUsers, appConfig & match payments",
   { skip: !emulatorHost && "FIRESTORE_EMULATOR_HOST not set (requires local emulator runner)" },
   () => {
     let testEnv;
@@ -38,11 +38,25 @@ describe(
       await testEnv.clearFirestore();
       await testEnv.withSecurityRulesDisabled(async (ctx) => {
         const db = ctx.firestore();
+        await db.doc("appConfig/default").set({
+          clubName: "Kavach",
+          emailProvider: "smtp",
+          smtpHost: "smtp.trusted.example",
+          smtpPort: 587,
+          smtpUser: "noreply@kavach.example",
+        });
         await db.doc("appUsers/uid_p1").set({
           name: "Player One",
           email: "p1@example.com",
           role: "player",
           playerId: "p1",
+          status: "Active",
+        });
+        await db.doc("appUsers/uid_p2").set({
+          name: "Player Two",
+          email: "p2@example.com",
+          role: "player",
+          playerId: "p2",
           status: "Active",
         });
         await db.doc("appUsers/uid_club").set({
@@ -54,6 +68,13 @@ describe(
         await db.doc("appUsers/uid_fin").set({
           name: "Finance Admin",
           role: "player",
+          isFinanceAdmin: true,
+          status: "Active",
+        });
+        await db.doc("appUsers/uid_dual").set({
+          name: "Dual Admin",
+          role: "player",
+          isClubAdmin: true,
           isFinanceAdmin: true,
           status: "Active",
         });
@@ -71,12 +92,51 @@ describe(
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+        await db.doc("players/p2").set({
+          id: "p2",
+          name: "Player Two",
+          authUid: "uid_p2",
+          mobile: "+919876543211",
+          inviteStatus: "Accepted",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await db.doc("merchOrders/ord_p1").set({
+          id: "ord_p1",
+          playerId: "p1",
+          playerName: "Player One",
+          merchId: "jersey1",
+          merchName: "Official Jersey",
+          price: 1200,
+          paymentStatus: "Unpaid",
+          orderStatus: "Order Placed",
+          isManual: true,
+          createdAt: new Date(),
+        });
+        await db.doc("matches/m1").set({
+          opponent: "XI",
+          fee: 700,
+          date: "2026-11-28",
+          result: "Pending",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await db.doc("matches/m1/payments/pay_p2").set({
+          id: "pay_p2",
+          matchId: "m1",
+          playerId: "p2",
+          status: "Unpaid",
+          availability: "Confirmed",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
       });
     });
 
     const p1 = () => testEnv.authenticatedContext("uid_p1").firestore();
     const club = () => testEnv.authenticatedContext("uid_club").firestore();
     const fin = () => testEnv.authenticatedContext("uid_fin").firestore();
+    const dual = () => testEnv.authenticatedContext("uid_dual").firestore();
     const sup = () => testEnv.authenticatedContext("uid_super", { admin: true }).firestore();
     const ts = () => fs_.serverTimestamp();
 
@@ -96,7 +156,7 @@ describe(
       );
     });
 
-    it("Workstream B: Club Admin can create manual merchOrders, Finance Admin cannot", async () => {
+    it("Workstream B: Club Admin can create offline manual merchOrders, but CANNOT forge server provenance fields", async () => {
       const order = {
         id: "manual_1",
         playerId: "p1",
@@ -110,15 +170,36 @@ describe(
         createdAt: ts(),
       };
       await rut.assertSucceeds(club().doc("merchOrders/manual_1").set(order));
+      await rut.assertFails(club().doc("merchOrders/forge_1").set({ ...order, id: "forge_1", trustedSource: "server" }));
+      await rut.assertFails(club().doc("merchOrders/forge_2").set({ ...order, id: "forge_2", intentId: "intent_x" }));
+      await rut.assertFails(club().doc("merchOrders/forge_3").set({ ...order, id: "forge_3", priceSnapshot: { totalAmount: 1 } }));
+      await rut.assertFails(club().doc("merchOrders/manual_1").update({ trustedSource: "server" }));
+      await rut.assertFails(club().doc("merchOrders/manual_1").update({ intentId: "intent_x" }));
       await rut.assertFails(fin().doc("merchOrders/manual_2").set({ ...order, id: "manual_2" }));
     });
 
-    it("Workstream C: Player cannot grant Studio membership, expiry, role, or status on own appUsers", async () => {
+    it("Workstream B: Player cannot modify price or provenance after order creation", async () => {
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ price: 1 }));
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ isManual: false }));
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ trustedSource: "server" }));
+      await rut.assertFails(p1().doc("merchOrders/ord_p1").update({ intentId: "intent_x" }));
+    });
+
+    it("Workstream A: Only Super Admin can modify appConfig/default SMTP settings", async () => {
+      await rut.assertFails(p1().doc("appConfig/default").update({ smtpHost: "evil.example" }));
+      await rut.assertFails(club().doc("appConfig/default").update({ smtpHost: "evil.example" }));
+      await rut.assertFails(fin().doc("appConfig/default").update({ smtpHost: "evil.example" }));
+      await rut.assertSucceeds(sup().doc("appConfig/default").update({ smtpHost: "smtp.new-trusted.example" }));
+      await rut.assertFails(sup().doc("appConfig/default").update({ smtpPassword: "leak" }));
+    });
+
+    it("Workstream C: Player cannot grant Studio membership, expiry, role, status, or nested protected fields on own appUsers", async () => {
       await rut.assertFails(p1().doc("appUsers/uid_p1").update({ isStudioMember: true }));
       await rut.assertFails(p1().doc("appUsers/uid_p1").update({ studioExpiryDate: "2099-12-31" }));
       await rut.assertFails(p1().doc("appUsers/uid_p1").update({ lastPaidAmount: 5000 }));
       await rut.assertFails(p1().doc("appUsers/uid_p1").update({ status: "Disabled" }));
       await rut.assertFails(p1().doc("appUsers/uid_p1").update({ isFinanceAdmin: true }));
+      await rut.assertFails(p1().doc("appUsers/uid_p1").update({ "roleMigration.from": "admin" }));
       await rut.assertFails(p1().doc("appUsers/uid_p1").update({ arbitraryField: "x" }));
     });
 
@@ -142,6 +223,25 @@ describe(
     it("Workstream C: Finance Admin cannot escalate to Super Admin; Super Admin can update status", async () => {
       await rut.assertFails(fin().doc("appUsers/uid_fin").update({ isSuperAdmin: true }));
       await rut.assertSucceeds(sup().doc("appUsers/uid_p1").update({ status: "Disabled" }));
+    });
+
+    it("Workstream D: Dual-role Club+Finance Admin can settle match payment; Player cannot settle another player's payment", async () => {
+      await rut.assertFails(
+        p1().doc("matches/m1/payments/pay_p2").update({
+          status: "Paid",
+          paymentMethod: "manual",
+          updatedAt: ts(),
+        }),
+      );
+      await rut.assertSucceeds(
+        dual().doc("matches/m1/payments/pay_p2").update({
+          status: "Paid",
+          paymentMethod: "manual",
+          manualMethod: "cash_collected",
+          feeCollectedAmount: 700,
+          updatedAt: ts(),
+        }),
+      );
     });
   },
 );

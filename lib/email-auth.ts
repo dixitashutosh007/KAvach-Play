@@ -1,11 +1,22 @@
 import nodemailer from "nodemailer";
+import dns from "node:dns/promises";
+import net from "node:net";
 
 export type MailTransport = { sendMail: (opts: any) => Promise<{ messageId?: string }> };
+export type DnsLookupFn = (hostname: string, opts: { all: true; verbatim: true }) => Promise<Array<{ address: string; family: number }>>;
+
 let smtpTransportFactoryOverride: ((opts: any) => MailTransport) | null = null;
+let dnsLookupOverride: DnsLookupFn | null = null;
 
 export function setSmtpTransportFactoryForTesting(factory: ((opts: any) => MailTransport) | null) {
   if (process.env.NODE_ENV !== "production") {
     smtpTransportFactoryOverride = factory;
+  }
+}
+
+export function setDnsLookupForTesting(fn: DnsLookupFn | null) {
+  if (process.env.NODE_ENV !== "production") {
+    dnsLookupOverride = fn;
   }
 }
 
@@ -121,40 +132,146 @@ export function authorizeEmailRequest(
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Rejects loopback, link-local, RFC1918 private IPs, and internal hostnames
- * to prevent SSRF / credential exfiltration via SMTP host configuration.
+ * Checks whether an IPv4 or IPv6 address is private, loopback, link-local,
+ * multicast, unspecified, or reserved (including IPv4-mapped IPv6).
+ */
+export function isBlockedIpAddress(rawIp: string): boolean {
+  const ip = rawIp.trim().toLowerCase().split("%")[0];
+  if (net.isIPv4(ip)) {
+    const [a, b, c] = ip.split(".").map(Number);
+    if (
+      a === 0 ||                                  // 0.0.0.0/8 (unspecified / "this" network)
+      a === 10 ||                                 // 10.0.0.0/8 (RFC1918)
+      (a === 100 && b >= 64 && b <= 127) ||       // 100.64.0.0/10 (CGNAT RFC6598)
+      a === 127 ||                                // 127.0.0.0/8 (loopback)
+      (a === 169 && b === 254) ||                 // 169.254.0.0/16 (link-local / cloud metadata)
+      (a === 172 && b >= 16 && b <= 31) ||        // 172.16.0.0/12 (RFC1918)
+      (a === 192 && b === 0 && c === 0) ||        // 192.0.0.0/24 (IETF protocol)
+      (a === 192 && b === 0 && c === 2) ||        // 192.0.2.0/24 (TEST-NET-1)
+      (a === 192 && b === 168) ||                 // 192.168.0.0/16 (RFC1918)
+      (a === 198 && (b === 18 || b === 19)) ||    // 198.18.0.0/15 (benchmarking)
+      (a === 198 && b === 51 && c === 100) ||     // 198.51.100.0/24 (TEST-NET-2)
+      (a === 203 && b === 0 && c === 113) ||      // 203.0.113.0/24 (TEST-NET-3)
+      a >= 224                                    // 224.0.0.0/4 (multicast) & 240.0.0.0/4 (reserved)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (net.isIPv6(ip)) {
+    // Check IPv4-mapped IPv6 in dotted form (e.g. ::ffff:127.0.0.1) or hex form (e.g. ::ffff:7f00:1)
+    const v4Dotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(ip);
+    if (v4Dotted) return isBlockedIpAddress(v4Dotted[1]);
+
+    const v4Hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(ip);
+    if (v4Hex) {
+      const hi = parseInt(v4Hex[1], 16);
+      const lo = parseInt(v4Hex[2], 16);
+      const mapped = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+      return isBlockedIpAddress(mapped);
+    }
+
+    if (
+      ip === "::" ||
+      ip === "0:0:0:0:0:0:0:0" ||
+      ip === "::1" ||
+      ip === "0:0:0:0:0:0:0:1" ||
+      /^fe[89ab][0-9a-f]:/.test(ip) ||   // fe80::/10 link-local
+      /^f[cd][0-9a-f]{2}:/.test(ip) ||   // fc00::/7 unique local (ULA)
+      /^ff[0-9a-f]{2}:/.test(ip) ||      // ff00::/8 multicast
+      /^2001:0?db8:/.test(ip) ||         // 2001:db8::/32 documentation
+      /^64:ff9b:/.test(ip)               // 64:ff9b::/96 NAT64
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+const HOSTNAME_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+/**
+ * Validates hostname syntax and rejects prohibited names and alternative IP encodings
+ * (octal, hex, integer, shorthand IPv4).
  */
 export function isBlockedSmtpHost(rawHost: string): boolean {
   const host = rawHost.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  if (!host || host.length > 253 || /[\s/\\@:]/.test(host)) return true;
+  if (!host || host.length > 253 || /[\s/\\@]/.test(host)) return true;
+
+  if (net.isIP(host)) {
+    return isBlockedIpAddress(host);
+  }
+
+  if (host.includes(":")) return true; // non-IPv6 colon in hostname
+
   if (
     host === "localhost" ||
     host.endsWith(".localhost") ||
     host.endsWith(".local") ||
-    host.endsWith(".internal") ||
-    host === "::1" ||
-    host === "0.0.0.0"
+    host.endsWith(".internal")
   ) {
     return true;
   }
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (ipv4) {
-    const [, a, b] = ipv4.map(Number);
-    if (
-      a === 127 ||
-      a === 10 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
-    ) {
-      return true;
-    }
-  }
-  if (/^(fe80:|fc00:|fd00:|::ffff:127\.|::ffff:10\.|::ffff:192\.168\.|::ffff:169\.254\.)/i.test(host)) {
+
+  // Reject alternative numeric/hex/octal IPv4 forms (e.g. 0x7f000001, 2130706433, 0177.0.0.1, 127.1)
+  const labels = host.split(".");
+  if (labels.length === 1 && (/^\d+$/.test(labels[0]) || /^0x[0-9a-f]+$/i.test(labels[0]))) {
     return true;
   }
+  if (labels.every((l) => /^(\d+|0x[0-9a-f]+)$/i.test(l))) {
+    return true;
+  }
+  if (labels.some((l) => !HOSTNAME_LABEL_RE.test(l))) {
+    return true;
+  }
+
   return false;
+}
+
+/**
+ * Resolves the SMTP hostname once and validates ALL returned DNS records.
+ * Returns the pinned IP address so nodemailer connects directly to the validated IP
+ * (eliminating DNS-rebinding / TOCTOU gaps between validation and connection).
+ */
+export async function resolveAndValidateSmtpTarget(rawHost: string): Promise<
+  | { ok: true; ip: string; servername: string }
+  | { ok: false; status: number; error: string }
+> {
+  const host = rawHost.trim().replace(/^\[|\]$/g, "");
+  if (isBlockedSmtpHost(host)) {
+    return { ok: false, status: 400, error: "Configured SMTP host is not permitted." };
+  }
+
+  if (net.isIP(host)) {
+    return { ok: true, ip: host, servername: host };
+  }
+
+  const lookup: DnsLookupFn =
+    dnsLookupOverride && process.env.NODE_ENV !== "production"
+      ? dnsLookupOverride
+      : ((h, o) => dns.lookup(h, o));
+
+  let records: Array<{ address: string; family: number }>;
+  try {
+    records = await lookup(host, { all: true, verbatim: true });
+  } catch {
+    return { ok: false, status: 400, error: "Configured SMTP host could not be resolved." };
+  }
+
+  if (!Array.isArray(records) || records.length === 0) {
+    return { ok: false, status: 400, error: "Configured SMTP host could not be resolved." };
+  }
+
+  for (const rec of records) {
+    if (!rec?.address || isBlockedIpAddress(rec.address)) {
+      return { ok: false, status: 400, error: "Configured SMTP host resolved to a prohibited address." };
+    }
+  }
+
+  return { ok: true, ip: records[0].address, servername: host };
 }
 
 export function validateEmailFields(input: {

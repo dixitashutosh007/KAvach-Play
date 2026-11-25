@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { authorizeEmailRequest, createSmtpTransport, isBlockedSmtpHost, validateEmailFields } from "../../../../lib/email-auth.ts";
+import { authorizeEmailRequest, createSmtpTransport, resolveAndValidateSmtpTarget, validateEmailFields } from "../../../../lib/email-auth.ts";
 import { requireRole } from "../../../../lib/server-auth.ts";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
 import { resolveAuthorizedDueReminder } from "../../../../lib/reminder-server.ts";
@@ -136,10 +136,11 @@ export async function POST(req: Request) {
         );
       }
 
-      if (isBlockedSmtpHost(smtpHost)) {
+      const resolvedTarget = await resolveAndValidateSmtpTarget(smtpHost);
+      if (!resolvedTarget.ok) {
         return NextResponse.json(
-          { success: false, error: "Configured SMTP host is not permitted." },
-          { status: 400 },
+          { success: false, error: resolvedTarget.error },
+          { status: resolvedTarget.status },
         );
       }
 
@@ -147,10 +148,19 @@ export async function POST(req: Request) {
       if (smtpPort === 587) effectiveSecure = false;
       if (smtpPort === 465) effectiveSecure = true;
 
+      // Connect directly to the validated IP (resolvedTarget.ip) while preserving
+      // TLS SNI/certificate verification against the original hostname (resolvedTarget.servername).
+      // This eliminates DNS rebinding / TOCTOU between validation and socket connection.
       const transporter = createSmtpTransport({
-        host: smtpHost,
+        host: resolvedTarget.ip,
         port: smtpPort,
         secure: effectiveSecure,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        tls: {
+          servername: resolvedTarget.servername,
+        },
         auth: {
           user: smtpUser,
           pass: smtpPassword.replace(/\s+/g, ""),

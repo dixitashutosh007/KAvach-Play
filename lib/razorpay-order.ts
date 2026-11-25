@@ -1599,50 +1599,57 @@ export async function derivePayableAmount(
           const mData = mSnap.data() || {};
           if (mData.playerId !== playerId) continue; // Boundary check
           if (mData.paymentStatus !== "Unpaid" && mData.paymentStatus !== "Failed") continue;
+          if (mData.orderStatus === "Cancelled") continue;
+          if (mData.quantity !== undefined && Number(mData.quantity) !== 1) continue;
           if (!mData.merchId || typeof mData.merchId !== "string") continue;
 
-          // P1-01: Reject untrusted/legacy non-manual orders without server provenance
-          const isTrustedOrder =
-            mData.isManual === true ||
-            mData.trustedSource === "server" ||
-            (typeof mData.intentId === "string" && mData.intentId.trim().length > 0);
-          if (!isTrustedOrder) continue;
+          // P1-01 (Review Correction): Client-writable `isManual` NEVER establishes
+          // online payment provenance. Offline manual orders are settled offline.
+          if (mData.isManual === true) continue;
 
-          // Verify catalogue item exists
+          // Require strict server-only provenance (cannot be written by any client in firestore.rules)
+          const hasServerProvenance =
+            mData.trustedSource === "server" &&
+            typeof mData.intentId === "string" &&
+            mData.intentId.trim().length > 0 &&
+            Number.isFinite(Number(mData.priceSnapshot?.totalAmount)) &&
+            Number(mData.priceSnapshot?.totalAmount) > 0;
+          if (!hasServerProvenance) continue;
+
+          // Verify catalogue item exists and is active/available
           const catSnap = await db.collection("merchandises").doc(mData.merchId).get();
           if (!catSnap.exists) continue;
           const catData = catSnap.data() || {};
+          if (catData.status === "Not Accepting Orders" || catData.isHidden === true) continue;
 
+          // Recompute authoritative price from catalogue and verify exact match with snapshot & order price
           let verifiedPrice: number;
-          if (mData.isManual === true) {
-            const p = Number(mData.price);
-            if (!Number.isFinite(p) || p <= 0) continue;
-            verifiedPrice = p;
-          } else {
-            // Non-manual order: recompute authoritative price from catalogue and reject mismatch
-            try {
-              const authoritativePrice = calculateAuthoritativeMerchPrice(
-                catData,
-                mData.customSelections || {},
-              );
-              const snapshotAmount = Number(mData.priceSnapshot?.totalAmount ?? mData.price);
-              if (!Number.isFinite(snapshotAmount) || snapshotAmount !== authoritativePrice) {
-                continue;
-              }
-              verifiedPrice = authoritativePrice;
-            } catch {
+          try {
+            const authoritativePrice = calculateAuthoritativeMerchPrice(
+              catData,
+              mData.customSelections || {},
+            );
+            const snapshotAmount = Number(mData.priceSnapshot.totalAmount);
+            const orderPrice = Number(mData.price);
+            if (
+              !Number.isFinite(authoritativePrice) ||
+              authoritativePrice <= 0 ||
+              snapshotAmount !== authoritativePrice ||
+              orderPrice !== authoritativePrice
+            ) {
               continue;
             }
+            verifiedPrice = authoritativePrice;
+          } catch {
+            continue;
           }
 
-          if (verifiedPrice > 0) {
-            calculatedAmount += verifiedPrice;
-            verifiedItems.push({
-              type: "merch",
-              merchId: item.merchId,
-              amount: verifiedPrice,
-            });
-          }
+          calculatedAmount += verifiedPrice;
+          verifiedItems.push({
+            type: "merch",
+            merchId: item.merchId,
+            amount: verifiedPrice,
+          });
         }
       }
     }

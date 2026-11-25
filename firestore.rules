@@ -748,22 +748,32 @@ service cloud.firestore {
     // Shop orders: every admin (incl. Finance) may READ them — they are payment
     // records in Finance / Payment History. Players cannot create orders directly
     // in Firestore (player orders go through /api/razorpay/order + webhook).
-    // Manual orders and order management are Club Admin / Super Admin only.
+    // Manual orders and order management are Club Admin / Super Admin only, and
+    // server-only payment/provenance fields can NEVER be written by any client.
+    function merchOrderServerOnlyKeys() {
+      return ['trustedSource', 'intentId', 'priceSnapshot', 'razorpayPaymentId', 'gatewayPaymentId'];
+    }
+
     match /merchOrders/{orderId} {
       allow read: if isAnyAdmin() || (isSignedIn() && isSelf(resource.data.playerId));
       allow create: if isClubAdmin()
         && isValidId(orderId)
         && isValidMerchOrder(incoming())
         && incoming().price >= 0
+        && !incoming().keys().hasAny(merchOrderServerOnlyKeys())
         && incoming().createdAt == request.time;
-      allow update: if isClubAdmin() || (
+      allow update: if (
+        isClubAdmin()
+        && !incoming().diff(existing()).affectedKeys().hasAny(merchOrderServerOnlyKeys())
+      ) || (
         isSignedIn()
         && isSelf(existing().playerId)
         && isValidMerchOrder(incoming())
         && !incoming().diff(existing()).affectedKeys().hasAny([
           'orderStatus', 'merchId', 'merchName', 'paymentStatus', 'price', 'playerId', 'createdAt',
-          'isManual', 'intentId', 'razorpayPaymentId', 'gatewayPaymentId', 'priceSnapshot', 'trustedSource', 'quantity'
+          'isManual', 'quantity'
         ])
+        && !incoming().diff(existing()).affectedKeys().hasAny(merchOrderServerOnlyKeys())
       );
       allow delete: if isClubAdmin();
     }
