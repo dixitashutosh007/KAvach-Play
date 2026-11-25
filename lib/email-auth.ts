@@ -6,6 +6,7 @@ export interface EmailCallerRoles {
 
 export interface EmailRequestPayload {
   action?: unknown;
+  playerId?: unknown;
   to?: unknown;
   subject?: unknown;
   text?: unknown;
@@ -46,6 +47,11 @@ export function authorizeEmailRequest(
       status: 403,
       error: "Forbidden: Finance Admins may only send due_reminder payment emails.",
     };
+  }
+
+  // When playerId is supplied, the route derives recipient, subject, and text server-side.
+  if (typeof body.playerId === "string" && body.playerId.trim()) {
+    return { ok: true, isFinanceDueReminderOnly: true };
   }
 
   const recipients = Array.isArray(body.to) ? body.to : body.to ? [body.to] : [];

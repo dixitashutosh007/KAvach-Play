@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
 import { useStore } from "@/hooks/useStore";
 import { formatDate } from "@/lib/utils";
-
-type TxnChannel = "razorpay" | "cash" | "club_sponsored" | "offset" | "studio";
+import { buildTransactionsLedger, type TxnChannel } from "@/lib/transactions-ledger";
 
 export default function RazorReportView({
   store,
@@ -13,145 +12,35 @@ export default function RazorReportView({
   const [filter, setFilter] = useState<TxnChannel | "all">("all");
   const itemsPerPage = 10;
 
-  const transactions = useMemo(() => {
-    type Transaction = {
-      id: string;
-      date: any;
-      name: string;
-      product: string;
-      amount: number;
-      channel: TxnChannel;
-    };
-
-    const list: Transaction[] = [];
-
-    store.payments.forEach((p) => {
-      const match = store.matches.find((m) => m.id === p.matchId);
-      const player = store.players.find((pl) => pl.id === p.playerId);
-      if (!match || !player) return;
-
-      const pmtDate = p.updatedAt?.seconds || 0;
-
-      // 1. Club Sponsored Transaction (bifurcated if plan offset, or 100% club sponsored)
-      const hasClubSponsorship =
-        (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) ||
-        p.manualMethod === "club_sponsored" ||
-        !!p.sponsoredBy;
-
-      if (hasClubSponsorship) {
-        let sponsorAmt = 0;
-        let sponsorLabel = "";
-        if (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) {
-          sponsorAmt = p.feeOffsetAmount;
-          sponsorLabel = `Club Sponsored (${p.planTag || "Match Fee Plan"})`;
-        } else if (p.manualMethod === "club_sponsored") {
-          sponsorAmt = p.feeOverride !== undefined && p.feeOverride > 0 ? p.feeOverride : match.fee;
-          sponsorLabel = `Club Sponsored (${p.planTag || "Match Fee Plan"})`;
-        } else if (p.sponsoredBy) {
-          const sponsor = store.players.find((pl) => pl.id === p.sponsoredBy);
-          sponsorAmt = match.fee;
-          sponsorLabel = `Sponsored by ${sponsor?.name || "Member"}`;
-        }
-
-        if (sponsorAmt > 0) {
-          list.push({
-            id: `match_sponsor_${p.id}`,
-            date: pmtDate,
-            name: player.name,
-            product: `${sponsorLabel} — vs ${match.opponent}`,
-            amount: sponsorAmt,
-            channel: "club_sponsored",
-          });
-        }
-      }
-
-      // 2. Collected Transaction (only if paid and money collected > 0, excluding 100% sponsored)
-      if (p.status === "Paid" && p.manualMethod !== "club_sponsored") {
-        const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
-        const collectedAmt = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
-
-        if (collectedAmt > 0) {
-          // Explicit check: only mark as razorpay if truly paid via gateway
-          const isGenuineRazorpay =
-            p.paymentMethod === "razorpay" &&
-            (Boolean(p.razorpayPaymentId) || (!p.manualMethod && !p.manualBy));
-
-          let productDesc = "";
-          if (isGenuineRazorpay) {
-            productDesc = `Match Fee: vs ${match.opponent}`;
-          } else {
-            const methodLabel = p.manualMethod === "cash_collected" ? "Cash Collected" : (p.manualMethod ? p.manualMethod.replace(/_/g, " ") : "Cash Collected");
-            productDesc = `Match Fee (${methodLabel}${p.manualBy ? ` by ${p.manualBy}` : ""}): vs ${match.opponent}`;
-          }
-
-          list.push({
-            id: `match_pay_${p.id}`,
-            date: pmtDate,
-            name: player.name,
-            product: productDesc,
-            amount: collectedAmt,
-            channel: isGenuineRazorpay ? "razorpay" : "cash",
-          });
-        }
-      }
-    });
-
-    store.otherFees
-      .filter((f) => f.status === "Paid" || f.status === "Cancelled")
-      .forEach((f) => {
-        const player = store.players.find((pl) => pl.id === f.playerId);
-        if (player) {
-          let product: string;
-          if (f.status === "Cancelled") {
-            product = `${f.title} Deleted${f.cancelledBy ? ` by ${f.cancelledBy}` : ""}`;
-          } else {
-            product = `${f.title}${f.comment ? ` — ${f.comment}` : ""}`;
-          }
-          list.push({
-            id: `other_fee_${f.id}`,
-            date: (f.status === "Cancelled" ? f.cancelledAt?.seconds : f.updatedAt?.seconds) || 0,
-            name: player.name,
-            product,
-            amount: f.amount,
-            channel: "offset",
-          });
-        }
-      });
-
-    store.subscriptionHistory?.forEach((h) => {
-      const player = store.players.find((pl) => pl.id === h.playerId);
-      if (player && h.paidAmount > 0) {
-        list.push({
-          id: `sub_${h.id}`,
-          date: h.createdAt?.seconds || 0,
-          name: player.name,
-          product: `Studio Plan: ${h.planName} — enrolled by ${h.adminName}`,
-          amount: h.paidAmount,
-          channel: "studio",
-        });
-      }
-    });
-
-    store.merchOrders?.filter((o) => o.paymentStatus === "Paid").forEach((o) => {
-      list.push({
-        id: `merch_${o.id}`,
-        date: o.updatedAt?.seconds || o.createdAt?.seconds || 0,
-        name: o.playerName,
-        product: `Shop: ${o.merchName}`,
-        amount: o.price,
-        channel: o.isManual ? "offset" : "razorpay",
-      });
-    });
-
-    return list.sort((a, b) => b.date - a.date);
-  }, [
-    store.payments,
-    store.otherFees,
-    store.subscriptionHistory,
-    store.merchOrders,
-    store.matches,
-    store.players,
-  ]);
+  const ledger = useMemo(
+    () =>
+      buildTransactionsLedger({
+        payments: store.payments,
+        otherFees: store.otherFees,
+        subscriptionHistory: store.subscriptionHistory,
+        merchOrders: store.merchOrders,
+        matches: store.matches,
+        players: store.players,
+      }),
+    [
+      store.payments,
+      store.otherFees,
+      store.subscriptionHistory,
+      store.merchOrders,
+      store.matches,
+      store.players,
+    ],
+  );
+  const {
+    transactions,
+    gatewayTotal,
+    cashTotal,
+    studioTotal,
+    subscriptionCoveredTotal,
+    clubSponsoredTotal,
+    playerSponsoredTotal,
+    offsetTotal,
+  } = ledger;
 
   const filtered = filter === "all" ? transactions : transactions.filter((t) => t.channel === filter);
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
@@ -159,12 +48,6 @@ export default function RazorReportView({
     (page - 1) * itemsPerPage,
     page * itemsPerPage,
   );
-
-  const gatewayTotal = transactions.filter((t) => t.channel === "razorpay").reduce((s, t) => s + t.amount, 0);
-  const cashTotal = transactions.filter((t) => t.channel === "cash").reduce((s, t) => s + t.amount, 0);
-  const clubSponsoredTotal = transactions.filter((t) => t.channel === "club_sponsored").reduce((s, t) => s + t.amount, 0);
-  const studioTotal = transactions.filter((t) => t.channel === "studio").reduce((s, t) => s + t.amount, 0);
-  const offsetTotal = transactions.filter((t) => t.channel === "offset").reduce((s, t) => s + t.amount, 0);
 
   const formatSecTime = (seconds: number) => {
     if (!seconds) return "Unknown";
@@ -177,8 +60,12 @@ export default function RazorReportView({
         return <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-1.5 py-0.5 rounded">Via Razorpay</span>;
       case "cash":
         return <span className="text-[9px] font-bold uppercase tracking-widest text-teal-400 bg-teal-500/15 border border-teal-500/25 px-1.5 py-0.5 rounded">Cash Collected</span>;
+      case "subscription_covered":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-indigo-400 bg-indigo-500/15 border border-indigo-500/25 px-1.5 py-0.5 rounded">Subscription Covered</span>;
       case "club_sponsored":
         return <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400 bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.5 rounded">Club Sponsored</span>;
+      case "player_sponsored":
+        return <span className="text-[9px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/15 border border-purple-500/25 px-1.5 py-0.5 rounded">Player Sponsored</span>;
       case "offset":
         return <span className="text-[9px] font-bold uppercase tracking-widest text-rose-400 bg-rose-500/15 border border-rose-500/25 px-1.5 py-0.5 rounded">Offset</span>;
       case "studio":
@@ -190,7 +77,9 @@ export default function RazorReportView({
     switch (ch) {
       case "razorpay": return "text-emerald-400";
       case "cash": return "text-teal-400";
+      case "subscription_covered": return "text-indigo-400";
       case "club_sponsored": return "text-amber-400";
+      case "player_sponsored": return "text-purple-400";
       case "offset": return "text-rose-400";
       case "studio": return "text-blue-400";
     }
@@ -211,14 +100,26 @@ export default function RazorReportView({
               Cash: <span className="font-mono ml-1">₹{cashTotal}</span>
             </div>
           )}
+          {subscriptionCoveredTotal > 0 && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
+              Subscription Covered (Non-Cash): <span className="font-mono ml-1">₹{subscriptionCoveredTotal}</span>
+            </div>
+          )}
           {clubSponsoredTotal > 0 && (
             <div className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
               Club Sponsored: <span className="font-mono ml-1">₹{clubSponsoredTotal}</span>
             </div>
           )}
-          <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
-            Offset: <span className="font-mono ml-1">₹{offsetTotal}</span>
-          </div>
+          {playerSponsoredTotal > 0 && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
+              Player Sponsored (Non-Cash): <span className="font-mono ml-1">₹{playerSponsoredTotal}</span>
+            </div>
+          )}
+          {offsetTotal > 0 && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
+              Offset: <span className="font-mono ml-1">₹{offsetTotal}</span>
+            </div>
+          )}
           {studioTotal > 0 && (
             <div className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-surface-hover px-3 py-1.5 rounded-xl border border-border">
               Studio: <span className="font-mono ml-1">₹{studioTotal}</span>
@@ -228,27 +129,27 @@ export default function RazorReportView({
       </div>
 
       <div className="flex gap-1.5 flex-wrap">
-        {(["all", "razorpay", "cash", "club_sponsored", "offset", "studio"] as const).map((f) => {
+        {(["all", "razorpay", "cash", "subscription_covered", "club_sponsored", "player_sponsored", "studio"] as const).map((f) => {
           const active = filter === f;
           const labels: Record<string, string> = {
             all: "All",
             razorpay: "Via Razorpay",
             cash: "Cash Collected",
+            subscription_covered: "Subscription Covered",
             club_sponsored: "Club Sponsored",
-            offset: "Offset",
+            player_sponsored: "Player Sponsored",
             studio: "Studio",
           };
           const counts: Record<string, number> = {
             all: transactions.length,
             razorpay: transactions.filter((t) => t.channel === "razorpay").length,
             cash: transactions.filter((t) => t.channel === "cash").length,
+            subscription_covered: transactions.filter((t) => t.channel === "subscription_covered").length,
             club_sponsored: transactions.filter((t) => t.channel === "club_sponsored").length,
-            offset: transactions.filter((t) => t.channel === "offset").length,
+            player_sponsored: transactions.filter((t) => t.channel === "player_sponsored").length,
             studio: transactions.filter((t) => t.channel === "studio").length,
           };
-          if (f === "studio" && counts.studio === 0) return null;
-          if (f === "cash" && counts.cash === 0) return null;
-          if (f === "club_sponsored" && counts.club_sponsored === 0) return null;
+          if (f !== "all" && f !== "razorpay" && counts[f] === 0) return null;
           return (
             <button
               key={f}

@@ -1,17 +1,17 @@
 /**
  * Per-match collection summary (`lib/match-finance.ts`). Pure.
  *
- * Extracted VERBATIM from the Finance → Matches report (FinanceTab) so the
- * Finance report and the Admin Match Centre payment panel share ONE
- * calculation. Semantics (unchanged):
- *  - feeCollected: real money collected (Razorpay, cash, plan allocation;
- *    club-sponsored payments collect 0);
- *  - feeOffset:    club-sponsored / plan / discount offsets ("Club Sponsored");
- *  - totalDue:     sum of effective fees for payments still "Unpaid";
- *  - paid / unpaid player lists: "Paid" vs every other non-"Not Playing" status.
+ * Canonical financial classification layer used by FinanceTab, MatchPaymentPanel,
+ * MatchFinanceTab, MatchFinancials, and `/api/finance/match-ledger`.
  *
- * Callers pass the match's payments already filtered the way the Finance report
- * does (see `financeReportPayments`).
+ * Canonical classifications:
+ *  - Actual Cash Received: Razorpay or verified manual cash/bank/UPI receipts.
+ *    Excludes subscription allocations, club sponsorship, player sponsorship,
+ *    waived, cancelled, and reversed/refunded entries.
+ *  - Subscription Covered: non-cash match settlement via subscription allocation.
+ *  - Club Sponsored: non-cash amount absorbed by the club.
+ *  - Player Sponsored: non-cash settlement carried by another player's payment.
+ *  - Outstanding: only valid, unsettled player contributions.
  */
 import type { Match, MatchPayment, Player } from "@/lib/types";
 
@@ -22,29 +22,165 @@ export function financeReportPayments(match: Pick<Match, "id">, payments: MatchP
   );
 }
 
+export type CanonicalPaymentCategory =
+  | "cash"
+  | "razorpay"
+  | "subscription_covered"
+  | "club_sponsored"
+  | "player_sponsored"
+  | "outstanding"
+  | "excluded";
+
+export interface CanonicalPaymentClassification {
+  category: CanonicalPaymentCategory;
+  expectedContribution: number;
+  cashReceived: number;
+  subscriptionCovered: number;
+  clubSponsored: number;
+  playerSponsored: number;
+  outstanding: number;
+  isSettled: boolean;
+}
+
+const EXCLUDED_STATUSES = new Set(["Not Playing", "Waived", "Cancelled", "Failed", "Refunded", "Reversed"]);
+
+export function classifyMatchPayment(
+  p: MatchPayment,
+  matchFee: number,
+): CanonicalPaymentClassification {
+  const status = String(p.status || "");
+  if (EXCLUDED_STATUSES.has(status)) {
+    return {
+      category: "excluded",
+      expectedContribution: 0,
+      cashReceived: 0,
+      subscriptionCovered: 0,
+      clubSponsored: 0,
+      playerSponsored: 0,
+      outstanding: 0,
+      isSettled: false,
+    };
+  }
+
+  const fee = Math.max(0, Math.round(Number(matchFee) || 0));
+  const snap = (p as MatchPayment & { financeSnapshot?: { pendingAllocation?: boolean; source?: string; planType?: string } }).financeSnapshot;
+
+  // Player-sponsored beneficiary: fee is carried by the sponsoring player's payment.
+  if (p.sponsoredBy) {
+    const sponsoredAmt = p.feeOverride !== undefined ? Math.max(0, Math.round(Number(p.feeOverride) || 0)) : fee;
+    return {
+      category: "player_sponsored",
+      expectedContribution: 0,
+      cashReceived: 0,
+      subscriptionCovered: 0,
+      clubSponsored: 0,
+      playerSponsored: sponsoredAmt,
+      outstanding: 0,
+      isSettled: true,
+    };
+  }
+
+  // Club-sponsored: non-cash coverage absorbed by the club.
+  if (p.manualMethod === "club_sponsored") {
+    const clubAmt =
+      p.feeOffsetAmount !== undefined
+        ? Math.max(0, Math.round(Number(p.feeOffsetAmount) || 0))
+        : p.feeOverride !== undefined && p.feeOverride > 0
+          ? Math.max(0, Math.round(Number(p.feeOverride) || 0))
+          : fee;
+    return {
+      category: "club_sponsored",
+      expectedContribution: 0,
+      cashReceived: 0,
+      subscriptionCovered: 0,
+      clubSponsored: clubAmt,
+      playerSponsored: 0,
+      outstanding: 0,
+      isSettled: true,
+    };
+  }
+
+  // Subscription allocation: non-cash settlement at match level.
+  if (p.manualMethod === "part_of_plan") {
+    const expected = p.feeOverride !== undefined ? Math.max(0, Math.round(Number(p.feeOverride) || 0)) : fee;
+    if (snap?.pendingAllocation) {
+      return {
+        category: "outstanding",
+        expectedContribution: expected,
+        cashReceived: 0,
+        subscriptionCovered: 0,
+        clubSponsored: 0,
+        playerSponsored: 0,
+        outstanding: expected,
+        isSettled: false,
+      };
+    }
+    const clubOffset = Math.max(0, Math.round(Number(p.feeOffsetAmount) || 0));
+    const subAmt =
+      p.feeCollectedAmount !== undefined
+        ? Math.max(0, Math.round(Number(p.feeCollectedAmount) || 0))
+        : Math.max(0, fee - clubOffset);
+    const settled = status === "Paid";
+    return {
+      category: settled ? "subscription_covered" : "outstanding",
+      expectedContribution: subAmt,
+      cashReceived: 0,
+      subscriptionCovered: settled ? subAmt : 0,
+      clubSponsored: clubOffset,
+      playerSponsored: 0,
+      outstanding: settled ? 0 : subAmt,
+      isSettled: settled,
+    };
+  }
+
+  // Standard cash / Razorpay / partial / unpaid obligation.
+  const expected = p.feeOverride !== undefined ? Math.max(0, Math.round(Number(p.feeOverride) || 0)) : fee;
+  const clubOffset =
+    p.feeOffsetAmount !== undefined
+      ? Math.max(0, Math.round(Number(p.feeOffsetAmount) || 0))
+      : 0;
+
+  let cashReceived = 0;
+  if (status === "Paid") {
+    cashReceived =
+      p.feeCollectedAmount !== undefined
+        ? Math.max(0, Math.round(Number(p.feeCollectedAmount) || 0))
+        : expected;
+  } else if (status === "Unpaid" && p.feeCollectedAmount !== undefined && p.feeCollectedAmount > 0) {
+    // Partial payment: only remaining valid balance is outstanding.
+    cashReceived = Math.min(expected, Math.max(0, Math.round(Number(p.feeCollectedAmount) || 0)));
+  }
+
+  const outstanding = status === "Paid" ? 0 : Math.max(0, expected - cashReceived);
+  const isRazorpay =
+    p.paymentMethod === "razorpay" &&
+    (Boolean(p.razorpayPaymentId) || (!p.manualMethod && !p.manualBy));
+
+  return {
+    category: outstanding > 0 ? "outstanding" : isRazorpay ? "razorpay" : "cash",
+    expectedContribution: expected,
+    cashReceived,
+    subscriptionCovered: 0,
+    clubSponsored: clubOffset,
+    playerSponsored: 0,
+    outstanding,
+    isSettled: outstanding === 0,
+  };
+}
+
 export function summarizeMatchFinance(match: Match, paymentsForMatch: MatchPayment[], players: Player[]) {
+  const statement = buildMatchFinancialStatement(match, paymentsForMatch);
   const playingCount = paymentsForMatch.length;
-  const paidCount = paymentsForMatch.filter(
-    (p) => p.status === "Paid",
-  ).length;
-  const unpaidCount = paymentsForMatch.filter(
-    (p) => p.status === "Unpaid" && (p.feeOverride !== undefined ? p.feeOverride : match.fee) > 0,
-  ).length;
-  const razorpayPaidCount = paymentsForMatch.filter(
-    (p) => p.status === "Paid" && p.paymentMethod !== "manual"
-  ).length;
-  const manualPaidCount = paymentsForMatch.filter(
-    (p) => p.status === "Paid" && p.paymentMethod === "manual"
-  ).length;
 
-  const getFee = (p: any) => p.feeOverride !== undefined ? p.feeOverride : match.fee;
-
-  const matchFeeTotal = match.matchFeeBudget !== undefined ? match.matchFeeBudget : (match.fee || 0) * 12;
-
-  let feeCollected = 0;
+  let paidCount = 0;
+  let unpaidCount = 0;
+  let razorpayPaidCount = 0;
+  let manualPaidCount = 0;
+  let razorpayCollected = 0;
+  let manualCollected = 0;
   let feeCollectedCount = 0;
-  let feeOffset = 0;
   let feeOffsetCount = 0;
+
   const sponsoredDetails: { playerName: string; amount: number; reason: string }[] = [];
   const paidPlayers: string[] = [];
   const unpaidPlayers: string[] = [];
@@ -52,93 +188,73 @@ export function summarizeMatchFinance(match: Match, paymentsForMatch: MatchPayme
   const unpaidPlayerDetails: { name: string; due: number; planTag?: string }[] = [];
 
   for (const p of paymentsForMatch) {
-    const effectiveFee = p.feeOverride !== undefined ? p.feeOverride : match.fee;
+    const cls = classifyMatchPayment(p, match.fee || 0);
+    if (cls.category === "excluded") continue;
+
     const player = players.find((x) => x.id === p.playerId);
     const playerName = p.guestName ? `${p.guestName} (Guest)` : (player?.name || "Player");
 
-    if (p.status === "Paid") {
+    if (cls.isSettled) {
+      paidCount++;
       paidPlayers.push(playerName);
+      if (cls.cashReceived > 0) {
+        feeCollectedCount++;
+        if (cls.category === "razorpay") {
+          razorpayPaidCount++;
+          razorpayCollected += cls.cashReceived;
+        } else {
+          manualPaidCount++;
+          manualCollected += cls.cashReceived;
+        }
+      }
       const methodLabel =
-        p.paymentMethod === "razorpay"
+        cls.category === "razorpay"
           ? "Razorpay"
-          : p.manualMethod === "club_sponsored"
-            ? "Sponsored"
-            : p.manualMethod === "part_of_plan"
-              ? "Subscription"
-              : "Cash";
+          : cls.category === "club_sponsored"
+            ? "Club Sponsored"
+            : cls.category === "player_sponsored"
+              ? "Player Sponsored"
+              : cls.category === "subscription_covered"
+                ? "Subscription Covered"
+                : "Cash";
       paidPlayerDetails.push({
         name: playerName,
-        amount: p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee,
+        amount: cls.cashReceived > 0 ? cls.cashReceived : (cls.subscriptionCovered || cls.clubSponsored || cls.playerSponsored),
         method: methodLabel,
       });
-    } else {
+    } else if (cls.outstanding > 0) {
+      unpaidCount++;
       unpaidPlayers.push(playerName);
       unpaidPlayerDetails.push({
         name: playerName,
-        due: effectiveFee,
+        due: cls.outstanding,
         planTag: p.planTag,
       });
     }
 
-    // Calculate real money collected (Razorpay + Cash collected + Monthly subscription allocation)
-    if (p.status === "Paid") {
-      if (p.manualMethod === "club_sponsored") {
-        // Entirely sponsored by club; 0 direct money collected
-      } else if (p.manualMethod === "part_of_plan") {
-        // Monthly flat fee subscription allocation
-        const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : (match.fee - (p.feeOffsetAmount || 0));
-        feeCollected += collected;
-        feeCollectedCount++;
-      } else {
-        // Razorpay, cash, direct deposit, or standard manual
-        const collected = p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : effectiveFee;
-        feeCollected += collected;
-        feeCollectedCount++;
-      }
-    }
-
-    // Calculate Club Sponsored offset and breakdown for hover tooltip
-    if (p.feeOffsetAmount !== undefined && p.feeOffsetAmount > 0) {
-      feeOffset += p.feeOffsetAmount;
+    if (cls.clubSponsored > 0) {
       feeOffsetCount++;
       sponsoredDetails.push({
         playerName,
-        amount: p.feeOffsetAmount,
+        amount: cls.clubSponsored,
         reason: p.planTag || (p.manualMethod === "club_sponsored" ? "Club Sponsored" : "Plan Offset"),
       });
-    } else if (p.manualMethod === "club_sponsored") {
-      const sponsoredAmt = p.feeOverride !== undefined && p.feeOverride > 0 ? p.feeOverride : match.fee;
-      feeOffset += sponsoredAmt;
+    }
+    if (cls.playerSponsored > 0) {
       feeOffsetCount++;
+      const sponsor = p.sponsoredBy ? players.find((x) => x.id === p.sponsoredBy) : null;
       sponsoredDetails.push({
         playerName,
-        amount: sponsoredAmt,
-        reason: p.planTag || "Club Sponsored",
-      });
-    } else if (p.sponsoredBy) {
-      const sponsor = players.find((x) => x.id === p.sponsoredBy);
-      feeOffset += match.fee;
-      feeOffsetCount++;
-      sponsoredDetails.push({
-        playerName,
-        amount: match.fee,
+        amount: cls.playerSponsored,
         reason: `Sponsored by ${sponsor?.name || "Member"}`,
       });
-    } else if ((p.status === "Paid" || p.feeOverride !== undefined) && p.manualMethod !== "part_of_plan" && match.fee > effectiveFee) {
-      const discount = match.fee - effectiveFee;
-      if (discount > 0) {
-        feeOffset += discount;
-        feeOffsetCount++;
-        sponsoredDetails.push({
-          playerName,
-          amount: discount,
-          reason: p.planTag || "Fixed Discount",
-        });
-      }
     }
   }
 
-  const percentRecovered = matchFeeTotal > 0 ? Math.round((feeCollected * 100) / matchFeeTotal) : null;
+  const feeCollected = statement.actualCashReceived;
+  const feeOffset = statement.clubSponsored + statement.playerSponsored;
+  const matchFeeTotal = statement.expectedPlayerContribution;
+  const percentRecovered = statement.cashCollectionPct !== null ? Math.round(statement.cashCollectionPct) : null;
 
   return {
     match,
@@ -152,17 +268,24 @@ export function summarizeMatchFinance(match: Match, paymentsForMatch: MatchPayme
     unpaidPlayerDetails,
     razorpayPaidCount,
     manualPaidCount,
-    totalCollected: paymentsForMatch.filter(p => p.status === "Paid").reduce((s, p) => s + getFee(p), 0),
-    razorpayCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod !== "manual").reduce((s, p) => s + getFee(p), 0),
-    manualCollected: paymentsForMatch.filter(p => p.status === "Paid" && p.paymentMethod === "manual").reduce((s, p) => s + getFee(p), 0),
-    totalDue: paymentsForMatch.filter(p => p.status === "Unpaid").reduce((s, p) => s + getFee(p), 0),
+    totalCollected: feeCollected,
+    razorpayCollected,
+    manualCollected,
+    totalDue: statement.outstanding,
     feeCollected,
+    subscriptionCovered: statement.subscriptionCovered,
+    clubSponsored: statement.clubSponsored,
+    playerSponsored: statement.playerSponsored,
     feeCollectedCount,
     feeOffset,
     feeOffsetCount,
     sponsoredDetails,
     matchFeeTotal,
     percentRecovered,
+    settlementPct: statement.settlementPct,
+    cashCollectionPct: statement.cashCollectionPct,
+    actualFeePaid: statement.actualFeePaid,
+    netResult: statement.netResult,
     hasResults: playingCount > 0,
   };
 }
@@ -191,11 +314,19 @@ export interface PaymentShare {
 
 const rupees = (n: unknown) => Math.max(0, Math.round(Number(n) || 0));
 
-/** Collected amount recorded on a Paid payment (money), or 0. */
+/** Collected amount recorded on a payment (real money only), or 0. */
 export function collectedMoney(p: Pick<MatchPayment, "status" | "manualMethod" | "sponsoredBy" | "feeCollectedAmount" | "feeOverride">, matchFee: number): number {
-  if (p.status !== "Paid") return 0;
+  const status = String(p.status || "");
+  if (EXCLUDED_STATUSES.has(status)) return 0;
   if (p.manualMethod === "club_sponsored" || p.manualMethod === "part_of_plan" || p.sponsoredBy) return 0;
-  return rupees(p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : p.feeOverride !== undefined ? p.feeOverride : matchFee);
+  if (status === "Paid") {
+    return rupees(p.feeCollectedAmount !== undefined ? p.feeCollectedAmount : p.feeOverride !== undefined ? p.feeOverride : matchFee);
+  }
+  if (status === "Unpaid" && p.feeCollectedAmount !== undefined && p.feeCollectedAmount > 0) {
+    const expected = rupees(p.feeOverride !== undefined ? p.feeOverride : matchFee);
+    return Math.min(expected, rupees(p.feeCollectedAmount));
+  }
+  return 0;
 }
 
 /** Is real money held on this payment (only these may be refunded / reversed)? */
@@ -232,23 +363,31 @@ export function paymentShare(p: MatchPayment, matchFee: number): PaymentShare | 
 export interface MatchFinancialStatement {
   systemFee: number;
   clubSponsored: number;
+  playerSponsored: number;
+  expectedPlayerContribution: number;
   maxPlayerCollection: number;
+  actualCashReceived: number;
   collected: number;
   /** Part of `collected` covered by subscriptions (not match-level cash). */
+  subscriptionCovered: number;
   collectedViaSubscription: number;
   outstanding: number;
-  /** Collected ÷ maximum player collection × 100 (2 dp); null when nothing is expected. */
+  /** Settlement %: (Cash settled + Subscription covered) / Expected player contribution × 100 (2 dp); null when 0. */
+  settlementPct: number | null;
+  /** Cash collection %: Actual cash received / Expected player contribution × 100 (2 dp); null when 0. */
+  cashCollectionPct: number | null;
+  /** Alias for settlementPct for backward compatibility. */
   collectionPct: number | null;
   paidCount: number;
   unpaidCount: number;
   pendingAllocationCount: number;
-  /** Squad size counted (Not Playing / Waived excluded). */
+  /** Squad size counted (Not Playing / Waived / Cancelled excluded). */
   players: number;
   /** null = not recorded (never invented). */
   actualFeePaid: number | null;
   /** maxPlayerCollection − actualFeePaid; null when the actual fee is not recorded. */
   netResult: number | null;
-  /** collected − actualFeePaid (secondary). */
+  /** actualCashReceived − actualFeePaid (secondary). */
   cashPosition: number | null;
   financeClosed: boolean;
   abandoned: boolean;
@@ -262,10 +401,16 @@ export function buildMatchFinancialStatement(
   const s: MatchFinancialStatement = {
     systemFee: 0,
     clubSponsored: 0,
+    playerSponsored: 0,
+    expectedPlayerContribution: 0,
     maxPlayerCollection: 0,
+    actualCashReceived: 0,
     collected: 0,
+    subscriptionCovered: 0,
     collectedViaSubscription: 0,
     outstanding: 0,
+    settlementPct: null,
+    cashCollectionPct: null,
     collectionPct: null,
     paidCount: 0,
     unpaidCount: 0,
@@ -279,28 +424,38 @@ export function buildMatchFinancialStatement(
   };
   for (const p of payments) {
     if (p.matchId !== match.id) continue;
-    const share = paymentShare(p, fee);
-    if (!share) continue;
+    const cls = classifyMatchPayment(p, fee);
+    if (cls.category === "excluded") continue;
     s.players += 1;
-    s.clubSponsored += share.sponsorship;
-    s.maxPlayerCollection += share.contribution;
-    if (share.kind === "pending") s.pendingAllocationCount += 1;
-    if (share.paid) {
+    s.clubSponsored += cls.clubSponsored;
+    s.playerSponsored += cls.playerSponsored;
+    s.expectedPlayerContribution += cls.expectedContribution;
+    s.maxPlayerCollection += cls.expectedContribution;
+    s.actualCashReceived += cls.cashReceived;
+    s.subscriptionCovered += cls.subscriptionCovered;
+    s.collectedViaSubscription += cls.subscriptionCovered;
+    s.outstanding += cls.outstanding;
+    if ((p as MatchPayment & { financeSnapshot?: { pendingAllocation?: boolean } }).financeSnapshot?.pendingAllocation) {
+      s.pendingAllocationCount += 1;
+    }
+    if (cls.isSettled) {
       s.paidCount += 1;
-      s.collected += share.contribution;
-      if (share.kind === "subscription") s.collectedViaSubscription += share.contribution;
     } else {
       s.unpaidCount += 1;
-      s.outstanding += share.contribution;
     }
   }
-  s.systemFee = s.maxPlayerCollection + s.clubSponsored;
-  s.collectionPct = s.maxPlayerCollection > 0 ? Math.round((s.collected * 10000) / s.maxPlayerCollection) / 100 : null;
+  s.collected = s.actualCashReceived + s.subscriptionCovered;
+  s.systemFee = s.expectedPlayerContribution + s.clubSponsored;
+  if (s.expectedPlayerContribution > 0) {
+    s.settlementPct = Math.round(((s.actualCashReceived + s.subscriptionCovered) * 10000) / s.expectedPlayerContribution) / 100;
+    s.cashCollectionPct = Math.round((s.actualCashReceived * 10000) / s.expectedPlayerContribution) / 100;
+    s.collectionPct = s.settlementPct;
+  }
   const actual = match.groundFeePaidAmount;
   if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
     s.actualFeePaid = Math.round(actual);
-    s.netResult = s.maxPlayerCollection - s.actualFeePaid;
-    s.cashPosition = s.collected - s.actualFeePaid;
+    s.netResult = s.expectedPlayerContribution - s.actualFeePaid;
+    s.cashPosition = s.actualCashReceived - s.actualFeePaid;
   }
   return s;
 }

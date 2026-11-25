@@ -1,4 +1,5 @@
 import { isMatchBillable } from "./matchBillable.ts";
+import { classifyMatchPayment } from "./match-finance.ts";
 import type { Match, MatchPayment, OtherFee, Player } from "./types.ts";
 
 export interface BillableMatchPaymentItem {
@@ -51,19 +52,20 @@ export function calculatePlayerDues(
 
   const myPlayerIds = new Set(myPlayers.map((p) => p.id));
 
-  // 1. Unpaid match payments for my players
-  const unpaidPayments = (payments || []).filter(
+  // 1. Unpaid match payments for my players (canonical classification)
+  const candidatePayments = (payments || []).filter(
     (p) => myPlayerIds.has(p.playerId) && p.status === "Unpaid",
   );
 
   const billableMatchPayments: BillableMatchPaymentItem[] = [];
-  for (const payment of unpaidPayments) {
+  for (const payment of candidatePayments) {
     const match = (matches || []).find((m) => m.id === payment.matchId);
     // Consistently exclude non-billable matches (Abandoned matches, zero fee budget)
     if (match && isMatchBillable(match)) {
-      const fee =
-        payment.feeOverride !== undefined ? payment.feeOverride : (match.fee || 0);
-      billableMatchPayments.push({ payment, match, fee });
+      const cls = classifyMatchPayment(payment, match.fee || 0);
+      if (cls.outstanding > 0) {
+        billableMatchPayments.push({ payment, match, fee: cls.outstanding });
+      }
     }
   }
 

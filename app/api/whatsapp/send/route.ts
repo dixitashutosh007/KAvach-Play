@@ -8,12 +8,44 @@ export async function POST(req: Request) {
     const guard = await requireRole(req, ["financeAdmin", "clubAdmin", "superAdmin"]);
     if (!guard.ok) return guard.response;
 
-    const { to, name, amount, link } = await req.json();
+    const body = await req.json();
+    const isSuperOrClub = guard.roles.has("superAdmin") || guard.roles.has("clubAdmin");
+    const isFinanceOnly = !isSuperOrClub && guard.roles.has("financeAdmin");
 
     const db = getServerFirestore();
 
-    const appConfigSnap = await db.collection("appConfig").doc("default").get();
-    const appConfig = appConfigSnap.data() || {};
+    let to = body?.to;
+    let name = body?.name;
+    let amount = body?.amount;
+    let link = body?.link;
+    let appConfig: Record<string, any> = {};
+
+    if (isFinanceOnly) {
+      if (body?.action !== "due_reminder") {
+        return NextResponse.json(
+          { error: "Forbidden: Finance Admins may only send due_reminder WhatsApp notifications." },
+          { status: 403 },
+        );
+      }
+      const { resolveAuthorizedDueReminder } = await import("@/lib/reminder-server");
+      const origin = new URL(req.url).origin;
+      const resolved = await resolveAuthorizedDueReminder(db, {
+        playerId: body?.playerId,
+        channel: "whatsapp",
+        origin,
+      });
+      if (!resolved.ok) {
+        return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+      }
+      to = resolved.mobile!;
+      name = resolved.playerName;
+      amount = resolved.amount;
+      link = resolved.link;
+      appConfig = resolved.appConfig;
+    } else {
+      const appConfigSnap = await db.collection("appConfig").doc("default").get();
+      appConfig = appConfigSnap.data() || {};
+    }
 
     let whatsappProvider = appConfig.whatsappProvider;
     // Fallback: If they haven't explicitly set "meta" in settings, but they have environment variables configured, 

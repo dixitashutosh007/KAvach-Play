@@ -3,6 +3,7 @@ import { authedFetch } from "@/lib/authed-fetch";
 import { ChevronDown, ChevronRight, Trash2, ArrowUpDown, Check, X, ShieldAlert } from "lucide-react";
 import { formatDate, computeLateFees } from "@/lib/utils";
 import { isMatchBillable } from "@/lib/matchBillable";
+import { classifyMatchPayment } from "@/lib/match-finance";
 import type { ManualPaymentMethod } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -139,13 +140,16 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
       {subTab === "dues_report" && (() => {
          const allDues: any[] = [];
          store.players.forEach((p: any) => {
+            if (p.disabled || p.mergedInto) return;
             store.payments.filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid").forEach((pay: any) => {
               const m = store.matches.find((mx: any) => mx.id === pay.matchId);
               if(m && isMatchBillable(m)) {
+                const cls = classifyMatchPayment(pay, m.fee || 0);
+                if (cls.outstanding <= 0) return;
                 allDues.push({
                    uid: pay.id,
                    type: 'match',
-                   amount: pay.feeOverride !== undefined ? pay.feeOverride : m.fee,
+                   amount: cls.outstanding,
                    desc: `vs ${m.opponent} (${formatDate(m.date)})`,
                    groupKey: `match_${m.id}`,
                    groupTitle: `Match Fee: vs ${m.opponent} (${formatDate(m.date)})`,
@@ -168,10 +172,11 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
             });
 
             store.payments
-              .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid" && (pay.feeOverride === undefined || pay.feeOverride > 0))
+              .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid")
               .forEach((pay: any) => {
                 const m = store.matches.find((mx: any) => mx.id === pay.matchId);
                 if (!m || !isMatchBillable(m)) return;
+                if (classifyMatchPayment(pay, m.fee || 0).outstanding <= 0) return;
                 const matchLabel = `vs ${m.opponent || "Match"} (${formatDate(m.date)})`;
                 const exempted = store.otherFees.some(
                   (f: any) => f.playerId === p.id && f.title?.startsWith("Late Fee Exemption:") && f.title?.includes(m.id) && f.status !== "Cancelled",
@@ -340,6 +345,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
                                   action: "due_reminder",
+                                  playerId: data.player.id,
                                   to: [data.player.email],
                                   subject: renderTpl(reminderTemplate.subject),
                                   text: renderTpl(reminderTemplate.body),
@@ -408,6 +414,8 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
+                                  action: "due_reminder",
+                                  playerId: data.player.id,
                                   to: data.player.mobile,
                                   name: data.player.name,
                                   amount: data.total,
@@ -616,6 +624,8 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                           method: "POST",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({
+                                            action: "due_reminder",
+                                            playerId: item.player.id,
                                             to: item.player.mobile,
                                             name: item.player.name,
                                             amount: item.amount,
@@ -657,7 +667,10 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                                            };
                                            const res = await authedFetch("/api/email/send", {
                                              method: "POST",
+                                             headers: { "Content-Type": "application/json" },
                                              body: JSON.stringify({
+                                               action: "due_reminder",
+                                               playerId: item.player.id,
                                                to: [item.player.email],
                                                subject: renderTpl(reminderTemplate.subject),
                                                text: renderTpl(reminderTemplate.body),
@@ -752,18 +765,21 @@ function DuesTableView({ store, isSuperAdmin }: { store: any; isSuperAdmin?: boo
       isVirtual?: boolean;
     }[] = [];
     store.players.forEach((p: any) => {
+      if (p.disabled || p.mergedInto) return;
       store.payments
         .filter((pay: any) => pay.playerId === p.id && pay.status === "Unpaid")
         .forEach((pay: any) => {
           const m = store.matches.find((mx: any) => mx.id === pay.matchId);
           if (m && isMatchBillable(m)) {
+            const cls = classifyMatchPayment(pay, m.fee || 0);
+            if (cls.outstanding <= 0) return;
             dues.push({
               uid: pay.id,
               type: "match",
               playerName: p.name,
               playerId: p.id,
               matchId: m.id,
-              amount: pay.feeOverride !== undefined ? pay.feeOverride : m.fee,
+              amount: cls.outstanding,
               desc: `vs ${m.opponent || m.title || "Match"} (${formatDate(m.date)})`,
             });
           }

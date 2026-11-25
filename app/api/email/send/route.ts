@@ -28,10 +28,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: emailAuth.error }, { status: emailAuth.status });
     }
 
-    const { to, subject, text, html, config } = body;
-    const safeHtml = emailAuth.isFinanceDueReminderOnly ? undefined : html;
+    let { to, subject, text, html, config } = body;
+    let safeHtml = emailAuth.isFinanceDueReminderOnly ? undefined : html;
+    let activeConfig = emailAuth.isFinanceDueReminderOnly ? undefined : config;
 
-    let activeConfig = config;
+    // Finance Admin due reminders MUST be resolved server-side from playerId + verified dues.
+    if (emailAuth.isFinanceDueReminderOnly) {
+      const { getServerFirestore } = await import("@/lib/server-db");
+      const { resolveAuthorizedDueReminder } = await import("@/lib/reminder-server");
+      const origin = new URL(req.url).origin;
+      const resolved = await resolveAuthorizedDueReminder(getServerFirestore(), {
+        playerId: body?.playerId,
+        channel: "email",
+        origin,
+      });
+      if (!resolved.ok) {
+        return NextResponse.json({ success: false, error: resolved.error }, { status: resolved.status });
+      }
+      to = [resolved.email!];
+      subject = resolved.subject!;
+      text = resolved.text!;
+      safeHtml = undefined;
+      activeConfig = resolved.appConfig;
+    }
 
     // If no config is passed directly from a workspace setting test,
     // load SMTP & Resend settings securely from database

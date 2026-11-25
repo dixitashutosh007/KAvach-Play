@@ -1224,14 +1224,18 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border text-center text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-border text-center text-xs">
                         <div className="bg-surface-hover p-2 rounded-lg">
-                          <div className="text-[9px] uppercase tracking-wider text-text-muted font-bold">Budget</div>
+                          <div className="text-[9px] uppercase tracking-wider text-text-muted font-bold">Expected</div>
                           <div className="font-mono font-bold text-text-primary mt-0.5">₹{data.matchFeeTotal}</div>
                         </div>
                         <div className="bg-surface-hover p-2 rounded-lg">
-                          <div className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Collected</div>
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Cash Recv</div>
                           <div className="font-mono font-bold text-emerald-400 mt-0.5">₹{data.feeCollected}</div>
+                        </div>
+                        <div className="bg-surface-hover p-2 rounded-lg">
+                          <div className="text-[9px] uppercase tracking-wider text-blue-400 font-bold">Sub Covered</div>
+                          <div className="font-mono font-bold text-blue-400 mt-0.5">₹{data.subscriptionCovered}</div>
                         </div>
                         <div className="bg-surface-hover p-2 rounded-lg">
                           <div className="text-[9px] uppercase tracking-wider text-amber-400 font-bold">Sponsored</div>
@@ -1239,18 +1243,18 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                         </div>
                       </div>
 
-                      {data.percentRecovered !== null && (
-                        <div className="pt-1">
-                          <div className="flex justify-between text-[10px] font-bold mb-1">
-                            <span className="text-text-muted uppercase tracking-wider">Recovery</span>
-                            <span className={data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}>
-                              {data.percentRecovered}%
+                      {data.cashCollectionPct !== null && (
+                        <div className="pt-1 space-y-1">
+                          <div className="flex justify-between text-[10px] font-bold">
+                            <span className="text-text-muted uppercase tracking-wider">Settlement / Cash %</span>
+                            <span className={data.cashCollectionPct >= 80 ? "text-emerald-400" : data.cashCollectionPct >= 50 ? "text-amber-400" : "text-red-400"}>
+                              {data.settlementPct ?? 0}% settled · {data.cashCollectionPct}% cash
                             </span>
                           </div>
                           <div className="w-full bg-surface-hover rounded-full h-1.5 overflow-hidden">
                             <div
-                              className={`h-full rounded-full ${data.percentRecovered >= 80 ? "bg-emerald-500" : data.percentRecovered >= 50 ? "bg-amber-500" : "bg-red-500"}`}
-                              style={{ width: `${Math.min(100, Math.max(0, data.percentRecovered))}%` }}
+                              className={`h-full rounded-full ${data.cashCollectionPct >= 80 ? "bg-emerald-500" : data.cashCollectionPct >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                              style={{ width: `${Math.min(100, Math.max(0, data.cashCollectionPct))}%` }}
                             />
                           </div>
                         </div>
@@ -1267,10 +1271,11 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                   <tr className="border-b border-border text-[10px] uppercase tracking-widest text-text-muted">
                     <th className="py-2 pr-3 font-bold whitespace-nowrap">Match Details</th>
                     <th className="py-2 px-3 font-bold whitespace-nowrap text-center">Paid / Unpaid</th>
-                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Match Fee</th>
-                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Fee Collected</th>
-                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Club Sponsored</th>
-                    {showPct && <th className="py-2 pl-3 font-bold whitespace-nowrap text-right">% Recovered</th>}
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Expected</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Cash Received</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Sub Covered</th>
+                    <th className="py-2 px-3 font-bold whitespace-nowrap text-right">Sponsored</th>
+                    {showPct && <th className="py-2 pl-3 font-bold whitespace-nowrap text-right">Settled / Cash %</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1448,29 +1453,20 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                               </button>
                             </form>
                           ) : (
-                            <div className="flex items-center justify-end gap-1.5 group/fee">
-                              <div className="text-right">
-                                <div className="text-text-primary font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
-                                <div className="text-[10px] text-text-muted mt-0.5 font-mono">
-                                  {data.match.matchFeeBudget !== undefined ? "Custom Target" : `₹${data.match.fee} × 12 players`}
-                                </div>
+                            <div className="text-right">
+                              <div className="text-text-primary font-bold font-mono text-xs">₹{data.matchFeeTotal}</div>
+                              <div className="text-[10px] text-text-muted mt-0.5 font-mono">
+                                {data.paidCount + data.unpaidCount} eligible · ₹{data.totalDue} due
                               </div>
-                              <button
-                                onClick={() => {
-                                  setEditingMatchFeeId(data.match.id);
-                                  setEditFeeVal(String(data.matchFeeTotal));
-                                }}
-                                className="opacity-0 group-hover/fee:opacity-100 p-1 hover:bg-surface-hover rounded text-text-muted hover:text-text-primary transition cursor-pointer"
-                                title="Edit Match Fee"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
                             </div>
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
                           <div className="text-emerald-400 font-semibold font-mono">₹{data.feeCollected}</div>
                           <div className="text-[10px] text-text-muted">({data.feeCollectedCount})</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="text-blue-400 font-semibold font-mono">₹{data.subscriptionCovered}</div>
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap relative group">
                           <div className="text-amber-400 font-semibold font-mono inline-flex items-center gap-1 cursor-help">
@@ -1514,10 +1510,15 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                         </td>
                         {showPct && (
                           <td className="py-2.5 pl-3 text-right whitespace-nowrap font-mono">
-                            {data.percentRecovered !== null ? (
-                              <span className={`font-bold ${data.percentRecovered >= 80 ? "text-emerald-400" : data.percentRecovered >= 50 ? "text-amber-400" : "text-red-400"}`}>
-                                {data.percentRecovered}%
-                              </span>
+                            {data.cashCollectionPct !== null ? (
+                              <div className="space-y-0.5">
+                                <div className={`font-bold ${data.cashCollectionPct >= 80 ? "text-emerald-400" : data.cashCollectionPct >= 50 ? "text-amber-400" : "text-red-400"}`}>
+                                  {data.cashCollectionPct}% cash
+                                </div>
+                                <div className="text-[10px] text-text-muted">
+                                  {data.settlementPct ?? 0}% settled
+                                </div>
+                              </div>
                             ) : (
                               <span className="text-text-primary/30">—</span>
                             )}
@@ -1544,15 +1545,26 @@ function AdminFinanceView({ store, defaultAction, isSuperAdmin }: { store: Retur
                         <div className="text-emerald-400 font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.feeCollected, 0)}</div>
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="text-blue-400 font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.subscriptionCovered, 0)}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <div className="text-amber-400 font-bold font-mono">₹{collectedMatches.reduce((s, d) => s + d.feeOffset, 0)}</div>
                       </td>
                       {showPct && (
                         <td className="py-2.5 pl-3 text-right whitespace-nowrap font-mono">
                           {(() => {
-                            const totalMatchFee = collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0);
-                            const totalCollected = collectedMatches.reduce((s, d) => s + d.feeCollected, 0);
-                            const pct = totalMatchFee > 0 ? Math.round((totalCollected * 100) / totalMatchFee) : 0;
-                            return <span className={`font-bold ${pct >= 80 ? "text-emerald-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>;
+                            const totalExpected = collectedMatches.reduce((s, d) => s + d.matchFeeTotal, 0);
+                            const totalCash = collectedMatches.reduce((s, d) => s + d.feeCollected, 0);
+                            const totalSub = collectedMatches.reduce((s, d) => s + d.subscriptionCovered, 0);
+                            if (totalExpected <= 0) return <span className="text-text-primary/30">—</span>;
+                            const cashPct = Math.round((totalCash * 10000) / totalExpected) / 100;
+                            const settledPct = Math.round(((totalCash + totalSub) * 10000) / totalExpected) / 100;
+                            return (
+                              <div>
+                                <div className={`font-bold ${cashPct >= 80 ? "text-emerald-400" : cashPct >= 50 ? "text-amber-400" : "text-red-400"}`}>{cashPct}% cash</div>
+                                <div className="text-[10px] text-text-muted">{settledPct}% settled</div>
+                              </div>
+                            );
                           })()}
                         </td>
                       )}
