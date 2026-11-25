@@ -65,82 +65,78 @@ describe("Circuit Standings — server API", { skip }, () => {
   const audits = async (c) => (await db.collection("auditLogs").where("entity", "==", "circuit_standing").where("entityId", "==", c).get()).docs.map((d) => d.data());
 
   it("CS-01 unauthenticated 401; player, Finance Admin and retired Match Admin get 403 on every method; nothing written", async () => {
-    for (const [m, body] of [["PUT", { circuit: "india-wins", rank: 20, value: 500 }], ["DELETE", { circuit: "india-wins" }]]) {
+    for (const [m, body] of [["PUT", { circuit: "india", rank: 20 }], ["DELETE", { circuit: "india" }]]) {
       assert.equal((await call(m, body, null)).status, 401, m);
       for (const who of [PLAYER, FIN, LEGACY]) assert.equal((await call(m, body, who)).status, 403, `${m} ${JSON.stringify(who)}`);
     }
     assert.equal(await count(), 0);
   });
 
-  it("CS-02 Club Admin and Super Admin set all four standings (owner's examples); each is audited", async () => {
+  it("CS-02 Club Admin and Super Admin set Bangalore and India rankings; each is audited", async () => {
     const rows = [
-      [CLUB, { circuit: "india-wins", rank: 20, value: 500 }],
-      [CLUB, { circuit: "india-played", rank: 15, value: 700 }],
-      [SUPER, { circuit: "bangalore-wins", rank: 4, value: 115 }],
-      [SUPER, { circuit: "bangalore-played", rank: 4, value: 200 }],
+      [CLUB, { circuit: "india", rank: 20 }],
+      [SUPER, { circuit: "bangalore", rank: 4 }],
     ];
     for (const [who, body] of rows) {
       const r = await call("PUT", body, who);
       assert.equal(r.status, 200, JSON.stringify(r.json));
       assert.equal(r.json.changed, true);
       const d = await get(body.circuit);
-      assert.deepEqual({ circuit: d.circuit, rank: d.rank, value: d.value }, body);
+      assert.deepEqual({ circuit: d.circuit, rank: d.rank, value: d.value }, { ...body, value: 0 });
       assert.equal(d.updatedBy, who.uid);
       const a = await audits(body.circuit);
       assert.equal(a.length, 1);
       assert.equal(a[0].action, "created");
     }
-    assert.equal(await count(), 4);
+    assert.equal(await count(), 2);
   });
 
   it("CS-03 edit updates in place with old → new values audited; the same values are a no-op", async () => {
-    const r = await call("PUT", { circuit: "india-wins", rank: 18, value: 512 });
+    const r = await call("PUT", { circuit: "india", rank: 18 });
     assert.equal(r.status, 200);
-    assert.deepEqual(await get("india-wins").then((d) => [d.rank, d.value]), [18, 512]);
-    const a = (await audits("india-wins")).find((x) => x.action === "updated");
+    assert.equal((await get("india")).rank, 18);
+    const a = (await audits("india")).find((x) => x.action === "updated");
     assert.deepEqual(
       a.changes.map((c) => [c.field, c.oldValue, c.newValue]),
-      [
-        ["rank", "20", "18"],
-        ["value", "500", "512"],
-      ],
+      [["rank", "20", "18"]],
     );
-    assert.equal((await call("PUT", { circuit: "india-wins", rank: 18, value: 512 })).json.changed, false);
-    assert.equal((await audits("india-wins")).length, 2);
-    assert.equal(await count(), 4);
+    assert.equal((await call("PUT", { circuit: "india", rank: 18 })).json.changed, false);
+    assert.equal((await audits("india")).length, 2);
+    assert.equal(await count(), 2);
   });
 
-  it("CS-04 validation: bad numbers, unknown circuit, player or extra fields are rejected; nothing changes", async () => {
+  it("CS-04 validation: bad numbers, unknown/legacy circuit, player or extra fields are rejected; nothing changes", async () => {
     const cases = [
-      { circuit: "delhi-wins", rank: 1, value: 1 },
-      { circuit: "india-wins", rank: 0, value: 1 },
-      { circuit: "india-wins", rank: 2, value: -1 },
-      { circuit: "india-wins", rank: 2, value: "500+" },
-      { circuit: "india-wins", rank: "20th", value: 5 },
-      { circuit: "india-wins", rank: 2 },
-      { circuit: "india-wins", rank: 2, value: 5, playerId: "p1" },
-      { circuit: "india-wins", rank: 2, value: 5, updatedBy: "x" },
+      { circuit: "delhi", rank: 1 },
+      { circuit: "india-wins", rank: 1 },
+      { circuit: "india", rank: 0 },
+      { circuit: "india", rank: 2, value: -1 },
+      { circuit: "india", rank: 2, value: "500+" },
+      { circuit: "india", rank: "20th" },
+      { circuit: "india" },
+      { circuit: "india", rank: 2, playerId: "p1" },
+      { circuit: "india", rank: 2, updatedBy: "x" },
     ];
     for (const c of cases) assert.equal((await call("PUT", c)).status, 400, JSON.stringify(c));
     assert.equal((await call("PUT", "{not json")).status, 400);
     assert.equal((await call("DELETE", { circuit: "../players/x" })).status, 400);
-    assert.equal((await call("DELETE", { circuit: "india-wins", extra: 1 })).status, 400);
-    assert.deepEqual(await get("india-wins").then((d) => [d.rank, d.value]), [18, 512]);
+    assert.equal((await call("DELETE", { circuit: "india", extra: 1 })).status, 400);
+    assert.equal((await get("india")).rank, 18);
   });
 
   it("CS-05 clear: Finance denied; Club/Super clear it, audited; 404 when already cleared; others untouched", async () => {
-    assert.equal((await call("DELETE", { circuit: "bangalore-wins" }, FIN)).status, 403);
-    assert.ok(await get("bangalore-wins"));
-    const r = await call("DELETE", { circuit: "bangalore-wins" }, SUPER);
+    assert.equal((await call("DELETE", { circuit: "bangalore" }, FIN)).status, 403);
+    assert.ok(await get("bangalore"));
+    const r = await call("DELETE", { circuit: "bangalore" }, SUPER);
     assert.equal(r.status, 200);
-    assert.equal(await get("bangalore-wins"), null);
-    assert.equal((await call("DELETE", { circuit: "bangalore-wins" })).status, 404);
-    const a = (await audits("bangalore-wins")).find((x) => x.action === "deleted");
+    assert.equal(await get("bangalore"), null);
+    assert.equal((await call("DELETE", { circuit: "bangalore" })).status, 404);
+    const a = (await audits("bangalore")).find((x) => x.action === "deleted");
     assert.equal(a.actorId, "u_super");
-    assert.equal(await count(), 3);
+    assert.equal(await count(), 1);
     // Setting it again re-creates it.
-    assert.equal((await call("PUT", { circuit: "bangalore-wins", rank: 4, value: 115 })).status, 200);
-    assert.equal(await count(), 4);
+    assert.equal((await call("PUT", { circuit: "bangalore", rank: 4 })).status, 200);
+    assert.equal(await count(), 2);
   });
 });
 

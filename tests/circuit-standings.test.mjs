@@ -1,9 +1,8 @@
 /**
- * Circuit Standings model and wiring (`tests/circuit-standings.test.mjs`).
- * A standing is the CLUB's own rank and total in a circuit (no player).
- * Imports the PRODUCTION module lib/circuit-standings.ts and lib/admin-navigation.ts;
- * source checks for rules/route/UI wiring. No emulator, browser or network.
- * API + rules behaviour: tests/circuit-standings.emulator.test.mjs.
+ * Club Rankings model and wiring (`tests/circuit-standings.test.mjs`).
+ * Only two rankings are active: Ranking in Bangalore (`bangalore`) and
+ * Ranking in India (`india`), with backward-compatible read fallback for
+ * legacy 4-category keys (`bangalore-wins`/`bangalore-played`, `india-wins`/`india-played`).
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +11,6 @@ import {
   CIRCUITS,
   CIRCUIT_KEYS,
   formatStanding,
-  formatStandingValue,
   readStoredStanding,
   standingsByCircuit,
   validateCircuitStandingInput,
@@ -20,64 +18,78 @@ import {
 import { getVisibleClubSections } from "../lib/admin-navigation.ts";
 
 const src = (f) => fs.readFileSync(f, "utf-8");
-const ok = { circuit: "india-wins", rank: 20, value: 500 };
+const ok = { circuit: "india", rank: 20, value: 0 };
 
-describe("Circuits: exactly the four supported standings", () => {
-  it("India/Bangalore × Most Wins/Most Played, each with its metric", () => {
-    assert.deepEqual(CIRCUIT_KEYS, ["india-wins", "india-played", "bangalore-wins", "bangalore-played"]);
+describe("Rankings: exactly Bangalore and India", () => {
+  it("exposes only bangalore and india without Most Played / Most Wins", () => {
+    assert.deepEqual(CIRCUIT_KEYS, ["bangalore", "india"]);
     assert.deepEqual(
-      CIRCUITS.map((c) => `${c.scope} – ${c.metric} (${c.valueLabel})`),
-      ["India – Most Wins (Wins)", "India – Most Played (Matches played)", "Bangalore – Most Wins (Wins)", "Bangalore – Most Played (Matches played)"],
+      CIRCUITS.map((c) => `${c.scope} – ${c.metric}`),
+      ["Bangalore – Ranking in Bangalore", "India – Ranking in India"],
     );
   });
 });
 
-describe("validateCircuitStandingInput: only circuit, rank and total", () => {
-  it("accepts the owner's examples; digit strings are converted", () => {
-    assert.deepEqual(validateCircuitStandingInput(ok), { ok: true, value: ok });
-    assert.deepEqual(validateCircuitStandingInput({ circuit: "india-played", rank: "15", value: " 700 " }), { ok: true, value: { circuit: "india-played", rank: 15, value: 700 } });
-    assert.equal(validateCircuitStandingInput({ circuit: "bangalore-wins", rank: 4, value: 115 }).ok, true);
-    assert.equal(validateCircuitStandingInput({ circuit: "bangalore-played", rank: 4, value: 200 }).ok, true);
+describe("validateCircuitStandingInput: circuit, rank, optional value", () => {
+  it("accepts bangalore and india with integer rank (value optional)", () => {
+    assert.deepEqual(validateCircuitStandingInput({ circuit: "india", rank: 20 }), { ok: true, value: ok });
+    assert.deepEqual(validateCircuitStandingInput({ circuit: "bangalore", rank: " 4 " }), {
+      ok: true,
+      value: { circuit: "bangalore", rank: 4, value: 0 },
+    });
+    assert.deepEqual(validateCircuitStandingInput({ circuit: "india", rank: 15, value: 700 }), {
+      ok: true,
+      value: { circuit: "india", rank: 15, value: 700 },
+    });
   });
+
   const bad = [
     ["non-object", null],
     ["array", []],
     ["a player field", { ...ok, playerId: "p1" }],
     ["an unknown field", { ...ok, updatedBy: "x" }],
-    ["unknown circuit", { ...ok, circuit: "mumbai-wins" }],
-    ["missing rank", { circuit: "india-wins", value: 5 }],
-    ["missing total", { circuit: "india-wins", rank: 5 }],
-    ["rank 0", { ...ok, rank: 0 }],
-    ["rank decimal", { ...ok, rank: 1.5 }],
-    ["rank text", { ...ok, rank: "20th" }],
-    ["rank too large", { ...ok, rank: 100001 }],
-    ["negative total", { ...ok, value: -1 }],
-    ["total 500+", { ...ok, value: "500+" }],
-    ["total too large", { ...ok, value: 100001 }],
+    ["legacy circuit", { circuit: "india-wins", rank: 20 }],
+    ["unknown circuit", { circuit: "mumbai", rank: 20 }],
+    ["missing rank", { circuit: "india" }],
+    ["rank 0", { circuit: "india", rank: 0 }],
+    ["rank decimal", { circuit: "india", rank: 1.5 }],
+    ["rank text", { circuit: "india", rank: "20th" }],
+    ["rank too large", { circuit: "india", rank: 100001 }],
+    ["negative value", { circuit: "india", rank: 2, value: -1 }],
+    ["value too large", { circuit: "india", rank: 2, value: 100001 }],
   ];
   for (const [name, input] of bad) it(`rejects ${name}`, () => assert.equal(validateCircuitStandingInput(input).ok, false));
-  it("error messages name the circuit's metric", () => {
-    assert.match(validateCircuitStandingInput({ circuit: "bangalore-played", rank: 4, value: "x" }).error, /Matches played/);
-    assert.match(validateCircuitStandingInput({ circuit: "india-wins", rank: 4, value: "x" }).error, /Wins/);
-  });
 });
 
-describe("Stored standings → display", () => {
-  it("doc id must be the circuit; malformed docs are dropped (never shown)", () => {
-    assert.deepEqual(readStoredStanding("india-wins", { circuit: "india-wins", rank: 20, value: 500 }), ok);
-    assert.equal(readStoredStanding("india-wins", { circuit: "india-played", rank: 20, value: 500 }), null);
-    assert.equal(readStoredStanding("india-wins__p1", { circuit: "india-wins", rank: 1, value: 4 }), null); // old player-shaped record
-    assert.equal(readStoredStanding("india-wins", { circuit: "india-wins", rank: 0, value: 4 }), null);
-    assert.equal(readStoredStanding("india-wins", { circuit: "india-wins", rank: 3 }), null);
+describe("Stored rankings & legacy fallback", () => {
+  it("reads active and legacy doc ids defensively; drops malformed docs", () => {
+    assert.deepEqual(readStoredStanding("india", { circuit: "india", rank: 20 }), ok);
+    assert.deepEqual(readStoredStanding("india-wins", { circuit: "india-wins", rank: 12, value: 300 }), {
+      circuit: "india-wins",
+      rank: 12,
+      value: 300,
+    });
+    assert.equal(readStoredStanding("india", { circuit: "bangalore", rank: 20 }), null);
+    assert.equal(readStoredStanding("india__p1", { circuit: "india", rank: 1 }), null);
+    assert.equal(readStoredStanding("india", { circuit: "india", rank: 0 }), null);
   });
-  it("one standing per circuit; formatted as rank and labelled total", () => {
-    const m = standingsByCircuit([ok, { circuit: "bangalore-played", rank: 4, value: 200 }]);
-    assert.equal(m["india-wins"].rank, 20);
-    assert.equal(m["india-played"], undefined);
-    assert.equal(formatStanding(ok), "#20 · 500 wins");
-    assert.equal(formatStanding({ circuit: "india-played", rank: 15, value: 700 }), "#15 · 700 matches played");
-    assert.equal(formatStandingValue("bangalore-wins", 1), "1 win");
-    assert.equal(formatStandingValue("india-played", 1250), "1,250 matches played");
+
+  it("maps active keys and falls back to legacy -wins then -played without mutating records", () => {
+    const legacyOnly = standingsByCircuit([
+      { circuit: "india-played", rank: 15, value: 700 },
+      { circuit: "india-wins", rank: 12, value: 500 },
+      { circuit: "bangalore-played", rank: 4, value: 200 },
+    ]);
+    assert.equal(legacyOnly.india?.rank, 12);
+    assert.equal(legacyOnly.bangalore?.rank, 4);
+
+    // Active key overrides legacy fallback
+    const withActive = standingsByCircuit([
+      { circuit: "india-wins", rank: 12, value: 500 },
+      { circuit: "india", rank: 7, value: 0 },
+    ]);
+    assert.equal(withActive.india?.rank, 7);
+    assert.equal(formatStanding(ok), "#20");
   });
 });
 
@@ -97,16 +109,16 @@ describe("Permissions and wiring", () => {
     assert.equal((route.match(/writeServerAudit\(/g) || []).length, 2);
     assert.doesNotMatch(route, /playerId/);
   });
-  it("Admin Club → Club Stats hosts the manager next to Club Statistics; Club/Super only", () => {
+  it("Admin Club → Leaderboard & Stats hosts ClubStatisticsAdmin and Club Rankings; Club/Super only", () => {
     assert.match(src("components/ClubTab.tsx"), /\{show\("leaderboard"\) && isClubAdmin && \(\s*<div className="space-y-6">\s*<ClubStatisticsAdmin \/>\s*<CircuitStandingsAdmin \/>/);
     assert.ok(getVisibleClubSections({ isSuperAdmin: false, isClubAdmin: true, isFinanceAdmin: false }, () => true).includes("leaderboard"));
     assert.ok(!getVisibleClubSections({ isSuperAdmin: false, isClubAdmin: false, isFinanceAdmin: true }, () => true).includes("leaderboard"));
-    assert.doesNotMatch(src("components/club/CircuitStandingsAdmin.tsx"), /player/i);
+    assert.doesNotMatch(src("components/club/CircuitStandingsAdmin.tsx"), /Most Wins|Most Played|player/i);
   });
-  it("Player Club reads the saved standings (no hardcoded values)", () => {
+  it("Player Club Stats window shows consolidated performance and only Bangalore/India rankings", () => {
     const p = src("components/club/PlayerClubTab.tsx");
     assert.match(p, /useCircuitStandings\(\)/);
     assert.match(p, /standingsByCircuit\(circuit\.standings\)/);
-    assert.doesNotMatch(p, /const CIRCUIT_STANDINGS = \[/);
+    assert.doesNotMatch(p, /Most Wins|Most Played/);
   });
 });

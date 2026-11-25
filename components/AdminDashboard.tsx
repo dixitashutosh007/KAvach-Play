@@ -36,7 +36,6 @@ import {
   IndependenceDayBanner,
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
-import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
 import { computeMatchAvailabilityReadiness } from "@/lib/match-readiness";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -1212,9 +1211,6 @@ export function AdminDashboard({
           )}
         </div>
       </div>
-
-      {/* Club Performance Widget — single instance rendered for both mobile and desktop */}
-      {canSeeClub && <ClubPerformanceWidget canManage />}
 
       {/* Match Picker Modal for Add Squad / Edit & Calendar */}
       {matchPickerMode && (

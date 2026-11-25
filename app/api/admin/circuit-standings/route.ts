@@ -104,7 +104,7 @@ export async function DELETE(req: Request) {
   if ("response" in g) return g.response;
   const { circuit } = g.body;
   if (!isCircuitKey(circuit) || Object.keys(g.body).length !== 1) {
-    return NextResponse.json({ error: "Choose one of the four circuits." }, { status: 400 });
+    return NextResponse.json({ error: "Choose Bangalore or India." }, { status: 400 });
   }
   const db = getServerFirestore();
   try {

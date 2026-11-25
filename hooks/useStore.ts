@@ -11,7 +11,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { createLazyLoadRegistry } from "@/lib/search-readiness";
-import { executeAnnouncementDelete } from "@/lib/weekend-ops";
+import { executeAnnouncementDelete, executeBadgeDelete, potwIds } from "@/lib/weekend-ops";
+import { invalidateClubPostsCache } from "@/hooks/useClubData";
 import {
   Ground,
   Match,
@@ -168,6 +169,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   // `match-payments:${matchId}`. Values: the unsubscribe fn.
   const lazySubsRef = useRef<Map<string, () => void>>(new Map());
   const lazyRegistryRef = useRef(createLazyLoadRegistry());
+  const deletingPostIdsRef = useRef<Set<string>>(new Set());
+  const deletingBadgeIdsRef = useRef<Set<string>>(new Set());
   const paymentsPerMatchRef = useRef<Map<string, MatchPayment[]>>(new Map());
   const allPaymentsSnapshotRef = useRef<MatchPayment[]>([]);
   const loadedOneShotsRef = useRef<Set<string>>(new Set());
@@ -837,13 +840,46 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     }
   };
 
-  const deleteBadge = async (badgeId: string) => {
-    const oldBadge = badges.find(b => b.id === badgeId);
+  const deleteBadge = async (badgeId: string): Promise<boolean> => {
+    if (deletingBadgeIdsRef.current.has(badgeId)) return false;
+    deletingBadgeIdsRef.current.add(badgeId);
+    const oldBadge = badges.find((b) => b.id === badgeId);
     try {
-      await deleteDoc(doc(db, "badges", badgeId));
-      logAudit({ ...getActor(), action: "deleted", entity: "badge", entityId: badgeId, entityLabel: oldBadge?.badgeType || badgeId, changes: [], summary: `Removed "${oldBadge?.badgeType || ""}" badge from ${oldBadge?.playerName || "player"}` });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
+      return await executeBadgeDelete({
+        badgeId,
+        badge: oldBadge,
+        deleteViaPotwApi: async (weekendId) => {
+          try {
+            const res = await authedFetch(
+              `/api/admin/player-of-weekend?weekendId=${encodeURIComponent(weekendId)}`,
+              { method: "DELETE" },
+            );
+            if (!res.ok) return false;
+            const ids = potwIds(weekendId);
+            setBadges((prev) => prev.filter((b) => b.id !== ids.badge && b.id !== badgeId));
+            setPosts((prev) => prev.filter((p) => p.id !== ids.post));
+            setNotifications((prev) => prev.filter((n) => n.id !== ids.notification));
+            invalidateClubPostsCache();
+            return true;
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
+            return false;
+          }
+        },
+        deleteDirectDoc: async () => {
+          try {
+            await deleteDoc(doc(db, "badges", badgeId));
+            setBadges((prev) => prev.filter((b) => b.id !== badgeId));
+            logAudit({ ...getActor(), action: "deleted", entity: "badge", entityId: badgeId, entityLabel: oldBadge?.badgeType || badgeId, changes: [], summary: `Removed "${oldBadge?.badgeType || ""}" badge from ${oldBadge?.playerName || "player"}` });
+            return true;
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
+            return false;
+          }
+        },
+      });
+    } finally {
+      deletingBadgeIdsRef.current.delete(badgeId);
     }
   };
 
@@ -2558,61 +2594,50 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   /** Deletes a post and reports success (rules restrict deletes to admins). */
   const deleteAnnouncement = async (postId: string): Promise<boolean> => {
+    if (deletingPostIdsRef.current.has(postId)) return false;
+    deletingPostIdsRef.current.add(postId);
     const oldPost = posts.find((p) => p.id === postId);
-    return executeAnnouncementDelete({
-      post: oldPost,
-      deleteViaPotwApi: async (weekendId) => {
-        try {
-          const res = await authedFetch(
-            `/api/admin/player-of-weekend?weekendId=${encodeURIComponent(weekendId)}`,
-            { method: "DELETE" },
-          );
-          return res.ok;
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
-          return false;
-        }
-      },
-      deleteDirectDoc: async () => {
-        try {
-          await deleteDoc(doc(db, "posts", postId));
-          logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted announcement` });
-          return true;
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
-          return false;
-        }
-      },
-    });
+    try {
+      return await executeAnnouncementDelete({
+        post: oldPost,
+        deleteViaPotwApi: async (weekendId) => {
+          try {
+            const res = await authedFetch(
+              `/api/admin/player-of-weekend?weekendId=${encodeURIComponent(weekendId)}`,
+              { method: "DELETE" },
+            );
+            if (!res.ok) return false;
+            const ids = potwIds(weekendId);
+            setPosts((prev) => prev.filter((p) => p.id !== postId && p.id !== ids.post));
+            setBadges((prev) => prev.filter((b) => b.id !== ids.badge));
+            setNotifications((prev) => prev.filter((n) => n.id !== ids.notification));
+            invalidateClubPostsCache();
+            return true;
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+            return false;
+          }
+        },
+        deleteDirectDoc: async () => {
+          try {
+            await deleteDoc(doc(db, "posts", postId));
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            invalidateClubPostsCache();
+            logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted announcement` });
+            return true;
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+            return false;
+          }
+        },
+      });
+    } finally {
+      deletingPostIdsRef.current.delete(postId);
+    }
   };
 
   const deletePost = async (postId: string) => {
-    const oldPost = posts.find(p => p.id === postId);
-    await executeAnnouncementDelete({
-      post: oldPost,
-      deleteViaPotwApi: async (weekendId) => {
-        try {
-          const res = await authedFetch(
-            `/api/admin/player-of-weekend?weekendId=${encodeURIComponent(weekendId)}`,
-            { method: "DELETE" },
-          );
-          return res.ok;
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
-          return false;
-        }
-      },
-      deleteDirectDoc: async () => {
-        try {
-          await deleteDoc(doc(db, "posts", postId));
-          logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted post` });
-          return true;
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
-          return false;
-        }
-      },
-    });
+    await deleteAnnouncement(postId);
   };
 
   const addComment = async (

@@ -334,11 +334,8 @@ describe("Club Performance widget", () => {
     assert.match(html, /<span class="sr-only">120<\/span>/);
     assert.match(html, /<span class="sr-only">77<\/span>/);
   });
-  it("D-18: management hint only on Admin Home; Player Home widget is read-only; Club Statistics is easy to find", () => {
-    const page = src("app/page.tsx");
-    const adminHome = page.slice(page.indexOf('data-testid="admin-home-club-panel"'), page.indexOf('data-testid="admin-home-club-panel"') + 1600);
-    assert.match(adminHome, /<ClubPerformanceWidget canManage \/>/);
-    // D-20: club totals are shown in Player → Club (ClubAtAGlance), not on Player Home.
+  it("Club Performance widget is removed from Admin Home and Player Home; Club Stats lives in Club", () => {
+    assert.doesNotMatch(src("components/AdminDashboard.tsx"), /ClubPerformanceWidget/);
     assert.doesNotMatch(src("components/HomeTab.tsx"), /ClubPerformanceWidget/);
     assert.match(src("components/club/PlayerClubTab.tsx"), /export function ClubAtAGlance\(\)/);
     // Leaderboard & Stats is a Club section; Club Statistics is its first panel.

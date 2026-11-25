@@ -154,7 +154,10 @@ export function BadgesTab({
   };
 
   const handleDeleteBadge = async (badgeId: string) => {
-    await store.deleteBadge(badgeId);
+    const ok = await store.deleteBadge(badgeId);
+    if (!ok) {
+      toast("Could not remove badge.", "error");
+    }
     setConfirmDelete(null);
   };
 

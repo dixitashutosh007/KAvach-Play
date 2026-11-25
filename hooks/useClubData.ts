@@ -35,6 +35,10 @@ import type { Poll, PollResponse, Post } from "@/lib/types";
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { at: number; nonce: number; value: unknown; pending?: Promise<unknown> }>();
 
+export function invalidateClubPostsCache() {
+  cache.delete("club:recentPosts");
+}
+
 /** Test harness store (e2e synthetic sessions); never present in production builds. */
 function testStore(): any | null {
   if (process.env.NODE_ENV === "production" || typeof window === "undefined") return null;

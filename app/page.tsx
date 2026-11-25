@@ -432,7 +432,7 @@ export default function Home() {
     "club",
     "profile",
   ]);
-  const POSTS_TABS = new Set(["home"]);
+  const POSTS_TABS = new Set(["home", "club"]);
   const STATS_TABS = new Set(["club"]); // Home no longer shows the performance summary
   // Shop orders: admin Club (all orders); player Shop, Finance/Payments and Profile
   // payment history (own orders only, filtered by player id below).

@@ -440,3 +440,45 @@ export async function executeAnnouncementDelete({
   }
   return await deleteDirectDoc();
 }
+
+/**
+ * Authoritatively identifies a POTW badge from its `badgeType` or deterministic
+ * `potw_<YYYY-MM-DD>` document id.
+ */
+export function getPotwWeekendIdFromBadge(
+  badgeId: string,
+  badge?: { badgeType?: unknown; weekendId?: unknown } | null,
+): string | null {
+  const isPotw = badge?.badgeType === POTW_BADGE_TYPE || badgeId.startsWith("potw_");
+  if (!isPotw) return null;
+  const raw =
+    typeof badge?.weekendId === "string" && badge.weekendId.trim()
+      ? badge.weekendId.trim()
+      : badgeId.startsWith("potw_")
+        ? badgeId.slice(5)
+        : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
+/**
+ * Routes badge deletion through the POTW API for POTW badges (atomically
+ * removing badge, announcement, and notification) and falls back to direct
+ * deletion only for non-POTW badges.
+ */
+export async function executeBadgeDelete({
+  badgeId,
+  badge,
+  deleteViaPotwApi,
+  deleteDirectDoc,
+}: {
+  badgeId: string;
+  badge?: { badgeType?: unknown; weekendId?: unknown } | null;
+  deleteViaPotwApi: (weekendId: string) => Promise<boolean>;
+  deleteDirectDoc: () => Promise<boolean>;
+}): Promise<boolean> {
+  const weekendId = getPotwWeekendIdFromBadge(badgeId, badge);
+  if (weekendId) {
+    return await deleteViaPotwApi(weekendId);
+  }
+  return await deleteDirectDoc();
+}

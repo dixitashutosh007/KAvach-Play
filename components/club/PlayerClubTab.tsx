@@ -20,7 +20,7 @@ import { Trophy, Award, BarChart3, Activity, Megaphone, ChevronRight, Users, Med
 import { useStore } from "@/hooks/useStore";
 import { useClubStats } from "@/hooks/useClubStats";
 import { useCircuitStandings } from "@/hooks/useCircuitStandings";
-import { CIRCUITS, standingsByCircuit, formatStandingValue } from "@/lib/circuit-standings";
+import { CIRCUITS, standingsByCircuit } from "@/lib/circuit-standings";
 import { useRecentAnnouncements, usePulsePreview } from "@/hooks/useClubData";
 import { computeWinRate, formatWinRate } from "@/lib/club-stats";
 import { CLUB_ANNOUNCEMENT_PREVIEW, CLUB_PULSE_PREVIEW } from "@/lib/club-feed";
@@ -367,7 +367,7 @@ export function ClubAtAGlance() {
         )}
       </div>
       <div className="px-4 py-3" data-testid="club-circuit-standings">
-        <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">Circuit standings</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-2">Club Rankings</p>
         <ul className="grid grid-cols-2 gap-x-3 gap-y-2">
           {CIRCUITS.map((c) => {
             const st = byCircuit[c.key];
@@ -375,15 +375,13 @@ export function ClubAtAGlance() {
               <li key={c.key} className="flex items-start gap-2 min-w-0" data-testid={`club-circuit-${c.key}`}>
                 <Medal className="w-5 h-5 text-muted-gold shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-text-primary leading-tight">{c.scope}</span>
-                  <span className="block text-xs text-text-secondary leading-tight">{c.metric}</span>
+                  <span className="block text-sm font-semibold text-text-primary leading-tight">{c.metric}</span>
                   {st ? (
-                    <span className="block min-w-0" data-testid={`club-circuit-${c.key}-standing`}>
-                      <span className="block text-sm font-black text-scarlet leading-tight tabular-nums">#{st.rank.toLocaleString("en-IN")}</span>
-                      <span className="block text-[11px] text-text-secondary leading-tight">{formatStandingValue(c.key, st.value)}</span>
+                    <span className="block text-sm font-black text-scarlet leading-tight tabular-nums" data-testid={`club-circuit-${c.key}-standing`}>
+                      #{st.rank.toLocaleString("en-IN")}
                     </span>
                   ) : (
-                    <span className="block text-[11px] text-text-muted leading-tight">{circuit.loading ? "Loading…" : "Not available"}</span>
+                    <span className="block text-[11px] text-text-muted leading-tight">{circuit.loading ? "Loading…" : "Not set"}</span>
                   )}
                 </span>
               </li>
@@ -392,10 +390,10 @@ export function ClubAtAGlance() {
         </ul>
         <p className="mt-2 text-xs text-text-secondary" data-testid="club-circuit-note">
           {anySaved
-            ? "KAvach's all-time rank in each circuit."
+            ? "KAvach's official ranking in Bangalore and India."
             : circuit.error
-              ? "Circuit standings couldn't be loaded right now."
-              : "Circuit standings will appear here once the club publishes them."}
+              ? "Club rankings couldn't be loaded right now."
+              : "Club rankings will appear here once the club publishes them."}
         </p>
       </div>
     </section>
