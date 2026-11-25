@@ -61,9 +61,15 @@ export async function executeCatchBatch({
     if (state.succeededPlayerIds.has(pid)) {
       continue;
     }
-    const playerName = getPlayerName(pid);
+    const rawName = getPlayerName(pid);
+    const playerName = typeof rawName === "string" ? rawName.trim() : "";
     if (!playerName) {
-      continue;
+      return {
+        allSucceeded: false,
+        succeededCount,
+        failedPlayerId: pid,
+        errorMessage: `Selected player (${pid}) is no longer available. Remove them or retry once active.`,
+      };
     }
     const idempotencyKey = state.pendingKeys[pid];
     try {

@@ -1483,14 +1483,17 @@ function RecordCatchesModal({
   const [searchQ, setSearchQ] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const isSavingRef = useRef(false);
   const batchStateRef = useRef<CatchBatchState>(createCatchBatchState());
 
   const resetBatchState = () => {
+    if (isSavingRef.current) return;
     batchStateRef.current = createCatchBatchState();
     setSaveError(null);
   };
 
   const handleClose = () => {
+    if (isSavingRef.current || isSaving) return;
     resetBatchState();
     onClose();
   };
@@ -1517,19 +1520,22 @@ function RecordCatchesModal({
     : activePlayers;
 
   const togglePlayer = (id: string) => {
+    if (isSavingRef.current || isSaving) return;
     resetBatchState();
     setSelectedPlayers((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     if (!playerCounts[id]) setPlayerCounts((c) => ({ ...c, [id]: 1 }));
   };
 
   const updateCount = (id: string, delta: number) => {
+    if (isSavingRef.current || isSaving) return;
     resetBatchState();
     setPlayerCounts((c) => ({ ...c, [id]: Math.max(1, (c[id] || 1) + delta) }));
   };
 
   const handleSave = async () => {
-    if (!selectedPlayers.length || isSaving) return;
+    if (!selectedPlayers.length || isSaving || isSavingRef.current) return;
     if (!matchId && !comment.trim()) return;
+    isSavingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
     try {
@@ -1544,12 +1550,14 @@ function RecordCatchesModal({
         recordCatch: store.recordCatch,
       });
       if (result.allSucceeded) {
+        isSavingRef.current = false;
         resetBatchState();
         onClose();
       } else {
         setSaveError(result.errorMessage || "Failed to record catch. Please retry.");
       }
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -1570,18 +1578,24 @@ function RecordCatchesModal({
             <Target className="w-5 h-5 text-emerald-700" />
             Record Catches
           </h3>
-          <button onClick={handleClose} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
+          <button
+            onClick={handleClose}
+            disabled={isSaving}
+            className="text-text-muted hover:text-text-primary p-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex gap-2">
           <button
+            disabled={isSaving}
             onClick={() => {
+              if (isSavingRef.current || isSaving) return;
               resetBatchState();
               setCatchType("stunning");
             }}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
               catchType === "stunning"
                 ? "bg-emerald-600 text-white"
                 : "border border-border text-text-secondary hover:text-text-primary"
@@ -1590,11 +1604,13 @@ function RecordCatchesModal({
             Stunning Catch
           </button>
           <button
+            disabled={isSaving}
             onClick={() => {
+              if (isSavingRef.current || isSaving) return;
               resetBatchState();
               setCatchType("dropped");
             }}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
               catchType === "dropped"
                 ? "bg-rose-600 text-white"
                 : "border border-border text-text-secondary hover:text-text-primary"
@@ -1610,11 +1626,13 @@ function RecordCatchesModal({
           </label>
           <select
             value={matchId}
+            disabled={isSaving}
             onChange={(e) => {
+              if (isSavingRef.current || isSaving) return;
               resetBatchState();
               setMatchId(e.target.value);
             }}
-            className="w-full bg-surface-hover border border-border rounded-xl px-2.5 py-2 text-sm text-text-primary"
+            className="w-full bg-surface-hover border border-border rounded-xl px-2.5 py-2 text-sm text-text-primary disabled:opacity-60"
           >
             <option value="">— Select a match —</option>
             {recentMatches.map((m) => (
@@ -1632,12 +1650,14 @@ function RecordCatchesModal({
           <input
             type="text"
             value={comment}
+            disabled={isSaving}
             onChange={(e) => {
+              if (isSavingRef.current || isSaving) return;
               resetBatchState();
               setComment(e.target.value);
             }}
             placeholder="e.g. Practice session"
-            className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary"
+            className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary disabled:opacity-60"
           />
         </div>
 
@@ -1650,9 +1670,10 @@ function RecordCatchesModal({
             <input
               type="text"
               value={searchQ}
+              disabled={isSaving}
               onChange={(e) => setSearchQ(e.target.value)}
               placeholder="Search players..."
-              className="w-full bg-surface-hover border border-border rounded-xl pl-8 pr-3 py-1.5 text-sm text-text-primary"
+              className="w-full bg-surface-hover border border-border rounded-xl pl-8 pr-3 py-1.5 text-sm text-text-primary disabled:opacity-60"
             />
           </div>
 
@@ -1668,21 +1689,27 @@ function RecordCatchesModal({
                     {p?.name}
                     <span className="font-bold mx-1">x{playerCounts[pid] || 1}</span>
                     <button
-                      className="flex items-center cursor-pointer"
+                      className="flex items-center cursor-pointer disabled:opacity-40"
                       onClick={() => updateCount(pid, -1)}
-                      disabled={(playerCounts[pid] || 1) <= 1}
+                      disabled={isSaving || (playerCounts[pid] || 1) <= 1}
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <button className="flex items-center cursor-pointer" onClick={() => updateCount(pid, 1)}>
+                    <button
+                      className="flex items-center cursor-pointer disabled:opacity-40"
+                      onClick={() => updateCount(pid, 1)}
+                      disabled={isSaving}
+                    >
                       <Plus className="w-3 h-3" />
                     </button>
                     <button
+                      disabled={isSaving}
                       onClick={() => {
+                        if (isSavingRef.current || isSaving) return;
                         resetBatchState();
                         setSelectedPlayers((prev) => prev.filter((x) => x !== pid));
                       }}
-                      className="ml-1 hover:text-text-primary cursor-pointer"
+                      className="ml-1 hover:text-text-primary cursor-pointer disabled:opacity-40"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -1704,6 +1731,7 @@ function RecordCatchesModal({
               >
                 <input
                   type="checkbox"
+                  disabled={isSaving}
                   checked={selectedPlayers.includes(p.id)}
                   onChange={() => togglePlayer(p.id)}
                   className="accent-emerald-600"
