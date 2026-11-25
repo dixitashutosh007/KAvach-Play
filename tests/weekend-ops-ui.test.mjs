@@ -84,6 +84,21 @@ describe("Player of the Weekend banner slide", () => {
   it("ignores ordinary announcements", () => {
     assert.equal(buildPotwSlide([{ id: "n", isAnnouncement: true, text: "x", createdAt: { seconds: NOW / 1000 } }], NOW), null);
   });
+  it("filterBannerAnnouncements removes POTW from CampaignHeroBanner while keeping notices, birthdays, and promos", () => {
+    const { filterBannerAnnouncements } = load("lib/weekend-ops.ts");
+    const notice = { id: "n1", isAnnouncement: true, isPinned: true, title: "Nets", text: "7 AM", createdAt: { seconds: NOW / 1000 } };
+    const slides = buildBannerSlides({
+      announcements: filterBannerAnnouncements([potw("a", 1), notice]),
+      players: [{ id: "b1", name: "Rohit", dob: "1995-11-23" }],
+      isFeatureEnabled: () => true,
+      today,
+      nowMs: NOW,
+    });
+    assert.equal(slides.some((s) => s.kind === "potw"), false);
+    assert.equal(slides.some((s) => s.kind === "notice" && s.targetId === "n1"), true);
+    assert.equal(slides.some((s) => s.kind === "birthday-today"), true);
+    assert.equal(slides.some((s) => s.kind === "promo"), true);
+  });
 });
 
 describe("CricHeroes link on the opponent name", () => {

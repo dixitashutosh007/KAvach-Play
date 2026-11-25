@@ -422,6 +422,11 @@ export function selectPlayerHomePotw<
   };
 }
 
+/** Excludes POTW posts from CampaignHeroBanner so PotwHomeSection is the sole POTW surface on Home. */
+export function filterBannerAnnouncements<T extends { kind?: string }>(posts: readonly T[]): T[] {
+  return posts.filter((p) => p.kind !== "potw");
+}
+
 // ── CricHeroes link ─────────────────────────────────────────────────────────
 
 /**
