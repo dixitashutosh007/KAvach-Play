@@ -5,7 +5,6 @@ import path from "node:path";
 import {
   executeAnnouncementDelete,
   executeBadgeDelete,
-  filterBannerAnnouncements,
   getPotwWeekendIdFromBadge,
   getPotwWeekendIdFromPost,
   selectPlayerHomePotw,
@@ -235,41 +234,12 @@ test("Player Home POTW selector: 7-day expiry, immediate replacement, historical
   assert.equal(selectPlayerHomePotw([unsafePhoto], NOW, toMillis)?.photoURL, undefined);
 });
 
-test("Player Home renders POTW solely in PotwHomeSection (not duplicated in CampaignHeroBanner)", () => {
-  const NOW = Date.parse("2026-11-25T10:00:00Z");
-  const potwPost = {
-    id: "potw_2026-11-21",
-    kind: "potw",
-    isAnnouncement: true,
-    isPinned: false,
-    text: "Aashna — 4 wickets!",
-    createdAt: new Date(NOW - 3600_000).toISOString(),
-    potw: {
-      playerId: "p-aashna",
-      playerName: "Aashna",
-      message: "4 wickets!",
-      weekendId: "2026-11-21",
-      weekendLabel: "Nov 21–22, 2026",
-    },
-  };
-  const pinnedNotice = {
-    id: "notice-1",
-    isAnnouncement: true,
-    isPinned: true,
-    title: "Sunday Nets",
-    text: "7 AM sharp",
-    createdAt: new Date(NOW - 7200_000).toISOString(),
-  };
-  const allPosts = [potwPost, pinnedNotice];
-
-  // Dedicated section receives full posts and shows Aashna
-  assert.equal(selectPlayerHomePotw(allPosts, NOW, toMillis)?.playerName, "Aashna");
-
-  // CampaignHeroBanner receives filterBannerAnnouncements(posts) which excludes POTW while keeping notices
-  const bannerAnnouncements = filterBannerAnnouncements(allPosts);
-  assert.deepEqual(bannerAnnouncements.map((p) => p.id), ["notice-1"]);
-
+test("Player Home consolidates POTW into CampaignHeroBanner with live nowMs expiry and no standalone card", () => {
   const homeTabSrc = fs.readFileSync(path.join(root, "components/HomeTab.tsx"), "utf8");
-  assert.match(homeTabSrc, /<CampaignHeroBanner[\s\S]*announcements=\{bannerAnnouncements\}/);
-  assert.match(homeTabSrc, /<PotwHomeSection posts=\{posts\} nowMs=\{nowMs\} \/>/);
+  const heroSrc = fs.readFileSync(path.join(root, "components/home/CampaignHeroBanner.tsx"), "utf8");
+
+  assert.doesNotMatch(homeTabSrc, /PotwHomeSection|filterBannerAnnouncements/);
+  assert.match(homeTabSrc, /<CampaignHeroBanner[\s\S]*announcements=\{posts\}[\s\S]*nowMs=\{nowMs\}/);
+  assert.match(heroSrc, /buildBannerSlides\(\{ announcements, players, appConfig, isFeatureEnabled, today, nowMs \}\)/);
+  assert.equal(fs.existsSync(path.join(root, "components/home/PotwHomeSection.tsx")), false);
 });

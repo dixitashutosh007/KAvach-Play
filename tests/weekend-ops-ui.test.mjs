@@ -84,20 +84,35 @@ describe("Player of the Weekend banner slide", () => {
   it("ignores ordinary announcements", () => {
     assert.equal(buildPotwSlide([{ id: "n", isAnnouncement: true, text: "x", createdAt: { seconds: NOW / 1000 } }], NOW), null);
   });
-  it("filterBannerAnnouncements removes POTW from CampaignHeroBanner while keeping notices, birthdays, and promos", () => {
-    const { filterBannerAnnouncements } = load("lib/weekend-ops.ts");
+  it("excludes historical, missing/invalid createdAt, and expires on advancing nowMs without posts changing", () => {
     const notice = { id: "n1", isAnnouncement: true, isPinned: true, title: "Nets", text: "7 AM", createdAt: { seconds: NOW / 1000 } };
-    const slides = buildBannerSlides({
-      announcements: filterBannerAnnouncements([potw("a", 1), notice]),
+    const active = potw("potw_2026-11-21", 24, { isPinned: true }); // pinned POTW still yields only 1 slide
+    const historical = potw("potw_2026-11-07", 1, { historical: true });
+    const missingTs = potw("potw_bad", 1, { createdAt: undefined });
+
+    const slidesBefore = buildBannerSlides({
+      announcements: [active, historical, missingTs, notice],
       players: [{ id: "b1", name: "Rohit", dob: "1995-11-23" }],
       isFeatureEnabled: () => true,
       today,
       nowMs: NOW,
     });
-    assert.equal(slides.some((s) => s.kind === "potw"), false);
-    assert.equal(slides.some((s) => s.kind === "notice" && s.targetId === "n1"), true);
-    assert.equal(slides.some((s) => s.kind === "birthday-today"), true);
-    assert.equal(slides.some((s) => s.kind === "promo"), true);
+    assert.equal(slidesBefore.filter((s) => s.kind === "potw").length, 1);
+    assert.equal(slidesBefore.find((s) => s.kind === "potw")?.potw?.playerName, "Rohan Mehta");
+    assert.equal(slidesBefore.some((s) => s.kind === "notice" && s.targetId === "n1"), true);
+    assert.equal(slidesBefore.some((s) => s.kind === "birthday-today"), true);
+    assert.equal(slidesBefore.some((s) => s.kind === "promo"), true);
+
+    // Advance nowMs past 7 days without modifying announcements -> POTW expires cleanly
+    const slidesAfter7d = buildBannerSlides({
+      announcements: [active, notice],
+      players: [{ id: "b1", name: "Rohit", dob: "1995-11-23" }],
+      isFeatureEnabled: () => true,
+      today,
+      nowMs: NOW + 6 * 24 * 3600_000,
+    });
+    assert.equal(slidesAfter7d.some((s) => s.kind === "potw"), false);
+    assert.equal(slidesAfter7d.some((s) => s.kind === "notice" && s.targetId === "n1"), true);
   });
 });
 

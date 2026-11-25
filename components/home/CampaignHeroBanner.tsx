@@ -59,6 +59,7 @@ export function CampaignHeroBanner({
   appConfig,
   isFeatureEnabled,
   onNavigate,
+  nowMs,
 }: {
   announcements?: Post[];
   players?: Player[];
@@ -66,6 +67,7 @@ export function CampaignHeroBanner({
   appConfig?: AppConfig | null;
   isFeatureEnabled: (key: any) => boolean;
   onNavigate: (tab: string, targetId?: string) => void;
+  nowMs?: number;
 }) {
   const prefersReducedMotion = useReducedMotion();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -105,8 +107,8 @@ export function CampaignHeroBanner({
   }, []);
 
   const allSlides = useMemo(
-    () => buildBannerSlides({ announcements, players, appConfig, isFeatureEnabled, today }),
-    [announcements, players, appConfig, isFeatureEnabled, today],
+    () => buildBannerSlides({ announcements, players, appConfig, isFeatureEnabled, today, nowMs }),
+    [announcements, players, appConfig, isFeatureEnabled, today, nowMs],
   );
   const slides = useMemo(() => visibleSlides(allSlides, dismissed), [allSlides, dismissed]);
   const slideCount = slides.length;

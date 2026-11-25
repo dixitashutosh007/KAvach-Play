@@ -42,8 +42,6 @@ import { availabilityBlockMessage, PROFILE_LINK_MESSAGES } from "@/lib/profile-l
 // Modular Phase 2.1 Subcomponents
 import { PlayerHomeHeader } from "./home/PlayerHomeHeader";
 import { CampaignHeroBanner } from "./home/CampaignHeroBanner";
-import { PotwHomeSection } from "./home/PotwHomeSection";
-import { filterBannerAnnouncements } from "@/lib/weekend-ops";
 import { PersonalPaymentCard } from "./home/PersonalPaymentCard";
 import { UpcomingMatchesSection } from "./home/UpcomingMatchesSection";
 import { JerseyInfographic } from "./matches/JerseyInfographic";
@@ -100,13 +98,6 @@ export function HomeTab({
   // Announcement publishing/editing and Club Performance management are Admin
   // persona only (D-16/D-18). D-20: members read announcements and club totals
   // in the Club tab; Home links there.
-
-  // Dedicated PotwHomeSection is the sole POTW surface on Player Home;
-  // exclude POTW posts from CampaignHeroBanner to prevent duplicate/stale slides.
-  const bannerAnnouncements = useMemo(
-    () => filterBannerAnnouncements(posts),
-    [posts],
-  );
 
   // Feature gate helper
   const isFeatureEnabled = (key: any) => {
@@ -451,16 +442,14 @@ export function HomeTab({
 
           {/* Campaign-Led Hero Banner */}
           <CampaignHeroBanner
-            announcements={bannerAnnouncements}
+            announcements={posts}
             players={players}
             currentUserId={currentUserId}
             appConfig={appConfig}
             isFeatureEnabled={isFeatureEnabled}
             onNavigate={handleNavigate}
+            nowMs={nowMs}
           />
-
-          {/* Dedicated Player of the Week Announcement (7-day window, live replacement) */}
-          <PotwHomeSection posts={posts} nowMs={nowMs} />
 
           {/* Personal Payment Summary (Pay Now uses the existing payments flow) */}
           <PersonalPaymentCard
