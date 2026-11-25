@@ -616,7 +616,7 @@ export default function Home() {
   }
 
 
-  if (!store.isLoaded) {
+  if (!store.isLoaded || !store.playersLoaded || store.selfAppUserStatus === "loading") {
     if (quotaExceeded) {
       return <QuotaExceededScreen themeStyles={themeStyles} />;
     }
@@ -654,10 +654,9 @@ export default function Home() {
         throw new Error(data.error || "Failed to link player account");
       }
 
+      store.applyLinkedPlayerId(user.uid, data.playerId || existingMatch.id);
+      setProfileSyncDismissed(true);
       toast("Profile linked successfully!", "success");
-      if (typeof window !== "undefined") {
-        window.location.reload();
-      }
     } catch (err: any) {
       console.error("Error syncing profile:", err);
       toast(err.message || "Failed to sync your profile. Please try again.", "error");

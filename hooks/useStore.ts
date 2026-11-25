@@ -216,6 +216,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       if (ts.posts) setPosts(ts.posts);
       if (ts.appConfig) setAppConfig(ts.appConfig);
       if (ts.appUsers) setAppUsers(ts.appUsers);
+      setSelfAppUserStatus(ts.selfAppUserStatus || (ts.appUsers ? "present" : "missing"));
       if (ts.subscriptionPlans) setSubscriptionPlans(ts.subscriptionPlans);
       if (ts.subscriptionHistory) setSubscriptionHistory(ts.subscriptionHistory);
       if (ts.notifications) setNotifications(ts.notifications);
@@ -2909,6 +2910,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     return otherFees.filter((fee) => players.some((pl) => pl.id === fee.playerId));
   }, [otherFees, players]);
 
+  const applyLinkedPlayerId = useCallback((uid: string, playerId: string, email?: string) => {
+    setAppUsers((prev) => {
+      const idx = prev.findIndex((u) => u.id === uid);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], playerId };
+        return next;
+      }
+      return [...prev, { id: uid, email: email || "", role: "player", playerId }];
+    });
+    setSelfAppUserStatus("present");
+  }, []);
+
   return {
     grounds,
     addGround,
@@ -3029,6 +3043,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     isLoaded,
     matchesError,
     selfAppUserStatus,
+    applyLinkedPlayerId,
     playersLoaded,
     refreshData,
     refreshNonce,
