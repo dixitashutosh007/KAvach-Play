@@ -1,7 +1,8 @@
 "use client";
 
 import { useStore } from "@/hooks/useStore";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { createCatchBatchState, executeCatchBatch, type CatchBatchState } from "@/lib/catch-batch";
 import { Match, Player } from "@/lib/types";
 import {
   IndianRupee,
@@ -1481,6 +1482,18 @@ function RecordCatchesModal({
   const [comment, setComment] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const batchStateRef = useRef<CatchBatchState>(createCatchBatchState());
+
+  const resetBatchState = () => {
+    batchStateRef.current = createCatchBatchState();
+    setSaveError(null);
+  };
+
+  const handleClose = () => {
+    resetBatchState();
+    onClose();
+  };
 
   const activePlayers = useMemo(
     () =>
@@ -1504,34 +1517,38 @@ function RecordCatchesModal({
     : activePlayers;
 
   const togglePlayer = (id: string) => {
+    resetBatchState();
     setSelectedPlayers((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     if (!playerCounts[id]) setPlayerCounts((c) => ({ ...c, [id]: 1 }));
   };
 
   const updateCount = (id: string, delta: number) => {
+    resetBatchState();
     setPlayerCounts((c) => ({ ...c, [id]: Math.max(1, (c[id] || 1) + delta) }));
   };
 
   const handleSave = async () => {
-    if (!selectedPlayers.length) return;
+    if (!selectedPlayers.length || isSaving) return;
     if (!matchId && !comment.trim()) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
-      for (const pid of selectedPlayers) {
-        const player = activePlayers.find((p) => p.id === pid);
-        if (!player) continue;
-        await store.recordCatch({
-          playerId: pid,
-          playerName: player.name,
-          type: catchType,
-          count: playerCounts[pid] || 1,
-          matchId: matchId || undefined,
-          comment: comment.trim() || undefined,
-          recordedBy: "admin",
-        });
+      const result = await executeCatchBatch({
+        selectedPlayers,
+        state: batchStateRef.current,
+        catchType,
+        playerCounts,
+        matchId,
+        comment,
+        getPlayerName: (pid) => activePlayers.find((p) => p.id === pid)?.name || null,
+        recordCatch: store.recordCatch,
+      });
+      if (result.allSucceeded) {
+        resetBatchState();
+        onClose();
+      } else {
+        setSaveError(result.errorMessage || "Failed to record catch. Please retry.");
       }
-      onClose();
-    } catch {
     } finally {
       setIsSaving(false);
     }
@@ -1542,7 +1559,7 @@ function RecordCatchesModal({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="bg-surface rounded-2xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl"
@@ -1553,14 +1570,17 @@ function RecordCatchesModal({
             <Target className="w-5 h-5 text-emerald-700" />
             Record Catches
           </h3>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
+          <button onClick={handleClose} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex gap-2">
           <button
-            onClick={() => setCatchType("stunning")}
+            onClick={() => {
+              resetBatchState();
+              setCatchType("stunning");
+            }}
             className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
               catchType === "stunning"
                 ? "bg-emerald-600 text-white"
@@ -1570,7 +1590,10 @@ function RecordCatchesModal({
             Stunning Catch
           </button>
           <button
-            onClick={() => setCatchType("dropped")}
+            onClick={() => {
+              resetBatchState();
+              setCatchType("dropped");
+            }}
             className={`flex-1 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
               catchType === "dropped"
                 ? "bg-rose-600 text-white"
@@ -1587,7 +1610,10 @@ function RecordCatchesModal({
           </label>
           <select
             value={matchId}
-            onChange={(e) => setMatchId(e.target.value)}
+            onChange={(e) => {
+              resetBatchState();
+              setMatchId(e.target.value);
+            }}
             className="w-full bg-surface-hover border border-border rounded-xl px-2.5 py-2 text-sm text-text-primary"
           >
             <option value="">— Select a match —</option>
@@ -1606,7 +1632,10 @@ function RecordCatchesModal({
           <input
             type="text"
             value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            onChange={(e) => {
+              resetBatchState();
+              setComment(e.target.value);
+            }}
             placeholder="e.g. Practice session"
             className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-sm text-text-primary"
           />
@@ -1649,7 +1678,10 @@ function RecordCatchesModal({
                       <Plus className="w-3 h-3" />
                     </button>
                     <button
-                      onClick={() => setSelectedPlayers((prev) => prev.filter((x) => x !== pid))}
+                      onClick={() => {
+                        resetBatchState();
+                        setSelectedPlayers((prev) => prev.filter((x) => x !== pid));
+                      }}
                       className="ml-1 hover:text-text-primary cursor-pointer"
                     >
                       <X className="w-3 h-3" />
@@ -1681,6 +1713,12 @@ function RecordCatchesModal({
             ))}
           </div>
         </div>
+
+        {saveError && (
+          <p className="text-xs font-semibold text-red-600" role="alert">
+            {saveError}
+          </p>
+        )}
 
         <button
           onClick={handleSave}
