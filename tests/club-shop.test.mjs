@@ -30,10 +30,11 @@ describe("Admin: Shop management is available regardless of the player-facing sw
   it("Finance-only admins do not get Club → Shop", () => {
     assert.ok(!getVisibleClubSections({ isSuperAdmin: false, isClubAdmin: false, isFinanceAdmin: true }).includes("shop"));
   });
-  it("Club tab renders the management panel + Club Menu; toggle goes through the server route", () => {
+  it("Club tab renders the management panel + consolidated section tablist (no duplicate menu); toggle goes through the server route", () => {
     const tab = src("components/ClubTab.tsx");
     assert.match(tab, /<ClubShopPanel/);
-    assert.match(tab, /data-testid="club-menu-button"/);
+    assert.match(tab, /data-testid="club-sub-tabs"/);
+    assert.doesNotMatch(tab, /club-menu-button|ClubMenu/);
     assert.match(src("components/club/ClubShopPanel.tsx"), /apiFetch\("\/api\/admin\/shop"/);
     assert.match(src("app/api/admin/shop/route.ts"), /const guard = await requireClubAdmin\(req\);/);
   });

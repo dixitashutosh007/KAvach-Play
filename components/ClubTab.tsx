@@ -14,7 +14,7 @@
  */
 import { useEffect, useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, Trophy, Award, Video, Megaphone, MoreHorizontal, X, ChevronRight } from "lucide-react";
+import { Users, ShoppingBag, PieChart, Trophy, Award, Video, Megaphone } from "lucide-react";
 import { ClubShopPanel, type ShopAdminView } from "@/components/club/ClubShopPanel";
 import { AccessDenied } from "@/components/ui/AccessDenied";
 import dynamic from "next/dynamic";
@@ -40,6 +40,16 @@ const SECTION_ICONS: Record<ClubSection, typeof Users> = {
   leaderboard: Trophy,
   badges: Award,
   shop: ShoppingBag,
+};
+
+const COMPACT_LABELS: Record<ClubSection, string> = {
+  players: "Roster",
+  studio: "Studio",
+  announcements: "Notices",
+  pulse: "Pulse",
+  leaderboard: "Stats",
+  badges: "Badges",
+  shop: "Shop",
 };
 
 export function ClubTab({
@@ -86,7 +96,6 @@ export function ClubTab({
 
   const visibleTabs = CLUB_SECTIONS.filter((s) => sections.includes(s.key));
   const show = (key: ClubSection) => !denied && subTab === key && sections.includes(key);
-  const [menuOpen, setMenuOpen] = useState(false);
   const shopViewFromAction = (a: string | null): ShopAdminView | null =>
     a === "products" || a === "orders" || a === "reports" || a === "store" ? a : null;
   const [shopView, setShopView] = useState<ShopAdminView | null>(shopViewFromAction(initial.subAction));
@@ -94,63 +103,44 @@ export function ClubTab({
   useEffect(() => {
     if (subTab === "shop") setShopView(shopViewFromAction(subAction));
   }, [subTab, subAction]);
-  const openSection = (key: ClubSection) => {
-    setSubTab(key);
-    setSubAction(null);
-    setDenied(null);
-    setMenuOpen(false);
-  };
 
   return (
     <div className="space-y-4" data-testid="admin-club">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-black font-heading text-text-primary tracking-tight">Club</h1>
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          aria-label="Open Club Menu"
-          aria-haspopup="dialog"
-          data-testid="club-menu-button"
-          className="w-11 h-11 rounded-full border border-border bg-surface flex items-center justify-center text-text-primary hover:bg-surface-hover cursor-pointer"
-        >
-          <MoreHorizontal className="w-5 h-5" />
-        </button>
       </div>
-      {menuOpen && (
-        <ClubMenu
-          items={visibleTabs.map(({ key, label }) => ({ key, label: key === "shop" ? "Club Shop" : key === "players" ? "Club Operations · Roster" : label, icon: SECTION_ICONS[key] }))}
-          active={!denied ? subTab : null}
-          onSelect={openSection}
-          onClose={() => setMenuOpen(false)}
-        />
-      )}
+
       <div
         role="tablist"
         aria-label="Club sections"
-        className="flex bg-surface-hover rounded-lg p-1 border border-border overflow-x-auto no-scrollbar"
+        className="flex flex-wrap items-center gap-1.5 bg-surface rounded-2xl p-1.5 border border-border shadow-xs"
         data-testid="club-sub-tabs"
       >
         {visibleTabs.map(({ key, label }) => {
           const Icon = SECTION_ICONS[key];
+          const isActive = !denied && subTab === key;
           return (
             <button
               key={key}
+              type="button"
               role="tab"
-              aria-selected={!denied && subTab === key}
+              aria-selected={isActive}
+              aria-label={label}
               data-testid={`club-sub-tab-${key}`}
               onClick={() => {
                 setSubTab(key);
                 setSubAction(null);
                 setDenied(null);
               }}
-              className={`shrink-0 min-h-[40px] text-[10px] font-bold uppercase py-2 px-3 rounded-md transition flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
-                !denied && subTab === key
-                  ? "bg-accent text-text-accent"
-                  : "text-text-muted hover:text-text-primary"
+              className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                isActive
+                  ? "bg-[#A30F2D] text-white shadow-xs"
+                  : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
               }`}
             >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              {label}
+              <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span className="sm:hidden">{COMPACT_LABELS[key]}</span>
+              <span className="hidden sm:inline">{label}</span>
             </button>
           );
         })}
@@ -219,54 +209,6 @@ export function ClubTab({
           <ShopTab key={`${shopView || "store"}-${shopOpenCount}`} store={store} persona="admin" isAdmin={isClubAdmin} initialView={shopView || undefined} />
         </div>
       )}
-    </div>
-  );
-}
-
-/** Club Menu — one sheet listing the Club sections this admin may use (incl. Club Shop). */
-function ClubMenu({
-  items,
-  active,
-  onSelect,
-  onClose,
-}: {
-  items: { key: ClubSection; label: string; icon: typeof Users }[];
-  active: ClubSection | null;
-  onSelect: (key: ClubSection) => void;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-start sm:justify-end bg-black/40 sm:p-4" role="dialog" aria-modal="true" aria-label="Club Menu" data-testid="club-menu" onClick={onClose}>
-      <div className="w-full sm:w-80 sm:mt-16 rounded-t-3xl sm:rounded-2xl bg-surface shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
-          <h2 className="text-base font-black text-text-primary">Club Menu</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 -mr-2 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-hover cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <ul className="pb-3">
-          {items.map(({ key, label, icon: Icon }) => (
-            <li key={key}>
-              <button
-                type="button"
-                onClick={() => onSelect(key)}
-                data-testid={`club-menu-${key}`}
-                aria-current={active === key ? "page" : undefined}
-                className={`w-full min-h-[48px] px-4 flex items-center gap-3 text-left cursor-pointer ${active === key ? "bg-brand-surface text-scarlet" : "text-text-primary hover:bg-surface-hover"}`}
-              >
-                <Icon className="w-5 h-5 shrink-0" aria-hidden="true" />
-                <span className="flex-1 text-sm font-semibold">{label}</span>
-                <ChevronRight className="w-4 h-4 shrink-0 opacity-70" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
     </div>
   );
 }
