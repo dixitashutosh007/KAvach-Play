@@ -10,7 +10,12 @@
  * and the admin manually selects the destination chat/group and presses Send.
  */
 import type { Ground, Match, MatchPayment, Player } from "./types";
-import { formatWhatsAppDigits, parseMatchKolkataMs, resolveMatchCaptain } from "./match-captain.ts";
+import {
+  formatWhatsAppDigits,
+  isEligibleCaptainPlayer,
+  parseMatchKolkataMs,
+  resolveMatchCaptain,
+} from "./match-captain.ts";
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
@@ -74,14 +79,32 @@ export function formatMatchDateTimeKolkata(dateStr: string, timeStr?: string): s
 }
 
 /**
+ * Filters match payment records for the Player Match Detail squad list.
+ * Explicit negative participation states (`status === "Not Playing"` or
+ * `availability === "No"`) always take precedence and exclude the record.
+ */
+export function filterPlayerDetailSquadPayments<
+  T extends Pick<MatchPayment, "status" | "availability">,
+>(matchPayments: readonly T[]): T[] {
+  return matchPayments.filter(
+    (p) => p.status !== "Not Playing" && p.availability !== "No",
+  );
+}
+
+/**
  * Resolves the canonical squad recipients for a match:
- * - Includes all active club players in the match squad (`status !== "Not Playing"`
- *   or present in `match.squadPlayerIds` if provided), regardless of payment status
- *   or whether a payment record exists.
- * - Excludes players explicitly marked `Not Playing` (`status === "Not Playing"` or
- *   `availability === "No"`).
- * - Excludes guest records (`guestName` set) and disabled/merged players.
- * - Deduplicates by canonical `playerId`.
+ *
+ * Precedence & exclusion rules:
+ * 1. Explicit negative participation (`status === "Not Playing"` or
+ *    `availability === "No"`) on any non-guest payment record always takes
+ *    precedence and prevents inclusion, even if the player also appears in
+ *    `match.squadPlayerIds` or another record.
+ * 2. Includes active squad players (`status !== "Not Playing"` and
+ *    `availability !== "No"`) and eligible players in `match.squadPlayerIds`
+ *    who do not have a payment record (e.g. direct squad membership).
+ * 3. Excludes guest records (`guestName` set), disabled, merged, rejected, and
+ *    pending-signup player records.
+ * 4. Deduplicates by canonical `playerId`.
  */
 export function resolveMatchSquadRecipients(
   match: Match & { squadPlayerIds?: string[] },
@@ -94,10 +117,8 @@ export function resolveMatchSquadRecipients(
   const squadPlayerIds = new Set<string>();
 
   for (const pay of paymentsForMatch) {
-    if (pay.availability === "No" || pay.status === "Not Playing") {
-      if (pay.availability === "No") {
-        explicitlyOutPlayerIds.add(pay.playerId);
-      }
+    if (pay.status === "Not Playing" || pay.availability === "No") {
+      explicitlyOutPlayerIds.add(pay.playerId);
       continue;
     }
     squadPlayerIds.add(pay.playerId);
@@ -105,8 +126,9 @@ export function resolveMatchSquadRecipients(
 
   if (Array.isArray(match.squadPlayerIds)) {
     for (const pid of match.squadPlayerIds) {
-      if (typeof pid === "string" && pid.trim() && !explicitlyOutPlayerIds.has(pid.trim())) {
-        squadPlayerIds.add(pid.trim());
+      const cleanPid = typeof pid === "string" ? pid.trim() : "";
+      if (cleanPid && !explicitlyOutPlayerIds.has(cleanPid)) {
+        squadPlayerIds.add(cleanPid);
       }
     }
   }
@@ -118,11 +140,7 @@ export function resolveMatchSquadRecipients(
   for (const pid of squadPlayerIds) {
     if (explicitlyOutPlayerIds.has(pid)) continue;
     const player = players.find(
-      (pl) =>
-        pl.id === pid &&
-        !pl.disabled &&
-        !pl.mergedInto &&
-        pl.mergeStatus !== "in_progress",
+      (pl) => pl.id === pid && isEligibleCaptainPlayer(pl),
     );
     if (!player) continue;
 

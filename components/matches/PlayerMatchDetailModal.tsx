@@ -20,6 +20,7 @@ import { JerseyInfographic, getJerseyDetails } from "./JerseyInfographic";
 import { getMatchResultDisplay } from "./matchResult";
 import { MatchOpponentName } from "./MatchCardHeader";
 import { cricHeroesHref } from "@/lib/weekend-ops";
+import { filterPlayerDetailSquadPayments } from "@/lib/squad-notify";
 import { AvailabilityButtons, toAvailabilityChoice } from "./AvailabilityButtons";
 import {
   PersonalPaymentStatusResult,
@@ -84,9 +85,8 @@ export function PlayerMatchDetailModal({
   const formattedTime = formatMatchDisplayTime(match.time);
   const reportingTime = computeReportingTime(match.time);
 
-  // Filter squad members (players associated with this match)
-  const squadMembers = matchPayments
-    .filter((p) => p.status !== "Not Playing" || p.availability === "Confirmed" || p.availability === "Tentative")
+  // Filter squad members (explicit negative participation states always exclude)
+  const squadMembers = filterPlayerDetailSquadPayments(matchPayments)
     .map((p) => {
       const playerRecord = allPlayers.find((pl) => pl.id === p.playerId);
       const displayName = p.guestName || playerRecord?.name || "Player";

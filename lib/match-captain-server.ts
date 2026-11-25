@@ -11,6 +11,7 @@
  * - Writes an authoritative server audit log entry.
  */
 import { FieldValue } from "firebase-admin/firestore";
+import { isEligibleCaptainPlayer } from "./match-captain.ts";
 import { actorNameFor, writeServerAudit } from "./server-audit.ts";
 
 export class MatchCaptainHttpError extends Error {
@@ -62,12 +63,7 @@ export async function assignMatchCaptainTx(
         throw new MatchCaptainHttpError(404, "Selected captain player record not found.");
       }
       const pData = playerSnap.data() || {};
-      if (
-        pData.disabled ||
-        pData.mergedInto ||
-        pData.mergeStatus === "in_progress" ||
-        pData.inviteStatus === "Rejected"
-      ) {
+      if (!isEligibleCaptainPlayer(pData)) {
         throw new MatchCaptainHttpError(
           400,
           "Selected player is inactive or unavailable and cannot be assigned as captain.",

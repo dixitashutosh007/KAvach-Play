@@ -88,6 +88,7 @@ import { runBulkOperations } from "@/lib/bulk-operations";
 import { CaptainSelector } from "./matches/CaptainSelector";
 import { SquadNotifyModal } from "./matches/SquadNotifyModal";
 import {
+  getKolkataDayKey,
   getUpcomingMatchesMissingCaptain,
   resolveMatchCaptain,
   shouldShowFridayCaptainReminder,
@@ -222,6 +223,7 @@ export function MatchesTab({
       const targetMatchId = defaultAction.replace("edit_", "");
       const match = store.matches.find((m) => m.id === targetMatchId);
       if (match) {
+        setSelectedMatch(null);
         startEdit(match);
       }
     }
@@ -284,6 +286,23 @@ export function MatchesTab({
   }, [store.grounds, formData.groundId]);
 
   const [notifyModalMatch, setNotifyModalMatch] = useState<Match | null>(null);
+  const [kolkataNowMs, setKolkataNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const syncDay = () => {
+      const now = Date.now();
+      setKolkataNowMs((prev) =>
+        getKolkataDayKey(prev) === getKolkataDayKey(now) ? prev : now,
+      );
+    };
+    window.addEventListener("focus", syncDay);
+    document.addEventListener("visibilitychange", syncDay);
+    const id = window.setInterval(syncDay, 60_000);
+    return () => {
+      window.removeEventListener("focus", syncDay);
+      document.removeEventListener("visibilitychange", syncDay);
+      window.clearInterval(id);
+    };
+  }, []);
   // Match finances closed (Manage Match → Finance): the fee basis is locked
   // (also enforced by Firestore rules); other match details stay editable.
   const editingFinanceClosed = !!editingId && store.matches.find((m) => m.id === editingId)?.financeStatus === "closed";
@@ -1174,8 +1193,8 @@ export function MatchesTab({
               <MatchToolbar store={store} />
             )}
 
-            {isAdmin && !isAdding && shouldShowFridayCaptainReminder(store.matches, isAdmin) && (() => {
-              const missingCap = getUpcomingMatchesMissingCaptain(store.matches);
+            {isAdmin && !isAdding && shouldShowFridayCaptainReminder(store.matches, isAdmin, kolkataNowMs) && (() => {
+              const missingCap = getUpcomingMatchesMissingCaptain(store.matches, kolkataNowMs);
               return (
                 <div
                   data-testid="friday-captain-reminder"

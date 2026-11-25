@@ -5,7 +5,9 @@ import path from "node:path";
 import {
   buildCaptainWhatsAppUrl,
   getEligibleCaptainPlayers,
+  getKolkataDayKey,
   getUpcomingMatchesMissingCaptain,
+  isEligibleCaptainPlayer,
   isFridayInKolkata,
   resolveMatchCaptain,
   shouldShowFridayCaptainReminder,
@@ -14,6 +16,7 @@ import {
   buildDefaultSquadNotifyMessage,
   buildSquadWhatsAppMessage,
   buildSquadWhatsAppUrl,
+  filterPlayerDetailSquadPayments,
   getMatchesWithinNext48Hours,
   resolveMatchSquadRecipients,
 } from "../lib/squad-notify.ts";
@@ -43,12 +46,16 @@ const makeMatch = (overrides = {}) => ({
   ...overrides,
 });
 
-test("Captain assignment: eligible list is not restricted to squad and handles missing/inactive/legacy matches safely", () => {
+test("Captain assignment: unified client/server eligibility policy and missing/inactive/legacy matches", () => {
   const players = [
-    makePlayer({ id: "p_active_1", name: "Arjun" }),
-    makePlayer({ id: "p_active_2", name: "Bharat", inviteStatus: "Accepted" }),
+    makePlayer({ id: "p_verified", name: "Arjun", inviteStatus: "Verified" }),
+    makePlayer({ id: "p_accepted", name: "Bharat", inviteStatus: "Accepted" }),
+    makePlayer({ id: "p_invited", name: "Chetan", inviteStatus: "Invited" }),
+    makePlayer({ id: "p_unverified", name: "Deepak", inviteStatus: "Unverified" }),
     makePlayer({ id: "p_disabled", name: "Disabled", disabled: true }),
-    makePlayer({ id: "p_merged", name: "Merged", mergedInto: "p_active_1" }),
+    makePlayer({ id: "p_merged", name: "Merged", mergedInto: "p_verified" }),
+    makePlayer({ id: "p_merging", name: "Merging", mergeStatus: "in_progress" }),
+    makePlayer({ id: "p_merge_done", name: "MergeDone", mergeStatus: "completed" }),
     makePlayer({ id: "p_rejected", name: "Rejected", inviteStatus: "Rejected" }),
     makePlayer({ id: "p_pending", name: "Pending", inviteStatus: "Pending" }),
   ];
@@ -56,22 +63,30 @@ test("Captain assignment: eligible list is not restricted to squad and handles m
   const eligible = getEligibleCaptainPlayers(players);
   assert.deepEqual(
     eligible.map((p) => p.id),
-    ["p_active_1", "p_active_2"],
+    ["p_verified", "p_accepted", "p_invited", "p_unverified"],
   );
+  for (const p of players) {
+    assert.equal(
+      isEligibleCaptainPlayer(p),
+      eligible.some((e) => e.id === p.id),
+      `Server/client eligibility parity failed for ${p.id}`,
+    );
+  }
 
   // Legacy match without captainId
   assert.equal(resolveMatchCaptain(makeMatch(), players), null);
 
   // Active captain resolves cleanly
   assert.deepEqual(
-    resolveMatchCaptain(makeMatch({ captainId: "p_active_2" }), players),
-    { id: "p_active_2", name: "Bharat", mobile: "9876543210" },
+    resolveMatchCaptain(makeMatch({ captainId: "p_accepted" }), players),
+    { id: "p_accepted", name: "Bharat", mobile: "9876543210" },
   );
 
-  // Deleted or disabled captain returns null without silently substituting another player
+  // Deleted or disabled/merged captain returns null without silently substituting another player
   assert.equal(resolveMatchCaptain(makeMatch({ captainId: "p_deleted" }), players), null);
   assert.equal(resolveMatchCaptain(makeMatch({ captainId: "p_disabled" }), players), null);
   assert.equal(resolveMatchCaptain(makeMatch({ captainId: "p_merged" }), players), null);
+  assert.equal(resolveMatchCaptain(makeMatch({ captainId: "p_merge_done" }), players), null);
 });
 
 test("Player Contact Captain WhatsApp URL formatting and missing/invalid phone handling", () => {
@@ -112,6 +127,8 @@ test("Friday Captain Reminder uses Asia/Kolkata timezone and clears when captain
   assert.equal(isFridayInKolkata(friStartIst), true);
   assert.equal(isFridayInKolkata(friEndIst), true);
   assert.equal(isFridayInKolkata(satStartIst), false);
+  assert.equal(getKolkataDayKey(friEndIst), "2026-11-27");
+  assert.equal(getKolkataDayKey(satStartIst), "2026-11-28");
 
   const mNoCap = makeMatch({ id: "m_nocap", date: "2026-11-28", time: "09:00" });
   const mWithCap = makeMatch({ id: "m_cap", date: "2026-11-29", time: "09:00", captainId: "p1" });
@@ -208,4 +225,50 @@ test("UI wiring: CAP marker, Contact Captain, and shared SquadNotifyModal in Adm
   assert.match(matchesTabSrc, /match-center-notify-48h/);
   assert.match(adminDashSrc, /<SquadNotifyModal/);
   assert.match(adminDashSrc, /friday-captain-reminder/);
+});
+
+test("Remediation A: squadPlayerIds cannot reintroduce Not Playing or No players, and rejects ineligible players", () => {
+  const m = makeMatch({
+    id: "m_rem_a",
+    squadPlayerIds: ["p_not_playing", "p_avail_no", "p_direct_only", "p_dup", "p_rejected", "p_disabled", "p_merged"],
+  });
+  const players = [
+    makePlayer({ id: "p_not_playing", name: "NotPlaying", mobile: "9876500011" }),
+    makePlayer({ id: "p_avail_no", name: "AvailNo", mobile: "9876500012" }),
+    makePlayer({ id: "p_direct_only", name: "DirectOnly", mobile: "+447911123456" }),
+    makePlayer({ id: "p_dup", name: "Duplicate", mobile: "9876500014" }),
+    makePlayer({ id: "p_rejected", name: "Rejected", mobile: "9876500015", inviteStatus: "Rejected" }),
+    makePlayer({ id: "p_disabled", name: "Disabled", mobile: "9876500016", disabled: true }),
+    makePlayer({ id: "p_merged", name: "Merged", mobile: "9876500017", mergedInto: "p_dup" }),
+  ];
+  const payments = [
+    { id: "pay1", matchId: "m_rem_a", playerId: "p_not_playing", status: "Not Playing", availability: "Confirmed" },
+    { id: "pay2", matchId: "m_rem_a", playerId: "p_avail_no", status: "Unpaid", availability: "No" },
+    { id: "pay3", matchId: "m_rem_a", playerId: "p_dup", status: "Paid", availability: "Confirmed" },
+  ];
+
+  const res = resolveMatchSquadRecipients(m, payments, players);
+  assert.deepEqual(
+    res.recipients.map((r) => r.player.id),
+    ["p_dup", "p_direct_only"],
+  );
+  assert.equal(res.validPhoneCount, 2);
+});
+
+test("Remediation C: PlayerMatchDetailModal squad filter excludes Not Playing and availability No even on conflict", () => {
+  const records = [
+    { id: "1", playerId: "p1", status: "Unpaid", availability: "Confirmed" },
+    { id: "2", playerId: "p2", status: "Paid", availability: "Tentative" },
+    { id: "3", playerId: "p3", status: "Unpaid", availability: "Pending" },
+    { id: "4", playerId: "p4", status: "Not Playing", availability: "Confirmed" },
+    { id: "5", playerId: "p5", status: "Not Playing", availability: "Tentative" },
+    { id: "6", playerId: "p6", status: "Unpaid", availability: "No" },
+    { id: "7", playerId: "p1", status: "Unpaid", availability: "Confirmed", guestName: "Guest 1" },
+    { id: "8", playerId: "p1", status: "Not Playing", availability: "Confirmed", guestName: "Guest Out" },
+  ];
+  const filtered = filterPlayerDetailSquadPayments(records);
+  assert.deepEqual(
+    filtered.map((r) => r.id),
+    ["1", "2", "3", "7"],
+  );
 });

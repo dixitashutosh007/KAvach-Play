@@ -16,6 +16,33 @@ export interface ResolvedCaptain {
 }
 
 /**
+ * Unified captain eligibility policy (shared by client selector and server API).
+ *
+ * Eligible:
+ * - Active club players (`!disabled`, `!mergedInto`, `mergeStatus !== "in_progress"`,
+ *   `mergeStatus !== "completed"`).
+ * - Invitation states `"Verified"`, `"Accepted"`, `"Invited"`, `"Unverified"`, or unset.
+ *
+ * Rejected:
+ * - Disabled (`disabled: true`)
+ * - Merged or merging (`mergedInto` set, or `mergeStatus` is `"in_progress"` or `"completed"`)
+ * - Rejected (`inviteStatus === "Rejected"`)
+ * - Unapproved signup (`inviteStatus === "Pending"`)
+ *
+ * Captaincy is NOT restricted to the match's selected squad.
+ */
+export function isEligibleCaptainPlayer(
+  p: Pick<Player, "disabled" | "mergedInto" | "mergeStatus" | "inviteStatus"> | null | undefined,
+): boolean {
+  if (!p) return false;
+  if (p.disabled) return false;
+  if (p.mergedInto) return false;
+  if (p.mergeStatus === "in_progress" || p.mergeStatus === "completed") return false;
+  if (p.inviteStatus === "Rejected" || p.inviteStatus === "Pending") return false;
+  return true;
+}
+
+/**
  * Returns active club players eligible to be assigned as match captain.
  * Not restricted to the match's selected squad.
  */
@@ -23,14 +50,7 @@ export function getEligibleCaptainPlayers(
   players: readonly Player[],
 ): Player[] {
   return players
-    .filter(
-      (p) =>
-        !p.disabled &&
-        !p.mergedInto &&
-        p.mergeStatus !== "in_progress" &&
-        p.inviteStatus !== "Rejected" &&
-        p.inviteStatus !== "Pending",
-    )
+    .filter((p) => isEligibleCaptainPlayer(p))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 }
 
@@ -51,7 +71,8 @@ export function resolveMatchCaptain(
       p.id === captainId &&
       !p.disabled &&
       !p.mergedInto &&
-      p.mergeStatus !== "in_progress",
+      p.mergeStatus !== "in_progress" &&
+      p.mergeStatus !== "completed",
   );
   if (!found) return null;
 
@@ -129,6 +150,18 @@ export function parseMatchKolkataMs(dateStr: string | undefined, timeStr?: strin
     timeStr && /^\d{2}:\d{2}$/.test(timeStr.trim()) ? timeStr.trim() : "23:59";
   const ms = Date.parse(`${trimmedDate}T${cleanTime}:00+05:30`);
   return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Returns YYYY-MM-DD in `Asia/Kolkata` for day-boundary refresh checks.
+ */
+export function getKolkataDayKey(nowMs: number = Date.now()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CLUB_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(nowMs));
 }
 
 /**

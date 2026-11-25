@@ -104,6 +104,19 @@ describe("Match Captain Management — server API & Firestore rules", { skip }, 
       disabled: true,
       inviteStatus: "Verified",
     });
+    await db.collection("players").doc("p_pending").set({
+      id: "p_pending",
+      name: "Pending Signup",
+      mobile: "9876543213",
+      inviteStatus: "Pending",
+    });
+    await db.collection("players").doc("p_merge_done").set({
+      id: "p_merge_done",
+      name: "Completed Merge",
+      mobile: "9876543214",
+      inviteStatus: "Verified",
+      mergeStatus: "completed",
+    });
 
     // Assign non-squad player as captain
     const res1 = await postCaptain({ matchId: "m_cap_1", captainId: "p_non_squad" }, CLUB);
@@ -118,9 +131,13 @@ describe("Match Captain Management — server API & Firestore rules", { skip }, 
     const paySnap = await db.collection("matches").doc("m_cap_1").collection("payments").get();
     assert.equal(paySnap.size, 0);
 
-    // Reject inactive/disabled player
+    // Reject inactive/disabled, pending signup, and completed-merge players
     const resDisabled = await postCaptain({ matchId: "m_cap_1", captainId: "p_disabled" }, SUPER);
     assert.equal(resDisabled.status, 400);
+    const resPending = await postCaptain({ matchId: "m_cap_1", captainId: "p_pending" }, SUPER);
+    assert.equal(resPending.status, 400);
+    const resMergeDone = await postCaptain({ matchId: "m_cap_1", captainId: "p_merge_done" }, SUPER);
+    assert.equal(resMergeDone.status, 400);
 
     // Change captain
     const res2 = await postCaptain({ matchId: "m_cap_1", captainId: "p_squad" }, SUPER);

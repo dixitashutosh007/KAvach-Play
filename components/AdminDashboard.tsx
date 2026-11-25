@@ -2,7 +2,7 @@
 
 import { useStore } from "@/hooks/useStore";
 import { useAuth } from "@/components/AuthProvider";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createCatchBatchState, executeCatchBatch, type CatchBatchState } from "@/lib/catch-batch";
 import { Match, Player } from "@/lib/types";
 import {
@@ -40,6 +40,7 @@ import {
 import { computeMatchAvailabilityReadiness } from "@/lib/match-readiness";
 import { SquadNotifyModal } from "@/components/matches/SquadNotifyModal";
 import {
+  getKolkataDayKey,
   getUpcomingMatchesMissingCaptain,
   shouldShowFridayCaptainReminder,
 } from "@/lib/match-captain";
@@ -336,6 +337,24 @@ export function AdminDashboard({
   const [groupRemindCustomMsg, setGroupRemindCustomMsg] = useState("");
   const [selectedRemindMatch, setSelectedRemindMatch] = useState<Match | null>(null);
   const [notifyModalMatch, setNotifyModalMatch] = useState<Match | null>(null);
+  const [kolkataNowMs, setKolkataNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const syncDay = () => {
+      const now = Date.now();
+      setKolkataNowMs((prev) =>
+        getKolkataDayKey(prev) === getKolkataDayKey(now) ? prev : now,
+      );
+    };
+    window.addEventListener("focus", syncDay);
+    document.addEventListener("visibilitychange", syncDay);
+    const id = window.setInterval(syncDay, 60_000);
+    return () => {
+      window.removeEventListener("focus", syncDay);
+      document.removeEventListener("visibilitychange", syncDay);
+      window.clearInterval(id);
+    };
+  }, []);
 
   const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(false);
   const [noShowAmount, setNoShowAmount] = useState<number>(0);
@@ -895,8 +914,8 @@ export function AdminDashboard({
           </section>
 
           {/* Today & Upcoming Matches — Club / Super Admin */}
-          {canSeeClub && shouldShowFridayCaptainReminder(matches, canSeeClub) && (() => {
-            const missingCap = getUpcomingMatchesMissingCaptain(matches);
+          {canSeeClub && shouldShowFridayCaptainReminder(matches, canSeeClub, kolkataNowMs) && (() => {
+            const missingCap = getUpcomingMatchesMissingCaptain(matches, kolkataNowMs);
             return (
               <section
                 data-testid="friday-captain-reminder"
