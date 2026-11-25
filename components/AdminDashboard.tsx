@@ -36,6 +36,7 @@ import {
   isIndependenceDayWindow,
 } from "./festive/IndependenceDay";
 import { ClubPerformanceWidget } from "./home/ClubPerformanceWidget";
+import { computeMatchAvailabilityReadiness } from "@/lib/match-readiness";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 
@@ -279,37 +280,18 @@ export function AdminDashboard({
         new Date(`${b.date}T${b.time || "00:00"}`).getTime(),
     );
 
-    const activeMembers = players.filter(
-      (p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending",
-    );
-
     return up.map((m) => {
       const matchRecs = payments.filter((p) => p.matchId === m.id);
-      const recByPlayer = new Map(matchRecs.map((p) => [p.playerId, p]));
-      const squadCount = matchRecs.filter((p) => p.status !== "Not Playing").length;
-
-      let confirmedCount = 0;
-      let tentativeCount = 0;
-      let outCount = 0;
-      let unrespondedCount = 0;
-
-      activeMembers.forEach((member) => {
-        const av = recByPlayer.get(member.id)?.availability;
-        if (av === "Confirmed") confirmedCount++;
-        else if (av === "Tentative") tentativeCount++;
-        else if (av === "No") outCount++;
-        else unrespondedCount++;
-      });
-
+      const readiness = computeMatchAvailabilityReadiness(players, matchRecs);
       const ground = grounds.find((g) => g.id === m.groundId);
       return {
         match: m,
         ground,
-        squadCount,
-        confirmedCount,
-        tentativeCount,
-        outCount,
-        unrespondedCount,
+        squadCount: readiness.squadCount,
+        confirmedCount: readiness.confirmedCount,
+        tentativeCount: readiness.tentativeCount,
+        outCount: readiness.notPlayingCount,
+        unrespondedCount: readiness.unrespondedCount,
       };
     });
   }, [canSeeClub, matches, payments, players, grounds]);
@@ -940,11 +922,11 @@ export function AdminDashboard({
                           </div>
                           <div>
                             <span className="block text-xs font-black text-rose-700 tabular-nums">{outCount}</span>
-                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Out</span>
+                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Not Playing</span>
                           </div>
                           <div>
                             <span className="block text-xs font-black text-text-muted tabular-nums">{unrespondedCount}</span>
-                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Pending</span>
+                            <span className="block text-[9px] font-bold text-text-secondary uppercase">Unresponded</span>
                           </div>
                         </div>
                       </div>

@@ -18,6 +18,7 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
   const [filterMatchId, setFilterMatchId] = useState("");
   const [selectedDues, setSelectedDues] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [isSendingBulk, setIsSendingBulk] = useState(false);
 
   // Email template used by manual "Send Reminder" buttons. Automatic cron
   // scheduling was removed to control Cloud Run / Lambda costs — reminders
@@ -267,22 +268,45 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                 <div className="flex items-center flex-wrap gap-2 sm:gap-3 bg-surface-hover py-1.5 px-3 rounded-xl border border-border">
                    <div className="text-[10px] font-bold uppercase tracking-widest text-red-400">Total Due: ₹{grandDue}</div>
                    <div className="w-px h-4 bg-border"></div>
+                   <button
+                     type="button"
+                     onClick={() => {
+                       if (filteredDues.length === 0) return;
+                       const allSel = filteredDues.every((d: any) => selectedDues.has(d.uid));
+                       setSelectedDues(allSel ? new Set() : new Set(filteredDues.map((d: any) => d.uid)));
+                     }}
+                     className="text-[9px] font-bold uppercase tracking-widest text-brand hover:underline cursor-pointer"
+                   >
+                     {filteredDues.length > 0 && filteredDues.every((d: any) => selectedDues.has(d.uid))
+                       ? "Deselect All"
+                       : `Select All (${filteredDues.length})`}
+                   </button>
+                   {hasSelection && (
+                     <button
+                       type="button"
+                       onClick={() => setSelectedDues(new Set())}
+                       className="text-[9px] font-bold uppercase tracking-widest text-text-secondary hover:underline cursor-pointer"
+                     >
+                       Clear ({selectedDues.size})
+                     </button>
+                   )}
 
                    <button
+                     disabled={isSendingBulk}
                      onClick={async () => {
+                       if (isSendingBulk) return;
                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
                        if (targetDues.length === 0) {
                          toast("No dues found to remind."); return;
                        }
 
-                       if (!await confirmAction({ message: `Send an email reminder to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?` })) return;
-                       
                        const byEmail: Record<string, any> = {};
                        targetDues.forEach((d: any) => {
                           if (!d.player.email) return;
-                          if (!byEmail[d.player.email]) byEmail[d.player.email] = { player: d.player, dues: [], total: 0 };
-                          byEmail[d.player.email].dues.push(d);
-                          byEmail[d.player.email].total += d.amount;
+                          const key = d.player.id || d.player.email;
+                          if (!byEmail[key]) byEmail[key] = { player: d.player, dues: [], total: 0 };
+                          byEmail[key].dues.push(d);
+                          byEmail[key].total += d.amount;
                        });
 
                        const playersWithEmail = Object.values(byEmail);
@@ -290,63 +314,74 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                          toast("None of the included players have an email address stored.");
                          return;
                        }
-                       
+
+                       if (!await confirmAction({ message: `Send an email reminder to ${playersWithEmail.length} recipient(s) (${hasSelection ? 'selected dues' : 'all visible dues'})?` })) return;
+
+                       setIsSendingBulk(true);
                        let sentCount = 0;
                        let failCount = 0;
-                       
-                       for (const data of playersWithEmail) {
-                          const link = `${window.location.origin}/pay/${data.player.id}`;
-                          try {
-                            const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || defaultTemplate;
-                            const renderTpl = (txt: string) => {
-                              return txt
-                                .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
-                                .replace(/{{playerName}}/g, data.player.name || "Player")
-                                .replace(/{{amount}}/g, `₹${data.total}`)
-                                .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
-                                .replace(/{{link}}/g, link);
-                            };
-                            const res = await authedFetch("/api/email/send", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                to: [data.player.email],
-                                subject: renderTpl(reminderTemplate.subject),
-                                text: renderTpl(reminderTemplate.body),
-                                config: store.appConfig,
-                              })
-                            });
-                            
-                            if (res.ok && (await res.json()).success) {
-                              sentCount++;
-                            } else {
+
+                       try {
+                         for (const data of playersWithEmail) {
+                            const link = `${window.location.origin}/pay/${data.player.id}`;
+                            try {
+                              const reminderTemplate = store.appConfig?.emailTemplates?.due_reminder || defaultTemplate;
+                              const renderTpl = (txt: string) => {
+                                return txt
+                                  .replace(/{{clubName}}/g, store.appConfig?.clubName || "Kavach Play")
+                                  .replace(/{{playerName}}/g, data.player.name || "Player")
+                                  .replace(/{{amount}}/g, `₹${data.total}`)
+                                  .replace(/{{duesText}}/g, data.dues.map((d: any) => `${d.desc} (₹${d.amount})`).join(", "))
+                                  .replace(/{{link}}/g, link);
+                              };
+                              const res = await authedFetch("/api/email/send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  to: [data.player.email],
+                                  subject: renderTpl(reminderTemplate.subject),
+                                  text: renderTpl(reminderTemplate.body),
+                                  config: store.appConfig,
+                                })
+                              });
+
+                              if (res.ok && (await res.json()).success) {
+                                sentCount++;
+                              } else {
+                                failCount++;
+                              }
+                            } catch {
                               failCount++;
                             }
-                          } catch (e) {
-                            failCount++;
-                          }
+                         }
+                         toast(
+                           `Email reminders finished. Sent: ${sentCount}, Failed: ${failCount}`,
+                           failCount === 0 ? "success" : "error",
+                         );
+                       } finally {
+                         setIsSendingBulk(false);
                        }
-                       toast(`Finished sending email reminders. Sent: ${sentCount}, Failed: ${failCount}`, "error");
                      }}
-                     className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
+                     className={`${hasSelection ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30' : 'bg-accent/20 text-accent hover:bg-accent/30'} disabled:opacity-50 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap cursor-pointer`}
                    >
-                     {hasSelection ? "Email Remind Selected" : "Email Remind All"}
+                     {isSendingBulk ? "Sending..." : hasSelection ? `Email Remind (${selectedDues.size})` : "Email Remind All"}
                    </button>
                    <button
+                     disabled={isSendingBulk}
                      onClick={async () => {
+                       if (isSendingBulk) return;
                        const targetDues = hasSelection ? filteredDues.filter((d: any) => selectedDues.has(d.uid)) : filteredDues;
                        if (targetDues.length === 0) {
                          toast("No dues found to remind."); return;
                        }
 
-                       if (!await confirmAction({ message: `Send WhatsApp API reminders to ${hasSelection ? 'SELECTED' : 'ALL'} players for their pending dues?` })) return;
-                       
                        const byMobile: Record<string, any> = {};
                        targetDues.forEach((d: any) => {
                           if (!d.player.mobile) return;
-                          if (!byMobile[d.player.mobile]) byMobile[d.player.mobile] = { player: d.player, dues: [], total: 0 };
-                          byMobile[d.player.mobile].dues.push(d);
-                          byMobile[d.player.mobile].total += d.amount;
+                          const key = d.player.id || d.player.mobile;
+                          if (!byMobile[key]) byMobile[key] = { player: d.player, dues: [], total: 0 };
+                          byMobile[key].dues.push(d);
+                          byMobile[key].total += d.amount;
                        });
 
                        const playersWithMobile = Object.values(byMobile);
@@ -354,53 +389,62 @@ export function DuesAndRemindersTab({ store, isFinanceAdmin, isSuperAdmin }: { s
                          toast("None of the included players have a mobile number stored.");
                          return;
                        }
-                       
+
+                       if (!await confirmAction({ message: `Send WhatsApp API reminders to ${playersWithMobile.length} recipient(s) (${hasSelection ? 'selected dues' : 'all visible dues'})?` })) return;
+
+                       setIsSendingBulk(true);
                        let sentCount = 0;
                        let failCount = 0;
                        const failReasons: string[] = [];
 
-                       for (const data of playersWithMobile) {
-                          const link = `${window.location.origin}/pay/${data.player.id}`;
-                          try {
-                            const res = await authedFetch("/api/whatsapp/send", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                to: data.player.mobile,
-                                name: data.player.name,
-                                amount: data.total,
-                                link: link,
-                              })
-                            });
+                       try {
+                         for (const data of playersWithMobile) {
+                            const link = `${window.location.origin}/pay/${data.player.id}`;
+                            try {
+                              const res = await authedFetch("/api/whatsapp/send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  to: data.player.mobile,
+                                  name: data.player.name,
+                                  amount: data.total,
+                                  link: link,
+                                })
+                              });
 
-                            if (res.ok) {
-                              sentCount++;
-                            } else {
-                              failCount++;
-                              // Capture server error body so the alert is diagnostic
-                              let reason = `HTTP ${res.status}`;
-                              try {
-                                const body = await res.json();
-                                if (body?.error) reason = body.error;
-                                if (body?.details?.message) reason += ` — ${body.details.message}`;
-                              } catch {
-                                try { reason = (await res.text()).slice(0, 200); } catch {}
+                              if (res.ok) {
+                                sentCount++;
+                              } else {
+                                failCount++;
+                                let reason = `HTTP ${res.status}`;
+                                try {
+                                  const body = await res.json();
+                                  if (body?.error) reason = body.error;
+                                  if (body?.details?.message) reason += ` — ${body.details.message}`;
+                                } catch {
+                                  try { reason = (await res.text()).slice(0, 200); } catch {}
+                                }
+                                failReasons.push(`${data.player.name}: ${reason}`);
                               }
-                              failReasons.push(`${data.player.name}: ${reason}`);
+                            } catch (e: any) {
+                              failCount++;
+                              failReasons.push(`${data.player.name}: ${e?.message || "network/client error"}`);
                             }
-                          } catch (e: any) {
-                            failCount++;
-                            failReasons.push(`${data.player.name}: ${e?.message || "network/client error"}`);
-                          }
+                         }
+                         const detail = failReasons.length
+                           ? "\n\nFirst failures:\n" + failReasons.slice(0, 3).join("\n")
+                           : "";
+                         toast(
+                           `WhatsApp reminders finished. Sent: ${sentCount}, Failed: ${failCount}${detail}`,
+                           failCount === 0 ? "success" : "error",
+                         );
+                       } finally {
+                         setIsSendingBulk(false);
                        }
-                       const detail = failReasons.length
-                         ? "\n\nFirst failures:\n" + failReasons.slice(0, 3).join("\n")
-                         : "";
-                       toast(`Finished sending WhatsApp reminders. Sent: ${sentCount}, Failed: ${failCount}${detail}`, "error");
                      }}
-                     className={`${hasSelection ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20'} transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap`}
+                     className="bg-emerald-500/20 text-emerald-700 hover:bg-emerald-500/30 disabled:opacity-50 transition text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded whitespace-nowrap cursor-pointer"
                    >
-                     {hasSelection ? "WA Remind Selected" : "WA Remind All"}
+                     {isSendingBulk ? "Sending..." : hasSelection ? `WhatsApp (${selectedDues.size})` : "WhatsApp All"}
                    </button>
                    <button
                      onClick={() => {

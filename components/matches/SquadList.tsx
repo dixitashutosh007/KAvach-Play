@@ -11,7 +11,7 @@
  * parent performs each action through the existing store calls / server routes.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, MoreVertical, Search } from "lucide-react";
+import { Check, CheckCircle2, CircleAlert, MoreVertical, Search, Trash2 } from "lucide-react";
 import type { FeePlan, MatchPayment } from "@/lib/types";
 import { planBadge, squadRowActions, type PlanBadgeTone, type RowAction, type RowActionContext, type RowActionId } from "@/lib/match-squad";
 
@@ -134,14 +134,19 @@ export function SquadList({
   plans,
   ctx,
   onAction,
+  onBulkRemove,
+  bulkRemoving = false,
 }: {
   rows: SquadRow[];
   plans: FeePlan[];
   ctx: RowActionContext;
   onAction: (id: RowActionId, row: SquadRow) => void;
+  onBulkRemove?: (rows: SquadRow[]) => Promise<void>;
+  bulkRemoving?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const enriched = useMemo(
     () =>
       rows
@@ -153,6 +158,36 @@ export function SquadList({
   const q = query.trim().toLowerCase();
   const filtered = q ? enriched.filter((x) => x.row.name.toLowerCase().includes(q) || x.badge.label.toLowerCase().includes(q)) : enriched;
   const visible = showAll || q ? filtered : filtered.slice(0, INITIAL_ROWS);
+
+  const canBulkRemove = !!onBulkRemove && ctx.canManageSquad && !ctx.financeClosed;
+  const removableVisibleIds = useMemo(
+    () =>
+      canBulkRemove
+        ? visible
+            .filter((x) => !x.share!.paid && x.actions.some((a) => a.id === "remove"))
+            .map((x) => x.row.payment.id)
+        : [],
+    [canBulkRemove, visible],
+  );
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allRemovableSelected =
+    removableVisibleIds.length > 0 && removableVisibleIds.every((id) => selectedSet.has(id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const handleBulkRemoveClick = async () => {
+    if (!onBulkRemove || bulkRemoving || selectedIds.length === 0) return;
+    const targets = enriched
+      .filter((x) => selectedSet.has(x.row.payment.id) && !x.share!.paid && x.actions.some((a) => a.id === "remove"))
+      .map((x) => x.row);
+    if (targets.length === 0) return;
+    await onBulkRemove(targets);
+    setSelectedIds([]);
+  };
 
   return (
     <div className="flex flex-col gap-2" data-testid="squad-list">
@@ -168,6 +203,51 @@ export function SquadList({
             className="w-full min-h-[44px] rounded-xl border border-border bg-surface pl-9 pr-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand/30"
           />
         </label>
+      )}
+
+      {canBulkRemove && removableVisibleIds.length > 0 && (
+        <div
+          className="flex items-center justify-between gap-2 flex-wrap px-2 py-1.5 rounded-xl bg-surface-hover border border-border"
+          data-testid="squad-bulk-bar"
+        >
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedIds(
+                  allRemovableSelected
+                    ? selectedIds.filter((id) => !removableVisibleIds.includes(id))
+                    : Array.from(new Set([...selectedIds, ...removableVisibleIds])),
+                )
+              }
+              className="min-h-[34px] px-2.5 rounded-lg text-xs font-bold text-brand hover:bg-brand-surface cursor-pointer"
+              data-testid="squad-bulk-select-all"
+            >
+              {allRemovableSelected ? "Deselect all" : "Select all"}
+            </button>
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="min-h-[34px] px-2 rounded-lg text-xs font-bold text-text-secondary hover:bg-surface cursor-pointer"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              disabled={bulkRemoving}
+              onClick={handleBulkRemoveClick}
+              data-testid="squad-bulk-remove-btn"
+              className="min-h-[34px] px-3 rounded-lg bg-rose-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+              {bulkRemoving ? "Removing…" : `Remove Selected (${selectedIds.length})`}
+            </button>
+          )}
+        </div>
       )}
 
       {enriched.length === 0 ? (
@@ -186,11 +266,28 @@ export function SquadList({
             <span className="sr-only">Actions</span>
           </div>
           <ul className="divide-y divide-border" data-testid="squad-rows">
-            {visible.map(({ row, badge, share, actions }) => (
-              <li key={row.payment.id} data-testid={`squad-row-${row.payment.id}`}>
+            {visible.map(({ row, badge, share, actions }) => {
+              const isRemovable = canBulkRemove && !share!.paid && actions.some((a) => a.id === "remove");
+              const isSel = selectedSet.has(row.payment.id);
+              return (
+              <li key={row.payment.id} data-testid={`squad-row-${row.payment.id}`} className={isSel ? "bg-brand-surface/40" : undefined}>
                 {/* Desktop row */}
                 <div className="hidden sm:grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_88px_100px_96px_44px] items-center gap-3 px-3 py-2">
                   <span className="flex items-center gap-2.5 min-w-0">
+                    {isRemovable && (
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={isSel}
+                        aria-label={`Select ${row.name}`}
+                        onClick={() => toggleSelect(row.payment.id)}
+                        className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center cursor-pointer ${
+                          isSel ? "bg-brand border-brand text-white" : "border-border bg-surface"
+                        }`}
+                      >
+                        {isSel && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                     <Avatar name={row.name} photoURL={row.photoURL} />
                     <span className="truncate text-sm font-bold text-text-primary">
                       {row.name}
@@ -212,6 +309,20 @@ export function SquadList({
                 </div>
                 {/* Mobile row */}
                 <div className="sm:hidden flex items-center gap-2.5 px-2.5 py-2">
+                  {isRemovable && (
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isSel}
+                      aria-label={`Select ${row.name}`}
+                      onClick={() => toggleSelect(row.payment.id)}
+                      className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center cursor-pointer ${
+                        isSel ? "bg-brand border-brand text-white" : "border-border bg-surface"
+                      }`}
+                    >
+                      {isSel && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                   <Avatar name={row.name} photoURL={row.photoURL} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-text-primary">
@@ -231,7 +342,8 @@ export function SquadList({
                   <RowMenu name={row.name} actions={actions} onAction={(id) => onAction(id, row)} />
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
           {!q && filtered.length > INITIAL_ROWS && (
             <button

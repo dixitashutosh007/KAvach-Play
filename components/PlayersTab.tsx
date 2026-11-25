@@ -80,6 +80,8 @@ export function PlayersTab({
   const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+  const [bulkPendingBusy, setBulkPendingBusy] = useState(false);
 
 
   const getTotalDue = (playerId: string) => {
@@ -241,13 +243,108 @@ export function PlayersTab({
       <>
         {isAdmin && pendingPlayers.length > 0 && (
           <div className="space-y-2 mb-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-accent flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
-              </span>
-              Pending Approvals ({pendingPlayers.length})
-            </h3>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-accent flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                </span>
+                Pending Approvals ({pendingPlayers.length})
+              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allIds = pendingPlayers.map((p) => p.id);
+                    const allSelected = allIds.every((id) => selectedPendingIds.includes(id));
+                    setSelectedPendingIds(allSelected ? [] : allIds);
+                  }}
+                  className="text-xs font-bold text-brand hover:underline cursor-pointer"
+                >
+                  {pendingPlayers.every((p) => selectedPendingIds.includes(p.id))
+                    ? "Deselect all"
+                    : "Select all"}
+                </button>
+                {selectedPendingIds.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPendingIds([])}
+                      className="text-xs font-bold text-text-secondary hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkPendingBusy}
+                      onClick={async () => {
+                        if (bulkPendingBusy) return;
+                        const targets = pendingPlayers.filter((p) => selectedPendingIds.includes(p.id));
+                        if (targets.length === 0) return;
+                        if (!(await confirmAction({ message: `Approve ${targets.length} selected registration request(s)?` }))) return;
+                        setBulkPendingBusy(true);
+                        let okCount = 0;
+                        let failCount = 0;
+                        for (const pl of targets) {
+                          try {
+                            await store.updatePlayer(pl.id, { inviteStatus: "Verified" });
+                            okCount++;
+                          } catch {
+                            failCount++;
+                          }
+                        }
+                        setBulkPendingBusy(false);
+                        setSelectedPendingIds([]);
+                        toast(
+                          failCount === 0
+                            ? `Approved ${okCount} player(s).`
+                            : `Approved ${okCount} player(s); ${failCount} failed.`,
+                          failCount === 0 ? "success" : "error",
+                        );
+                      }}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer"
+                    >
+                      Approve Selected ({selectedPendingIds.length})
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkPendingBusy}
+                      onClick={async () => {
+                        if (bulkPendingBusy) return;
+                        const targets = pendingPlayers.filter((p) => selectedPendingIds.includes(p.id));
+                        if (targets.length === 0) return;
+                        if (!(await confirmAction({ message: `Decline ${targets.length} selected registration request(s)?`, destructive: true }))) return;
+                        setBulkPendingBusy(true);
+                        let okCount = 0;
+                        let failCount = 0;
+                        for (const pl of targets) {
+                          try {
+                            await store.updatePlayer(pl.id, {
+                              inviteStatus: "Rejected",
+                              rejectedAt: new Date().toISOString(),
+                            });
+                            okCount++;
+                          } catch {
+                            failCount++;
+                          }
+                        }
+                        setBulkPendingBusy(false);
+                        setSelectedPendingIds([]);
+                        toast(
+                          failCount === 0
+                            ? `Declined ${okCount} request(s).`
+                            : `Declined ${okCount} request(s); ${failCount} failed.`,
+                          failCount === 0 ? "success" : "error",
+                        );
+                      }}
+                      className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 border border-rose-200 hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
+                    >
+                      Reject Selected ({selectedPendingIds.length})
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
             <div className="bg-surface rounded-xl overflow-hidden divide-y divide-border border border-accent/25">
               {pendingPlayers.map((player) => (
                 <div
@@ -256,6 +353,19 @@ export function PlayersTab({
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3">
                     <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${player.name}`}
+                        checked={selectedPendingIds.includes(player.id)}
+                        onChange={() =>
+                          setSelectedPendingIds((prev) =>
+                            prev.includes(player.id)
+                              ? prev.filter((x) => x !== player.id)
+                              : [...prev, player.id],
+                          )
+                        }
+                        className="w-4 h-4 accent-brand shrink-0 cursor-pointer"
+                      />
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 font-bold text-accent shrink-0">
                         {player.name.charAt(0).toUpperCase()}
                       </div>
@@ -283,7 +393,7 @@ export function PlayersTab({
                             inviteStatus: "Verified",
                           });
                         }}
-                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-black hover:bg-emerald-400 transition cursor-pointer"
+                        className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition cursor-pointer"
                       >
                         <CheckCircle className="h-3.5 w-3.5" />
                         Approve

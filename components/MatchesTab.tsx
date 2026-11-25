@@ -83,6 +83,7 @@ import { buildMatchPlanApplication } from "@/lib/match-plan-application";
 import { useFinancePlanAssignments } from "@/hooks/useFinancePlanAssignments";
 import { callMatchPlans } from "@/hooks/useMatchFinancePlans";
 import { formatMatchDisplayTime } from "@/lib/personal-match-payment";
+import { computeMatchAvailabilityReadiness, hasExplicitAvailabilityResponse } from "@/lib/match-readiness";
 
 /** Admin Match Centre views, chosen from a dropdown (not tabs). */
 export const MATCH_VIEW_OPTIONS = [
@@ -1999,6 +2000,105 @@ export function MatchPayments({
     }
   };
 
+  const [bulkRemovingSquad, setBulkRemovingSquad] = useState(false);
+  const [bulkAvailOpen, setBulkAvailOpen] = useState(false);
+  const [bulkAvailSelectedIds, setBulkAvailSelectedIds] = useState<string[]>([]);
+  const [bulkAvailTarget, setBulkAvailTarget] = useState<"Confirmed" | "Tentative" | "No">("Confirmed");
+  const [bulkAvailAllowOverwrite, setBulkAvailAllowOverwrite] = useState(false);
+  const [bulkAvailSaving, setBulkAvailSaving] = useState(false);
+
+  const handleBulkRemoveSquad = async (targets: SquadRow[]) => {
+    if (bulkRemovingSquad || targets.length === 0) return;
+    const confirmed = await confirmAction({
+      message: `Remove ${targets.length} selected player(s) from the squad? Their payment records are kept (marked Not Playing); Finance Plan assignments remain unchanged.`,
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    setBulkRemovingSquad(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of targets) {
+      try {
+        await store.updatePaymentStatus(row.payment.id, "Not Playing", match.id);
+        succeeded++;
+      } catch (err) {
+        console.error(`Bulk remove failed for ${row.name}:`, err);
+        failed++;
+      }
+    }
+    setBulkRemovingSquad(false);
+    if (failed === 0) {
+      toast(`Removed ${succeeded} player(s) from the squad.`, "success");
+    } else {
+      toast(`Removed ${succeeded} player(s); ${failed} failed. Check permissions or payment state.`, "error");
+    }
+  };
+
+  const readiness = useMemo(
+    () => computeMatchAvailabilityReadiness(store.players, matchPayments),
+    [store.players, matchPayments],
+  );
+
+  const eligibleAvailabilityPlayers = useMemo(() => {
+    const active = store.players
+      .filter((p) => !p.disabled && p.inviteStatus !== "Rejected" && p.inviteStatus !== "Pending")
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const recByPlayer = new Map(matchPayments.map((p) => [p.playerId, p]));
+    return active.map((player) => {
+      const payment = recByPlayer.get(player.id);
+      const hasResponded = hasExplicitAvailabilityResponse(payment?.availability);
+      return { player, payment, hasResponded };
+    });
+  }, [store.players, matchPayments]);
+
+  const handleBulkAvailabilitySubmit = async () => {
+    if (bulkAvailSaving || bulkAvailSelectedIds.length === 0) return;
+    const targets = eligibleAvailabilityPlayers.filter(
+      (item) =>
+        bulkAvailSelectedIds.includes(item.player.id) &&
+        (bulkAvailAllowOverwrite || !item.hasResponded),
+    );
+    if (targets.length === 0) {
+      toast("No eligible players selected.", "error");
+      return;
+    }
+    const overwriteCount = targets.filter((t) => t.hasResponded).length;
+    const warning =
+      overwriteCount > 0
+        ? ` Warning: ${overwriteCount} player(s) already submitted a response that will be overwritten.`
+        : "";
+    const ok = await confirmAction({
+      message: `Set administrative availability to "${bulkAvailTarget === "No" ? "Not Playing" : bulkAvailTarget}" for ${targets.length} player(s)?${warning}`,
+    });
+    if (!ok) return;
+
+    setBulkAvailSaving(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const item of targets) {
+      try {
+        if (item.payment) {
+          await store.updateMatchAvailability(item.payment.id, bulkAvailTarget, match.id);
+        } else {
+          await store.addPaymentStatus(match.id, item.player.id, "Not Playing", bulkAvailTarget);
+        }
+        succeeded++;
+      } catch (err) {
+        console.error(`Bulk availability failed for ${item.player.name}:`, err);
+        failed++;
+      }
+    }
+    setBulkAvailSaving(false);
+    setBulkAvailSelectedIds([]);
+    if (failed === 0) {
+      toast(`Updated availability for ${succeeded} player(s).`, "success");
+      setBulkAvailOpen(false);
+    } else {
+      toast(`Updated ${succeeded} player(s); ${failed} failed.`, "error");
+    }
+  };
+
   const handleRowAction = async (id: RowActionId, row: SquadRow) => {
     const p = row.payment;
     try {
@@ -2401,15 +2501,172 @@ export function MatchPayments({
                 </div>
               )}
 
-              <SquadList rows={squadRows} plans={store.feePlans || []} ctx={rowCtx} onAction={handleRowAction} />
+              <SquadList
+                rows={squadRows}
+                plans={store.feePlans || []}
+                ctx={rowCtx}
+                onAction={handleRowAction}
+                onBulkRemove={canApplyPlans ? handleBulkRemoveSquad : undefined}
+                bulkRemoving={bulkRemovingSquad}
+              />
 
               <MatchFinancialsCard s={statement} onOpenFinance={() => setManageTab("finance")} />
 
       {store.appConfig?.matchConfiguration?.enablePlayerAvailability && (
-              <div className="bg-surface overflow-hidden rounded-2xl border border-border">
-                <div className="px-4 py-3 bg-surface-hover border-b border-border font-bold text-[12px] uppercase tracking-widest text-text-primary">
-                  Player Availability
+              <div className="bg-surface overflow-hidden rounded-2xl border border-border" data-testid="match-availability-section">
+                <div className="px-4 py-3 bg-surface-hover border-b border-border flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-bold text-[12px] uppercase tracking-widest text-text-primary">
+                    Player Availability &amp; Readiness
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      data-testid="toggle-bulk-availability"
+                      onClick={() => {
+                        setBulkAvailOpen((v) => !v);
+                        setBulkAvailSelectedIds([]);
+                      }}
+                      className="min-h-[34px] px-3 rounded-lg bg-brand-surface text-brand text-xs font-bold hover:bg-brand-surface/80 transition cursor-pointer"
+                    >
+                      {bulkAvailOpen ? "Close Bulk Update" : "Bulk Update Availability"}
+                    </button>
+                  )}
                 </div>
+
+                {/* 4-state Readiness Summary */}
+                <div className="p-4 border-b border-border grid grid-cols-4 gap-2 text-center" data-testid="match-readiness-summary">
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200/70 py-2 px-1">
+                    <span className="block text-base font-black text-emerald-700 tabular-nums">{readiness.confirmedCount}</span>
+                    <span className="block text-[10px] font-bold uppercase text-emerald-800">Confirmed</span>
+                  </div>
+                  <div className="rounded-xl bg-amber-50 border border-amber-200/70 py-2 px-1">
+                    <span className="block text-base font-black text-amber-700 tabular-nums">{readiness.tentativeCount}</span>
+                    <span className="block text-[10px] font-bold uppercase text-amber-800">Tentative</span>
+                  </div>
+                  <div className="rounded-xl bg-rose-50 border border-rose-200/70 py-2 px-1">
+                    <span className="block text-base font-black text-rose-700 tabular-nums">{readiness.notPlayingCount}</span>
+                    <span className="block text-[10px] font-bold uppercase text-rose-800">Not Playing</span>
+                  </div>
+                  <div className="rounded-xl bg-surface-hover border border-border py-2 px-1">
+                    <span className="block text-base font-black text-text-muted tabular-nums">{readiness.unrespondedCount}</span>
+                    <span className="block text-[10px] font-bold uppercase text-text-secondary">Unresponded</span>
+                  </div>
+                </div>
+
+                {/* Bulk Availability Panel (Admin only) */}
+                {isAdmin && bulkAvailOpen && (() => {
+                  const selectable = eligibleAvailabilityPlayers.filter(
+                    (item) => bulkAvailAllowOverwrite || !item.hasResponded,
+                  );
+                  const selectableIds = selectable.map((i) => i.player.id);
+                  const allSel = selectableIds.length > 0 && selectableIds.every((id) => bulkAvailSelectedIds.includes(id));
+                  return (
+                    <div className="p-4 bg-surface-hover/60 border-b border-border space-y-3" data-testid="bulk-availability-panel">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={bulkAvailAllowOverwrite}
+                            onChange={(e) => {
+                              setBulkAvailAllowOverwrite(e.target.checked);
+                              setBulkAvailSelectedIds([]);
+                            }}
+                            className="accent-brand"
+                          />
+                          Allow overwriting player-submitted responses
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBulkAvailSelectedIds(allSel ? [] : selectableIds)
+                            }
+                            disabled={selectableIds.length === 0}
+                            className="text-xs font-bold text-brand hover:underline disabled:opacity-40 cursor-pointer"
+                          >
+                            {allSel ? "Deselect all" : `Select all (${selectableIds.length})`}
+                          </button>
+                          {bulkAvailSelectedIds.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setBulkAvailSelectedIds([])}
+                              className="text-xs font-bold text-text-secondary hover:underline cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectable.length === 0 ? (
+                        <p className="text-xs text-text-secondary py-2">
+                          All eligible players have already submitted availability. Check &ldquo;Allow overwriting&rdquo; above to adjust existing responses.
+                        </p>
+                      ) : (
+                        <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-surface divide-y divide-border">
+                          {selectable.map(({ player, payment, hasResponded }) => {
+                            const checked = bulkAvailSelectedIds.includes(player.id);
+                            return (
+                              <label
+                                key={player.id}
+                                className="flex items-center justify-between gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-surface-hover"
+                              >
+                                <span className="flex items-center gap-2 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() =>
+                                      setBulkAvailSelectedIds((prev) =>
+                                        prev.includes(player.id)
+                                          ? prev.filter((x) => x !== player.id)
+                                          : [...prev, player.id],
+                                      )
+                                    }
+                                    className="accent-brand"
+                                  />
+                                  <span className="font-bold text-text-primary truncate">{player.name}</span>
+                                </span>
+                                <span
+                                  className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    hasResponded
+                                      ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                      : "bg-surface-hover text-text-muted"
+                                  }`}
+                                >
+                                  {hasResponded ? `Player: ${payment?.availability}` : "Unresponded"}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <select
+                          aria-label="Availability status"
+                          value={bulkAvailTarget}
+                          onChange={(e) => setBulkAvailTarget(e.target.value as any)}
+                          className="min-h-[38px] rounded-xl border border-border bg-surface px-3 text-xs font-bold text-text-primary"
+                        >
+                          <option value="Confirmed">Admin-mark: Confirmed</option>
+                          <option value="Tentative">Admin-mark: Tentative</option>
+                          <option value="No">Admin-mark: Not Playing</option>
+                        </select>
+                        <button
+                          type="button"
+                          disabled={bulkAvailSaving || bulkAvailSelectedIds.length === 0}
+                          onClick={handleBulkAvailabilitySubmit}
+                          data-testid="bulk-availability-apply"
+                          className="min-h-[38px] px-4 rounded-xl bg-accent text-text-accent text-xs font-bold hover:bg-accent/90 disabled:opacity-50 cursor-pointer"
+                        >
+                          {bulkAvailSaving
+                            ? "Updating…"
+                            : `Apply to ${bulkAvailSelectedIds.length} Player(s)`}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
               <div className="p-4 space-y-4">
                 {["Yes", "No"].map((avStat) => {
