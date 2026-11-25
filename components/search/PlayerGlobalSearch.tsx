@@ -268,8 +268,8 @@ export function PlayerSearchResultsPanel({
                       key={m.id}
                       data-testid={`search-result-match-${m.id}`}
                       onClick={() => {
-                        onClear();
                         if (isFeatureEnabled("matches")) onNavigateMatch(m.id);
+                        onClear();
                       }}
                       className="w-full text-left p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between gap-2 cursor-pointer transition"
                     >
@@ -316,8 +316,8 @@ export function PlayerSearchResultsPanel({
                       key={t.id}
                       data-testid={`search-result-tournament-${t.id}`}
                       onClick={() => {
-                        onClear();
                         if (isFeatureEnabled("matches")) onNavigateTab("matches", `tournament_${t.id}`);
+                        onClear();
                       }}
                       className="w-full text-left p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between gap-2 cursor-pointer transition"
                     >
@@ -365,8 +365,8 @@ export function PlayerSearchResultsPanel({
                       key={pl.id}
                       data-testid={`search-result-player-${pl.id}`}
                       onClick={() => {
+                        onNavigateTab("players", pl.id);
                         onClear();
-                        onNavigateTab("players");
                       }}
                       className="w-full text-left p-2.5 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center gap-2.5 cursor-pointer transition"
                     >
@@ -418,12 +418,12 @@ export function PlayerSearchResultsPanel({
                       key={g.id}
                       data-testid={`search-result-ground-${g.id}`}
                       onClick={() => {
-                        onClear();
                         if (g.mapUrl && g.mapUrl.startsWith("https://")) {
                           window.open(g.mapUrl, "_blank", "noopener,noreferrer");
                         } else {
                           onNavigateTab("matches");
                         }
+                        onClear();
                       }}
                       className="p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between gap-2 cursor-pointer transition"
                     >
@@ -479,8 +479,8 @@ export function PlayerSearchResultsPanel({
                       key={p.id}
                       data-testid={`search-result-announcement-${p.id}`}
                       onClick={() => {
-                        onClear();
                         if (isFeatureEnabled("announcements")) onNavigateTab("announcements", p.id);
+                        onClear();
                       }}
                       className="w-full text-left p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between gap-2 cursor-pointer transition"
                     >
@@ -526,8 +526,8 @@ export function PlayerSearchResultsPanel({
                       key={p.id}
                       data-testid={`search-result-feed-${p.id}`}
                       onClick={() => {
-                        onClear();
                         if (isFeatureEnabled("feed")) onNavigateFeed();
+                        onClear();
                       }}
                       className="w-full text-left p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between gap-2 cursor-pointer transition"
                     >
@@ -573,8 +573,8 @@ export function PlayerSearchResultsPanel({
                       key={poll.id}
                       data-testid={`search-result-poll-${poll.id}`}
                       onClick={() => {
-                        onClear();
                         if (isFeatureEnabled("polls")) onNavigateTab("pulse", poll.id);
+                        onClear();
                       }}
                       className="w-full text-left p-3 bg-surface-hover hover:bg-canvas-warm rounded-xl border border-border/80 flex items-center justify-between gap-2 cursor-pointer transition"
                     >

@@ -1353,9 +1353,19 @@ export default function Home() {
                     />
                   )}
                   {activeTab === "players" && (
-                    <PlayerDirectory store={store} currentUserId={user.uid} />
+                    <PlayerDirectory
+                      store={store}
+                      currentUserId={user.uid}
+                      initialPlayerId={tabAction}
+                      onOpenHandled={() => setTabAction(null)}
+                    />
                   )}
-                  {activeTab === "announcements" && <ClubAnnouncementsScreen openId={tabAction} />}
+                  {activeTab === "announcements" && (
+                    <ClubAnnouncementsScreen
+                      openId={tabAction}
+                      onOpenHandled={() => setTabAction(null)}
+                    />
+                  )}
                   {activeTab === "pulse" && <PulseScreen store={store} currentUserId={user.uid} />}
                   {activeTab === "leaderboard" && (
                     <LeaderboardTab store={store} persona="player" />

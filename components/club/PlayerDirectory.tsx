@@ -18,7 +18,12 @@ import { Search, X, User } from "lucide-react";
 import Image from "next/image";
 import { useStore } from "@/hooks/useStore";
 import { usePlayerBadges } from "@/hooks/useClubData";
-import { DIRECTORY_PAGE_SIZE, filterDirectory, toPublicPlayer, type PublicPlayer } from "@/lib/club-feed";
+import {
+  DIRECTORY_PAGE_SIZE,
+  filterDirectory,
+  resolvePublicDirectoryPlayer,
+  type PublicPlayer,
+} from "@/lib/club-feed";
 import { BadgeIcon, getBadgeMeta } from "@/components/BadgeIcon";
 
 function Avatar({ name, photoURL, size }: { name: string; photoURL?: unknown; size: number }) {
@@ -41,7 +46,17 @@ function roleLine(p: PublicPlayer): string {
   return parts.join(" · ");
 }
 
-export function PlayerDirectory({ store, currentUserId }: { store: ReturnType<typeof useStore>; currentUserId: string }) {
+export function PlayerDirectory({
+  store,
+  currentUserId,
+  initialPlayerId,
+  onOpenHandled,
+}: {
+  store: ReturnType<typeof useStore>;
+  currentUserId: string;
+  initialPlayerId?: string | null;
+  onOpenHandled?: () => void;
+}) {
   const [search, setSearch] = useState("");
   const [visible, setVisible] = useState(DIRECTORY_PAGE_SIZE);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -50,12 +65,29 @@ export function PlayerDirectory({ store, currentUserId }: { store: ReturnType<ty
     store.ensureBadgeTypeDefs?.();
   }, [store]);
 
+  useEffect(() => {
+    if (!initialPlayerId) return;
+    const resolved = resolvePublicDirectoryPlayer(store.players as any[], initialPlayerId);
+    if (resolved) {
+      setOpenId(resolved.id);
+      onOpenHandled?.();
+      return;
+    }
+    if (store.isLoaded) {
+      // Target is unavailable/disabled/merged/missing; clear handoff without opening another profile
+      onOpenHandled?.();
+    }
+  }, [initialPlayerId, store.players, store.isLoaded, onOpenHandled]);
+
   const matches = useMemo(() => filterDirectory(store.players as any[], search), [store.players, search]);
-  const page = matches.slice(0, visible).map((p) => toPublicPlayer(p));
-  const opened = useMemo(() => {
-    const p = (store.players as any[]).find((x) => x.id === openId);
-    return p ? toPublicPlayer(p) : null;
-  }, [store.players, openId]);
+  const page = matches
+    .slice(0, visible)
+    .map((p) => resolvePublicDirectoryPlayer([p as any], p.id))
+    .filter((p): p is PublicPlayer => p !== null);
+  const opened = useMemo(
+    () => resolvePublicDirectoryPlayer(store.players as any[], openId),
+    [store.players, openId],
+  );
 
   return (
     <div className="flex flex-col gap-3" data-testid="player-directory">

@@ -4,6 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { searchPlayerAccessibleData } from "../lib/player-search.ts";
 import {
+  nextAnnouncementPageAction,
+  resolvePublicDirectoryPlayer,
+} from "../lib/club-feed.ts";
+import {
   createLazyLoadRegistry,
   createSearchReadinessCoordinator,
   LazyLoadCancelledError,
@@ -506,15 +510,88 @@ test("Lazy registry clearAll cancels pending tournaments one-shot and coordinato
   assert.equal(tournamentsSetCount, 1);
 });
 
+test("Player directory handoff resolves target player beyond page 1, strips PII, and rejects invalid/unavailable IDs", () => {
+  const manyPlayers = Array.from({ length: 25 }, (_, i) => ({
+    id: `p-${i + 1}`,
+    name: `Player ${String(i + 1).padStart(2, "0")}`,
+    kavachId: `KAV-${i + 1}`,
+    phone: `98765000${String(i).padStart(2, "0")}`,
+    email: `p${i + 1}@secret.com`,
+    dob: "1995-01-01",
+    locality: "Hidden",
+  }));
+  manyPlayers.push(
+    { id: "p-disabled", name: "Disabled", disabled: true },
+    { id: "p-merged", name: "Merged", mergedInto: "p-1" },
+    { id: "p-pending", name: "Pending", inviteStatus: "Pending" },
+    { id: "p-rejected", name: "Rejected", inviteStatus: "Rejected" },
+  );
+
+  // Target outside first 20 directory rows opens exact public profile with PII stripped
+  const resolved = resolvePublicDirectoryPlayer(manyPlayers, "p-24");
+  assert.ok(resolved);
+  assert.equal(resolved.id, "p-24");
+  assert.equal(resolved.name, "Player 24");
+  for (const pii of ["phone", "mobile", "email", "dob", "locality", "emergencyContact", "authUid"]) {
+    assert.equal(pii in resolved, false);
+  }
+
+  // Unavailable/invalid IDs return null and never open another player's profile
+  assert.equal(resolvePublicDirectoryPlayer(manyPlayers, "nonexistent"), null);
+  assert.equal(resolvePublicDirectoryPlayer(manyPlayers, "p-disabled"), null);
+  assert.equal(resolvePublicDirectoryPlayer(manyPlayers, "p-merged"), null);
+  assert.equal(resolvePublicDirectoryPlayer(manyPlayers, "p-pending"), null);
+  assert.equal(resolvePublicDirectoryPlayer(manyPlayers, "p-rejected"), null);
+  assert.equal(resolvePublicDirectoryPlayer(manyPlayers, null), null);
+});
+
+test("Announcement deep-link pagination loads pages until target is found, stops immediately, and handles missing IDs", () => {
+  const page1 = Array.from({ length: 20 }, (_, i) => ({ id: `a-${i + 1}` }));
+  const page2 = Array.from({ length: 10 }, (_, i) => ({ id: `a-${i + 21}` }));
+
+  // In page 1 -> opens directly without loading more
+  assert.equal(
+    nextAnnouncementPageAction({ pendingOpen: "a-5", items: page1, done: false, loading: false, error: null }),
+    "open",
+  );
+
+  // Beyond page 1 -> requests next page while not done, waits while loading
+  assert.equal(
+    nextAnnouncementPageAction({ pendingOpen: "a-25", items: page1, done: false, loading: false, error: null }),
+    "load_more",
+  );
+  assert.equal(
+    nextAnnouncementPageAction({ pendingOpen: "a-25", items: page1, done: false, loading: true, error: null }),
+    "wait",
+  );
+
+  // Once page 2 arrives containing target -> opens and stops pagination (never loads page 3)
+  assert.equal(
+    nextAnnouncementPageAction({ pendingOpen: "a-25", items: [...page1, ...page2], done: false, loading: false, error: null }),
+    "open",
+  );
+
+  // Missing announcement when done=true -> not_found (no infinite loop)
+  assert.equal(
+    nextAnnouncementPageAction({ pendingOpen: "a-missing", items: [...page1, ...page2], done: true, loading: false, error: null }),
+    "not_found",
+  );
+});
+
 test("Global Search UI & AppHeader wire readiness coordinator, lazy-loading, and player-only entry", () => {
   const globalSearchSrc = fs.readFileSync(path.join(root, "components/search/PlayerGlobalSearch.tsx"), "utf8");
+  const directorySrc = fs.readFileSync(path.join(root, "components/club/PlayerDirectory.tsx"), "utf8");
+  const announcementsSrc = fs.readFileSync(path.join(root, "components/club/ClubAnnouncementsScreen.tsx"), "utf8");
   const headerSrc = fs.readFileSync(path.join(root, "components/layout/AppHeader.tsx"), "utf8");
   const pageSrc = fs.readFileSync(path.join(root, "app/page.tsx"), "utf8");
 
-  assert.match(globalSearchSrc, /createSearchReadinessCoordinator/);
-  assert.match(globalSearchSrc, /data-testid="search-loading-state"/);
-  assert.match(globalSearchSrc, /data-testid="search-error-state"/);
-  assert.match(globalSearchSrc, /data-testid="search-no-results"/);
+  assert.match(globalSearchSrc, /onNavigateTab\("players", pl\.id\)/);
+  assert.match(globalSearchSrc, /onNavigateTab\("announcements", p\.id\)/);
+  assert.match(directorySrc, /initialPlayerId/);
+  assert.match(directorySrc, /onOpenHandled/);
+  assert.match(announcementsSrc, /nextAnnouncementPageAction/);
+  assert.match(announcementsSrc, /onOpenHandled/);
+  assert.match(pageSrc, /initialPlayerId=\{tabAction\}/);
   assert.match(headerSrc, /persona === "player" && onOpenSearch/);
   assert.match(pageSrc, /validateMatchNavigation\(/);
 });

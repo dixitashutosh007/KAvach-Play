@@ -6,14 +6,45 @@
  * is only read when the member asks for it. Reuses the existing announcement
  * list and detail view (ClubAnnouncementsSection) without publishing controls.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAnnouncementPages } from "@/hooks/useClubData";
 import { ClubAnnouncementsSection } from "@/components/home/ClubAnnouncementsSection";
+import { nextAnnouncementPageAction } from "@/lib/club-feed";
 
-export function ClubAnnouncementsScreen({ openId }: { openId?: string | null }) {
+export function ClubAnnouncementsScreen({
+  openId,
+  onOpenHandled,
+}: {
+  openId?: string | null;
+  onOpenHandled?: () => void;
+}) {
   const { items, loading, error, done, loadMore } = useAnnouncementPages(20);
   const [pendingOpen, setPendingOpen] = useState<string | null>(openId || null);
-  const readyToOpen = pendingOpen && items.some((p) => p.id === pendingOpen) ? pendingOpen : null;
+
+  useEffect(() => {
+    if (openId) {
+      setPendingOpen(openId);
+    }
+  }, [openId]);
+
+  const pageAction = nextAnnouncementPageAction({
+    pendingOpen,
+    items,
+    done,
+    loading,
+    error,
+  });
+
+  useEffect(() => {
+    if (pageAction === "load_more") {
+      void loadMore();
+    } else if (pageAction === "not_found") {
+      setPendingOpen(null);
+      onOpenHandled?.();
+    }
+  }, [pageAction, loadMore, onOpenHandled]);
+
+  const readyToOpen = pageAction === "open" ? pendingOpen : null;
 
   return (
     <div className="flex flex-col gap-3" data-testid="club-announcements-screen">
@@ -25,7 +56,14 @@ export function ClubAnnouncementsScreen({ openId }: { openId?: string | null }) 
       {items.length === 0 && loading ? (
         <div className="h-24 rounded-2xl bg-surface-hover animate-pulse" aria-busy="true" />
       ) : (
-        <ClubAnnouncementsSection posts={items} openAnnouncementId={readyToOpen} onOpenHandled={() => setPendingOpen(null)} />
+        <ClubAnnouncementsSection
+          posts={items}
+          openAnnouncementId={readyToOpen}
+          onOpenHandled={() => {
+            setPendingOpen(null);
+            onOpenHandled?.();
+          }}
+        />
       )}
       {!done && (
         <button

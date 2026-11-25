@@ -118,3 +118,42 @@ export function filterDirectory<T extends { id: string; name?: string; disabled?
     })
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 }
+
+/**
+ * Resolve a single player by ID for public directory profile display.
+ * Excludes disabled, merged, pending, and rejected records and strips PII via toPublicPlayer().
+ */
+export function resolvePublicDirectoryPlayer(
+  players: readonly (Record<string, unknown> & { id: string; name?: string; disabled?: boolean; mergedInto?: string; inviteStatus?: string })[],
+  targetId: string | null | undefined,
+): PublicPlayer | null {
+  if (!targetId) return null;
+  const p = players.find((x) => x.id === targetId);
+  if (!p || p.disabled || p.mergedInto || p.inviteStatus === "Pending" || p.inviteStatus === "Rejected") {
+    return null;
+  }
+  return toPublicPlayer(p);
+}
+
+/**
+ * Pure pagination state decision for opening a target announcement ID across paginated results.
+ */
+export function nextAnnouncementPageAction({
+  pendingOpen,
+  items,
+  done,
+  loading,
+  error,
+}: {
+  pendingOpen: string | null;
+  items: readonly { id: string }[];
+  done: boolean;
+  loading: boolean;
+  error: string | null;
+}): "idle" | "open" | "load_more" | "wait" | "not_found" {
+  if (!pendingOpen) return "idle";
+  if (items.some((p) => p.id === pendingOpen)) return "open";
+  if (error || done) return "not_found";
+  if (loading) return "wait";
+  return "load_more";
+}
