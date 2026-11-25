@@ -22,11 +22,11 @@ export function computeRosterSummary(players: Player[] = []): RosterSummary {
   let inactivePlayers = 0;
 
   for (const p of roster) {
+    if (p.isStudioMember) studioMembers += 1;
     if (p.disabled) {
       inactivePlayers += 1;
     } else {
       activePlayers += 1;
-      if (p.isStudioMember) studioMembers += 1;
     }
   }
 
@@ -103,8 +103,25 @@ export function formatPlayingInfo(player: Pick<Player, "battingStyle" | "isWicke
   return parts.length > 0 ? parts.join(" · ") : "Cricket Member";
 }
 
+export function formatWhatsAppHref(mobile: string | undefined | null): string | null {
+  if (!mobile || typeof mobile !== "string") return null;
+  let digits = mobile.replace(/\D/g, "");
+  if (digits.startsWith("0") && digits.length === 11) {
+    digits = "91" + digits.slice(1);
+  } else if (digits.length === 10) {
+    digits = "91" + digits;
+  }
+  if (digits.length < 10 || digits.length > 15) return null;
+  return `https://wa.me/${digits}`;
+}
+
+export function sanitizeCsvCell(v: unknown): string {
+  const raw = String(v ?? "");
+  const neutralized = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
+
 export function buildRosterCsv(players: Player[]): string {
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const header = ["Name", "Player ID", "Mobile", "Email", "Cricket Role", "Membership", "Status", "Joined"];
   const rows = players.map((p) => [
     p.name,
@@ -116,5 +133,5 @@ export function buildRosterCsv(players: Player[]): string {
     p.disabled ? "Inactive" : "Active",
     p.kavachJoining || "",
   ]);
-  return [header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
+  return [header, ...rows].map((r) => r.map(sanitizeCsvCell).join(",")).join("\n");
 }

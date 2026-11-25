@@ -19,7 +19,7 @@ import { useStore } from "@/hooks/useStore";
 import { PlayerBadgeRow } from "@/components/BadgeIcon";
 import { EditPlayerInline } from "@/components/EditPlayerInline";
 import { classifyMatchPayment, isRealMoneyPayment } from "@/lib/match-finance";
-import { formatPlayingInfo } from "@/lib/club-roster";
+import { formatPlayingInfo, formatWhatsAppHref } from "@/lib/club-roster";
 import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -30,12 +30,15 @@ export function PlayerDetailsModal({
   player,
   onClose,
   isAdmin,
+  canViewFinance = false,
   planSummary,
 }: {
   store: ReturnType<typeof useStore>;
   player: Player;
   onClose: () => void;
   isAdmin: boolean;
+  /** True ONLY for Finance Admin and Super Admin (ROSTER-R1). */
+  canViewFinance?: boolean;
   planSummary?: { name: string; type?: string; until?: string | null; legacy?: boolean } | null;
 }) {
   const { toast } = useToast();
@@ -187,6 +190,11 @@ export function PlayerDetailsModal({
   };
 
   const hasPhoto = typeof player.photoURL === "string" && player.photoURL.startsWith("https://");
+  const whatsAppHref = formatWhatsAppHref(player.mobile);
+  const visibleTabs: readonly ("overview" | "membership" | "activity")[] = canViewFinance
+    ? ["overview", "membership", "activity"]
+    : ["overview", "membership"];
+  const activeTab = !canViewFinance && tab === "activity" ? "overview" : tab;
 
   return (
     <div
@@ -282,16 +290,16 @@ export function PlayerDetailsModal({
 
             {/* Tabs */}
             <div className="flex border-b border-border mt-5 -mx-4 px-4 gap-4" role="tablist">
-              {(["overview", "membership", "activity"] as const).map((t) => (
+              {visibleTabs.map((t) => (
                 <button
                   key={t}
                   type="button"
                   role="tab"
-                  aria-selected={tab === t}
+                  aria-selected={activeTab === t}
                   data-testid={`player-details-tab-${t}`}
                   onClick={() => setTab(t)}
                   className={`pb-2.5 text-sm font-bold capitalize border-b-2 transition cursor-pointer ${
-                    tab === t
+                    activeTab === t
                       ? "border-[#A30F2D] text-[#A30F2D]"
                       : "border-transparent text-[#667085] hover:text-[#171C26]"
                   }`}
@@ -303,7 +311,7 @@ export function PlayerDetailsModal({
           </div>
 
           <div className="p-4 space-y-3">
-            {tab === "overview" && (
+            {activeTab === "overview" && (
               <>
                 {editing && isAdmin ? (
                   <div className="bg-white rounded-2xl border border-border p-4">
@@ -390,15 +398,24 @@ export function PlayerDetailsModal({
 
                 {/* Contact & Management Actions */}
                 <div className="space-y-2 pt-1">
-                  {player.mobile && (
+                  {whatsAppHref ? (
                     <a
-                      href={`tel:${player.mobile}`}
+                      href={whatsAppHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       data-testid="contact-player-btn"
                       className="w-full min-h-[44px] rounded-xl bg-white border border-border hover:bg-surface-hover text-[#171C26] font-bold text-sm flex items-center justify-center gap-2 transition"
                     >
                       <PhoneCall className="w-4 h-4 text-[#15803D]" />
-                      Contact Player ({player.mobile})
+                      Contact Player on WhatsApp
                     </a>
+                  ) : (
+                    <div
+                      data-testid="contact-player-unavailable"
+                      className="w-full min-h-[40px] rounded-xl bg-white/70 border border-border text-[#667085] text-xs font-medium flex items-center justify-center"
+                    >
+                      No valid mobile number for WhatsApp contact
+                    </div>
                   )}
 
                   {isAdmin && !editing && (
@@ -438,7 +455,7 @@ export function PlayerDetailsModal({
               </>
             )}
 
-            {tab === "membership" && (
+            {activeTab === "membership" && (
               <div className="bg-white rounded-2xl border border-border p-4 space-y-4">
                 <div>
                   <p className="text-xs font-extrabold uppercase tracking-wider text-[#A30F2D]">
@@ -484,7 +501,7 @@ export function PlayerDetailsModal({
               </div>
             )}
 
-            {tab === "activity" && (
+            {canViewFinance && activeTab === "activity" && (
               <div className="bg-white rounded-2xl border border-border p-4 space-y-4">
                 <h4 className="text-xs font-extrabold uppercase tracking-widest text-[#A30F2D] flex items-center justify-between">
                   <span>Ledger Details</span>

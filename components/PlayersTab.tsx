@@ -54,20 +54,19 @@ export function PlayersTab({
   store,
   persona,
   isStudioAdmin,
+  isFinanceAdmin,
   autoOpenInvite,
 }: {
   store: ReturnType<typeof useStore>;
   persona: string;
   isStudioAdmin?: boolean;
+  isFinanceAdmin?: boolean;
   autoOpenInvite?: boolean;
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
-  // We allow basic admin functions (adding/editing players) if they are any kind of admin,
-  // but strictly, it might just be better to let all admins do basic directory edits,
-  // or restrict it. Given the system, any admin (isStudioAdmin !== false) usually manages
-  // the directory.
   const isAdmin = persona === "admin" && isStudioAdmin !== false;
+  const canViewFinance = persona === "admin" && Boolean(isFinanceAdmin);
   const [sortOption, setSortOption] = useState<
     "name" | "expiry" | "studio" | "due"
   >("name");
@@ -76,13 +75,10 @@ export function PlayersTab({
   const [membershipFilter, setMembershipFilter] = useState<RosterMembershipFilter>("all");
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [visibleCount, setVisibleCount] = useState(25);
-  const [selectedRosterIds, setSelectedRosterIds] = useState<string[]>([]);
-  const [bulkRosterBusy, setBulkRosterBusy] = useState(false);
-  const bulkRosterLockRef = useRef(false);
-  // Current Finance Plan per player (admins only; read via the server API).
-  const { assignments: planAssignments, loading: plansLoading, error: plansError } = useFinancePlanAssignments(isAdmin);
+  // Current Finance Plan per player (Finance/Super Admins only).
+  const { assignments: planAssignments, loading: plansLoading, error: plansError } = useFinancePlanAssignments(canViewFinance);
   // Only show plan info once it actually loaded (never a misleading "Regular").
-  const showPlans = isAdmin && !plansLoading && !plansError;
+  const showPlans = canViewFinance && !plansLoading && !plansError;
   const planTodayKey = getClubCalendarDate().dateString;
   const currentPlanFor = (player: Player) => {
     const a = assignmentOn(
@@ -96,16 +92,9 @@ export function PlayersTab({
   };
   const [viewMode, setViewMode] = useState<"list" | "grid" | "table">("list");
 
-  // Add / Invite Player modal
+  // Invite Player modal (WhatsApp invite)
   const [showInviteModal, setShowInviteModal] = useState(!!autoOpenInvite);
-  const [modalMode, setModalMode] = useState<"add" | "invite">(autoOpenInvite ? "invite" : "add");
-  const [inviteForm, setInviteForm] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    battingStyle: "",
-    isStudioMember: false,
-  });
+  const [inviteForm, setInviteForm] = useState({ name: "", phone: "" });
   const [standaloneInviteSending, setStandaloneInviteSending] = useState(false);
   const [standaloneInviteStatus, setStandaloneInviteStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
@@ -209,42 +198,6 @@ export function PlayersTab({
     toast(`Exported ${displayPlayers.length} player(s) to CSV.`, "success");
   };
 
-  const handleBulkStatusChange = async (disable: boolean) => {
-    if (bulkRosterLockRef.current || bulkRosterBusy) return;
-    const targets = displayPlayers.filter((p) => selectedRosterIds.includes(p.id));
-    if (targets.length === 0) return;
-    bulkRosterLockRef.current = true;
-    try {
-      const actionLabel = disable ? "Deactivate" : "Activate";
-      if (
-        !(await confirmAction({
-          message: `${actionLabel} ${targets.length} selected player(s)?`,
-          destructive: disable,
-        }))
-      ) {
-        return;
-      }
-      setBulkRosterBusy(true);
-      const { succeeded, failed } = await runBulkOperations(targets, async (pl) => {
-        await store.updatePlayer(pl.id, {
-          disabled: disable,
-          disabledAt: disable ? new Date().toISOString() : undefined,
-        });
-      });
-      if (failed.length === 0) {
-        setSelectedRosterIds([]);
-        toast(`${actionLabel}d ${succeeded.length} player(s).`, "success");
-      } else {
-        const failedIds = new Set(failed.map((f) => f.item.id));
-        setSelectedRosterIds((prev) => prev.filter((id) => failedIds.has(id)));
-        toast(`${actionLabel}d ${succeeded.length} player(s); ${failed.length} failed.`, "error");
-      }
-    } finally {
-      setBulkRosterBusy(false);
-      bulkRosterLockRef.current = false;
-    }
-  };
-
   return (
     <div className="space-y-4" data-testid="club-roster-screen">
       {/* Scarlet Sports-Tech Header Banner */}
@@ -274,15 +227,14 @@ export function PlayersTab({
                 type="button"
                 data-testid="roster-add-player-btn"
                 onClick={() => {
-                  setModalMode("add");
                   setShowInviteModal(true);
                   setStandaloneInviteStatus(null);
-                  setInviteForm({ name: "", phone: "", email: "", battingStyle: "", isStudioMember: false });
+                  setInviteForm({ name: "", phone: "" });
                 }}
                 className="min-h-[40px] px-3.5 rounded-xl bg-white text-[#A30F2D] hover:bg-[#FCE8ED] text-xs font-extrabold flex items-center gap-1.5 shadow cursor-pointer transition"
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                Add Player
+                Invite Player
               </button>
             </div>
           )}
@@ -316,14 +268,14 @@ export function PlayersTab({
 
           <button
             type="button"
-            onClick={() => { setStatusFilter("active"); setMembershipFilter("studio"); }}
+            onClick={() => { setStatusFilter("all"); setMembershipFilter("studio"); }}
             className="rounded-xl bg-amber-50 text-[#171C26] p-2.5 text-center border border-amber-200 hover:bg-amber-100/70 transition cursor-pointer"
           >
             <Layers className="w-4 h-4 mx-auto text-[#D97706] mb-1" />
             <div className="text-lg sm:text-xl font-black leading-none tabular-nums text-[#B45309]" data-testid="kpi-studio-players">
               {rosterSummary.studioMembers}
             </div>
-            <div className="text-[10px] font-semibold text-[#B45309] mt-1">Studio</div>
+            <div className="text-[10px] font-semibold text-[#B45309] mt-1">Studio Members</div>
           </button>
 
           <button
@@ -340,7 +292,7 @@ export function PlayersTab({
         </div>
       </div>
 
-      {/* Search & Filter Controls (No Admin Role Filters) */}
+      {/* Search & Single-Line Filter Controls (No Admin Role Filters) */}
       <div className="bg-white rounded-2xl border border-border p-3 space-y-2.5 shadow-xs">
         <div className="relative">
           <Search className="w-4 h-4 text-[#667085] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -357,7 +309,10 @@ export function PlayersTab({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          data-testid="roster-filter-row"
+          className="flex items-center gap-2 overflow-x-auto no-scrollbar whitespace-nowrap"
+        >
           <select
             aria-label="Filter by Status"
             data-testid="roster-status-filter"
@@ -366,7 +321,7 @@ export function PlayersTab({
               setStatusFilter(e.target.value as RosterStatusFilter);
               setVisibleCount(25);
             }}
-            className="min-h-[38px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
+            className="shrink-0 min-h-[40px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
           >
             <option value="all">Status: All</option>
             <option value="active">Status: Active</option>
@@ -381,7 +336,7 @@ export function PlayersTab({
               setMembershipFilter(e.target.value as RosterMembershipFilter);
               setVisibleCount(25);
             }}
-            className="min-h-[38px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
+            className="shrink-0 min-h-[40px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
           >
             <option value="all">Membership: All</option>
             <option value="studio">Membership: Studio</option>
@@ -390,18 +345,19 @@ export function PlayersTab({
 
           <select
             aria-label="Sort players"
+            data-testid="roster-sort-select"
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as any)}
-            className="min-h-[38px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
+            className="shrink-0 min-h-[40px] bg-[#F6F7F9] border border-border text-[#171C26] text-xs font-semibold rounded-xl px-2.5 outline-none focus:border-[#D51F43] cursor-pointer"
           >
             <option value="name">Sort: Name</option>
             <option value="expiry">Sort: Expiry Date</option>
             <option value="studio">Sort: Studio Member</option>
-            <option value="due">Sort: Due Amount</option>
+            {canViewFinance && <option value="due">Sort: Due Amount</option>}
           </select>
 
           {isAdmin && (
-            <div className="ml-auto hidden sm:flex items-center bg-[#F6F7F9] border border-border rounded-xl p-0.5">
+            <div className="ml-auto hidden sm:flex shrink-0 items-center bg-[#F6F7F9] border border-border rounded-xl p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode("list")}
@@ -435,43 +391,6 @@ export function PlayersTab({
             </div>
           )}
         </div>
-
-        {/* Bulk Selection Bar */}
-        {isAdmin && selectedRosterIds.length > 0 && (
-          <div
-            data-testid="roster-bulk-bar"
-            className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border"
-          >
-            <span className="text-xs font-bold text-[#171C26]">
-              {selectedRosterIds.length} player(s) selected
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={bulkRosterBusy}
-                onClick={() => handleBulkStatusChange(false)}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
-              >
-                Activate
-              </button>
-              <button
-                type="button"
-                disabled={bulkRosterBusy}
-                onClick={() => handleBulkStatusChange(true)}
-                className="px-3 py-1.5 rounded-lg bg-red-50 text-[#DC2626] border border-red-200 text-xs font-bold hover:bg-red-100 disabled:opacity-50 cursor-pointer"
-              >
-                Deactivate
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedRosterIds([])}
-                className="px-2.5 py-1.5 text-xs font-semibold text-[#667085] hover:text-[#171C26] cursor-pointer"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {isAdmin && <DuplicatePlayersReport store={store} />}
@@ -716,27 +635,17 @@ export function PlayersTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="roster-grid-view">
             {pagedPlayers.map((player) => {
               const hasPhoto = typeof player.photoURL === "string" && player.photoURL.startsWith("https://");
+              const dueAmt = canViewFinance ? getTotalDue(player.id) : null;
+              const studioEnd = player.isStudioMember ? (player.studioExpiryDate || player.studioEndDate || "") : "";
               return (
                 <div
                   key={player.id}
                   data-testid={`roster-player-card-${player.id}`}
                   onClick={() => setSelectedPlayer(player)}
-                  className="bg-white rounded-2xl border border-border p-4 hover:border-[#D51F43]/40 transition cursor-pointer flex flex-col gap-3 shadow-xs"
+                  className="bg-white rounded-2xl border border-border p-4 hover:border-[#D51F43]/40 transition cursor-pointer flex flex-col gap-2.5 shadow-xs"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${player.name}`}
-                        checked={selectedRosterIds.includes(player.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() =>
-                          setSelectedRosterIds((prev) =>
-                            prev.includes(player.id) ? prev.filter((x) => x !== player.id) : [...prev, player.id],
-                          )
-                        }
-                        className="w-4 h-4 accent-[#D51F43] shrink-0 cursor-pointer"
-                      />
                       {hasPhoto ? (
                         <img src={player.photoURL} alt={player.name} className="w-11 h-11 rounded-full object-cover shrink-0" />
                       ) : (
@@ -752,7 +661,20 @@ export function PlayersTab({
                       </div>
                     </div>
                   </div>
-                  <p className="text-xs text-[#667085] truncate">{formatPlayingInfo(player)}</p>
+                  <div className="space-y-0.5 text-xs">
+                    {canViewFinance ? (
+                      <p className={`font-semibold ${dueAmt! > 0 ? "text-[#DC2626]" : "text-[#667085]"}`}>
+                        Their Due: {dueAmt! > 0 ? `₹${dueAmt}` : "₹0 (Settled)"}
+                      </p>
+                    ) : (
+                      <p className="text-[#667085] truncate">{formatPlayingInfo(player)}</p>
+                    )}
+                    {player.isStudioMember && (
+                      <p className="text-[11px] text-[#667085] truncate">
+                        Studio ends: {studioEnd ? formatDate(studioEnd) : "No end date"}
+                      </p>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${player.isStudioMember ? "bg-[#FCE8ED] text-[#A30F2D]" : "bg-[#F6F7F9] text-[#667085]"}`}>
                       {player.isStudioMember ? "Studio" : "Regular"}
@@ -780,6 +702,8 @@ export function PlayersTab({
           )}
           {pagedPlayers.map((player) => {
             const hasPhoto = typeof player.photoURL === "string" && player.photoURL.startsWith("https://");
+            const dueAmt = canViewFinance ? getTotalDue(player.id) : null;
+            const studioEnd = player.isStudioMember ? (player.studioExpiryDate || player.studioEndDate || "") : "";
             return (
             <div
               key={player.id}
@@ -788,20 +712,6 @@ export function PlayersTab({
               onClick={() => setSelectedPlayer(player)}
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
-                {isAdmin && (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${player.name}`}
-                    checked={selectedRosterIds.includes(player.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() =>
-                      setSelectedRosterIds((prev) =>
-                        prev.includes(player.id) ? prev.filter((x) => x !== player.id) : [...prev, player.id],
-                      )
-                    }
-                    className="w-4 h-4 accent-[#D51F43] shrink-0 cursor-pointer"
-                  />
-                )}
                 {hasPhoto ? (
                   <img src={player.photoURL} alt={player.name} className="w-11 h-11 rounded-full object-cover shrink-0 border border-border" />
                 ) : (
@@ -810,19 +720,30 @@ export function PlayersTab({
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-[#171C26] text-sm sm:text-[15px] truncate">
-                    {player.name}
-                  </p>
-                  <p className="text-[11px] font-mono text-[#667085] truncate">
-                    Player ID: {player.kavachId || "Pending"}
-                  </p>
-                  <p className="text-[11px] text-[#667085] truncate mt-0.5">
-                    {formatPlayingInfo(player)}
-                    {showPlans && (() => {
-                      const fp = currentPlanFor(player);
-                      return ` · ${fp ? fp.name : "Regular Plan"}`;
-                    })()}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-[#171C26] text-sm sm:text-[15px] truncate">
+                      {player.name}
+                    </p>
+                    {player.kavachId && (
+                      <span className="shrink-0 text-[10px] font-mono text-[#667085]">
+                        {player.kavachId}
+                      </span>
+                    )}
+                  </div>
+                  {canViewFinance ? (
+                    <p className={`text-[11px] font-semibold truncate mt-0.5 ${dueAmt! > 0 ? "text-[#DC2626]" : "text-[#667085]"}`}>
+                      Their Due: {dueAmt! > 0 ? `₹${dueAmt}` : "₹0 (Settled)"}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-[#667085] truncate mt-0.5">
+                      {formatPlayingInfo(player)}
+                    </p>
+                  )}
+                  {player.isStudioMember && (
+                    <p className="text-[11px] text-[#667085] truncate">
+                      Studio ends: {studioEnd ? formatDate(studioEnd) : "No end date"}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -876,17 +797,18 @@ export function PlayersTab({
           player={store.players.find((p) => p.id === selectedPlayer.id) || selectedPlayer}
           onClose={() => setSelectedPlayer(null)}
           isAdmin={isAdmin}
+          canViewFinance={canViewFinance}
           planSummary={showPlans ? currentPlanFor(selectedPlayer) : null}
         />
       )}
 
-      {/* Add / Invite Player Modal */}
+      {/* Invite Player Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-border rounded-2xl p-5 max-w-md w-full space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2 text-[#A30F2D] font-extrabold text-base">
-                <UserPlus className="w-5 h-5" /> {modalMode === "add" ? "Add Player" : "Invite Player"}
+                <UserPlus className="w-5 h-5" /> Invite Player
               </div>
               <button
                 onClick={() => { setShowInviteModal(false); setStandaloneInviteSending(false); }}
@@ -896,29 +818,15 @@ export function PlayersTab({
               </button>
             </div>
 
-            <div className="flex bg-[#F6F7F9] p-1 rounded-xl border border-border">
-              <button
-                type="button"
-                onClick={() => { setModalMode("add"); setStandaloneInviteStatus(null); }}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${modalMode === "add" ? "bg-[#D51F43] text-white" : "text-[#667085]"}`}
-              >
-                Add Directly
-              </button>
-              <button
-                type="button"
-                onClick={() => { setModalMode("invite"); setStandaloneInviteStatus(null); }}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${modalMode === "invite" ? "bg-[#D51F43] text-white" : "text-[#667085]"}`}
-              >
-                WhatsApp Invite
-              </button>
+            <div className="text-xs text-[#667085]">
+              Send a WhatsApp welcome message to invite someone to register on KAvach Play.
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-[#667085] mb-1">Name *</label>
+                <label className="block text-[11px] font-semibold text-[#667085] mb-1">Name</label>
                 <input
                   type="text"
-                  data-testid="add-player-name-input"
                   value={inviteForm.name}
                   onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="Player name"
@@ -929,52 +837,13 @@ export function PlayersTab({
                 <label className="block text-[11px] font-semibold text-[#667085] mb-1">Phone Number *</label>
                 <input
                   type="tel"
-                  data-testid="add-player-phone-input"
                   value={inviteForm.phone}
                   onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))}
                   placeholder="e.g. 9876543210"
                   className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
                 />
               </div>
-              {modalMode === "add" && (
-                <>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#667085] mb-1">Email (optional)</label>
-                    <input
-                      type="email"
-                      value={inviteForm.email}
-                      onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
-                      placeholder="player@email.com"
-                      className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#667085] mb-1">Cricket Role</label>
-                    <select
-                      value={inviteForm.battingStyle}
-                      onChange={(e) => setInviteForm((f) => ({ ...f, battingStyle: e.target.value }))}
-                      className="w-full bg-[#F6F7F9] border border-border rounded-xl px-3 py-2 text-xs text-[#171C26] focus:outline-none focus:border-[#D51F43]"
-                    >
-                      {BATTING_STYLE_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt || "Select role..."}</option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
             </div>
-
-            {modalMode === "add" && (
-              <label className="flex items-center gap-2 text-xs font-semibold text-[#171C26] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={inviteForm.isStudioMember}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, isStudioMember: e.target.checked }))}
-                  className="accent-[#D51F43]"
-                />
-                Studio Member
-              </label>
-            )}
 
             {standaloneInviteStatus && (
               <div className={`text-xs px-3 py-2 rounded-lg font-semibold ${standaloneInviteStatus.ok ? "bg-emerald-50 text-[#15803D] border border-emerald-200" : "bg-red-50 text-[#DC2626] border border-red-200"}`}>
@@ -989,84 +858,37 @@ export function PlayersTab({
               >
                 Cancel
               </button>
-              {modalMode === "add" ? (
-                <button
-                  type="button"
-                  data-testid="add-player-submit-btn"
-                  disabled={standaloneInviteSending || !inviteForm.name.trim() || !inviteForm.phone.trim()}
-                  onClick={async () => {
-                    const cleanName = inviteForm.name.trim();
-                    const cleanPhone = inviteForm.phone.replace(/\D/g, "").slice(-10);
-                    const cleanEmail = inviteForm.email.trim().toLowerCase();
-                    if (!cleanName || cleanPhone.length < 10) {
-                      toast("Enter a valid player name and 10-digit mobile number.", "error");
-                      return;
+              <button
+                onClick={async () => {
+                  if (!inviteForm.phone.trim()) { toast("Please enter a phone number.", "error"); return; }
+                  setStandaloneInviteSending(true);
+                  setStandaloneInviteStatus(null);
+                  try {
+                    const res = await authedFetch("/api/whatsapp/invite", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        to: inviteForm.phone,
+                        playerName: inviteForm.name || "Player",
+                      }),
+                    });
+                    const resData = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                      setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!` });
+                      setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 8000);
+                    } else {
+                      setStandaloneInviteStatus({ ok: false, msg: resData.error || "Failed to send invite. Please check WhatsApp API settings." });
                     }
-                    const dup = store.players.find(
-                      (p) =>
-                        !p.mergedInto &&
-                        ((p.mobile && p.mobile.replace(/\D/g, "").slice(-10) === cleanPhone) ||
-                          (cleanEmail && p.email?.toLowerCase() === cleanEmail)),
-                    );
-                    if (dup) {
-                      setStandaloneInviteStatus({ ok: false, msg: `Player already exists: ${dup.name} (${dup.mobile}).` });
-                      return;
-                    }
-                    setStandaloneInviteSending(true);
-                    try {
-                      await store.addPlayer({
-                        name: cleanName,
-                        mobile: cleanPhone,
-                        ...(cleanEmail ? { email: cleanEmail } : {}),
-                        ...(inviteForm.battingStyle ? { battingStyle: inviteForm.battingStyle } : {}),
-                        isStudioMember: inviteForm.isStudioMember,
-                        inviteStatus: "Verified",
-                      });
-                      toast(`Added ${cleanName} to Club Roster.`, "success");
-                      setShowInviteModal(false);
-                    } catch (err: any) {
-                      setStandaloneInviteStatus({ ok: false, msg: err?.message || "Failed to add player." });
-                    } finally {
-                      setStandaloneInviteSending(false);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
-                >
-                  <UserPlus className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Adding..." : "Add Player"}
-                </button>
-              ) : (
-                <button
-                  onClick={async () => {
-                    if (!inviteForm.phone.trim()) { toast("Please enter a phone number.", "error"); return; }
-                    setStandaloneInviteSending(true);
-                    setStandaloneInviteStatus(null);
-                    try {
-                      const res = await authedFetch("/api/whatsapp/invite", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          to: inviteForm.phone,
-                          playerName: inviteForm.name || "Player",
-                        }),
-                      });
-                      const resData = await res.json().catch(() => ({}));
-                      if (res.ok) {
-                        setStandaloneInviteStatus({ ok: true, msg: `Invite sent to ${inviteForm.name || inviteForm.phone} via WhatsApp!` });
-                        setTimeout(() => { setShowInviteModal(false); setStandaloneInviteStatus(null); }, 8000);
-                      } else {
-                        setStandaloneInviteStatus({ ok: false, msg: resData.error || "Failed to send invite. Please check WhatsApp API settings." });
-                      }
-                    } catch {
-                      setStandaloneInviteStatus({ ok: false, msg: "Network error. Please try again." });
-                    }
-                    setStandaloneInviteSending(false);
-                  }}
-                  disabled={standaloneInviteSending || !inviteForm.phone.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Sending..." : "Send Invite"}
-                </button>
-              )}
+                  } catch {
+                    setStandaloneInviteStatus({ ok: false, msg: "Network error. Please try again." });
+                  }
+                  setStandaloneInviteSending(false);
+                }}
+                disabled={standaloneInviteSending || !inviteForm.phone.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#D51F43] hover:bg-[#A30F2D] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" /> {standaloneInviteSending ? "Sending..." : "Send Invite"}
+              </button>
             </div>
           </div>
         </div>

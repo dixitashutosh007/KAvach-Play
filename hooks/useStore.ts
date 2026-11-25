@@ -1592,19 +1592,18 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     const id = crypto.randomUUID();
     const docRef = doc(db, "players", id);
 
-    // Auto-generate KAvach ID if not provided
+    // Auto-generate KAvach ID atomically via server counter if not provided
     let kavachId = player.kavachId;
     if (!kavachId) {
-      const year = new Date().getFullYear();
-      let maxSeq = 0;
-      const prefix = `K${year}`;
-      for (const p of players) {
-        if (p.kavachId?.startsWith(prefix)) {
-          const seq = parseInt(p.kavachId.slice(prefix.length), 10);
-          if (seq > maxSeq) maxSeq = seq;
-        }
+      const allocRes = await authedFetch("/api/admin/allocate-kavach-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: new Date().getFullYear() }),
+      });
+      if (allocRes.ok) {
+        const allocData = await allocRes.json();
+        if (allocData?.kavachId) kavachId = allocData.kavachId;
       }
-      kavachId = `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
     }
 
     try {
@@ -1627,21 +1626,20 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     try {
       const existingPlayer = players.find((p) => p.id === playerId);
 
-      // Auto-assign KAvach ID when player gets approved and doesn't have one
+      // Auto-assign KAvach ID atomically when player gets approved and doesn't have one
       if (
         (updates.inviteStatus === "Accepted" || updates.inviteStatus === "Verified") &&
         existingPlayer && !existingPlayer.kavachId && !updates.kavachId
       ) {
-        const year = new Date().getFullYear();
-        const prefix = `K${year}`;
-        let maxSeq = 0;
-        for (const p of players) {
-          if (p.kavachId?.startsWith(prefix)) {
-            const seq = parseInt(p.kavachId.slice(prefix.length), 10);
-            if (seq > maxSeq) maxSeq = seq;
-          }
+        const allocRes = await authedFetch("/api/admin/allocate-kavach-id", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year: new Date().getFullYear() }),
+        });
+        if (allocRes.ok) {
+          const allocData = await allocRes.json();
+          if (allocData?.kavachId) updates.kavachId = allocData.kavachId;
         }
-        updates.kavachId = `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
       }
 
       const cleanedUpdates = cleanPayload({

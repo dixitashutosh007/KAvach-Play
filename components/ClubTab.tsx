@@ -47,6 +47,7 @@ export function ClubTab({
   sections,
   isClubAdmin,
   isSuperAdmin,
+  isFinanceAdmin,
   isStudioAdmin,
   currentUserId,
   currentUserName,
@@ -59,6 +60,7 @@ export function ClubTab({
   sections: ClubSection[];
   isClubAdmin: boolean;
   isSuperAdmin: boolean;
+  isFinanceAdmin?: boolean;
   isStudioAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
@@ -160,6 +162,7 @@ export function ClubTab({
           store={store}
           persona="admin"
           isStudioAdmin={true}
+          isFinanceAdmin={Boolean(isFinanceAdmin || isSuperAdmin)}
           autoOpenInvite={subAction === "invite"}
         />
       )}

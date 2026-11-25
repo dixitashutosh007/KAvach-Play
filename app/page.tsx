@@ -1391,6 +1391,7 @@ export default function Home() {
                           sections={clubSections}
                           isClubAdmin={isClubAdmin || isSuperAdmin}
                           isSuperAdmin={isSuperAdmin}
+                          isFinanceAdmin={isFinanceAdmin || isSuperAdmin}
                           isStudioAdmin={isStudioAdmin || isSuperAdmin}
                           currentUserId={user?.uid || ""}
                           currentUserName={player?.name || user?.displayName || "Admin"}
