@@ -11,6 +11,7 @@ import firebaseConfig from "../firebase-applet-config.json" with { type: "json" 
 import {
   resolveFirestoreDatabaseId,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
   PRODUCTION_FIRESTORE_DATABASE_ID,
   DEVELOPMENT_FIRESTORE_DATABASE_ID,
   APPROVED_FIRESTORE_DATABASE_IDS,
@@ -19,6 +20,7 @@ import {
 export {
   resolveFirestoreDatabaseId,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
   PRODUCTION_FIRESTORE_DATABASE_ID,
   DEVELOPMENT_FIRESTORE_DATABASE_ID,
   APPROVED_FIRESTORE_DATABASE_IDS,

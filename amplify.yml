@@ -22,6 +22,9 @@ frontend:
           fi
           {
             env | grep -E '^(RAZORPAY_|NEXT_PUBLIC_|RESEND_|SMTP_|WHATSAPP_|FIREBASE_|API_SECRET=|REPORT_API_SECRET=|APP_URL=|AWS_BRANCH=)'
+            if [ "$AWS_BRANCH" = "mig-mov" ] && [ "$ALLOW_STAGING_TEST_PAYMENTS" = "true" ]; then
+              echo "ALLOW_STAGING_TEST_PAYMENTS=true"
+            fi
           } > .env.production
           set -e
           echo "Wrote $(wc -l < .env.production) env vars to .env.production"

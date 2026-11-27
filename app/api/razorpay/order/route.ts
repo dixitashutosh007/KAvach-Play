@@ -5,6 +5,7 @@ import { ShopClosedError } from "../../../../lib/shop-config.ts";
 import {
   getServerFirestore,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
 } from "../../../../lib/server-db.ts";
 import {
   derivePayableAmount,
@@ -24,8 +25,10 @@ import {
 } from "../../../../lib/razorpay-order.ts";
 
 export async function POST(req: Request) {
-  // 1. Strict Payment Mode Check (Development Isolation)
-  if (!arePaymentOperationsEnabled()) {
+  // 1. Strict Payment Mode Check (Production or Fail-Closed Staging Test Gate)
+  const prodPaymentsEnabled = arePaymentOperationsEnabled();
+  const stagingTestEnabled = !prodPaymentsEnabled && isStagingTestCheckoutEnabled();
+  if (!prodPaymentsEnabled && !stagingTestEnabled) {
     return NextResponse.json(
       {
         error:
@@ -56,9 +59,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const finalKeyId =
-      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID;
-    const finalKeySecret = process.env.RAZORPAY_KEY_SECRET;
+    const finalKeyId = stagingTestEnabled
+      ? (process.env.RAZORPAY_KEY_ID || "").trim()
+      : process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID;
+    const finalKeySecret = (process.env.RAZORPAY_KEY_SECRET || "").trim();
+
+    if (stagingTestEnabled && !(finalKeyId || "").startsWith("rzp_test_")) {
+      return NextResponse.json(
+        { error: "Staging test checkout requires a verified rzp_test_ key.", code: "PAYMENTS_DISABLED" },
+        { status: 403 },
+      );
+    }
 
     if (!finalKeyId || !finalKeySecret) {
       const missing = [

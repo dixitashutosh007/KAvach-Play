@@ -41,6 +41,7 @@ import Razorpay from "razorpay";
 import {
   resolveFirestoreDatabaseId,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
   PRODUCTION_FIRESTORE_DATABASE_ID,
   DEVELOPMENT_FIRESTORE_DATABASE_ID,
   APPROVED_FIRESTORE_DATABASE_IDS,
@@ -496,6 +497,136 @@ describe("Database Isolation & Payment Safety Verification", () => {
       const res = await webhookPost(req);
       // Reached signature verification or secret check (401/500), proving it passed the 403 webhook gate
       assert.notEqual(res.status, 403);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Section 7: Staging Test-Mode Checkout Gate (mig-mov + kavach-play-db-ext)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe("7. Staging Test-Mode Checkout Gate (isStagingTestCheckoutEnabled)", () => {
+    const validStagingEnv = () => ({
+      AWS_BRANCH: "mig-mov",
+      NEXT_PUBLIC_FIRESTORE_DATABASE_ID: DEVELOPMENT_FIRESTORE_DATABASE_ID,
+      ALLOW_STAGING_TEST_PAYMENTS: "true",
+      RAZORPAY_KEY_ID: "rzp_test_1234567890abcd",
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: "rzp_test_1234567890abcd",
+      RAZORPAY_KEY_SECRET: "test_secret_value",
+      RAZORPAY_WEBHOOK_SECRET: "test_webhook_secret",
+    });
+
+    it("enables staging test checkout ONLY when mig-mov + kavach-play-db-ext + flag + matching rzp_test_ keys + secrets are present", () => {
+      assert.equal(isStagingTestCheckoutEnabled(validStagingEnv()), true);
+      assert.equal(arePaymentOperationsEnabled(validStagingEnv()), false);
+    });
+
+    it("fails closed when ALLOW_STAGING_TEST_PAYMENTS is missing or not 'true'", () => {
+      const env = validStagingEnv();
+      delete env.ALLOW_STAGING_TEST_PAYMENTS;
+      assert.equal(isStagingTestCheckoutEnabled(env), false);
+      assert.equal(isStagingTestCheckoutEnabled({ ...validStagingEnv(), ALLOW_STAGING_TEST_PAYMENTS: "false" }), false);
+    });
+
+    it("rejects main/master and production DB even if ALLOW_STAGING_TEST_PAYMENTS='true'", () => {
+      assert.equal(
+        isStagingTestCheckoutEnabled({
+          ...validStagingEnv(),
+          AWS_BRANCH: "main",
+          NEXT_PUBLIC_FIRESTORE_DATABASE_ID: PRODUCTION_FIRESTORE_DATABASE_ID,
+        }),
+        false,
+      );
+      assert.equal(
+        isStagingTestCheckoutEnabled({
+          ...validStagingEnv(),
+          AWS_BRANCH: "master",
+          NEXT_PUBLIC_FIRESTORE_DATABASE_ID: PRODUCTION_FIRESTORE_DATABASE_ID,
+        }),
+        false,
+      );
+      assert.equal(
+        isStagingTestCheckoutEnabled({
+          ...validStagingEnv(),
+          NEXT_PUBLIC_FIRESTORE_DATABASE_ID: PRODUCTION_FIRESTORE_DATABASE_ID,
+        }),
+        false,
+      );
+    });
+
+    it("rejects live rzp_live_ keys and mismatched server/client key IDs", () => {
+      assert.equal(
+        isStagingTestCheckoutEnabled({
+          ...validStagingEnv(),
+          RAZORPAY_KEY_ID: "rzp_live_123456",
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: "rzp_live_123456",
+        }),
+        false,
+      );
+      assert.equal(
+        isStagingTestCheckoutEnabled({
+          ...validStagingEnv(),
+          RAZORPAY_KEY_ID: "rzp_test_server_only",
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: "rzp_test_different_client",
+        }),
+        false,
+      );
+    });
+
+    it("fails closed when secrets are missing or DISABLE_PAYMENT_OPERATIONS='true'", () => {
+      assert.equal(isStagingTestCheckoutEnabled({ ...validStagingEnv(), RAZORPAY_KEY_SECRET: "" }), false);
+      assert.equal(isStagingTestCheckoutEnabled({ ...validStagingEnv(), RAZORPAY_WEBHOOK_SECRET: "  " }), false);
+      assert.equal(isStagingTestCheckoutEnabled({ ...validStagingEnv(), DISABLE_PAYMENT_OPERATIONS: "true" }), false);
+    });
+
+    it("allows /api/razorpay/order and /api/razorpay/webhook on mig-mov ONLY when staging gate passes", async () => {
+      const prev = {
+        AWS_BRANCH: process.env.AWS_BRANCH,
+        NEXT_PUBLIC_FIRESTORE_DATABASE_ID: process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID,
+        ALLOW_STAGING_TEST_PAYMENTS: process.env.ALLOW_STAGING_TEST_PAYMENTS,
+        RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
+        RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET,
+      };
+      try {
+        Object.assign(process.env, validStagingEnv());
+        const orderRes = await orderPost(
+          new Request("http://localhost:3000/api/razorpay/order", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ amount: 500 }),
+          }),
+        );
+        // Passes 403 staging gate and reaches auth guard (401)
+        assert.equal(orderRes.status, 401);
+
+        const whRes = await webhookPost(
+          new Request("http://localhost:3000/api/razorpay/webhook", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ event: "payment.captured" }),
+          }),
+        );
+        // Passes 403 staging gate and reaches signature check (401)
+        assert.equal(whRes.status, 401);
+
+        // Live key on mig-mov is blocked with 403
+        process.env.RAZORPAY_KEY_ID = "rzp_live_123456";
+        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = "rzp_live_123456";
+        const blockedOrderRes = await orderPost(
+          new Request("http://localhost:3000/api/razorpay/order", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ amount: 500 }),
+          }),
+        );
+        assert.equal(blockedOrderRes.status, 403);
+      } finally {
+        for (const [k, v] of Object.entries(prev)) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
     });
   });
 });

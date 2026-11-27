@@ -8,6 +8,7 @@ import {
 import {
   getServerFirestore,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
 } from "../../../../lib/server-db.ts";
 import { recordWebhookDeadLetter } from "../../../../lib/webhook-dead-letter.ts";
 import type { WebhookPermanentReason } from "../../../../lib/razorpay-webhook.ts";
@@ -110,8 +111,8 @@ export async function POST(req: NextRequest) {
     ? eventIdHeader
     : `wh_${crypto.randomUUID()}`;
 
-  // 1. Strict Webhook Processing Check (Development Isolation)
-  if (!arePaymentOperationsEnabled()) {
+  // 1. Strict Webhook Processing Check (Production or Fail-Closed Staging Test Gate)
+  if (!arePaymentOperationsEnabled() && !isStagingTestCheckoutEnabled()) {
     return NextResponse.json(
       {
         error:

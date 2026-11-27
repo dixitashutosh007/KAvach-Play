@@ -22,6 +22,7 @@ import {
   ensureAdminApp,
   resolveFirestoreDatabaseId,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
   setServerDbForTesting,
 } from "./server-db.ts";
 
@@ -30,6 +31,7 @@ export {
   ensureAdminApp,
   resolveFirestoreDatabaseId,
   arePaymentOperationsEnabled,
+  isStagingTestCheckoutEnabled,
 };
 
 export type AppRole =

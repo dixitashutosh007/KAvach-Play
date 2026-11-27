@@ -231,3 +231,63 @@ export function arePaymentOperationsEnabled(
 
   return true;
 }
+
+/**
+ * Evaluates whether hosted Razorpay test-mode checkout is permitted on `mig-mov`
+ * against the development/staging database (`kavach-play-db-ext`).
+ *
+ * Fail-closed guarantees:
+ * - Never enabled on `main`, `master`, preview, or unrecognized branches.
+ * - Never enabled against `PRODUCTION_FIRESTORE_DATABASE_ID`.
+ * - Requires explicit `ALLOW_STAGING_TEST_PAYMENTS === "true"`.
+ * - Requires both `RAZORPAY_KEY_ID` and `NEXT_PUBLIC_RAZORPAY_KEY_ID` to be present,
+ *   identical, and start with `"rzp_test_"` (live `rzp_live_*` keys are rejected).
+ * - Requires non-empty `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`.
+ */
+export function isStagingTestCheckoutEnabled(
+  env: Record<string, string | undefined> = (typeof process !== "undefined" ? process.env : {})
+): boolean {
+  if (env.DISABLE_PAYMENT_OPERATIONS === "true") {
+    return false;
+  }
+  if (env.ALLOW_STAGING_TEST_PAYMENTS !== "true") {
+    return false;
+  }
+
+  let branch: string;
+  try {
+    branch = resolveDeploymentBranch(env);
+  } catch {
+    return false;
+  }
+  if (branch !== "mig-mov") {
+    return false;
+  }
+
+  let dbId: string;
+  try {
+    dbId = resolveFirestoreDatabaseId(env);
+  } catch {
+    return false;
+  }
+  if (dbId !== DEVELOPMENT_FIRESTORE_DATABASE_ID) {
+    return false;
+  }
+
+  const nextPublicKeyId = (env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "").trim();
+  const serverKeyId = (env.RAZORPAY_KEY_ID || "").trim();
+  const keySecret = (env.RAZORPAY_KEY_SECRET || "").trim();
+  const webhookSecret = (env.RAZORPAY_WEBHOOK_SECRET || "").trim();
+
+  if (!nextPublicKeyId.startsWith("rzp_test_")) {
+    return false;
+  }
+  if (!serverKeyId.startsWith("rzp_test_") || serverKeyId !== nextPublicKeyId) {
+    return false;
+  }
+  if (!keySecret || !webhookSecret) {
+    return false;
+  }
+
+  return true;
+}
