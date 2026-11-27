@@ -157,3 +157,26 @@ export function nextAnnouncementPageAction({
   if (loading) return "wait";
   return "load_more";
 }
+
+const PUBLIC_PLAYERS_RATE_WINDOW_MS = 60_000;
+const PUBLIC_PLAYERS_RATE_MAX = 60;
+const publicPlayersRateBuckets = new Map<string, number[]>();
+
+export function _resetPublicPlayersRateLimitForTesting() {
+  publicPlayersRateBuckets.clear();
+}
+
+export function checkPublicPlayersRateLimit(key: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const cutoff = now - PUBLIC_PLAYERS_RATE_WINDOW_MS;
+  const timestamps = (publicPlayersRateBuckets.get(key) || []).filter((t) => t > cutoff);
+  if (timestamps.length >= PUBLIC_PLAYERS_RATE_MAX) {
+    const oldest = timestamps[0]!;
+    const retryAfterSec = Math.max(1, Math.ceil((oldest + PUBLIC_PLAYERS_RATE_WINDOW_MS - now) / 1000));
+    publicPlayersRateBuckets.set(key, timestamps);
+    return { allowed: false, retryAfterSec };
+  }
+  timestamps.push(now);
+  publicPlayersRateBuckets.set(key, timestamps);
+  return { allowed: true, retryAfterSec: 0 };
+}

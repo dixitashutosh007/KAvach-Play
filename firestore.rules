@@ -23,14 +23,16 @@ service cloud.firestore {
     function isSelf(playerId) {
       return isSignedIn()
         && isAccountActive()
+        && exists(/databases/$(database)/documents/players/$(playerId))
+        && get(/databases/$(database)/documents/players/$(playerId)).data.get('disabled', false) != true
         && (
-          getUserData().get('playerId', null) == playerId ||
-          (exists(/databases/$(database)/documents/players/$(playerId)) &&
-           get(/databases/$(database)/documents/players/$(playerId)).data.get('disabled', false) != true &&
-           (get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == request.auth.uid ||
-            (request.auth.uid == playerId &&
-             getUserData().get('playerId', null) == null &&
-             get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == null)))
+          getUserData().get('playerId', null) == playerId
+          || get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == request.auth.uid
+          || (
+            request.auth.uid == playerId
+            && getUserData().get('playerId', null) == null
+            && get(/databases/$(database)/documents/players/$(playerId)).data.get('authUid', null) == null
+          )
         );
     }
 
@@ -411,8 +413,7 @@ service cloud.firestore {
 
     match /auditLogs/{logId} {
       allow read: if isSuperAdmin();
-      allow create: if isAnyAdmin();
-      allow update, delete: if false;
+      allow create, update, delete: if false;
     }
 
     match /paymentLinks/{linkId} {
@@ -604,10 +605,12 @@ service cloud.firestore {
     }
 
     match /players/{playerId} {
-      allow read: if isAnyAdmin() || isSelf(playerId);
+      // P2-PII-01: Super Admin & Club Admin have full club roster access; Finance Admin
+      // uses /api/finance/players (minimal financial projection) and cannot read/write PII.
+      allow read: if isClubAdmin() || isSelf(playerId);
       allow create: if !incoming().keys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
         && (
-          isAnyAdmin()
+          isClubAdmin()
           || isSelf(playerId)
           || (
             isSignedIn()
@@ -619,7 +622,7 @@ service cloud.firestore {
         );
       allow update: if !incoming().diff(existing()).affectedKeys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
         && (
-          isAnyAdmin()
+          isClubAdmin()
           || (
             isSelf(playerId)
             && incoming().diff(existing()).affectedKeys().hasOnly([
@@ -631,7 +634,7 @@ service cloud.firestore {
             && isValidPlayerSelfUpdate(incoming(), existing())
           )
         );
-      allow delete: if isAnyAdmin() && isValidId(playerId);
+      allow delete: if isClubAdmin() && isValidId(playerId);
 
       match /otherFees/{feeId} {
         allow read: if isFinanceAdmin() || isSuperAdmin() || isSelf(playerId);

@@ -281,13 +281,21 @@ describe("DEF-R3-004: Firestore Security Rules — Positive & Negative Tests", {
 
   // ── 4. /auditLogs/{logId} ──────────────────────────────────────────────────
   describe("/auditLogs/{logId}", () => {
-    it("allows admin create and Super Admin read/delete, while keeping auditLogs strictly append-only (no update)", async () => {
+    it("denies all client writes (create/update/delete) and restricts read to Super Admin (P2-AUD-01)", async () => {
       const club = as("uid_club");
       const superAdmin = as("uid_super", { admin: true });
       const p1 = as("uid_p1");
 
-      await assertSucceeds(
+      await assertFails(
         club.collection("auditLogs").doc("log_2").set({
+          action: "updated",
+          entity: "player",
+          entityId: "p1",
+          createdAt: serverTimestamp(),
+        }),
+      );
+      await assertFails(
+        superAdmin.collection("auditLogs").doc("log_2").set({
           action: "updated",
           entity: "player",
           entityId: "p1",

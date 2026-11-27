@@ -1,8 +1,6 @@
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import {
   collection,
-  doc,
-  setDoc,
   getDocs,
   query,
   where,
@@ -10,8 +8,6 @@ import {
   limit,
   startAfter,
   getCountFromServer,
-  writeBatch,
-  Timestamp,
   QueryDocumentSnapshot,
   DocumentData,
 } from "firebase/firestore";
@@ -160,13 +156,25 @@ export function diffChanges(
 
 export async function logAudit(entry: Omit<AuditLogEntry, "id" | "timestamp">, idempotencyKey?: string): Promise<void> {
   try {
-    const id = idempotencyKey || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const ref = doc(db, AUDIT_COLLECTION, id);
-    await setDoc(ref, {
-      ...entry,
-      id,
-      timestamp: Timestamp.now(),
-    }, { merge: true });
+    const user = auth.currentUser;
+    if (!user) return;
+    const token = await user.getIdToken();
+    await fetch("/api/audit/log", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        action: entry.action,
+        entity: entry.entity,
+        entityId: entry.entityId,
+        entityLabel: entry.entityLabel,
+        changes: entry.changes,
+        summary: entry.summary,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      }),
+    });
   } catch (e) {
     console.error("[auditLog] Failed to write audit log:", e);
   }
@@ -207,29 +215,4 @@ export async function fetchAuditLogs(options: {
     lastDoc: docs.length > 0 ? docs[docs.length - 1] : null,
     hasMore,
   };
-}
-
-export async function truncateAuditLogs(olderThanMonths: number): Promise<number> {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - olderThanMonths);
-  const cutoffTs = Timestamp.fromDate(cutoff);
-
-  const coll = collection(db, AUDIT_COLLECTION);
-  const q = query(coll, where("timestamp", "<", cutoffTs), limit(500));
-
-  let totalDeleted = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) break;
-
-    const batch = writeBatch(db);
-    snapshot.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-    totalDeleted += snapshot.docs.length;
-    hasMore = snapshot.docs.length === 500;
-  }
-
-  return totalDeleted;
 }

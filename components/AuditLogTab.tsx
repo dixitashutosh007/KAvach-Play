@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { ScrollText, Filter, Trash2, ChevronDown, ChevronRight, RefreshCw, Database } from "lucide-react";
+import { ScrollText, Filter, ChevronDown, ChevronRight, RefreshCw, Database } from "lucide-react";
 import {
   AuditLogEntry,
   AuditEntity,
@@ -7,7 +7,6 @@ import {
   AuditActorType,
   fetchAuditLogs,
   getAuditLogCount,
-  truncateAuditLogs,
   formatFieldName,
 } from "@/lib/auditLog";
 import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
@@ -111,9 +110,6 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [actorTypeFilter, setActorTypeFilter] = useState<AuditActorType | "">("");
 
   const [logCount, setLogCount] = useState<number | null>(null);
-  const [truncating, setTruncating] = useState(false);
-  const [truncateMonths, setTruncateMonths] = useState<number | null>(null);
-  const [truncateResult, setTruncateResult] = useState<string | null>(null);
   // D-19: show a polite denial when Firestore rules refuse to read the audit log.
   const [accessDenied, setAccessDenied] = useState(false);
 
@@ -161,25 +157,6 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   useEffect(() => {
     refreshCount();
   }, []);
-
-  const handleTruncate = async () => {
-    if (!truncateMonths || !isSuperAdmin) return;
-    setTruncating(true);
-    setTruncateResult(null);
-    try {
-      const deleted = await truncateAuditLogs(truncateMonths);
-      setTruncateResult(`Deleted ${deleted} log${deleted !== 1 ? "s" : ""} older than ${truncateMonths} month${truncateMonths !== 1 ? "s" : ""}.`);
-      setTruncateMonths(null);
-      loadLogs(true);
-      refreshCount();
-    } catch (e) {
-      setTruncateResult("Failed to truncate logs.");
-      console.error(e);
-    } finally {
-      setTruncating(false);
-    }
-  };
-
 
   if (accessDenied) {
     return <AccessDenied feature="the Activity Log" requiredRole="Finance Admins and Super Admins" />;
@@ -326,38 +303,9 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       )}
 
       {isSuperAdmin && (
-        <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
-          <h3 className="text-sm font-bold text-text-secondary flex items-center gap-2">
-            <Trash2 className="w-4 h-4" /> Truncate Old Logs
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            {[3, 6, 9, 12].map(m => (
-              <button
-                key={m}
-                onClick={() => setTruncateMonths(truncateMonths === m ? null : m)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
-                  truncateMonths === m
-                    ? "bg-red-500/20 border-red-500/40 text-red-400"
-                    : "bg-surface-hover border-border text-text-muted hover:text-text-primary"
-                }`}
-              >
-                &gt; {m} months
-              </button>
-            ))}
-            {truncateMonths && (
-              <button
-                onClick={handleTruncate}
-                disabled={truncating}
-                className="px-4 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/30 transition disabled:opacity-40"
-              >
-                {truncating ? "Deleting..." : `Delete logs older than ${truncateMonths}m`}
-              </button>
-            )}
-          </div>
-          {truncateResult && (
-            <p className="text-xs text-text-muted">{truncateResult}</p>
-          )}
-        </div>
+        <p className="text-xs text-text-muted px-1">
+          Audit logs are strictly append-only and immutable.
+        </p>
       )}
     </div>
   );

@@ -447,6 +447,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     let activePlayersMode: string | null = null;
     let activePlayersUnsub: () => void = () => {};
     let cachedHasAdminClaim = false;
+    let latestSelfDoc: AppUser | null = null;
 
     const filterDemoPlayers = (list: Player[]) =>
       list.filter((p) => {
@@ -457,17 +458,23 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
     const syncPlayersSubscription = (selfDoc: AppUser | null, hasClaim: boolean) => {
       if (disposed) return;
-      const isAdminRole =
-        selfDoc?.status !== "Disabled" &&
-        (hasClaim || selfDoc?.isClubAdmin === true || selfDoc?.isFinanceAdmin === true);
+      const isActiveAccount = selfDoc?.status !== "Disabled";
+      const isFullPlayerAdmin =
+        isActiveAccount && (hasClaim || selfDoc?.isClubAdmin === true);
+      const isFinanceOnlyAdmin =
+        isActiveAccount && !isFullPlayerAdmin && selfDoc?.isFinanceAdmin === true;
       const targetPlayerId = selfDoc?.playerId || user.uid;
-      const nextMode = isAdminRole ? "admin" : `player:${targetPlayerId}`;
+      const nextMode = isFullPlayerAdmin
+        ? "admin"
+        : isFinanceOnlyAdmin
+          ? `finance:${targetPlayerId}`
+          : `player:${targetPlayerId}`;
       if (activePlayersMode === nextMode) return;
 
       activePlayersMode = nextMode;
       activePlayersUnsub();
 
-      if (isAdminRole) {
+      if (isFullPlayerAdmin) {
         activePlayersUnsub = onSnapshot(
           collection(db, "players"),
           (snapshot) => {
@@ -486,14 +493,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         return;
       }
 
-      // DEF-R3-003: Non-admin players subscribe ONLY to their own player record(s)
-      // and load public non-PII projections from /api/players/public.
-      let publicPlayers: Player[] = [];
+      // DEF-R3-003 & P2-PII-01: Non-Club-Admin users (including Finance Admin) subscribe
+      // ONLY to their own player record(s). Finance Admin loads minimal financial
+      // projections from /api/finance/players; players load non-PII from /api/players/public.
+      let directoryPlayers: Player[] = [];
       const ownById = new Map<string, Player>();
 
       const emitMergedPlayers = () => {
         const merged = new Map<string, Player>();
-        for (const pub of publicPlayers) merged.set(pub.id, pub);
+        for (const pub of directoryPlayers) merged.set(pub.id, pub);
         for (const [id, own] of ownById.entries()) merged.set(id, own);
         setPlayers(filterDemoPlayers(Array.from(merged.values())));
       };
@@ -527,11 +535,28 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
       (async () => {
         try {
-          const res = await authedFetch("/api/players/public");
-          if (res.ok && !disposed) {
-            const data = await res.json();
-            if (Array.isArray(data?.players)) {
-              publicPlayers = data.players as Player[];
+          if (isFinanceOnlyAdmin) {
+            const res = await authedFetch("/api/finance/players");
+            if (res.ok && !disposed) {
+              const data = await res.json();
+              if (Array.isArray(data?.players)) {
+                directoryPlayers = data.players as Player[];
+                emitMergedPlayers();
+              }
+            }
+          } else {
+            const collected: Player[] = [];
+            for (let page = 1; page <= 20; page++) {
+              const res = await authedFetch(`/api/players/public?page=${page}&limit=200`);
+              if (!res.ok || disposed) break;
+              const data = await res.json();
+              if (Array.isArray(data?.players)) {
+                collected.push(...(data.players as Player[]));
+              }
+              if (!data?.hasMore) break;
+            }
+            if (!disposed) {
+              directoryPlayers = collected;
               emitMergedPlayers();
             }
           }
@@ -552,6 +577,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       doc(db, "appUsers", user.uid),
       (selfSnap) => {
         if (!selfSnap.exists()) {
+          latestSelfDoc = null;
           setSelfAppUserStatus("missing");
           // Drop any stale copy so role checks never use a deleted document.
           setAppUsers((prev) => prev.filter((u) => u.id !== user.uid));
@@ -560,6 +586,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         }
         setSelfAppUserStatus("present");
         const selfDoc = { id: selfSnap.id, ...selfSnap.data() } as AppUser;
+        latestSelfDoc = selfDoc;
         syncPlayersSubscription(selfDoc, cachedHasAdminClaim);
         const nameLower = (selfDoc.name || "").toLowerCase();
         const emailLower = (selfDoc.email || "").toLowerCase();
@@ -570,6 +597,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         });
       },
       (err) => {
+        latestSelfDoc = null;
         setSelfAppUserStatus("error");
         handleFirestoreError(err, OperationType.LIST, "appUsers/self");
         syncPlayersSubscription(null, cachedHasAdminClaim);
@@ -580,7 +608,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       .then((tr) => {
         cachedHasAdminClaim = tr.claims?.admin === true;
         if (cachedHasAdminClaim && !disposed) {
-          syncPlayersSubscription(null, true);
+          syncPlayersSubscription(latestSelfDoc, true);
         }
       })
       .catch(() => {});
