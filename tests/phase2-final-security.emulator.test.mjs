@@ -8,6 +8,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { setServerDbForTesting } from "../lib/server-db.ts";
 import { getUserAccount } from "../lib/server-auth.ts";
 import {
+  authorizeRoleConsolidationExecution,
   setAccountRoles,
   reconcileRoleTransition,
   runRoleConsolidation,
@@ -118,7 +119,7 @@ describe(
     beforeEach(async () => {
       if (!testEnv) return;
       await testEnv.clearFirestore();
-      for (const col of ["appUsers", "players", "accessControl", "roleTransitions", "migrationRuns", "auditLogs", "phoneIndex", "uidIndex", "matches", "badges", "playerStats", "subscriptionHistory", "outOfPlays", "posts", "pollResponses", "catchLog", "paymentReservations"]) {
+      for (const col of ["appUsers", "players", "accessControl", "roleTransitions", "migrationRuns", "auditLogs", "phoneIndex", "uidIndex", "matches", "badges", "playerStats", "subscriptionHistory", "outOfPlays", "posts", "pollResponses", "catchLog", "paymentReservations", "clubLeads"]) {
         const snap = await adminDb.collection(col).get();
         if (!snap.empty) {
           const b = adminDb.batch();
@@ -412,11 +413,13 @@ describe(
       await adminDb.doc("appUsers/u_mig_2").set({ name: "M2", isStudioAdmin: true, status: "Active" });
       await adminDb.doc("appUsers/u_mig_3").set({ name: "M3", isDesigner: true, isFinanceAdmin: true, status: "Active" });
 
+      const authCtx = authorizeRoleConsolidationExecution({ credentialSource: "emulator" });
       // Simulate batch 2 failing after batch 1 commits (batchSize: 1)
       await assert.rejects(
         () =>
           runRoleConsolidation(adminDb, {
             execute: true,
+            auth: authCtx,
             migrationId: "mig_resume_1",
             batchSize: 1,
             onBeforeCommitBatch(batchIndex) {
@@ -435,6 +438,7 @@ describe(
       // Resume migration -> completes remaining 2 accounts without duplicating batch 1 audit
       const resumed = await runRoleConsolidation(adminDb, {
         execute: true,
+        auth: authCtx,
         migrationId: "mig_resume_1",
         batchSize: 1,
       });
@@ -447,6 +451,7 @@ describe(
       // Re-run again -> idempotent no-op
       const rerun = await runRoleConsolidation(adminDb, {
         execute: true,
+        auth: authCtx,
         migrationId: "mig_resume_1",
       });
       assert.equal(rerun.changed.length, 0);
@@ -550,13 +555,23 @@ describe(
       assert.equal(rejected[0].reason.status, 409);
     });
 
-    it("Role consolidation: rejects unauthorized actor, blocks concurrent same-ID execution, resumes after checkpoint failure, and blocks restarting completed ID", async () => {
+    it("Role consolidation: enforces unforgeable auth context, lease renewal & fencing, checkpoint recovery, and completed-ID protection", async () => {
       await adminDb.doc("appUsers/u_rc_1").set({ name: "RC1", isMatchAdmin: true, status: "Active" });
       await adminDb.doc("appUsers/u_rc_2").set({ name: "RC2", isStudioAdmin: true, status: "Active" });
+      const authCtx = authorizeRoleConsolidationExecution({ credentialSource: "emulator" });
 
-      // 1. Unauthorized actor rejected
+      // 1. Unauthorized execution (no auth context) & actor spoofing (plain JSON object without Symbol brand)
       await assert.rejects(
-        () => runRoleConsolidation(adminDb, { execute: true, actorId: "untrusted_user", migrationId: "mig_unauth" }),
+        () => runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_unauth" }),
+        (err) => err.status === 403,
+      );
+      await assert.rejects(
+        () =>
+          runRoleConsolidation(adminDb, {
+            execute: true,
+            auth: { actorId: "system:role-consolidation", actorName: "Spoof" },
+            migrationId: "mig_spoof",
+          }),
         (err) => err.status === 403,
       );
 
@@ -565,6 +580,7 @@ describe(
         () =>
           runRoleConsolidation(adminDb, {
             execute: true,
+            auth: authCtx,
             migrationId: "mig_ckpt_1",
             batchSize: 1,
             onBeforeCheckpoint(batchIndex) {
@@ -574,7 +590,12 @@ describe(
         /CHECKPOINT_WRITE_FAILED/,
       );
       assert.equal((await adminDb.doc("appUsers/u_rc_1").get()).data().isClubAdmin, true);
-      const resumed = await runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_ckpt_1", batchSize: 1 });
+      const resumed = await runRoleConsolidation(adminDb, {
+        execute: true,
+        auth: authCtx,
+        migrationId: "mig_ckpt_1",
+        batchSize: 1,
+      });
       assert.equal(resumed.changed.length, 1);
       assert.equal(resumed.changed[0].uid, "u_rc_2");
       assert.equal((await adminDb.doc("migrationRuns/mig_ckpt_1").get()).data().status, "completed");
@@ -582,7 +603,7 @@ describe(
       // 3. Completed migration cannot restart under same ID when new unconsolidated accounts appear
       await adminDb.doc("appUsers/u_rc_3").set({ name: "RC3", isDesigner: true, status: "Active" });
       await assert.rejects(
-        () => runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_ckpt_1" }),
+        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_ckpt_1" }),
         (err) => err.status === 409,
       );
 
@@ -591,16 +612,46 @@ describe(
       const conc = await Promise.allSettled([
         runRoleConsolidation(adminDb, {
           execute: true,
+          auth: authCtx,
           migrationId: "mig_conc_1",
           onBeforeCommitBatch: () => new Promise((r) => setTimeout(r, 80)),
         }),
-        runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_conc_1" }),
+        runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_conc_1" }),
       ]);
       assert.equal(conc.filter((r) => r.status === "fulfilled").length, 1);
       assert.equal(conc.filter((r) => r.status === "rejected" && r.reason?.status === 409).length, 1);
+
+      // 5. Lease expiry + fencing: stalled executor A (short lease) is superseded by executor B and fenced out (409)
+      await adminDb.doc("appUsers/u_rc_5").set({ name: "RC5", isMatchAdmin: true, status: "Active" });
+      let releaseStalled;
+      const stalledGate = new Promise((r) => {
+        releaseStalled = r;
+      });
+      const stalledPromise = runRoleConsolidation(adminDb, {
+        execute: true,
+        auth: authCtx,
+        migrationId: "mig_lease_fence_1",
+        leaseDurationMs: 50,
+        onBeforeCommitBatch: async () => {
+          await stalledGate;
+        },
+      });
+      await new Promise((r) => setTimeout(r, 90));
+      const recovery = await runRoleConsolidation(adminDb, {
+        execute: true,
+        auth: authCtx,
+        migrationId: "mig_lease_fence_1",
+      });
+      assert.equal(recovery.changed.some((c) => c.uid === "u_rc_5"), true);
+      releaseStalled();
+      await assert.rejects(
+        () => stalledPromise,
+        (err) => err.status === 409 && /fencing|superseded/i.test(err.message),
+      );
+      assert.equal((await adminDb.doc("migrationRuns/mig_lease_fence_1").get()).data().status, "completed");
     });
 
-    it("P2-DEL-01: blocks DELETE on comments, posts.potw, pollResponses, matches.playerOfTheMatch, feePlanIds, catchLog, paymentReservations, and cross-player collisions", async () => {
+    it("P2-DEL-01: blocks DELETE on squad membership, scorecards/stats, clubLeads, embedded match fields, allows safe unreferenced delete & historical PATCH", async () => {
       const clubHeaders = { "content-type": "application/json", "x-test-uid": "uid_club", "x-test-role": "clubAdmin" };
 
       // Non-Club-Admin cannot call DELETE ?unlink=true
@@ -614,14 +665,19 @@ describe(
         assert.equal(denied.status, 403);
       }
 
-      // Newly covered historical reference categories
       const cases = [
+        ["squad_unpaid", async (pid) => adminDb.doc(`matches/m_sq1/payments/m_sq1_${pid}`).set({ id: `m_sq1_${pid}`, matchId: "m_sq1", playerId: pid, status: "Unpaid", availability: "Confirmed", amount: 500 })],
+        ["squad_paid", async (pid) => adminDb.doc(`matches/m_sq2/payments/m_sq2_${pid}`).set({ id: `m_sq2_${pid}`, matchId: "m_sq2", playerId: pid, status: "Paid", availability: "Confirmed", amount: 500 })],
         ["comments_sub", async (pid) => adminDb.doc(`matches/m_c1/comments/c_${pid}`).set({ id: `c_${pid}`, playerId: pid, text: "hi" })],
         ["posts_potw", async (pid) => adminDb.doc(`posts/post_${pid}`).set({ id: `post_${pid}`, potw: { playerId: pid } })],
         ["pollResponses", async (pid) => adminDb.doc(`pollResponses/pr_${pid}`).set({ id: `pr_${pid}`, playerId: pid })],
         ["match_potm_str", async (pid) => adminDb.doc(`matches/m_potm_${pid}`).set({ id: `m_potm_${pid}`, playerOfTheMatch: pid })],
+        ["match_best_bat", async (pid) => adminDb.doc(`matches/m_bat_${pid}`).set({ id: `m_bat_${pid}`, bestBatsman: pid })],
+        ["match_best_bowl", async (pid) => adminDb.doc(`matches/m_bowl_${pid}`).set({ id: `m_bowl_${pid}`, bestBowler: pid })],
+        ["playerStats_perf", async (pid) => adminDb.doc(`playerStats/2026_${pid}`).set({ id: `2026_${pid}`, playerId: pid, year: 2026, runs: 245, wickets: 12 })],
         ["catchLog", async (pid) => adminDb.doc(`catchLog/cl_${pid}`).set({ id: `cl_${pid}`, playerId: pid })],
         ["paymentReservations", async (pid) => adminDb.doc(`paymentReservations/res_${pid}`).set({ id: `res_${pid}`, playerId: pid })],
+        ["clubLeads", async (pid) => adminDb.doc(`clubLeads/lead_${pid}`).set({ id: `lead_${pid}`, convertedPlayerId: pid, status: "converted" })],
       ];
       for (const [label, seed] of cases) {
         const pid = `p_cov_${label}`;
@@ -639,6 +695,14 @@ describe(
         new Request("https://play.kavachcricket.com/api/admin/players?playerId=p_cov_plans", { method: "DELETE", headers: clubHeaders }),
       );
       assert.equal(planDel.status, 409);
+
+      // Safe deletion of genuinely unreferenced player succeeds with audit
+      await adminDb.doc("players/p_clean_unref").set({ id: "p_clean_unref", name: "Clean Ghost", mobile: "9876500011" });
+      const cleanDel = await deleteAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players?playerId=p_clean_unref", { method: "DELETE", headers: clubHeaders }),
+      );
+      assert.equal(cleanDel.status, 200);
+      assert.equal((await adminDb.doc("players/p_clean_unref").get()).exists, false);
 
       // Cross-player identity collision: phoneIndex belongs to p_other -> DELETE ?unlink=true fails closed (409)
       await adminDb.doc("players/p_collide_target").set({ id: "p_collide_target", name: "Collide", mobile: "9876509988" });

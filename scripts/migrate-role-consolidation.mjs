@@ -24,7 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { runRoleConsolidation } from "../lib/access-control-server.ts";
+import { authorizeRoleConsolidationExecution, runRoleConsolidation } from "../lib/access-control-server.ts";
 import { APPROVED_FIRESTORE_DATABASE_IDS } from "../lib/database-config.ts";
 
 const args = process.argv.slice(2);
@@ -32,6 +32,10 @@ const execute = args.includes("--execute");
 const asJson = args.includes("--json");
 const database = (args.find((a) => a.startsWith("--database=")) || "").slice("--database=".length);
 const emulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+if (args.some((a) => a.startsWith("--actor"))) {
+  console.error("Actor identity is derived from the server execution context and cannot be overridden via CLI.");
+  process.exit(2);
+}
 
 if (!emulator) {
   if (!database || !APPROVED_FIRESTORE_DATABASE_IDS.has(database)) {
@@ -49,7 +53,10 @@ if (!emulator) {
 }
 const db = emulator ? getFirestore() : getFirestore(database);
 
-const report = await runRoleConsolidation(db, { execute, actorId: "migration", actorName: "Role consolidation migration (script)" });
+const authCtx = execute
+  ? authorizeRoleConsolidationExecution({ credentialSource: emulator ? "emulator" : "service_account" })
+  : undefined;
+const report = await runRoleConsolidation(db, { execute, auth: authCtx });
 if (asJson) {
   console.log(JSON.stringify(report, null, 2));
 } else {

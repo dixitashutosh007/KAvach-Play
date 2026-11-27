@@ -665,17 +665,69 @@ export async function accessHistory(db: Firestore, limit = 100) {
  *   - Writes one create-only `auditLogs` entry (`role_consolidation_${migrationId}_${uid}`) per changed account.
  *   - Persists batch checkpoints so partial failures never lose progress and retries skip migrated accounts.
  */
-const TRUSTED_MIGRATION_ACTORS = new Set(["system:role-consolidation", "migration"]);
-const MIGRATION_LEASE_MS = 5 * 60_000;
+const MIGRATION_AUTH_BRAND = Symbol("kavach.roleConsolidation.authorized");
+const DEFAULT_MIGRATION_LEASE_MS = 5 * 60_000;
+
+export interface MigrationExecutionAuth {
+  readonly [MIGRATION_AUTH_BRAND]: true;
+  readonly actorId: "system:role-consolidation";
+  readonly actorName: "Role consolidation migration";
+  readonly credentialSource: "service_account" | "emulator";
+}
+
+/**
+ * Issues a non-serializable, Symbol-branded execution context for `runRoleConsolidation`.
+ * Cannot be forged via JSON/HTTP payloads. Callers must have already verified
+ * server-side operational credentials (`serviceAccountKey.json` or local emulator).
+ */
+export function authorizeRoleConsolidationExecution(opts: {
+  credentialSource: "service_account" | "emulator";
+}): MigrationExecutionAuth {
+  if (opts.credentialSource !== "service_account" && opts.credentialSource !== "emulator") {
+    throw new AccessError(403, "Invalid operational credential source for role consolidation.");
+  }
+  return Object.freeze({
+    [MIGRATION_AUTH_BRAND]: true as const,
+    actorId: "system:role-consolidation",
+    actorName: "Role consolidation migration",
+    credentialSource: opts.credentialSource,
+  });
+}
+
+async function renewMigrationLeaseOrThrow(
+  db: Firestore,
+  runRef: FirebaseFirestore.DocumentReference,
+  leaseOwner: string,
+  fencingToken: number,
+  leaseDurationMs: number,
+  updates: Record<string, unknown> = {},
+): Promise<void> {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(runRef);
+    if (!snap.exists) {
+      throw new AccessError(409, "Migration run record disappeared; aborting execution.");
+    }
+    if (snap.get("fencingToken") !== fencingToken || snap.get("leaseOwner") !== leaseOwner) {
+      throw new AccessError(409, "Migration lease was superseded by another executor (fencing mismatch).");
+    }
+    tx.update(runRef, {
+      ...updates,
+      leaseExpiresAt: Date.now() + leaseDurationMs,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
 
 export async function runRoleConsolidation(
   db: Firestore,
   opts: {
     execute?: boolean;
+    auth?: MigrationExecutionAuth;
     actorId?: string;
     actorName?: string;
     migrationId?: string;
     batchSize?: number;
+    leaseDurationMs?: number;
     onBeforeCommitBatch?: (batchIndex: number, batchUids: string[]) => Promise<void> | void;
     onBeforeCheckpoint?: (batchIndex: number) => Promise<void> | void;
   } = {},
@@ -685,12 +737,19 @@ export async function runRoleConsolidation(
     throw new AccessError(400, "Invalid migrationId.");
   }
 
-  const rawActorId = typeof opts.actorId === "string" ? opts.actorId.trim() : "";
-  if (opts.execute && rawActorId && !TRUSTED_MIGRATION_ACTORS.has(rawActorId)) {
-    throw new AccessError(403, "Unauthorized migration actor; execution requires a trusted operational context.");
+  let actorId = "system:role-consolidation";
+  let actorName = "Role consolidation migration";
+  if (opts.execute) {
+    const authCtx = opts.auth as MigrationExecutionAuth | undefined;
+    if (!authCtx || authCtx[MIGRATION_AUTH_BRAND] !== true) {
+      throw new AccessError(
+        403,
+        "Role consolidation execution requires a verified server-side MigrationExecutionAuth context.",
+      );
+    }
+    actorId = authCtx.actorId;
+    actorName = authCtx.actorName;
   }
-  const actorId = rawActorId && TRUSTED_MIGRATION_ACTORS.has(rawActorId) ? rawActorId : "system:role-consolidation";
-  const actorName = "Role consolidation migration";
 
   const snap = await db.collection("appUsers").get();
   const docs = snap.docs
@@ -698,6 +757,7 @@ export async function runRoleConsolidation(
     .sort((a, b) => a.uid.localeCompare(b.uid));
   const summary = summariseConsolidation(docs);
   const maxAccountsPerBatch = Math.min(Math.max(opts.batchSize || 200, 1), 200);
+  const leaseDurationMs = Math.max(opts.leaseDurationMs ?? DEFAULT_MIGRATION_LEASE_MS, 50);
   const changed: { uid: string; retired: string[]; grantsClubAdmin: boolean }[] = [];
 
   if (opts.execute) {
@@ -710,6 +770,7 @@ export async function runRoleConsolidation(
     const nowMs = Date.now();
     let prevBatches = 0;
     let prevMigratedCount = 0;
+    let fencingToken = 1;
     let alreadyCompleted = false;
 
     await db.runTransaction(async (tx) => {
@@ -732,6 +793,7 @@ export async function runRoleConsolidation(
         }
         prevBatches = Number(runSnap.get("batchesCommitted") || 0);
         prevMigratedCount = Number(runSnap.get("migratedCount") || 0);
+        fencingToken = Number(runSnap.get("fencingToken") || 0) + 1;
       }
 
       tx.set(
@@ -742,7 +804,8 @@ export async function runRoleConsolidation(
           actorId,
           actorName,
           leaseOwner,
-          leaseExpiresAt: nowMs + MIGRATION_LEASE_MS,
+          fencingToken,
+          leaseExpiresAt: nowMs + leaseDurationMs,
           batchesCommitted: prevBatches,
           migratedCount: prevMigratedCount,
           lastError: null,
@@ -770,6 +833,9 @@ export async function runRoleConsolidation(
             chunk.map((c) => c.uid),
           );
         }
+
+        // Renew & verify lease fencing before committing each batch so stalled/superseded executors abort safely.
+        await renewMigrationLeaseOrThrow(db, runRef, leaseOwner, fencingToken, leaseDurationMs);
 
         const batch = db.batch();
         const batchChanged: { uid: string; retired: string[]; grantsClubAdmin: boolean }[] = [];
@@ -825,19 +891,18 @@ export async function runRoleConsolidation(
           await opts.onBeforeCheckpoint(batchIndex);
         }
 
-        await runRef.set(
-          {
-            batchesCommitted,
-            migratedCount,
-            leaseExpiresAt: Date.now() + MIGRATION_LEASE_MS,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
+        await renewMigrationLeaseOrThrow(db, runRef, leaseOwner, fencingToken, leaseDurationMs, {
+          batchesCommitted,
+          migratedCount,
+        });
       }
 
-      await runRef.set(
-        {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(runRef);
+        if (!snap.exists || snap.get("fencingToken") !== fencingToken || snap.get("leaseOwner") !== leaseOwner) {
+          throw new AccessError(409, "Migration lease was superseded before completion.");
+        }
+        tx.update(runRef, {
           status: "completed",
           batchesCommitted,
           migratedCount,
@@ -845,22 +910,28 @@ export async function runRoleConsolidation(
           lastError: null,
           completedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+        });
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Batch commit failed";
-      await runRef.set(
-        {
-          status: "failed",
-          batchesCommitted,
-          migratedCount,
-          leaseExpiresAt: null,
-          lastError: errMsg.slice(0, 300),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      try {
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(runRef);
+          if (!snap.exists || snap.get("fencingToken") !== fencingToken || snap.get("leaseOwner") !== leaseOwner) {
+            return;
+          }
+          tx.update(runRef, {
+            status: "failed",
+            batchesCommitted,
+            migratedCount,
+            leaseExpiresAt: null,
+            lastError: errMsg.slice(0, 300),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        });
+      } catch {
+        // Ignore secondary failure while propagating primary error
+      }
       throw err;
     }
   }

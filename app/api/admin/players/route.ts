@@ -193,6 +193,7 @@ export async function DELETE(req: Request) {
         potwPostsSnap,
         pollResponsesSnap,
         reservationsSnap,
+        clubLeadsSnap,
       ] = await Promise.all([
         tx.get(db.collectionGroup("payments").where("playerId", "==", playerId).limit(1)),
         tx.get(playerRef.collection("otherFees").limit(1)),
@@ -213,6 +214,7 @@ export async function DELETE(req: Request) {
         tx.get(db.collection("posts").where("potw.playerId", "==", playerId).limit(1)),
         tx.get(db.collection("pollResponses").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("paymentReservations").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("clubLeads").where("convertedPlayerId", "==", playerId).limit(1)),
       ]);
       const data = snap.data() || {};
       const hasPlanAssignments = Array.isArray(data.feePlanIds) && data.feePlanIds.length > 0;
@@ -236,6 +238,7 @@ export async function DELETE(req: Request) {
         !potwPostsSnap.empty ||
         !pollResponsesSnap.empty ||
         !reservationsSnap.empty ||
+        !clubLeadsSnap.empty ||
         hasPlanAssignments
       ) {
         throw new Error("PLAYER_HAS_HISTORY");
