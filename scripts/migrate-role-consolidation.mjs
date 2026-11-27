@@ -24,7 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { authorizeRoleConsolidationExecution, runRoleConsolidation } from "../lib/access-control-server.ts";
+import { authorizeRoleConsolidationExecution, runRoleConsolidation } from "../lib/role-consolidation-runner.ts";
 import { APPROVED_FIRESTORE_DATABASE_IDS } from "../lib/database-config.ts";
 
 const args = process.argv.slice(2);

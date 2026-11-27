@@ -8,11 +8,13 @@ import { getFirestore } from "firebase-admin/firestore";
 import { setServerDbForTesting } from "../lib/server-db.ts";
 import { getUserAccount } from "../lib/server-auth.ts";
 import {
-  authorizeRoleConsolidationExecution,
   setAccountRoles,
   reconcileRoleTransition,
-  runRoleConsolidation,
 } from "../lib/access-control-server.ts";
+import {
+  authorizeRoleConsolidationExecution,
+  runRoleConsolidation,
+} from "../lib/role-consolidation-runner.ts";
 import { linkPlayerAccount } from "../lib/account-linking.ts";
 import {
   PATCH as patchAdminPlayer,
@@ -414,7 +416,7 @@ describe(
       await adminDb.doc("appUsers/u_mig_3").set({ name: "M3", isDesigner: true, isFinanceAdmin: true, status: "Active" });
 
       const authCtx = authorizeRoleConsolidationExecution({ credentialSource: "emulator" });
-      // Simulate batch 2 failing after batch 1 commits (batchSize: 1)
+      // Simulate batch 2 failing inside its transaction after batch 1 commits (batchSize: 1)
       await assert.rejects(
         () =>
           runRoleConsolidation(adminDb, {
@@ -422,7 +424,7 @@ describe(
             auth: authCtx,
             migrationId: "mig_resume_1",
             batchSize: 1,
-            onBeforeCommitBatch(batchIndex) {
+            onBeforeBatchTx(batchIndex) {
               if (batchIndex === 2) throw new Error("SIMULATED_BATCH_2_FAILURE");
             },
           }),
@@ -555,12 +557,36 @@ describe(
       assert.equal(rejected[0].reason.status, 409);
     });
 
-    it("Role consolidation: enforces unforgeable auth context, lease renewal & fencing, checkpoint recovery, and completed-ID protection", async () => {
+    it("Role consolidation: enforces credential-backed capability, TOCTOU transaction fencing, and immutable plan fingerprinting", async () => {
       await adminDb.doc("appUsers/u_rc_1").set({ name: "RC1", isMatchAdmin: true, status: "Active" });
       await adminDb.doc("appUsers/u_rc_2").set({ name: "RC2", isStudioAdmin: true, status: "Active" });
       const authCtx = authorizeRoleConsolidationExecution({ credentialSource: "emulator" });
 
-      // 1. Unauthorized execution (no auth context) & actor spoofing (plain JSON object without Symbol brand)
+      // 1. Negative capability tests:
+      // 1a. Unauthorized Next.js server runtime cannot mint a capability even if it imports the runner
+      const prevNextRuntime = process.env.NEXT_RUNTIME;
+      try {
+        process.env.NEXT_RUNTIME = "nodejs";
+        assert.throws(
+          () => authorizeRoleConsolidationExecution({ credentialSource: "emulator" }),
+          (err) => err.status === 403 && /Next\.js runtime/i.test(err.message),
+        );
+      } finally {
+        if (prevNextRuntime === undefined) delete process.env.NEXT_RUNTIME;
+        else process.env.NEXT_RUNTIME = prevNextRuntime;
+      }
+
+      // 1b. Missing serviceAccountKey.json cannot mint service_account capability
+      assert.throws(
+        () =>
+          authorizeRoleConsolidationExecution({
+            credentialSource: "service_account",
+            serviceAccountPath: "/nonexistent/serviceAccountKey.json",
+          }),
+        (err) => err.status === 403,
+      );
+
+      // 1c. Missing auth or plain JSON object (even with Symbol-like shape) is rejected (403)
       await assert.rejects(
         () => runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_unauth" }),
         (err) => err.status === 403,
@@ -575,80 +601,117 @@ describe(
         (err) => err.status === 403,
       );
 
-      // 2. Checkpoint failure after batch 1 commits -> batch 1 is persisted and resume finishes batch 2 without duplicating audits
+      // 1d. Module boundary check: lib/access-control-server.ts does not export runRoleConsolidation or authorizeRoleConsolidationExecution
+      const acServerSrc = fs.readFileSync(path.resolve(__dirname, "../lib/access-control-server.ts"), "utf8");
+      assert.equal(/export\s+async\s+function\s+runRoleConsolidation/.test(acServerSrc), false);
+      assert.equal(/export\s+function\s+authorizeRoleConsolidationExecution/.test(acServerSrc), false);
+
+      // 2. Plan consistency: same ID + same plan resumes; same ID + changed plan rejects (409)
       await assert.rejects(
         () =>
           runRoleConsolidation(adminDb, {
             execute: true,
             auth: authCtx,
-            migrationId: "mig_ckpt_1",
+            migrationId: "mig_plan_1",
             batchSize: 1,
-            onBeforeCheckpoint(batchIndex) {
-              if (batchIndex === 1) throw new Error("CHECKPOINT_WRITE_FAILED");
+            onBeforeBatchTx(batchIndex) {
+              if (batchIndex === 2) throw new Error("INTERRUPTED_AT_BATCH_2");
             },
           }),
-        /CHECKPOINT_WRITE_FAILED/,
+        /INTERRUPTED_AT_BATCH_2/,
       );
-      assert.equal((await adminDb.doc("appUsers/u_rc_1").get()).data().isClubAdmin, true);
-      const resumed = await runRoleConsolidation(adminDb, {
+      // Same ID + changed plan (new unconsolidated account added) -> rejected 409
+      await adminDb.doc("appUsers/u_rc_extra").set({ name: "Extra", isDesigner: true, status: "Active" });
+      await assert.rejects(
+        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_plan_1" }),
+        (err) => err.status === 409 && /plan changed/i.test(err.message),
+      );
+      // Remove extra account -> same ID + same plan resumes and completes
+      await adminDb.doc("appUsers/u_rc_extra").delete();
+      const resumedSamePlan = await runRoleConsolidation(adminDb, {
         execute: true,
         auth: authCtx,
-        migrationId: "mig_ckpt_1",
+        migrationId: "mig_plan_1",
         batchSize: 1,
       });
-      assert.equal(resumed.changed.length, 1);
-      assert.equal(resumed.changed[0].uid, "u_rc_2");
-      assert.equal((await adminDb.doc("migrationRuns/mig_ckpt_1").get()).data().status, "completed");
+      assert.equal(resumedSamePlan.changed.length, 1);
+      assert.equal(resumedSamePlan.changed[0].uid, "u_rc_2");
+      assert.equal((await adminDb.doc("migrationRuns/mig_plan_1").get()).data().status, "completed");
 
-      // 3. Completed migration cannot restart under same ID when new unconsolidated accounts appear
+      // Completed ID + same plan -> harmless no-op
+      const noopCompleted = await runRoleConsolidation(adminDb, {
+        execute: true,
+        auth: authCtx,
+        migrationId: "mig_plan_1",
+      });
+      assert.equal(noopCompleted.alreadyCompleted, true);
+      assert.equal(noopCompleted.changed.length, 0);
+
+      // Completed ID + changed plan -> rejected 409
       await adminDb.doc("appUsers/u_rc_3").set({ name: "RC3", isDesigner: true, status: "Active" });
       await assert.rejects(
-        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_ckpt_1" }),
+        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_plan_1" }),
         (err) => err.status === 409,
       );
 
-      // 4. Concurrent executions with the same migrationId -> 1 wins lease, 1 gets 409
-      await adminDb.doc("appUsers/u_rc_4").set({ name: "RC4", isMatchAdmin: true, status: "Active" });
+      // 3. Concurrent executions with the same migrationId -> 1 wins lease, 1 gets 409
       const conc = await Promise.allSettled([
         runRoleConsolidation(adminDb, {
           execute: true,
           auth: authCtx,
           migrationId: "mig_conc_1",
-          onBeforeCommitBatch: () => new Promise((r) => setTimeout(r, 80)),
+          onBeforeBatchTx: () => new Promise((r) => setTimeout(r, 80)),
         }),
         runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_conc_1" }),
       ]);
       assert.equal(conc.filter((r) => r.status === "fulfilled").length, 1);
       assert.equal(conc.filter((r) => r.status === "rejected" && r.reason?.status === 409).length, 1);
 
-      // 5. Lease expiry + fencing: stalled executor A (short lease) is superseded by executor B and fenced out (409)
-      await adminDb.doc("appUsers/u_rc_5").set({ name: "RC5", isMatchAdmin: true, status: "Active" });
-      let releaseStalled;
-      const stalledGate = new Promise((r) => {
-        releaseStalled = r;
+      // 4. Deterministic TOCTOU concurrency test:
+      // Process A acquires fencingToken=1, pauses AFTER initial lease validation (in onBeforeBatchTx),
+      // lease expires, Process B acquires fencingToken=2 and commits, Process A resumes and MUST be
+      // rejected inside its batch transaction without committing stale writes.
+      await adminDb.doc("appUsers/u_rc_toctou").set({ name: "TOCTOU", isMatchAdmin: true, status: "Active" });
+      let releaseA;
+      let signalAPaused;
+      const aPaused = new Promise((r) => {
+        signalAPaused = r;
       });
-      const stalledPromise = runRoleConsolidation(adminDb, {
+      const gateA = new Promise((r) => {
+        releaseA = r;
+      });
+      const promiseA = runRoleConsolidation(adminDb, {
         execute: true,
         auth: authCtx,
-        migrationId: "mig_lease_fence_1",
+        migrationId: "mig_toctou_1",
         leaseDurationMs: 50,
-        onBeforeCommitBatch: async () => {
-          await stalledGate;
+        onBeforeBatchTx: async () => {
+          signalAPaused();
+          await gateA;
         },
       });
+      await aPaused;
+      // Wait for Process A's 50ms lease to expire, then run Process B (fencingToken=2)
       await new Promise((r) => setTimeout(r, 90));
-      const recovery = await runRoleConsolidation(adminDb, {
+      const resB = await runRoleConsolidation(adminDb, {
         execute: true,
         auth: authCtx,
-        migrationId: "mig_lease_fence_1",
+        migrationId: "mig_toctou_1",
       });
-      assert.equal(recovery.changed.some((c) => c.uid === "u_rc_5"), true);
-      releaseStalled();
+      assert.equal(resB.changed.some((c) => c.uid === "u_rc_toctou"), true);
+      const runAfterB = (await adminDb.doc("migrationRuns/mig_toctou_1").get()).data();
+      assert.equal(runAfterB.fencingToken, 2);
+      assert.equal(runAfterB.status, "completed");
+
+      // Resume Process A: its batch transaction MUST fail with 409 and NOT overwrite completed state
+      releaseA();
       await assert.rejects(
-        () => stalledPromise,
+        () => promiseA,
         (err) => err.status === 409 && /fencing|superseded/i.test(err.message),
       );
-      assert.equal((await adminDb.doc("migrationRuns/mig_lease_fence_1").get()).data().status, "completed");
+      const runAfterA = (await adminDb.doc("migrationRuns/mig_toctou_1").get()).data();
+      assert.equal(runAfterA.fencingToken, 2);
+      assert.equal(runAfterA.status, "completed");
     });
 
     it("P2-DEL-01: blocks DELETE on squad membership, scorecards/stats, clubLeads, embedded match fields, allows safe unreferenced delete & historical PATCH", async () => {
