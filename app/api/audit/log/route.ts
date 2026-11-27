@@ -57,6 +57,7 @@ const REDACTED_CHANGE_FIELDS = new Set([
 ]);
 
 const SERVER_AUTHORITATIVE_ONLY_ENTITIES = new Set([
+  "access",
   "user_role",
   "payment",
   "subscription_period",
@@ -97,17 +98,17 @@ export async function POST(req: Request) {
   if (!ALLOWED_ACTIONS.has(action)) {
     return NextResponse.json({ error: "Invalid audit action." }, { status: 400 });
   }
-  if (!ALLOWED_ENTITIES.has(entity)) {
-    return NextResponse.json({ error: "Invalid audit entity." }, { status: 400 });
-  }
   if (
     SERVER_AUTHORITATIVE_ONLY_ENTITIES.has(entity) ||
-    (entity === "player" && action === "deleted")
+    (entity === "player" && (action === "created" || action === "deleted"))
   ) {
     return NextResponse.json(
       { error: "Authoritative audit events for this operation must be generated server-side." },
       { status: 403 },
     );
+  }
+  if (!ALLOWED_ENTITIES.has(entity)) {
+    return NextResponse.json({ error: "Invalid audit entity." }, { status: 400 });
   }
   if (!entityId || !summary) {
     return NextResponse.json({ error: "entityId and summary are required." }, { status: 400 });

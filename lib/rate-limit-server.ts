@@ -8,7 +8,8 @@ const DEFAULT_MAX_REQUESTS = 60;
  * Shared Firestore-backed fixed-window rate limiter (`rateLimits/{docId}`).
  *
  * Security & correctness properties (P2-API-05):
- * - Collision-free SHA-256 hash of `${scope}:${key}` (no truncation or lossy char replacement).
+ * - Strong collision resistance via 256-bit SHA-256 digest of `${scope}:${key}`
+ *   truncated to 128 bits (32 hex chars), with no lossy character replacement.
  * - Does NOT store raw UIDs/IPs in the rate-limit document ID or fields.
  * - Stores Firestore `Timestamp` `expiresAt` for native Firestore TTL cleanup.
  * - Fail-closed: Firestore transaction errors propagate so callers return 5xx

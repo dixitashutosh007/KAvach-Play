@@ -46,6 +46,12 @@ function makeDb(initial) {
       const tx = {
         get: (refOrQuery) => refOrQuery.get(),
         set: (ref, data, opts) => pending.push({ ref, data, opts }),
+        create: (ref, data) => {
+          if (store[ref.__col]?.[ref.__id] !== undefined) {
+            throw new Error(`ALREADY_EXISTS: ${ref.__col}/${ref.__id}`);
+          }
+          pending.push({ ref, data });
+        },
       };
       const result = await fn(tx);
       for (const { ref, data, opts } of pending) {

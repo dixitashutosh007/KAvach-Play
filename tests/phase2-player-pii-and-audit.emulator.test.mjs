@@ -14,6 +14,12 @@ import { linkPlayerAccount } from "../lib/account-linking.ts";
 import { linkGoogleLogin } from "../lib/google-linking.ts";
 import { executeMergeCompletionStage } from "../lib/player-merge.ts";
 import { checkSharedRateLimit } from "../lib/rate-limit-server.ts";
+import { writeServerAudit } from "../lib/server-audit.ts";
+import {
+  POST as postAdminPlayer,
+  PATCH as patchAdminPlayer,
+  DELETE as deleteAdminPlayer,
+} from "../app/api/admin/players/route.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rulesContent = fs.readFileSync(path.resolve(__dirname, "../firestore.rules"), "utf8");
@@ -757,6 +763,137 @@ describe(
         },
       };
       await assert.rejects(() => checkSharedRateLimit(brokenDb, "test_scope", "uid_x"));
+    });
+
+    // ── Final Closure: Create-Only Server Audit & Player Lifecycle API ───────
+    it("writeServerAudit enforces create-only semantics for custom IDs and rejects missing create() or duplicates", async () => {
+      await assert.rejects(
+        () =>
+          writeServerAudit(
+            adminDb,
+            {
+              actorId: "u1",
+              actorName: "A",
+              action: "created",
+              entity: "player",
+              entityId: "p1",
+              entityLabel: "P1",
+              changes: [],
+              summary: "Test",
+              id: "dup_audit_id",
+            },
+            { set: () => {} },
+          ),
+        /create-only/,
+      );
+
+      await writeServerAudit(adminDb, {
+        actorId: "u1",
+        actorName: "A",
+        action: "created",
+        entity: "player",
+        entityId: "p1",
+        entityLabel: "P1",
+        changes: [],
+        summary: "First",
+        id: "dup_audit_id",
+      });
+      await assert.rejects(() =>
+        writeServerAudit(adminDb, {
+          actorId: "u1",
+          actorName: "A",
+          action: "created",
+          entity: "player",
+          entityId: "p1",
+          entityLabel: "P1",
+          changes: [],
+          summary: "Duplicate",
+          id: "dup_audit_id",
+        }),
+      );
+    });
+
+    it("/api/admin/players enforces Club Admin RBAC and commits atomic server audits for create/disable/restore/delete", async () => {
+      await adminDb.collection("appUsers").doc("uid_club").set({
+        name: "Verified Club Admin",
+        role: "player",
+        isClubAdmin: true,
+        status: "Active",
+      });
+
+      // Finance Admin and Player denied
+      for (const [uid, role] of [["uid_p1", "player"], ["uid_fin", "financeAdmin"]]) {
+        const denied = await postAdminPlayer(
+          new Request("https://play.kavachcricket.com/api/admin/players", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-test-uid": uid, "x-test-role": role },
+            body: JSON.stringify({ name: "Unauthorized", mobile: "9876543210" }),
+          }),
+        );
+        assert.equal(denied.status, 403);
+      }
+
+      // Club Admin creates player -> atomic auditLogs/player_create_<id>
+      const createRes = await postAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-test-uid": "uid_club", "x-test-role": "clubAdmin" },
+          body: JSON.stringify({ id: "p_life_1", name: "Lifecycle Player", mobile: "9876543210", kavachId: "K26099" }),
+        }),
+      );
+      assert.equal(createRes.status, 200);
+      const createAudit = (await adminDb.collection("auditLogs").doc("player_create_p_life_1").get()).data();
+      assert.equal(createAudit.source, "server_authoritative");
+      assert.equal(createAudit.action, "created");
+
+      // Disable & restore -> atomic status_change audits
+      const disRes = await patchAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", "x-test-uid": "uid_club", "x-test-role": "clubAdmin" },
+          body: JSON.stringify({ playerId: "p_life_1", disabled: true }),
+        }),
+      );
+      assert.equal(disRes.status, 200);
+      assert.equal((await adminDb.collection("players").doc("p_life_1").get()).data().disabled, true);
+
+      const restRes = await patchAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", "x-test-uid": "uid_club", "x-test-role": "clubAdmin" },
+          body: JSON.stringify({ playerId: "p_life_1", disabled: false }),
+        }),
+      );
+      assert.equal(restRes.status, 200);
+      assert.equal((await adminDb.collection("players").doc("p_life_1").get()).data().disabled, false);
+
+      // Delete -> atomic deleted audit
+      const delRes = await deleteAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players?playerId=p_life_1", {
+          method: "DELETE",
+          headers: { "x-test-uid": "uid_club", "x-test-role": "clubAdmin" },
+        }),
+      );
+      assert.equal(delRes.status, 200);
+      assert.equal((await adminDb.collection("players").doc("p_life_1").get()).exists, false);
+
+      const lifeAudits = await adminDb.collection("auditLogs").where("entityId", "==", "p_life_1").get();
+      assert.equal(lifeAudits.size, 4);
+
+      // Client /api/audit/log cannot impersonate access or player create/delete
+      for (const payload of [
+        { action: "updated", entity: "access", entityId: "u1", summary: "Spoof role" },
+        { action: "created", entity: "player", entityId: "p1", summary: "Spoof create" },
+      ]) {
+        const res = await postAuditLog(
+          new Request("https://play.kavachcricket.com/api/audit/log", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-test-uid": "uid_club", "x-test-role": "clubAdmin" },
+            body: JSON.stringify(payload),
+          }),
+        );
+        assert.equal(res.status, 403);
+      }
     });
   },
 );

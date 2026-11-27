@@ -528,18 +528,30 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           if (isFinanceOnlyAdmin) {
             const collected: Player[] = [];
             let cursor: string | null = null;
-            for (let page = 1; page <= 20; page++) {
+            let truncated = false;
+            while (true) {
               const qs = cursor
                 ? `/api/finance/players?limit=200&cursor=${encodeURIComponent(cursor)}`
                 : "/api/finance/players?limit=200";
               const res = await authedFetch(qs);
-              if (!res.ok || disposed) break;
+              if (!res.ok) {
+                truncated = true;
+                break;
+              }
+              if (disposed) break;
               const data = await res.json();
               if (Array.isArray(data?.players)) {
                 collected.push(...(data.players as Player[]));
               }
               if (!data?.hasMore || !data?.nextCursor) break;
               cursor = String(data.nextCursor);
+              if (collected.length >= 200_000) {
+                truncated = true;
+                break;
+              }
+            }
+            if (truncated) {
+              console.warn("[useStore] Finance player directory pagination ended early or hit safety cap.");
             }
             if (!disposed) {
               directoryPlayers = collected;
@@ -548,18 +560,30 @@ export function useStore(user: User | null, readOnly: boolean = false) {
           } else {
             const collected: Player[] = [];
             let cursor: string | null = null;
-            for (let page = 1; page <= 20; page++) {
+            let truncated = false;
+            while (true) {
               const qs = cursor
                 ? `/api/players/public?limit=200&sort=id_asc&cursor=${encodeURIComponent(cursor)}`
                 : "/api/players/public?limit=200&sort=id_asc";
               const res = await authedFetch(qs);
-              if (!res.ok || disposed) break;
+              if (!res.ok) {
+                truncated = true;
+                break;
+              }
+              if (disposed) break;
               const data = await res.json();
               if (Array.isArray(data?.players)) {
                 collected.push(...(data.players as Player[]));
               }
               if (!data?.hasMore || !data?.nextCursor) break;
               cursor = String(data.nextCursor);
+              if (collected.length >= 200_000) {
+                truncated = true;
+                break;
+              }
+            }
+            if (truncated) {
+              console.warn("[useStore] Public player directory pagination ended early or hit safety cap.");
             }
             if (!disposed) {
               directoryPlayers = collected;
@@ -1776,38 +1800,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const addPlayer = async (
     player: Partial<Player> & Pick<Player, "name" | "mobile">,
   ) => {
-    const id = crypto.randomUUID();
-    const docRef = doc(db, "players", id);
-
-    // Auto-generate KAvach ID atomically via server counter if not provided
-    let kavachId = player.kavachId;
-    if (!kavachId) {
-      const allocRes = await authedFetch("/api/admin/allocate-kavach-id", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year: new Date().getFullYear() }),
-      });
-      const allocData = await allocRes.json().catch(() => ({}));
-      if (!allocRes.ok || !allocData?.kavachId) {
-        throw new Error(allocData?.error || "Failed to allocate Official Player ID.");
-      }
-      kavachId = allocData.kavachId;
+    const res = await authedFetch("/api/admin/players", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(player),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.id) {
+      throw new Error(data?.error || "Failed to add player.");
     }
-
-    try {
-      await setDoc(docRef, cleanPayload({
-        ...player,
-        kavachId,
-        inviteStatus: player.inviteStatus || "Unverified",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }));
-      logAudit({ ...getActor(), action: "created", entity: "player", entityId: id, entityLabel: player.name, changes: [], summary: `Added player "${player.name}"` });
-      return id;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `players/${id}`);
-      throw err;
-    }
+    return String(data.id);
   };
 
   const updatePlayer = async (playerId: string, updates: Partial<Player>) => {
@@ -1940,22 +1942,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deletePlayer = async (playerId: string) => {
-    const p = players.find(x => x.id === playerId);
-    try {
-      await deleteDoc(doc(db, "players", playerId));
-      logAudit({ ...getActor(), action: "deleted", entity: "player", entityId: playerId, entityLabel: p?.name || playerId, changes: [], summary: `Deleted player "${p?.name || playerId}"` });
-
-      // Also attempt to delete from appUsers if they exist
-      if (p && p.authUid) {
-        try {
-          await deleteDoc(doc(db, "appUsers", p.authUid));
-        } catch (err) {
-          // Ignore if appUsers deletion fails (they might not have an appUsers doc, or permissions might not allow it)
-          console.warn("Could not delete appUsers document for player", err);
-        }
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `players/${playerId}`);
+    const res = await authedFetch(`/api/admin/players?playerId=${encodeURIComponent(playerId)}`, {
+      method: "DELETE",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to delete player.");
     }
   };
 

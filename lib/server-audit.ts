@@ -36,8 +36,14 @@ export async function writeServerAudit(
     timestamp: FieldValue.serverTimestamp(),
   };
   if (batchOrTx) {
-    if (customId && typeof batchOrTx.create === "function") batchOrTx.create(ref, data);
-    else batchOrTx.set(ref, data);
+    if (customId) {
+      if (typeof batchOrTx.create !== "function") {
+        throw new Error("writeServerAudit with customId requires create-only batch/transaction support.");
+      }
+      batchOrTx.create(ref, data);
+    } else {
+      batchOrTx.set(ref, data);
+    }
   } else {
     if (customId) await ref.create(data);
     else await ref.set(data);
