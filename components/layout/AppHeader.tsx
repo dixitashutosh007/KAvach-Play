@@ -170,8 +170,8 @@ export function AppHeader({
             </div>
           )}
 
-          {/* Global Search Affordance (Player persona) */}
-          {persona === "player" && onOpenSearch && (
+          {/* Global Search Affordance (Player & Admin personas) */}
+          {onOpenSearch && (
             <button
               type="button"
               onClick={onOpenSearch}

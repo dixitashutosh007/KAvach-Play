@@ -592,7 +592,8 @@ test("Global Search UI & AppHeader wire readiness coordinator, lazy-loading, and
   assert.match(announcementsSrc, /nextAnnouncementPageAction/);
   assert.match(announcementsSrc, /onOpenHandled/);
   assert.match(pageSrc, /initialPlayerId=\{tabAction\}/);
-  assert.match(headerSrc, /persona === "player" && onOpenSearch/);
+  assert.match(headerSrc, /onOpenSearch &&/);
+  assert.match(pageSrc, /persona === "player" && \(\s*<PlayerGlobalSearchModal/);
   assert.match(pageSrc, /validateMatchNavigation\(/);
 });
 

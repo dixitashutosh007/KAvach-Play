@@ -37,6 +37,7 @@ import { ProfileTab } from "@/components/ProfileTab";
 import { ProfileLinkNotice } from "@/components/ProfileLinkNotice";
 import { ProfileSyncDialog, profileSyncDismissKey } from "@/components/ProfileSyncDialog";
 import { PlayerGlobalSearchModal } from "@/components/search/PlayerGlobalSearch";
+import { AdminGlobalSearchModal } from "@/components/search/AdminGlobalSearch";
 import { validateMatchNavigation } from "@/lib/match-eligibility";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "@/components/ui/PullToRefreshIndicator";
@@ -131,6 +132,18 @@ export default function Home() {
   const { toast } = useToast();
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setGlobalSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -890,9 +903,20 @@ export default function Home() {
         }}
         unreadCount={unreadCount}
         adminPendingCount={weekendPending}
-        onOpenSearch={persona === "player" ? () => setGlobalSearchOpen(true) : undefined}
+        onOpenSearch={persona === "player" || effectiveIsAdminMode ? () => setGlobalSearchOpen(true) : undefined}
         onSignOut={logOut}
       />
+
+      {effectiveIsAdminMode && (
+        <AdminGlobalSearchModal
+          open={globalSearchOpen}
+          onClose={() => setGlobalSearchOpen(false)}
+          isSuperAdmin={Boolean(isSuperAdmin)}
+          isClubAdmin={Boolean(isClubAdmin)}
+          isFinanceAdmin={Boolean(isFinanceAdmin)}
+          onNavigate={(tab, action) => setActiveTab(tab, action)}
+        />
+      )}
 
       {persona === "player" && (
         <PlayerGlobalSearchModal
