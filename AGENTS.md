@@ -10,6 +10,8 @@
 
 > These instructions govern all AI-assisted work in this repository. The approved `KAvach_Play_Master_Implementation_Plan.md`, subsequent explicit owner decisions, and the current approved audit findings are the detailed product and implementation sources. Read them before making changes. If a referenced source is unavailable, report that; do not reconstruct it from memory.
 
+> **Mandatory Security Governance:** Every agent performing security-related work, scanning, or review MUST read [`docs/security/SECURITY_BASELINE.md`](docs/security/SECURITY_BASELINE.md) first and consult [`docs/security/THREAT_MODEL.md`](docs/security/THREAT_MODEL.md), [`docs/security/SECURITY_REVIEW_HISTORY.md`](docs/security/SECURITY_REVIEW_HISTORY.md), and [`docs/security/ACCEPTED_RISKS.md`](docs/security/ACCEPTED_RISKS.md). The security baseline takes precedence over generic assumptions about enterprise SaaS applications, while never overriding essential security protections. If you cannot access `docs/security/SECURITY_BASELINE.md`, stop and ask for clarification rather than silently assuming an enterprise-grade threat model.
+
 ---
 
 ## 1. Mission and current operating mode
