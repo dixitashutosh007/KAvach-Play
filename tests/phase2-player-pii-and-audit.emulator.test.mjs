@@ -880,6 +880,31 @@ describe(
       const lifeAudits = await adminDb.collection("auditLogs").where("entityId", "==", "p_life_1").get();
       assert.equal(lifeAudits.size, 4);
 
+      // Delete refuses (409) when historical financial records exist
+      await adminDb.collection("players").doc("p_hist_del").set({
+        id: "p_hist_del",
+        name: "Historical Player",
+        mobile: "9876543211",
+      });
+      await adminDb
+        .collection("matches")
+        .doc("m_hist_del")
+        .collection("payments")
+        .doc("pay_hist_del")
+        .set({ id: "pay_hist_del", matchId: "m_hist_del", playerId: "p_hist_del", amount: 500, status: "Paid" });
+      const blockedDelRes = await deleteAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players?playerId=p_hist_del", {
+          method: "DELETE",
+          headers: { "x-test-uid": "uid_club", "x-test-role": "clubAdmin" },
+        }),
+      );
+      assert.equal(blockedDelRes.status, 409);
+      assert.equal((await adminDb.collection("players").doc("p_hist_del").get()).exists, true);
+      assert.equal(
+        (await adminDb.collection("matches").doc("m_hist_del").collection("payments").doc("pay_hist_del").get()).exists,
+        true,
+      );
+
       // Client /api/audit/log cannot impersonate access or player create/delete
       for (const payload of [
         { action: "updated", entity: "access", entityId: "u1", summary: "Spoof role" },

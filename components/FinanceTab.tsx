@@ -1303,6 +1303,27 @@ function AdminFinanceView({
         })}
       </div>
 
+      {store.playersDirectoryError && (
+        <div
+          role="alert"
+          data-testid="finance-directory-error"
+          className="mb-4 rounded-2xl bg-rose-50 border border-rose-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="text-sm text-rose-800">
+            <p className="font-bold">Could not load the complete finance player directory.</p>
+            <p className="text-xs text-rose-700 mt-0.5">{store.playersDirectoryError}</p>
+          </div>
+          <button
+            type="button"
+            data-testid="finance-directory-retry-btn"
+            onClick={() => store.retryPlayersDirectory()}
+            className="min-h-[40px] px-4 rounded-xl bg-[#D51F43] text-white text-xs font-bold uppercase tracking-wider cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {subTab === "overview" && (
         <div className="space-y-4" data-testid="finance-overview-section">
           <div className="bg-surface rounded-2xl p-4 sm:p-5 border border-border space-y-4">

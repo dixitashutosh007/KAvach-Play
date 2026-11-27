@@ -157,3 +157,115 @@ export function nextAnnouncementPageAction({
   if (loading) return "wait";
   return "load_more";
 }
+
+export interface PlayerDirectoryPageResponse<T = unknown> {
+  players?: T[];
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  error?: string;
+}
+
+export type FetchAllPlayerPagesResult<T = unknown> =
+  | { ok: true; players: T[]; pagesFetched: number }
+  | { ok: false; error: string; failedPage: number };
+
+/**
+ * Fetches all paginated player directory pages without returning incomplete results.
+ * Any failure on page 1 or any subsequent page returns `{ ok: false, error, failedPage }`.
+ */
+export async function fetchAllPlayerPages<T = unknown>({
+  fetchPage,
+  buildUrl,
+  maxRecords = 200_000,
+}: {
+  fetchPage: (url: string) => Promise<{
+    ok: boolean;
+    status: number;
+    json: () => Promise<PlayerDirectoryPageResponse<T>>;
+  }>;
+  buildUrl: (cursor: string | null) => string;
+  maxRecords?: number;
+}): Promise<FetchAllPlayerPagesResult<T>> {
+  const collected: T[] = [];
+  let cursor: string | null = null;
+  let page = 0;
+
+  while (true) {
+    page += 1;
+    let res: {
+      ok: boolean;
+      status: number;
+      json: () => Promise<PlayerDirectoryPageResponse<T>>;
+    };
+    try {
+      res = await fetchPage(buildUrl(cursor));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Network error";
+      return {
+        ok: false,
+        error: `Failed to load player directory on page ${page}: ${msg}`,
+        failedPage: page,
+      };
+    }
+
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && typeof body.error === "string" && body.error.trim()) {
+          detail = body.error.trim();
+        }
+      } catch {
+        // Ignore non-JSON error body
+      }
+      return {
+        ok: false,
+        error: `Failed to load player directory on page ${page} (${detail}).`,
+        failedPage: page,
+      };
+    }
+
+    let data: PlayerDirectoryPageResponse<T>;
+    try {
+      data = await res.json();
+    } catch {
+      return {
+        ok: false,
+        error: `Invalid response while loading player directory on page ${page}.`,
+        failedPage: page,
+      };
+    }
+
+    if (!data || !Array.isArray(data.players)) {
+      return {
+        ok: false,
+        error: `Incomplete response while loading player directory on page ${page}.`,
+        failedPage: page,
+      };
+    }
+
+    collected.push(...data.players);
+
+    if (!data.hasMore) {
+      return { ok: true, players: collected, pagesFetched: page };
+    }
+
+    if (!data.nextCursor || typeof data.nextCursor !== "string") {
+      return {
+        ok: false,
+        error: `Pagination ended unexpectedly after page ${page}.`,
+        failedPage: page,
+      };
+    }
+
+    if (collected.length >= maxRecords) {
+      return {
+        ok: false,
+        error: `Player directory exceeded maximum record limit (${maxRecords}) on page ${page}.`,
+        failedPage: page,
+      };
+    }
+
+    cursor = data.nextCursor;
+  }
+}

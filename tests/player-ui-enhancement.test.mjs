@@ -149,3 +149,82 @@ describe("Bounded Club loading (source checks)", () => {
     assert.doesNotMatch(club, /#1<|#2<|rank: \d/);
   });
 });
+
+describe("P2-API-08: Bounded player directory pagination never returns incomplete results as complete", () => {
+  it("succeeds across multiple pages and combines all records", async () => {
+    const pages = [
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p1" }, { id: "p2" }], hasMore: true, nextCursor: "c1" }) },
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p3" }, { id: "p4" }], hasMore: true, nextCursor: "c2" }) },
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p5" }], hasMore: false, nextCursor: null }) },
+    ];
+    let idx = 0;
+    const res = await feed.fetchAllPlayerPages({
+      buildUrl: (cursor) => (cursor ? `/api/players/public?cursor=${cursor}` : "/api/players/public"),
+      fetchPage: async () => pages[idx++],
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.pagesFetched, 3);
+    assert.deepEqual(
+      res.players.map((p) => p.id),
+      ["p1", "p2", "p3", "p4", "p5"],
+    );
+  });
+
+  it("fails explicitly on page 2 without returning partial page 1 results", async () => {
+    const urls = [];
+    const pages = [
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p1" }], hasMore: true, nextCursor: "c1" }) },
+      { ok: false, status: 503, json: async () => ({ error: "Firestore unavailable" }) },
+    ];
+    let idx = 0;
+    const res = await feed.fetchAllPlayerPages({
+      buildUrl: (cursor) => (cursor ? `/api/players/public?cursor=${cursor}` : "/api/players/public"),
+      fetchPage: async (url) => {
+        urls.push(url);
+        return pages[idx++];
+      },
+    });
+    assert.equal(res.ok, false);
+    assert.equal(res.failedPage, 2);
+    assert.equal(res.players, undefined);
+    assert.match(res.error, /page 2.*Firestore unavailable/i);
+    assert.equal(urls.length, 2);
+  });
+
+  it("fails explicitly on page 4 without returning partial pages 1-3 results", async () => {
+    const pages = [
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p1" }], hasMore: true, nextCursor: "c1" }) },
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p2" }], hasMore: true, nextCursor: "c2" }) },
+      { ok: true, status: 200, json: async () => ({ players: [{ id: "p3" }], hasMore: true, nextCursor: "c3" }) },
+      async () => {
+        throw new Error("Connection reset");
+      },
+    ];
+    let idx = 0;
+    const res = await feed.fetchAllPlayerPages({
+      buildUrl: (cursor) => (cursor ? `/api/finance/players?cursor=${cursor}` : "/api/finance/players"),
+      fetchPage: async () => {
+        const next = pages[idx++];
+        return typeof next === "function" ? next() : next;
+      },
+    });
+    assert.equal(res.ok, false);
+    assert.equal(res.failedPage, 4);
+    assert.equal(res.players, undefined);
+    assert.match(res.error, /page 4.*Connection reset/i);
+  });
+
+  it("useStore, PlayerDirectory, and FinanceTab expose error/retry state instead of partial results", () => {
+    const storeSrc = src("hooks/useStore.ts");
+    const dirSrc = src("components/club/PlayerDirectory.tsx");
+    const finSrc = src("components/FinanceTab.tsx");
+    assert.match(storeSrc, /playersDirectoryLoading/);
+    assert.match(storeSrc, /playersDirectoryError/);
+    assert.match(storeSrc, /retryPlayersDirectory/);
+    assert.match(storeSrc, /fetchAllPlayerPages/);
+    assert.match(dirSrc, /data-testid="directory-error"/);
+    assert.match(dirSrc, /data-testid="directory-retry-btn"/);
+    assert.match(finSrc, /data-testid="finance-directory-error"/);
+    assert.match(finSrc, /data-testid="finance-directory-retry-btn"/);
+  });
+});

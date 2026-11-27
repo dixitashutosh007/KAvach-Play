@@ -13,6 +13,7 @@ import { authedFetch } from "@/lib/authed-fetch";
 import { createLazyLoadRegistry } from "@/lib/search-readiness";
 import { executeAnnouncementDelete, executeBadgeDelete, potwIds } from "@/lib/weekend-ops";
 import { invalidateClubPostsCache } from "@/hooks/useClubData";
+import { fetchAllPlayerPages } from "@/lib/club-feed";
 import {
   Ground,
   Match,
@@ -154,6 +155,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   // True once the players collection has delivered its first snapshot (or
   // failed). Identity resolution must not report "not linked" before this.
   const [playersLoaded, setPlayersLoaded] = useState(false);
+  const [playersDirectoryLoading, setPlayersDirectoryLoading] = useState(false);
+  const [playersDirectoryError, setPlayersDirectoryError] = useState<string | null>(null);
+  const retryDirectoryRef = useRef<(() => void) | null>(null);
+  const retryPlayersDirectory = useCallback(() => {
+    retryDirectoryRef.current?.();
+  }, []);
   // Incremented by refreshData(); app/page.tsx includes it in its lazy-subscription
   // effect so per-tab listeners are restarted exactly once per refresh.
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -475,6 +482,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       activePlayersUnsub();
 
       if (isFullPlayerAdmin) {
+        retryDirectoryRef.current = null;
+        setPlayersDirectoryLoading(false);
+        setPlayersDirectoryError(null);
         activePlayersUnsub = onSnapshot(
           collection(db, "players"),
           (snapshot) => {
@@ -498,6 +508,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       // projections from /api/finance/players; players load non-PII from /api/players/public.
       let directoryPlayers: Player[] = [];
       const ownById = new Map<string, Player>();
+      let loadGeneration = 0;
 
       const emitMergedPlayers = () => {
         const merged = new Map<string, Player>();
@@ -523,81 +534,56 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         },
       );
 
-      (async () => {
+      const loadDirectory = async () => {
+        const gen = ++loadGeneration;
+        setPlayersDirectoryLoading(true);
+        setPlayersDirectoryError(null);
         try {
-          if (isFinanceOnlyAdmin) {
-            const collected: Player[] = [];
-            let cursor: string | null = null;
-            let truncated = false;
-            while (true) {
-              const qs = cursor
-                ? `/api/finance/players?limit=200&cursor=${encodeURIComponent(cursor)}`
-                : "/api/finance/players?limit=200";
-              const res = await authedFetch(qs);
-              if (!res.ok) {
-                truncated = true;
-                break;
-              }
-              if (disposed) break;
-              const data = await res.json();
-              if (Array.isArray(data?.players)) {
-                collected.push(...(data.players as Player[]));
-              }
-              if (!data?.hasMore || !data?.nextCursor) break;
-              cursor = String(data.nextCursor);
-              if (collected.length >= 200_000) {
-                truncated = true;
-                break;
-              }
-            }
-            if (truncated) {
-              console.warn("[useStore] Finance player directory pagination ended early or hit safety cap.");
-            }
-            if (!disposed) {
-              directoryPlayers = collected;
-              emitMergedPlayers();
-            }
-          } else {
-            const collected: Player[] = [];
-            let cursor: string | null = null;
-            let truncated = false;
-            while (true) {
-              const qs = cursor
-                ? `/api/players/public?limit=200&sort=id_asc&cursor=${encodeURIComponent(cursor)}`
-                : "/api/players/public?limit=200&sort=id_asc";
-              const res = await authedFetch(qs);
-              if (!res.ok) {
-                truncated = true;
-                break;
-              }
-              if (disposed) break;
-              const data = await res.json();
-              if (Array.isArray(data?.players)) {
-                collected.push(...(data.players as Player[]));
-              }
-              if (!data?.hasMore || !data?.nextCursor) break;
-              cursor = String(data.nextCursor);
-              if (collected.length >= 200_000) {
-                truncated = true;
-                break;
-              }
-            }
-            if (truncated) {
-              console.warn("[useStore] Public player directory pagination ended early or hit safety cap.");
-            }
-            if (!disposed) {
-              directoryPlayers = collected;
-              emitMergedPlayers();
-            }
+          const result = await fetchAllPlayerPages<Player>({
+            fetchPage: (url) => authedFetch(url),
+            buildUrl: (cursor) =>
+              isFinanceOnlyAdmin
+                ? cursor
+                  ? `/api/finance/players?limit=200&cursor=${encodeURIComponent(cursor)}`
+                  : "/api/finance/players?limit=200"
+                : cursor
+                  ? `/api/players/public?limit=200&sort=id_asc&cursor=${encodeURIComponent(cursor)}`
+                  : "/api/players/public?limit=200&sort=id_asc",
+          });
+          if (disposed || gen !== loadGeneration) return;
+          if (!result.ok) {
+            console.warn("[useStore] Player directory pagination failed:", result.error);
+            directoryPlayers = [];
+            emitMergedPlayers();
+            setPlayersDirectoryError(result.error);
+            return;
           }
-        } catch {
-          // Non-fatal: own player doc still loads
+          directoryPlayers = result.players;
+          setPlayersDirectoryError(null);
+          emitMergedPlayers();
+        } catch (err) {
+          if (disposed || gen !== loadGeneration) return;
+          const msg = err instanceof Error ? err.message : "Failed to load player directory.";
+          directoryPlayers = [];
+          emitMergedPlayers();
+          setPlayersDirectoryError(msg);
         } finally {
-          if (!disposed) setPlayersLoaded(true);
+          if (!disposed && gen === loadGeneration) {
+            setPlayersDirectoryLoading(false);
+            setPlayersLoaded(true);
+          }
         }
-      })();
+      };
+
+      retryDirectoryRef.current = () => {
+        if (!disposed) void loadDirectory();
+      };
+
+      void loadDirectory();
 
       activePlayersUnsub = () => {
+        loadGeneration += 1;
+        retryDirectoryRef.current = null;
         unsubSelfDoc();
       };
     };
@@ -3184,6 +3170,9 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     bulkUpdateMatches,
     deleteMatch,
     players,
+    playersDirectoryLoading,
+    playersDirectoryError,
+    retryPlayersDirectory,
     addPlayer,
     updatePlayer,
     deletePlayer,

@@ -108,8 +108,40 @@ export function PlayerDirectory({
         />
       </label>
       <p className="text-xs text-text-secondary" data-testid="directory-count">
-        {matches.length} member{matches.length === 1 ? "" : "s"}
+        {store.playersDirectoryError
+          ? "Directory unavailable"
+          : store.playersDirectoryLoading
+            ? "Loading directory..."
+            : `${matches.length} member${matches.length === 1 ? "" : "s"}`}
       </p>
+      {store.playersDirectoryError ? (
+        <div
+          role="alert"
+          data-testid="directory-error"
+          className="rounded-2xl bg-rose-50 border border-rose-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="text-sm text-rose-800">
+            <p className="font-bold">Could not load the full player directory.</p>
+            <p className="text-xs text-rose-700 mt-0.5">{store.playersDirectoryError}</p>
+          </div>
+          <button
+            type="button"
+            data-testid="directory-retry-btn"
+            onClick={() => store.retryPlayersDirectory()}
+            className="min-h-[40px] px-4 rounded-xl bg-[#D51F43] text-white text-xs font-bold uppercase tracking-wider cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      ) : store.playersDirectoryLoading && matches.length === 0 ? (
+        <div
+          data-testid="directory-loading"
+          className="rounded-2xl bg-surface border border-border p-4 text-sm text-text-secondary text-center"
+        >
+          Loading member directory...
+        </div>
+      ) : (
+      <>
       <ul className="rounded-2xl bg-surface border border-border divide-y divide-border overflow-hidden">
         {page.map((p) => (
           <li key={p.id}>
@@ -141,6 +173,8 @@ export function PlayerDirectory({
         >
           Show more ({matches.length - visible} more)
         </button>
+      )}
+      </>
       )}
       {opened && (
         <PublicPlayerProfile
