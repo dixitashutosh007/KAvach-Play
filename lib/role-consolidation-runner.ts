@@ -171,12 +171,25 @@ export async function runRoleConsolidation(
         ? (runSnap.get("migratedUids") as string[])
         : [];
       const savedSignatures = (runSnap.get("planSignatures") || {}) as Record<string, string>;
+      const savedFingerprint = String(runSnap.get("planFingerprint") || "");
+      const docByUid = new Map(docs.map((d) => [d.uid, d.doc as AppUserRoleDoc & Record<string, any>]));
+      const pendingByUid = new Map(pendingPlans.map((p) => [p.uid, p]));
+
+      const migratedUntampered = savedMigratedUids.every((u) => {
+        const d = docByUid.get(u);
+        return Boolean(d) && !planRoleConsolidation(d!).needsChange && d!.roleMigration?.migrationId === migrationId;
+      });
 
       if (status === "completed") {
-        if (pendingPlans.length > 0) {
+        const completedPlanMatches =
+          pendingPlans.length === 0 &&
+          migratedUntampered &&
+          savedMigratedUids.length === savedTargetUids.length &&
+          fingerprintSignatures(savedTargetUids.map((u) => savedSignatures[u] || "")) === savedFingerprint;
+        if (!completedPlanMatches) {
           throw new AccessError(
             409,
-            "Migration ID is already completed; cannot restart under the same ID with unconsolidated accounts.",
+            "Migration ID is already completed; cannot restart under the same ID with an altered plan.",
           );
         }
         alreadyCompleted = true;
@@ -187,7 +200,8 @@ export async function runRoleConsolidation(
         throw new AccessError(409, "Migration is already in progress under this migrationId.");
       }
 
-      // Plan consistency check on resume: remaining pending accounts must match saved plan
+      // Exact plan identity verification on resume: remaining pending UIDs, per-UID signatures,
+      // already-migrated UIDs, and full SHA-256 `planFingerprint` must all match.
       const expectedRemaining = savedTargetUids.filter((u) => !savedMigratedUids.includes(u));
       const currentPendingUids = pendingPlans.map((p) => p.uid);
       const sameRemainingUids =
@@ -196,7 +210,16 @@ export async function runRoleConsolidation(
       const sameSignatures = pendingPlans.every(
         (p) => savedSignatures[p.uid] === signatureForPlan(p.uid, p.plan),
       );
-      if (!sameRemainingUids || !sameSignatures) {
+      const reconstructedFingerprint = sameRemainingUids
+        ? fingerprintSignatures(
+            savedTargetUids.map((u) =>
+              savedMigratedUids.includes(u)
+                ? savedSignatures[u] || ""
+                : signatureForPlan(u, pendingByUid.get(u)!.plan),
+            ),
+          )
+        : "";
+      if (!migratedUntampered || !sameRemainingUids || !sameSignatures || reconstructedFingerprint !== savedFingerprint) {
         throw new AccessError(
           409,
           "Migration plan changed since migrationId was started; use a new migrationId.",

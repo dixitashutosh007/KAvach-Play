@@ -620,14 +620,44 @@ describe(
           }),
         /INTERRUPTED_AT_BATCH_2/,
       );
-      // Same ID + changed plan (new unconsolidated account added) -> rejected 409
+      // Same ID + additional UID -> rejected 409
       await adminDb.doc("appUsers/u_rc_extra").set({ name: "Extra", isDesigner: true, status: "Active" });
       await assert.rejects(
         () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_plan_1" }),
         (err) => err.status === 409 && /plan changed/i.test(err.message),
       );
-      // Remove extra account -> same ID + same plan resumes and completes
       await adminDb.doc("appUsers/u_rc_extra").delete();
+
+      // Same ID + changed role/grant instruction for pending UID (u_rc_2) -> rejected 409
+      await adminDb.doc("appUsers/u_rc_2").update({ isDesigner: true });
+      await assert.rejects(
+        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_plan_1" }),
+        (err) => err.status === 409 && /plan changed/i.test(err.message),
+      );
+      await adminDb.doc("appUsers/u_rc_2").set({ name: "RC2", isStudioAdmin: true, status: "Active" });
+
+      // Same ID + changed role/grant instruction for already-migrated UID (u_rc_1) -> rejected 409
+      await adminDb.doc("appUsers/u_rc_1").update({ isDesigner: true });
+      await assert.rejects(
+        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_plan_1" }),
+        (err) => err.status === 409 && /plan changed/i.test(err.message),
+      );
+      await adminDb.doc("appUsers/u_rc_1").set({
+        name: "RC1",
+        isClubAdmin: true,
+        status: "Active",
+        roleMigration: { migrationId: "mig_plan_1" },
+      });
+
+      // Same ID + removed pending UID -> rejected 409
+      await adminDb.doc("appUsers/u_rc_2").delete();
+      await assert.rejects(
+        () => runRoleConsolidation(adminDb, { execute: true, auth: authCtx, migrationId: "mig_plan_1" }),
+        (err) => err.status === 409 && /plan changed/i.test(err.message),
+      );
+      await adminDb.doc("appUsers/u_rc_2").set({ name: "RC2", isStudioAdmin: true, status: "Active" });
+
+      // Same ID + identical plan -> resumes and completes
       const resumedSamePlan = await runRoleConsolidation(adminDb, {
         execute: true,
         auth: authCtx,
