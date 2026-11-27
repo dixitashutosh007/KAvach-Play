@@ -26,6 +26,7 @@
 import { NextResponse } from "next/server.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
+import { actorNameFor, writeServerAudit } from "../../../../lib/server-audit.ts";
 import {
   computeKeeperPatch,
   acquireMergeLease,
@@ -284,6 +285,19 @@ export async function POST(req: Request) {
     // Stage 6: Independent final verification & completion (Finding 1F-05)
     currentStage = "stage_6_final_verification";
     await executeIndependentFinalVerification(db, jobId, loserId, keeperId, workerInfo);
+
+    await writeServerAudit(db, {
+      actorId: guard.uid,
+      actorName: await actorNameFor(db, guard.uid),
+      actorType: "admin",
+      action: "updated",
+      entity: "player",
+      entityId: keeperId,
+      entityLabel: String((keeper as any)?.name || keeperId),
+      changes: [{ field: "mergedInto", oldValue: loserId, newValue: keeperId }],
+      summary: `Merged player ${loserId} into ${keeperId} (job ${jobId})`,
+      id: `merge_${jobId}`,
+    });
 
     return NextResponse.json({
       ok: true,

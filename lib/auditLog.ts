@@ -154,12 +154,15 @@ export function diffChanges(
   return changes;
 }
 
-export async function logAudit(entry: Omit<AuditLogEntry, "id" | "timestamp">, idempotencyKey?: string): Promise<void> {
+export async function logAudit(
+  entry: Omit<AuditLogEntry, "id" | "timestamp">,
+  idempotencyKey?: string,
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) return { ok: false, error: "Not authenticated." };
     const token = await user.getIdToken();
-    await fetch("/api/audit/log", {
+    const res = await fetch("/api/audit/log", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -175,8 +178,30 @@ export async function logAudit(entry: Omit<AuditLogEntry, "id" | "timestamp">, i
         ...(idempotencyKey ? { idempotencyKey } : {}),
       }),
     });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data?.error) msg = String(data.error);
+      } catch {}
+      console.error("[auditLog] Server rejected audit log:", msg);
+      return { ok: false, error: msg };
+    }
+    return { ok: true };
   } catch (e) {
-    console.error("[auditLog] Failed to write audit log:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[auditLog] Failed to write audit log:", msg);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function logAuditStrict(
+  entry: Omit<AuditLogEntry, "id" | "timestamp">,
+  idempotencyKey?: string,
+): Promise<void> {
+  const result = await logAudit(entry, idempotencyKey);
+  if (!result.ok) {
+    throw new Error(result.error || "Audit log recording failed.");
   }
 }
 

@@ -17,6 +17,7 @@ import {
   type PaymentIdentity,
 } from "./payment-decision.ts";
 import { planWebhookDeadLetter } from "./webhook-dead-letter.ts";
+import { writeServerAudit } from "./server-audit.ts";
 import { getClubCalendarDate } from "./utils.ts";
 
 export interface WebhookEventDetails {
@@ -960,6 +961,27 @@ async function processWebhookPaymentOnce(
             db.collection("paymentReservations").doc(intent.reservationKey),
             { status: "active", isPaid: true, paidAt: now, razorpayPaymentId: details.paymentId, updatedAt: now },
             { merge: true },
+          );
+        }
+        if (typeof tx?.set === "function") {
+          await writeServerAudit(
+            db,
+            {
+              actorId: "razorpay_webhook",
+              actorName: "Razorpay Webhook",
+              actorType: "system",
+              action: "paid",
+              entity: "payment",
+              entityId: details.paymentId,
+              entityLabel: intentId || details.paymentId,
+              changes: [
+                { field: "status", newValue: "paid" },
+                { field: "amountPaise", newValue: String(details.capturedPaise) },
+              ],
+              summary: `Razorpay payment ${details.paymentId} applied (${intent?.type || "payment"})`,
+              id: `rzp_apply_${details.paymentId}`,
+            },
+            tx,
           );
         }
         return { outcome: "processed", paymentRecorded: true };

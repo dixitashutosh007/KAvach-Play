@@ -16,6 +16,7 @@
  * that has more than one linked login (fails closed with 409).
  */
 import { FieldValue } from "firebase-admin/firestore";
+import { writeServerAudit } from "./server-audit.ts";
 
 export const GOOGLE_PROVIDER = "google.com";
 
@@ -187,6 +188,24 @@ export async function linkGoogleLogin(
       },
       { merge: true },
     );
+    if (typeof tx?.set === "function") {
+      await writeServerAudit(
+        db,
+        {
+          actorId: token.uid,
+          actorName: String(playerData.name || "Player"),
+          actorType: "player",
+          action: "updated",
+          entity: "player",
+          entityId: playerId,
+          entityLabel: String(playerData.name || playerId),
+          changes: [{ field: "linkedVia", newValue: GOOGLE_PROVIDER }],
+          summary: `Linked Google account ${token.uid} to player ${playerId}`,
+          id: `glink_${token.uid}_${playerId}`,
+        },
+        tx,
+      );
+    }
     return { ok: true as const, playerId, alreadyLinked: false };
   });
 }

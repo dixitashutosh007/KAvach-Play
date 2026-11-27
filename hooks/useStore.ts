@@ -506,29 +506,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         setPlayers(filterDemoPlayers(Array.from(merged.values())));
       };
 
-      const unsubAuthQuery = onSnapshot(
-        query(collection(db, "players"), where("authUid", "==", user.uid)),
-        (snapshot) => {
+      const unsubSelfDoc = onSnapshot(
+        doc(db, "players", targetPlayerId),
+        (snap) => {
           ownById.clear();
-          snapshot.docs.forEach((d) => ownById.set(d.id, { id: d.id, ...d.data() } as Player));
+          if (snap.exists()) {
+            ownById.set(snap.id, { id: snap.id, ...snap.data() } as Player);
+          }
           emitMergedPlayers();
           setPlayersLoaded(true);
         },
         () => {
-          setPlayersLoaded(true);
-        },
-      );
-
-      const unsubSelfDoc = onSnapshot(
-        doc(db, "players", targetPlayerId),
-        (snap) => {
-          if (snap.exists()) {
-            ownById.set(snap.id, { id: snap.id, ...snap.data() } as Player);
-            emitMergedPlayers();
-          }
-          setPlayersLoaded(true);
-        },
-        () => {
+          ownById.clear();
+          emitMergedPlayers();
           setPlayersLoaded(true);
         },
       );
@@ -536,24 +526,40 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (async () => {
         try {
           if (isFinanceOnlyAdmin) {
-            const res = await authedFetch("/api/finance/players");
-            if (res.ok && !disposed) {
-              const data = await res.json();
-              if (Array.isArray(data?.players)) {
-                directoryPlayers = data.players as Player[];
-                emitMergedPlayers();
-              }
-            }
-          } else {
             const collected: Player[] = [];
+            let cursor: string | null = null;
             for (let page = 1; page <= 20; page++) {
-              const res = await authedFetch(`/api/players/public?page=${page}&limit=200`);
+              const qs = cursor
+                ? `/api/finance/players?limit=200&cursor=${encodeURIComponent(cursor)}`
+                : "/api/finance/players?limit=200";
+              const res = await authedFetch(qs);
               if (!res.ok || disposed) break;
               const data = await res.json();
               if (Array.isArray(data?.players)) {
                 collected.push(...(data.players as Player[]));
               }
-              if (!data?.hasMore) break;
+              if (!data?.hasMore || !data?.nextCursor) break;
+              cursor = String(data.nextCursor);
+            }
+            if (!disposed) {
+              directoryPlayers = collected;
+              emitMergedPlayers();
+            }
+          } else {
+            const collected: Player[] = [];
+            let cursor: string | null = null;
+            for (let page = 1; page <= 20; page++) {
+              const qs = cursor
+                ? `/api/players/public?limit=200&cursor=${encodeURIComponent(cursor)}`
+                : "/api/players/public?limit=200";
+              const res = await authedFetch(qs);
+              if (!res.ok || disposed) break;
+              const data = await res.json();
+              if (Array.isArray(data?.players)) {
+                collected.push(...(data.players as Player[]));
+              }
+              if (!data?.hasMore || !data?.nextCursor) break;
+              cursor = String(data.nextCursor);
             }
             if (!disposed) {
               directoryPlayers = collected;
@@ -568,7 +574,6 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       })();
 
       activePlayersUnsub = () => {
-        unsubAuthQuery();
         unsubSelfDoc();
       };
     };

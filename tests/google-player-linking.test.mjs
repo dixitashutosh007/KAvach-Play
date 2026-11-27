@@ -123,9 +123,11 @@ describe("linkGoogleLogin transaction (in-memory)", () => {
     });
     const r = await linkGoogleLogin(db, google());
     assert.deepEqual(r, { ok: true, playerId: "p1", alreadyLinked: false });
-    assert.equal(db.writes.length, 1);
+    assert.equal(db.writes.length, 2);
     assert.equal(db.writes[0].col, "appUsers");
     assert.equal(db.writes[0].id, "g-uid");
+    assert.equal(db.writes[1].col, "auditLogs");
+    assert.equal(db.store.auditLogs["glink_g-uid_p1"].source, "server_authoritative");
     assert.equal(db.store.appUsers["g-uid"].playerId, "p1");
     assert.equal(db.store.appUsers["g-uid"].authProviders[0], "google.com", "existing fields preserved (merge)");
     assert.equal(db.store.players.p1.authUid, "phone-uid", "primary phone login unchanged");

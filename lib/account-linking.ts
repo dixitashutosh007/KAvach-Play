@@ -12,6 +12,7 @@
  */
 
 import { FieldValue } from "firebase-admin/firestore";
+import { writeServerAudit } from "./server-audit.ts";
 
 export interface LinkAccountParams {
   uid: string;
@@ -338,6 +339,25 @@ export async function executeLinkingTransaction(
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+  }
+
+  if (typeof (transaction as any)?.set === "function") {
+    await writeServerAudit(
+      db,
+      {
+        actorId: uid,
+        actorName: String(playerData.name || "Player"),
+        actorType: "player",
+        action: "updated",
+        entity: "player",
+        entityId: resolvedPlayerId,
+        entityLabel: String(playerData.name || resolvedPlayerId),
+        changes: [{ field: "authUid", oldValue: String(playerData.authUid || ""), newValue: uid }],
+        summary: `Linked account ${uid} to player ${resolvedPlayerId}`,
+        id: `link_${uid}_${resolvedPlayerId}`,
+      },
+      transaction as any,
+    );
   }
 
   return { alreadyLinked: false, playerId: resolvedPlayerId };

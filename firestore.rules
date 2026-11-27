@@ -605,9 +605,11 @@ service cloud.firestore {
     }
 
     match /players/{playerId} {
-      // P2-PII-01: Super Admin & Club Admin have full club roster access; Finance Admin
+      // P2-PII-01 & P2-ID-03: Super Admin & Club Admin have full club roster access; Finance Admin
       // uses /api/finance/players (minimal financial projection) and cannot read/write PII.
-      allow read: if isClubAdmin() || isSelf(playerId);
+      // Non-admin list queries are denied so disabled-player checks in isSelf() are never bypassed.
+      allow get: if isClubAdmin() || isSelf(playerId);
+      allow list: if isClubAdmin();
       allow create: if !incoming().keys().hasAny(['authUid', 'mergedInto', 'mergeStatus', 'mergeJobId'])
         && (
           isClubAdmin()

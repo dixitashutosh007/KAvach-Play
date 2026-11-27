@@ -118,7 +118,6 @@ export function RegistrationForm({
         photoURL: user.photoURL || "",
         role: "player",
         mobile: normalizedMobile,
-        isStudioMember: false,
         dob: form.dob,
         locality: form.locality,
         bloodGroup: form.bloodGroup,

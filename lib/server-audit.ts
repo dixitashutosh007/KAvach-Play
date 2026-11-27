@@ -10,18 +10,27 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore";
 export interface ServerAuditEntry {
   actorId: string;
   actorName: string;
-  action: "created" | "updated" | "deleted" | "status_change";
+  actorType?: "admin" | "player" | "system";
+  action: "created" | "updated" | "deleted" | "paid" | "status_change";
   entity: string;
   entityId: string;
   entityLabel: string;
   changes: { field: string; oldValue?: string; newValue?: string }[];
   summary: string;
+  id?: string;
 }
 
 export async function writeServerAudit(db: Firestore, entry: ServerAuditEntry, batchOrTx?: { set: (ref: any, data: any) => unknown }): Promise<void> {
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const { id: customId, actorType = "admin", ...rest } = entry;
+  const id = customId || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const ref = db.collection("auditLogs").doc(id);
-  const data = { ...entry, actorType: "admin", id, timestamp: FieldValue.serverTimestamp() };
+  const data = {
+    ...rest,
+    actorType,
+    source: "server_authoritative",
+    id,
+    timestamp: FieldValue.serverTimestamp(),
+  };
   if (batchOrTx) batchOrTx.set(ref, data);
   else await ref.set(data);
 }
