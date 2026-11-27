@@ -15,6 +15,7 @@
  * Known limitation: the identity-merge safety checks refuse to merge a player
  * that has more than one linked login (fails closed with 409).
  */
+import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeServerAudit } from "./server-audit.ts";
 
@@ -135,6 +136,7 @@ export function decideGoogleLink(args: {
 export async function linkGoogleLogin(
   db: any,
   token: GoogleTokenInfo,
+  idempotencyKey?: string,
 ): Promise<{ ok: true; playerId: string; alreadyLinked: boolean } | LinkError> {
   const eligibility = checkGoogleLinkEligibility(token);
   if (!eligibility.ok) return eligibility;
@@ -148,6 +150,11 @@ export async function linkGoogleLogin(
   );
   if (!selected.ok) return selected;
   const playerId = selected.player.id;
+  const safeOpKey =
+    idempotencyKey && /^[a-zA-Z0-9_-]{1,48}$/.test(idempotencyKey)
+      ? idempotencyKey
+      : crypto.randomUUID().slice(0, 12);
+  const auditId = `glink_${token.uid}_${playerId}_${safeOpKey}`;
 
   return db.runTransaction(async (tx: any) => {
     const playerRef = db.collection("players").doc(playerId);
@@ -201,7 +208,7 @@ export async function linkGoogleLogin(
           entityLabel: String(playerData.name || playerId),
           changes: [{ field: "linkedVia", newValue: GOOGLE_PROVIDER }],
           summary: `Linked Google account ${token.uid} to player ${playerId}`,
-          id: `glink_${token.uid}_${playerId}`,
+          id: auditId,
         },
         tx,
       );

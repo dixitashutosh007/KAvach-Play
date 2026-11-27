@@ -9,9 +9,17 @@ const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_SCAN_DOCS = 250;
 const MAX_SEARCH_LENGTH = 80;
-const ALLOWED_SORTS = new Set(["name_asc", "name_desc", "runs_desc", "wickets_desc", "catches_desc"]);
+const ALLOWED_SORTS = new Set([
+  "id_asc",
+  "name_asc",
+  "name_desc",
+  "runs_desc",
+  "wickets_desc",
+  "catches_desc",
+]);
 
-const SORT_FIELD_MAP: Record<string, { field: string; dir: "asc" | "desc" }> = {
+const SORT_FIELD_MAP: Record<string, { field: string | null; dir: "asc" | "desc" }> = {
+  id_asc: { field: null, dir: "asc" },
   name_asc: { field: "name", dir: "asc" },
   name_desc: { field: "name", dir: "desc" },
   runs_desc: { field: "totalRuns", dir: "desc" },
@@ -85,31 +93,41 @@ export async function GET(req: Request) {
     const { field: sortField, dir: sortDir } = SORT_FIELD_MAP[rawSort]!;
     const q = search.toLowerCase();
 
-    let cursorSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    let lastCursorValues: unknown[] | null = null;
     if (cursor) {
-      cursorSnap = await db.collection("players").doc(cursor).get();
+      const cursorSnap = await db.collection("players").doc(cursor).get();
       if (!cursorSnap.exists) {
         return NextResponse.json({ error: "Cursor document not found." }, { status: 400 });
+      }
+      if (sortField) {
+        const sortVal = cursorSnap.get(sortField);
+        if (sortVal === undefined) {
+          return NextResponse.json({ error: "Cursor document is missing sort field." }, { status: 400 });
+        }
+        lastCursorValues = [sortVal, cursorSnap.id];
+      } else {
+        lastCursorValues = [cursorSnap.id];
       }
     }
 
     const players: ReturnType<typeof toPublicPlayer>[] = [];
     let scanned = 0;
-    let lastScannedDoc: FirebaseFirestore.DocumentSnapshot | null = cursorSnap;
+    let lastScannedId: string | null = cursor;
     let exhausted = false;
 
-    while (players.length < limit + 1 && scanned < MAX_SCAN_DOCS && !exhausted) {
+    while (players.length < limit && scanned < MAX_SCAN_DOCS && !exhausted) {
       const remainingScan = MAX_SCAN_DOCS - scanned;
       const batchLimit = Math.min(limit + 25, remainingScan);
-      let query = db
-        .collection("players")
-        .select(...SELECT_FIELDS)
-        .orderBy(sortField, sortDir)
-        .orderBy(FieldPath.documentId(), sortDir)
-        .limit(batchLimit);
+      let query: FirebaseFirestore.Query = db.collection("players").select(...SELECT_FIELDS);
+      if (sortField) {
+        query = query.orderBy(sortField, sortDir).orderBy(FieldPath.documentId(), sortDir);
+      } else {
+        query = query.orderBy(FieldPath.documentId(), sortDir);
+      }
+      query = query.limit(batchLimit);
 
-      if (lastScannedDoc) {
-        query = query.startAfter(lastScannedDoc);
+      if (lastCursorValues) {
+        query = query.startAfter(...lastCursorValues);
       }
 
       const snap = await query.get();
@@ -118,13 +136,15 @@ export async function GET(req: Request) {
         break;
       }
 
-      scanned += snap.docs.length;
-      lastScannedDoc = snap.docs[snap.docs.length - 1]!;
       if (snap.docs.length < batchLimit) {
         exhausted = true;
       }
 
-      for (const docSnap of snap.docs) {
+      for (let i = 0; i < snap.docs.length; i++) {
+        const docSnap = snap.docs[i]!;
+        scanned += 1;
+        lastScannedId = docSnap.id;
+        lastCursorValues = sortField ? [docSnap.get(sortField), docSnap.id] : [docSnap.id];
         const p = { id: docSnap.id, ...(docSnap.data() || {}) } as Record<string, any> & { id: string };
         if (p.disabled === true || p.mergedInto) continue;
         if (p.inviteStatus === "Pending" || p.inviteStatus === "Rejected") continue;
@@ -143,19 +163,23 @@ export async function GET(req: Request) {
           ...toPublicPlayer(p),
           inviteStatus: p.inviteStatus || "Accepted",
         } as ReturnType<typeof toPublicPlayer>);
-        if (players.length >= limit + 1) break;
+        if (players.length >= limit) {
+          if (i < snap.docs.length - 1) exhausted = false;
+          break;
+        }
       }
     }
 
-    const hasMore = players.length > limit || (!exhausted && scanned >= MAX_SCAN_DOCS);
     const pageItems = players.slice(0, limit);
-    const nextCursor = hasMore && pageItems.length > 0 ? pageItems[pageItems.length - 1]!.id : null;
+    const hasMore = !exhausted || (lastScannedId !== null && players.length >= limit && scanned >= MAX_SCAN_DOCS);
+    const nextCursor = hasMore && lastScannedId ? lastScannedId : null;
 
     return NextResponse.json({
       players: pageItems,
       pageSize: limit,
       nextCursor,
       hasMore,
+      omitsMissingSortField: sortField !== null,
     });
   } catch (err) {
     console.error("[players/public] GET failed:", err instanceof Error ? err.message : "unknown");

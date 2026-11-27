@@ -127,7 +127,8 @@ describe("linkGoogleLogin transaction (in-memory)", () => {
     assert.equal(db.writes[0].col, "appUsers");
     assert.equal(db.writes[0].id, "g-uid");
     assert.equal(db.writes[1].col, "auditLogs");
-    assert.equal(db.store.auditLogs["glink_g-uid_p1"].source, "server_authoritative");
+    assert.ok(db.writes[1].id.startsWith("glink_g-uid_p1_"));
+    assert.equal(db.store.auditLogs[db.writes[1].id].source, "server_authoritative");
     assert.equal(db.store.appUsers["g-uid"].playerId, "p1");
     assert.equal(db.store.appUsers["g-uid"].authProviders[0], "google.com", "existing fields preserved (merge)");
     assert.equal(db.store.players.p1.authUid, "phone-uid", "primary phone login unchanged");

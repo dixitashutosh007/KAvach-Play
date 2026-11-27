@@ -255,8 +255,11 @@ describe("Shared helpers import production logic", () => {
     assert.match(src("components/profile/ProfileHubCards.tsx"), /from "@\/lib\/leaderboard";/);
   });
   it("Studio membership status matches the StudioTab rules", () => {
-    const day = 86400000, now = Date.UTC(2026, 10, 23);
-    const fmt = (ms) => new Date(ms).toISOString().slice(0, 10);
+    const day = 86400000, now = new Date(2026, 10, 23).getTime();
+    const fmt = (ms) => {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
     assert.equal(studio.getStudioMembership(null, null, now).status, "Inactive");
     assert.equal(studio.getStudioMembership({ isStudioMember: true }, null, now).status, "Active");
     assert.equal(studio.getStudioMembership({ isStudioMember: true, studioExpiryDate: fmt(now + 10 * day) }, null, now).status, "Active");

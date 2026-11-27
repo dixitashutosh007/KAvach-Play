@@ -26,7 +26,7 @@
 import { NextResponse } from "next/server.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
-import { actorNameFor, writeServerAudit } from "../../../../lib/server-audit.ts";
+import { actorNameFor } from "../../../../lib/server-audit.ts";
 import {
   computeKeeperPatch,
   acquireMergeLease,
@@ -282,21 +282,11 @@ export async function POST(req: Request) {
     currentStage = "stage_5_app_users";
     const userResult = await migrateAppUsersAndIndexesStage(db, jobId, loserId, keeperId, workerInfo);
 
-    // Stage 6: Independent final verification & completion (Finding 1F-05)
+    // Stage 6: Independent final verification & completion (Finding 1F-05, P2-AUD-03 atomic audit)
     currentStage = "stage_6_final_verification";
-    await executeIndependentFinalVerification(db, jobId, loserId, keeperId, workerInfo);
-
-    await writeServerAudit(db, {
-      actorId: guard.uid,
-      actorName: await actorNameFor(db, guard.uid),
-      actorType: "admin",
-      action: "updated",
-      entity: "player",
-      entityId: keeperId,
-      entityLabel: String((keeper as any)?.name || keeperId),
-      changes: [{ field: "mergedInto", oldValue: loserId, newValue: keeperId }],
-      summary: `Merged player ${loserId} into ${keeperId} (job ${jobId})`,
-      id: `merge_${jobId}`,
+    const actorName = await actorNameFor(db, guard.uid);
+    await executeIndependentFinalVerification(db, jobId, loserId, keeperId, workerInfo, {
+      auditActor: { actorId: guard.uid, actorName },
     });
 
     return NextResponse.json({

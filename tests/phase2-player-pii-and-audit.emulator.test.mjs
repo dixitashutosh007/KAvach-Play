@@ -1,5 +1,6 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,8 @@ import { GET as getFinancePlayers } from "../app/api/finance/players/route.ts";
 import { POST as postAuditLog } from "../app/api/audit/log/route.ts";
 import { linkPlayerAccount } from "../lib/account-linking.ts";
 import { linkGoogleLogin } from "../lib/google-linking.ts";
+import { executeMergeCompletionStage } from "../lib/player-merge.ts";
+import { checkSharedRateLimit } from "../lib/rate-limit-server.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rulesContent = fs.readFileSync(path.resolve(__dirname, "../firestore.rules"), "utf8");
@@ -394,9 +397,10 @@ describe(
       const phoneRes = await linkPlayerAccount(adminDb, {
         uid: "uid_phone_link",
         verifiedPhoneNumber: "+919876500001",
+        idempotencyKey: "op_link_1",
       });
       assert.equal(phoneRes.ok, true);
-      const phoneAudit = (await adminDb.collection("auditLogs").doc("link_uid_phone_link_p_link_phone").get()).data();
+      const phoneAudit = (await adminDb.collection("auditLogs").doc("link_uid_phone_link_p_link_phone_op_link_1").get()).data();
       assert.equal(phoneAudit.source, "server_authoritative");
       assert.equal(phoneAudit.actorId, "uid_phone_link");
       assert.equal(phoneAudit.entity, "player");
@@ -407,14 +411,18 @@ describe(
         email: "glink@example.com",
         inviteStatus: "Accepted",
       });
-      const googleRes = await linkGoogleLogin(adminDb, {
-        uid: "uid_google_link",
-        email: "glink@example.com",
-        emailVerified: true,
-        signInProvider: "google.com",
-      });
+      const googleRes = await linkGoogleLogin(
+        adminDb,
+        {
+          uid: "uid_google_link",
+          email: "glink@example.com",
+          emailVerified: true,
+          signInProvider: "google.com",
+        },
+        "op_glink_1",
+      );
       assert.equal(googleRes.ok, true);
-      const googleAudit = (await adminDb.collection("auditLogs").doc("glink_uid_google_link_p_link_google").get()).data();
+      const googleAudit = (await adminDb.collection("auditLogs").doc("glink_uid_google_link_p_link_google_op_glink_1").get()).data();
       assert.equal(googleAudit.source, "server_authoritative");
       assert.equal(googleAudit.actorId, "uid_google_link");
     });
@@ -483,11 +491,11 @@ describe(
       assert.equal(d2.players[0].id, "p_a");
       assert.equal(d2.hasMore, false);
 
-      // Shared Firestore rate limit triggers 429 on 61st request
+      // Shared Firestore rate limit triggers 429 on 61st request (using SHA-256 hashed bucket)
       const windowId = Math.floor(Date.now() / 60_000);
-      await adminDb.collection("rateLimits").doc(`public_players_uid_rate_test_${windowId}`).set({
+      const keyHash = crypto.createHash("sha256").update("public_players:uid_rate_test").digest("hex").slice(0, 32);
+      await adminDb.collection("rateLimits").doc(`${keyHash}_${windowId}`).set({
         scope: "public_players",
-        key: "uid_rate_test",
         windowId,
         count: 60,
       });
@@ -497,6 +505,258 @@ describe(
         }),
       );
       assert.equal(limited.status, 429);
+    });
+
+    // ── P2-AUD-03: Player Merge Atomic Audit Integrity ───────────────────────
+    it("P2-AUD-03: executeMergeCompletionStage commits audit atomically, prevents duplicate audits, and aborts on failure", async () => {
+      const jobId = "job_p_loser_m_p_keeper_m";
+      const worker = { leaseOwner: "uid_club", leaseToken: "tok_1", fencingToken: 1 };
+      const leaseExpiresAt = Date.now() + 60_000;
+      const lockFields = {
+        mergeStatus: "in_progress",
+        mergeJobId: jobId,
+        mergeLeaseOwner: worker.leaseOwner,
+        mergeFencingToken: worker.fencingToken,
+        mergeLeaseExpiresAt: leaseExpiresAt,
+      };
+      await adminDb.collection("players").doc("p_loser_m").set({ id: "p_loser_m", name: "Loser M", ...lockFields });
+      await adminDb.collection("players").doc("p_keeper_m").set({ id: "p_keeper_m", name: "Keeper M", ...lockFields });
+      await adminDb.collection("mergeJobs").doc(jobId).set({
+        jobId,
+        loserId: "p_loser_m",
+        keeperId: "p_keeper_m",
+        status: "in_progress",
+        stage: "stage_6_final_verification",
+        leaseOwner: worker.leaseOwner,
+        leaseToken: worker.leaseToken,
+        fencingToken: worker.fencingToken,
+        leaseExpiresAt,
+      });
+
+      await executeMergeCompletionStage(adminDb, jobId, "p_loser_m", "p_keeper_m", worker, {
+        actorId: "uid_club",
+        actorName: "Club Admin User",
+      });
+
+      const jobAfter = (await adminDb.collection("mergeJobs").doc(jobId).get()).data();
+      assert.equal(jobAfter.status, "completed");
+      assert.equal(jobAfter.auditStatus, "recorded");
+      const auditSnap = await adminDb.collection("auditLogs").doc(`merge_${jobId}_1`).get();
+      assert.equal(auditSnap.exists, true);
+      assert.equal(auditSnap.data().source, "server_authoritative");
+      assert.equal(auditSnap.data().actorId, "uid_club");
+
+      // Retry on completed job fails closed without creating duplicate audit
+      await assert.rejects(() =>
+        executeMergeCompletionStage(adminDb, jobId, "p_loser_m", "p_keeper_m", worker, {
+          actorId: "uid_club",
+          actorName: "Club Admin User",
+        }),
+      );
+      const allMergeAudits = await adminDb.collection("auditLogs").where("entityId", "==", "p_keeper_m").get();
+      assert.equal(allMergeAudits.size, 1);
+
+      // Simulated audit creation collision aborts merge completion atomically
+      const jobFailId = "job_fail_audit";
+      const failLockFields = {
+        mergeStatus: "in_progress",
+        mergeJobId: jobFailId,
+        mergeLeaseOwner: worker.leaseOwner,
+        mergeFencingToken: 1,
+        mergeLeaseExpiresAt: leaseExpiresAt,
+      };
+      await adminDb.collection("players").doc("p_loser_f").set({ id: "p_loser_f", name: "Loser F", ...failLockFields });
+      await adminDb.collection("players").doc("p_keeper_f").set({ id: "p_keeper_f", name: "Keeper F", ...failLockFields });
+      await adminDb.collection("mergeJobs").doc(jobFailId).set({
+        jobId: jobFailId,
+        loserId: "p_loser_f",
+        keeperId: "p_keeper_f",
+        status: "in_progress",
+        stage: "stage_6_final_verification",
+        leaseOwner: worker.leaseOwner,
+        leaseToken: worker.leaseToken,
+        fencingToken: 1,
+        leaseExpiresAt,
+      });
+      await adminDb.collection("auditLogs").doc(`merge_${jobFailId}_1`).set({ preExisting: true });
+      await assert.rejects(() =>
+        executeMergeCompletionStage(adminDb, jobFailId, "p_loser_f", "p_keeper_f", worker, {
+          actorId: "uid_club",
+          actorName: "Club Admin User",
+        }),
+      );
+      assert.equal((await adminDb.collection("mergeJobs").doc(jobFailId).get()).data().status, "in_progress");
+    });
+
+    // ── P2-AUD-04: Operation-Specific Account Linking Audit History ──────────
+    it("P2-AUD-04: Account linking preserves historical audit records across unlink/re-link while deduplicating retries", async () => {
+      await adminDb.collection("players").doc("p_hist_link").set({
+        id: "p_hist_link",
+        name: "History Link Player",
+        mobile: "9876500099",
+        inviteStatus: "Accepted",
+      });
+
+      const r1 = await linkPlayerAccount(adminDb, {
+        uid: "uid_hist_1",
+        verifiedPhoneNumber: "+919876500099",
+        idempotencyKey: "op_1",
+      });
+      assert.equal(r1.ok, true);
+
+      // Retry of same operation (alreadyLinked) -> still 1 audit event
+      const r1Retry = await linkPlayerAccount(adminDb, {
+        uid: "uid_hist_1",
+        verifiedPhoneNumber: "+919876500099",
+        idempotencyKey: "op_1",
+      });
+      assert.equal(r1Retry.ok, true);
+      assert.equal(r1Retry.alreadyLinked, true);
+
+      // Unlink and re-link as a separate operation -> 2 distinct audit records
+      await adminDb.collection("phoneIndex").doc("+919876500099").delete();
+      await adminDb.collection("uidIndex").doc("uid_hist_1").delete();
+      await adminDb.collection("players").doc("p_hist_link").update({ authUid: null });
+      await adminDb.collection("appUsers").doc("uid_hist_1").update({ playerId: null });
+
+      const r2 = await linkPlayerAccount(adminDb, {
+        uid: "uid_hist_1",
+        verifiedPhoneNumber: "+919876500099",
+        idempotencyKey: "op_2",
+      });
+      assert.equal(r2.ok, true);
+
+      const audits = await adminDb.collection("auditLogs").where("entityId", "==", "p_hist_link").get();
+      assert.equal(audits.size, 2);
+      const ids = audits.docs.map((d) => d.id).sort();
+      assert.deepEqual(ids, ["link_uid_hist_1_p_hist_link_op_1", "link_uid_hist_1_p_hist_link_op_2"]);
+    });
+
+    // ── P2-API-04: >250-Record Pagination Correctness ────────────────────────
+    it("P2-API-04: Paginates >250 players cleanly across public & finance APIs with missing/equal sort fields and live mutations", async () => {
+      // Seed 265 active players (260 batch + 5 edge cases, plus 3 pre-existing seeded players -> >265)
+      let batch = adminDb.batch();
+      let count = 0;
+      for (let i = 1; i <= 265; i++) {
+        const id = `bulk_${String(i).padStart(3, "0")}`;
+        const ref = adminDb.collection("players").doc(id);
+        batch.set(ref, {
+          id,
+          name: `Bulk Player ${String(i).padStart(3, "0")}`,
+          ...(i <= 260 ? { totalRuns: i % 5 === 0 ? 100 : i } : {}), // last 5 omit totalRuns, ties at 100
+          inviteStatus: "Accepted",
+        });
+        count++;
+        if (count % 200 === 0) {
+          await batch.commit();
+          batch = adminDb.batch();
+        }
+      }
+      await batch.commit();
+
+      // 1. Public directory sort=id_asc collects all active players with zero duplicates or skips
+      const seenPublic = [];
+      let cursor = null;
+      for (let page = 0; page < 10; page++) {
+        const qs = cursor ? `?limit=100&sort=id_asc&cursor=${encodeURIComponent(cursor)}` : "?limit=100&sort=id_asc";
+        const res = await getPublicPlayers(
+          new Request(`https://play.kavachcricket.com/api/players/public${qs}`, {
+            headers: { "x-test-uid": "uid_p1", "x-test-player-id": "p1" },
+          }),
+        );
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.omitsMissingSortField, false);
+        seenPublic.push(...body.players.map((p) => p.id));
+        if (!body.hasMore) break;
+        cursor = body.nextCursor;
+        assert.ok(cursor);
+      }
+      assert.equal(new Set(seenPublic).size, seenPublic.length);
+      for (let i = 1; i <= 265; i++) {
+        assert.ok(seenPublic.includes(`bulk_${String(i).padStart(3, "0")}`));
+      }
+
+      // 2. sort=runs_desc flags omitsMissingSortField and keeps deterministic tie-breaking + mutation safety
+      const r1 = await getPublicPlayers(
+        new Request("https://play.kavachcricket.com/api/players/public?limit=50&sort=runs_desc", {
+          headers: { "x-test-uid": "uid_p1", "x-test-player-id": "p1" },
+        }),
+      );
+      const b1 = await r1.json();
+      assert.equal(b1.omitsMissingSortField, true);
+      assert.equal(b1.players.length, 50);
+      assert.equal(b1.hasMore, true);
+      // Remove a doc from page 1 and fetch page 2 -> no duplicates from page 1
+      await adminDb.collection("players").doc(b1.players[0].id).delete();
+      const r2 = await getPublicPlayers(
+        new Request(`https://play.kavachcricket.com/api/players/public?limit=50&sort=runs_desc&cursor=${encodeURIComponent(b1.nextCursor)}`, {
+          headers: { "x-test-uid": "uid_p1", "x-test-player-id": "p1" },
+        }),
+      );
+      const b2 = await r2.json();
+      const p1Ids = new Set(b1.players.map((x) => x.id));
+      assert.equal(b2.players.some((x) => p1Ids.has(x.id)), false);
+
+      // 3. Finance API paginates >250 records cleanly
+      const seenFin = [];
+      let finCursor = null;
+      for (let page = 0; page < 10; page++) {
+        const qs = finCursor ? `?limit=100&cursor=${encodeURIComponent(finCursor)}` : "?limit=100";
+        const res = await getFinancePlayers(
+          new Request(`https://play.kavachcricket.com/api/finance/players${qs}`, {
+            headers: { "x-test-uid": "uid_fin", "x-test-role": "financeAdmin" },
+          }),
+        );
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        seenFin.push(...body.players.map((p) => p.id));
+        if (!body.hasMore) break;
+        finCursor = body.nextCursor;
+      }
+      assert.equal(new Set(seenFin).size, seenFin.length);
+      assert.ok(seenFin.length >= 265);
+    });
+
+    // ── P2-API-05: Shared Rate Limiter Edge Cases ────────────────────────────
+    it("P2-API-05: Shared rate limiter handles concurrency, window expiry, key collisions, no raw UID storage, and fail-closed DB errors", async () => {
+      const baseNow = 1_800_000_000_000;
+      // 1. Concurrent requests
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          checkSharedRateLimit(adminDb, "test_scope", "uid_conc", { windowMs: 60_000, maxRequests: 3, nowMs: baseNow }),
+        ),
+      );
+      assert.equal(results.filter((r) => r.allowed).length, 3);
+      assert.equal(results.filter((r) => !r.allowed).length, 2);
+
+      // 2. Expired window resets cleanly
+      const nextWin = await checkSharedRateLimit(adminDb, "test_scope", "uid_conc", {
+        windowMs: 60_000,
+        maxRequests: 3,
+        nowMs: baseNow + 60_001,
+      });
+      assert.equal(nextWin.allowed, true);
+
+      // 3. No key collisions (user.a vs user_a) and no raw key stored
+      const a = await checkSharedRateLimit(adminDb, "test_scope", "user.a", { windowMs: 60_000, maxRequests: 1, nowMs: baseNow });
+      const b = await checkSharedRateLimit(adminDb, "test_scope", "user_a", { windowMs: 60_000, maxRequests: 1, nowMs: baseNow });
+      assert.equal(a.allowed, true);
+      assert.equal(b.allowed, true);
+      const snapAll = await adminDb.collection("rateLimits").get();
+      for (const d of snapAll.docs) {
+        assert.equal("key" in d.data(), false);
+        assert.equal(d.id.includes("user.a") || d.id.includes("user_a"), false);
+      }
+
+      // 4. Fail-closed on Firestore error
+      const brokenDb = {
+        collection: () => ({ doc: () => ({}) }),
+        runTransaction: async () => {
+          throw new Error("DB_UNAVAILABLE");
+        },
+      };
+      await assert.rejects(() => checkSharedRateLimit(brokenDb, "test_scope", "uid_x"));
     });
   },
 );

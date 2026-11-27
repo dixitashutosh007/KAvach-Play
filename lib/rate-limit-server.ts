@@ -1,12 +1,18 @@
-import { FieldValue, type Firestore } from "firebase-admin/firestore";
+import crypto from "node:crypto";
+import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_MAX_REQUESTS = 60;
 
 /**
  * Shared Firestore-backed fixed-window rate limiter (`rateLimits/{docId}`).
- * Safe across multiple serverless / Cloud Run instances and testable in the
- * Firebase Emulator. Clients cannot read or write `rateLimits` (default-deny).
+ *
+ * Security & correctness properties (P2-API-05):
+ * - Collision-free SHA-256 hash of `${scope}:${key}` (no truncation or lossy char replacement).
+ * - Does NOT store raw UIDs/IPs in the rate-limit document ID or fields.
+ * - Stores Firestore `Timestamp` `expiresAt` for native Firestore TTL cleanup.
+ * - Fail-closed: Firestore transaction errors propagate so callers return 5xx
+ *   rather than bypassing rate limiting during DB degradation.
  */
 export async function checkSharedRateLimit(
   db: Firestore,
@@ -21,8 +27,8 @@ export async function checkSharedRateLimit(
   const windowEndMs = (windowId + 1) * windowMs;
   const retryAfterSec = Math.max(1, Math.ceil((windowEndMs - now) / 1000));
 
-  const safeKey = `${scope}_${key}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 96);
-  const docRef = db.collection("rateLimits").doc(`${safeKey}_${windowId}`);
+  const keyHash = crypto.createHash("sha256").update(`${scope}:${key}`).digest("hex").slice(0, 32);
+  const docRef = db.collection("rateLimits").doc(`${keyHash}_${windowId}`);
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(docRef);
@@ -35,10 +41,9 @@ export async function checkSharedRateLimit(
       docRef,
       {
         scope,
-        key,
         windowId,
         count: nextCount,
-        expiresAt: new Date(windowEndMs + windowMs),
+        expiresAt: Timestamp.fromMillis(windowEndMs + windowMs),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },

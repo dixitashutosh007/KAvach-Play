@@ -20,7 +20,11 @@ export interface ServerAuditEntry {
   id?: string;
 }
 
-export async function writeServerAudit(db: Firestore, entry: ServerAuditEntry, batchOrTx?: { set: (ref: any, data: any) => unknown }): Promise<void> {
+export async function writeServerAudit(
+  db: Firestore,
+  entry: ServerAuditEntry,
+  batchOrTx?: { set: (ref: any, data: any) => unknown; create?: (ref: any, data: any) => unknown },
+): Promise<void> {
   const { id: customId, actorType = "admin", ...rest } = entry;
   const id = customId || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const ref = db.collection("auditLogs").doc(id);
@@ -31,8 +35,13 @@ export async function writeServerAudit(db: Firestore, entry: ServerAuditEntry, b
     id,
     timestamp: FieldValue.serverTimestamp(),
   };
-  if (batchOrTx) batchOrTx.set(ref, data);
-  else await ref.set(data);
+  if (batchOrTx) {
+    if (customId && typeof batchOrTx.create === "function") batchOrTx.create(ref, data);
+    else batchOrTx.set(ref, data);
+  } else {
+    if (customId) await ref.create(data);
+    else await ref.set(data);
+  }
 }
 
 /** Display name for an admin uid (appUsers name, else fallback). */

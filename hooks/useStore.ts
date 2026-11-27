@@ -550,8 +550,8 @@ export function useStore(user: User | null, readOnly: boolean = false) {
             let cursor: string | null = null;
             for (let page = 1; page <= 20; page++) {
               const qs = cursor
-                ? `/api/players/public?limit=200&cursor=${encodeURIComponent(cursor)}`
-                : "/api/players/public?limit=200";
+                ? `/api/players/public?limit=200&sort=id_asc&cursor=${encodeURIComponent(cursor)}`
+                : "/api/players/public?limit=200&sort=id_asc";
               const res = await authedFetch(qs);
               if (!res.ok || disposed) break;
               const data = await res.json();

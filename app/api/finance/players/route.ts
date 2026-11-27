@@ -70,20 +70,20 @@ export async function GET(req: Request) {
 
   try {
     const db = getServerFirestore();
-    let cursorSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    let lastCursorId: string | null = null;
     if (cursor) {
-      cursorSnap = await db.collection("players").doc(cursor).get();
+      const cursorSnap = await db.collection("players").doc(cursor).get();
       if (!cursorSnap.exists) {
         return NextResponse.json({ error: "Cursor document not found." }, { status: 400 });
       }
+      lastCursorId = cursorSnap.id;
     }
 
     const players: Record<string, unknown>[] = [];
     let scanned = 0;
-    let lastScannedDoc: FirebaseFirestore.DocumentSnapshot | null = cursorSnap;
     let exhausted = false;
 
-    while (players.length < limit + 1 && scanned < MAX_SCAN_DOCS && !exhausted) {
+    while (players.length < limit && scanned < MAX_SCAN_DOCS && !exhausted) {
       const batchLimit = Math.min(limit + 25, MAX_SCAN_DOCS - scanned);
       let query = db
         .collection("players")
@@ -91,8 +91,8 @@ export async function GET(req: Request) {
         .orderBy(FieldPath.documentId())
         .limit(batchLimit);
 
-      if (lastScannedDoc) {
-        query = query.startAfter(lastScannedDoc);
+      if (lastCursorId) {
+        query = query.startAfter(lastCursorId);
       }
 
       const snap = await query.get();
@@ -101,24 +101,27 @@ export async function GET(req: Request) {
         break;
       }
 
-      scanned += snap.docs.length;
-      lastScannedDoc = snap.docs[snap.docs.length - 1]!;
       if (snap.docs.length < batchLimit) exhausted = true;
 
-      for (const d of snap.docs) {
+      for (let i = 0; i < snap.docs.length; i++) {
+        const d = snap.docs[i]!;
+        scanned += 1;
+        lastCursorId = d.id;
         const p = { id: d.id, ...(d.data() || {}) } as Record<string, unknown> & { id: string };
         const nameLower = String(p.name || "").toLowerCase();
         const emailLower = String(p.email || "").toLowerCase();
         if (nameLower.includes("demo") || emailLower.includes("demo")) continue;
         players.push(toFinancePlayer(p));
-        if (players.length >= limit + 1) break;
+        if (players.length >= limit) {
+          if (i < snap.docs.length - 1) exhausted = false;
+          break;
+        }
       }
     }
 
-    const hasMore = players.length > limit || (!exhausted && scanned >= MAX_SCAN_DOCS);
     const pageItems = players.slice(0, limit);
-    const nextCursor =
-      hasMore && pageItems.length > 0 ? String(pageItems[pageItems.length - 1]!.id) : null;
+    const hasMore = !exhausted;
+    const nextCursor = hasMore && lastCursorId ? lastCursorId : null;
 
     return NextResponse.json({
       players: pageItems,

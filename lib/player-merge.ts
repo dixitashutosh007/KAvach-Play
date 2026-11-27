@@ -7,6 +7,7 @@
 import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { parseStrictIndianMobile, isCanonicalIndianMobile } from "./account-linking.ts";
+import { writeServerAudit } from "./server-audit.ts";
 
 export function normalizeIndianMobile(m: string): string {
   if (!m) return "";
@@ -1216,7 +1217,8 @@ export async function executeMergeCompletionStage(
   jobId: string,
   loserId: string,
   keeperId: string,
-  worker: MergeWorkerInfo
+  worker: MergeWorkerInfo,
+  auditActor?: { actorId: string; actorName: string }
 ): Promise<void> {
   const mergeJobRef = db.collection("mergeJobs").doc(jobId);
   const loserRef = db.collection("players").doc(loserId);
@@ -1287,10 +1289,30 @@ export async function executeMergeCompletionStage(
     transaction.update(mergeJobRef, {
       status: "completed",
       stage: "completed",
+      auditStatus: "recorded",
       completedAt: new Date().toISOString(),
       updatedAt: FieldValue.serverTimestamp(),
       lastHeartbeatAt: new Date().toISOString(),
     });
+
+    const keeperData = keeperSnap.data() || {};
+    const fencingGen = Number(job.fencingToken ?? 1);
+    await writeServerAudit(
+      db,
+      {
+        actorId: auditActor?.actorId || worker.leaseOwner || "system",
+        actorName: auditActor?.actorName || "Club Admin",
+        actorType: auditActor ? "admin" : "system",
+        action: "updated",
+        entity: "player",
+        entityId: keeperId,
+        entityLabel: String(keeperData.name || keeperId),
+        changes: [{ field: "mergedInto", oldValue: loserId, newValue: keeperId }],
+        summary: `Merged player ${loserId} into ${keeperId} (job ${jobId})`,
+        id: `merge_${jobId}_${fencingGen}`,
+      },
+      transaction as any,
+    );
   });
 }
 
@@ -2113,7 +2135,7 @@ export async function executeIndependentFinalVerification(
   loserId: string,
   keeperId: string,
   worker: MergeWorkerInfo,
-  options?: { batchLimit?: number }
+  options?: { batchLimit?: number; auditActor?: { actorId: string; actorName: string } }
 ): Promise<void> {
   const batchLimit = options?.batchLimit || 50;
   const loserRef = db.collection("players").doc(loserId);
@@ -2249,8 +2271,8 @@ export async function executeIndependentFinalVerification(
     }
   }
 
-  // 10. Execute atomic completion stage with fencing token verification
-  await executeMergeCompletionStage(db, jobId, loserId, keeperId, worker);
+  // 10. Execute atomic completion stage with fencing token verification & atomic audit
+  await executeMergeCompletionStage(db, jobId, loserId, keeperId, worker, options?.auditActor);
 }
 
 /**

@@ -11,6 +11,7 @@
  * - Real transaction abort test support.
  */
 
+import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeServerAudit } from "./server-audit.ts";
 
@@ -18,12 +19,14 @@ export interface LinkAccountParams {
   uid: string;
   verifiedPhoneNumber?: string;
   requestedPlayerId?: string;
+  idempotencyKey?: string;
 }
 
 export interface LinkingTxContext {
   uid: string;
   canonicalAuthPhone: string;
   resolvedPlayerId: string;
+  auditId?: string;
 }
 
 export interface LinkAccountResult {
@@ -137,7 +140,7 @@ export async function executeLinkingTransaction(
   transaction: FirebaseFirestore.Transaction,
   ctx: LinkingTxContext,
 ): Promise<{ alreadyLinked: boolean; playerId: string }> {
-  const { uid, canonicalAuthPhone, resolvedPlayerId } = ctx;
+  const { uid, canonicalAuthPhone, resolvedPlayerId, auditId } = ctx;
 
   const phoneIndexRef = db.collection("phoneIndex").doc(canonicalAuthPhone);
   const uidIndexRef = db.collection("uidIndex").doc(uid);
@@ -354,7 +357,7 @@ export async function executeLinkingTransaction(
         entityLabel: String(playerData.name || resolvedPlayerId),
         changes: [{ field: "authUid", oldValue: String(playerData.authUid || ""), newValue: uid }],
         summary: `Linked account ${uid} to player ${resolvedPlayerId}`,
-        id: `link_${uid}_${resolvedPlayerId}`,
+        id: auditId || `link_${uid}_${resolvedPlayerId}_${crypto.randomUUID().slice(0, 12)}`,
       },
       transaction as any,
     );
@@ -544,6 +547,11 @@ export async function linkPlayerAccount(
   }
 
   // 6. Concurrency-Safe Four-Record Atomic Transaction
+  const safeOpKey =
+    params.idempotencyKey && /^[a-zA-Z0-9_-]{1,48}$/.test(params.idempotencyKey)
+      ? params.idempotencyKey
+      : crypto.randomUUID().slice(0, 12);
+  const auditId = `link_${uid}_${resolvedPlayerId}_${safeOpKey}`;
   try {
     const txResult = await db.runTransaction(
       async (transaction) => {
@@ -551,6 +559,7 @@ export async function linkPlayerAccount(
           uid,
           canonicalAuthPhone,
           resolvedPlayerId,
+          auditId,
         });
       },
       { maxAttempts: 15 },
