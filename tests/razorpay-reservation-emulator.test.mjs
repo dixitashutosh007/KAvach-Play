@@ -1407,4 +1407,158 @@ describe("FIN-001: Real Firestore Emulator Integration Tests", { skip: skipReaso
     const snap = await db.doc(`paymentReservations/${key}`).get();
     assert.equal(snap.data()?.status, "reconciliation_failed");
   });
+
+  it("Issue 4 regression: orderPOST supersedes active ₹500 reservation & intent when match fee changes to ₹650", async () => {
+    const uid = `u_fee_change_${Date.now()}`;
+    const matchId = `m_fee_change_${Date.now()}`;
+    const payId = `p_fee_change_${Date.now()}`;
+
+    await db.doc(`appUsers/${uid}`).set({ uid, email: `${uid}@test.com`, role: "player", playerId: uid });
+    await db.doc(`matches/${matchId}`).set({
+      id: matchId,
+      opponent: "Fee Change XI",
+      date: "2026-12-01",
+      format: "T20",
+      matchType: "Friendly",
+      result: "Pending",
+      matchFee: 500,
+    });
+    await db.doc(`matches/${matchId}/payments/${payId}`).set({
+      id: payId,
+      matchId,
+      playerId: uid,
+      status: "Unpaid",
+      availability: "Available",
+      matchFee: 500,
+    });
+
+    const key = generateReservationKey({ type: "match", matchId, paymentId: payId }, uid);
+    const res1 = await acquirePaymentReservation(db, key, uid, 500, "INR", 60000);
+    assert.equal(res1.acquired, true);
+    await db.doc(`razorpayIntents/intent_old_${payId}`).set({
+      userId: uid,
+      amount: 500,
+      currency: "INR",
+      status: "created",
+      reservationKey: key,
+      orderId: "order_old_500",
+      obligationType: "match",
+      matchId,
+      paymentId: payId,
+    });
+    await activatePaymentReservation(db, key, res1.reservationToken, "order_old_500", `intent_old_${payId}`);
+
+    // Admin updates custom fee on the payment doc to 650 before user retries checkout
+    await db.doc(`matches/${matchId}/payments/${payId}`).update({ matchFee: 650, customFee: 650 });
+
+    // Exercise acquirePaymentReservation -> needsReconciliation -> reconcileAmbiguousReservation -> order creation
+    const res2 = await acquirePaymentReservation(db, key, uid, 650, "INR", 60000);
+    assert.equal(res2.needsReconciliation, true, "Active reservation with old amount 500 must trigger needsReconciliation when payableAmount is 650");
+    assert.equal(res2.existingOrder?.orderId, "order_old_500");
+
+    // Simulate real Razorpay SDK shape (has .api.get and orders.fetchPayments(orderId, callback))
+    let apiGetCalls = 0;
+    let lastApiGetArgs = null;
+    const realShapeRzp = {
+      api: {
+        get: async (params) => {
+          apiGetCalls += 1;
+          lastApiGetArgs = params;
+          return { items: [] };
+        },
+      },
+      orders: {
+        fetch: async () => ({ id: "order_old_500", amount: 50000, currency: "INR", status: "created", receipt: "rcpt_old", attempts: 0 }),
+        fetchPayments: async () => {
+          throw new Error("Must use api.get with explicit count/skip instead of unpaginated orders.fetchPayments");
+        },
+      },
+    };
+    const rec = await reconcileAmbiguousReservation(realShapeRzp, db, key, uid, 650, "INR");
+    assert.equal(apiGetCalls, 1, "Real Razorpay SDK must query api.get with explicit count/skip pagination");
+    assert.deepEqual(lastApiGetArgs, { url: "/orders/order_old_500/payments", data: { count: 100, skip: 0 } });
+    assert.equal(rec.superseded, true);
+    assert.equal(rec.canRetry, true);
+    assert.ok(rec.reservationToken);
+
+    // Activate new order for 650 under the new reservationToken & verify intent consistency passes
+    await db.doc(`razorpayIntents/intent_new_${payId}`).set({
+      userId: uid,
+      amount: 650,
+      currency: "INR",
+      status: "created",
+      reservationKey: key,
+      orderId: "order_new_650",
+      obligationType: "match",
+      matchId,
+      paymentId: payId,
+    });
+    await activatePaymentReservation(db, key, rec.reservationToken, "order_new_650", `intent_new_${payId}`, rec.fenceVersion);
+
+    const repair = await verifyAndRepairIntent(db, `intent_new_${payId}`, "order_new_650", {
+      userId: uid,
+      amount: 650,
+      currency: "INR",
+      reservationKey: key,
+    });
+    assert.equal(repair.ok, true);
+  });
+
+  it("Issue 4 regression: api.get explicit count=100/skip pagination catches late captured payment on page 2 and fails closed", async () => {
+    const key = generateReservationKey({ type: "match", matchId: `m_real_sdk_p2_${Date.now()}`, paymentId: "p_p2" }, "u_p2");
+    const res1 = await acquirePaymentReservation(db, key, "u_p2", 500, "INR", 60000);
+    await activatePaymentReservation(db, key, res1.reservationToken, "order_p2_500", "intent_p2_500");
+
+    const page1 = Array.from({ length: 100 }, (_, i) => ({ id: `pay_fail_${i}`, status: "failed" }));
+    const page2 = [{ id: "pay_late_cap_101", status: "captured" }];
+    const calls = [];
+    const realSdkPagedRzp = {
+      api: {
+        get: async (params) => {
+          calls.push(params);
+          return { items: (params?.data?.skip || 0) === 0 ? page1 : page2 };
+        },
+      },
+      orders: {
+        fetch: async () => ({ id: "order_p2_500", amount: 50000, currency: "INR", status: "attempted", attempts: 101 }),
+        fetchPayments: async () => ({ items: [] }),
+      },
+    };
+
+    const rec = await reconcileAmbiguousReservation(realSdkPagedRzp, db, key, "u_p2", 650, "INR");
+    assert.equal(calls.length, 2, "Must paginate page 1 (skip=0) and page 2 (skip=100) via api.get");
+    assert.deepEqual(calls[0], { url: "/orders/order_p2_500/payments", data: { count: 100, skip: 0 } });
+    assert.deepEqual(calls[1], { url: "/orders/order_p2_500/payments", data: { count: 100, skip: 100 } });
+    assert.equal(rec.reconciled, false, "Must fail closed on late captured payment in page 2");
+    assert.equal(rec.canRetry, false);
+    assert.notEqual(rec.superseded, true);
+
+    const snap = await db.doc(`paymentReservations/${key}`).get();
+    assert.equal(snap.data()?.status, "reconciliation_failed");
+  });
+
+  it("Issue 4 regression: truncated payment history (returned items < order.attempts) fails closed and never supersedes", async () => {
+    const key = generateReservationKey({ type: "match", matchId: `m_trunc_${Date.now()}`, paymentId: "p_trunc" }, "u_trunc");
+    const res1 = await acquirePaymentReservation(db, key, "u_trunc", 500, "INR", 60000);
+    await activatePaymentReservation(db, key, res1.reservationToken, "order_trunc_500", "intent_trunc_500");
+
+    const truncatedItems = Array.from({ length: 10 }, (_, i) => ({ id: `pay_fail_${i}`, status: "failed" }));
+    const truncatedRzp = {
+      api: {
+        get: async () => ({ items: truncatedItems }),
+      },
+      orders: {
+        fetch: async () => ({ id: "order_trunc_500", amount: 50000, currency: "INR", status: "attempted", attempts: 15 }),
+        fetchPayments: async () => ({ items: truncatedItems }),
+      },
+    };
+
+    const rec = await reconcileAmbiguousReservation(truncatedRzp, db, key, "u_trunc", 650, "INR");
+    assert.equal(rec.reconciled, false, "Must fail closed when returned payment count (10) < order.attempts (15)");
+    assert.equal(rec.canRetry, false);
+    assert.notEqual(rec.superseded, true);
+
+    const snap = await db.doc(`paymentReservations/${key}`).get();
+    assert.equal(snap.data()?.status, "reconciliation_failed");
+  });
 });

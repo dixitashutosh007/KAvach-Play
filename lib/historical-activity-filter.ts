@@ -12,9 +12,16 @@ export interface ActivityNotificationLike {
 const OBSOLETE_ADMIN_PROMPT_PATTERNS = [
   /\bassign\s+captain\b/i,
   /\bfriday\s+captain\s+reminder\b/i,
+  /\bneeds\s+a\s+captain\b/i,
   /\bplayer\s+of\s+the\s+week(?:end)?\b/i,
   /\bactual\s+match\s+fee\b/i,
   /\bmatch\s+fee\s+(?:entry|reminder|prompt)\b/i,
+  /\badd\s+players\s+to\s+the\s+squad\b/i,
+  /\bshare\s+match\s+details\b/i,
+  /\badd\s+results\s+of\s+weekly\s+matches\b/i,
+  /\benter\s+match\s+results\b/i,
+  /\bclub\s+admin\s+reminder\b/i,
+  /\bweekend\s+operations\b/i,
 ];
 
 function toMillis(ts: unknown): number | null {
@@ -22,9 +29,10 @@ function toMillis(ts: unknown): number | null {
   if (typeof ts === "number" && Number.isFinite(ts)) return ts;
   if (ts instanceof Date) return Number.isFinite(ts.getTime()) ? ts.getTime() : null;
   if (typeof ts === "object" && ts !== null) {
-    const obj = ts as { seconds?: number; toMillis?: () => number };
+    const obj = ts as { seconds?: number; _seconds?: number; toMillis?: () => number };
     if (typeof obj.toMillis === "function") return obj.toMillis();
     if (typeof obj.seconds === "number") return obj.seconds * 1000;
+    if (typeof obj._seconds === "number") return obj._seconds * 1000;
   }
   if (typeof ts === "string") {
     const parsed = Date.parse(ts);
@@ -56,7 +64,10 @@ export function isObsoleteAdminActivityNotification(
     OBSOLETE_ADMIN_PROMPT_PATTERNS.some((re) => re.test(text)) ||
     metaType === "captain_reminder" ||
     metaType === "potw_prompt" ||
-    metaType === "match_fee_prompt";
+    metaType === "match_fee_prompt" ||
+    metaType === "action_centre_reminder" ||
+    metaType === "weekend_ops" ||
+    metaType === "squad_reminder";
 
   if (!matchesObsoletePrompt) return false;
 

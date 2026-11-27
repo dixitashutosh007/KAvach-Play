@@ -139,47 +139,9 @@ export async function POST(req: Request) {
         );
       }
 
-      if (resResult.existingOrder && resResult.existingOrder.orderId) {
-        if (resResult.existingOrder.isPaid) {
-          return NextResponse.json(
-            { error: `Obligation has already been paid via order ${resResult.existingOrder.orderId}.` },
-            { status: 409 },
-          );
-        }
-
-        // Verify and repair intent consistency before returning existing order (FIN-001)
-        const repairRes = await verifyAndRepairIntent(
-          db,
-          resResult.existingOrder.intentId,
-          resResult.existingOrder.orderId,
-          {
-            userId: auth.uid,
-            amount: payableAmount,
-            currency,
-            reservationKey,
-          },
-        );
-
-        if (!repairRes.ok) {
-          return NextResponse.json(
-            { error: `Payment intent consistency error: ${repairRes.error}` },
-            { status: 409 },
-          );
-        }
-
-        return NextResponse.json({
-          id: resResult.existingOrder.orderId,
-          amount: Math.round(resResult.existingOrder.amount * 100),
-          currency: resResult.existingOrder.currency || currency,
-          receipt: authoritativeReceipt,
-          status: "created",
-          intentId: resResult.existingOrder.intentId,
-          notes: { ...notes, intentId: resResult.existingOrder.intentId, reusedExistingOrder: true },
-        });
-      }
-
       if (resResult.needsReconciliation) {
-        // Previous attempt suffered ambiguous gateway failure or expired active order; reconcile with Razorpay
+        // Previous attempt suffered ambiguous gateway failure, expired active order, or amount change;
+        // reconcile with Razorpay BEFORE checking existingOrder so changed-fee orders are superseded.
         const rzInstance = new Razorpay({
           key_id: finalKeyId,
           key_secret: finalKeySecret,
@@ -248,6 +210,43 @@ export async function POST(req: Request) {
             { status: 503 },
           );
         }
+      } else if (resResult.existingOrder && resResult.existingOrder.orderId) {
+        if (resResult.existingOrder.isPaid) {
+          return NextResponse.json(
+            { error: `Obligation has already been paid via order ${resResult.existingOrder.orderId}.` },
+            { status: 409 },
+          );
+        }
+
+        // Verify and repair intent consistency before returning existing order (FIN-001)
+        const repairRes = await verifyAndRepairIntent(
+          db,
+          resResult.existingOrder.intentId,
+          resResult.existingOrder.orderId,
+          {
+            userId: auth.uid,
+            amount: payableAmount,
+            currency,
+            reservationKey,
+          },
+        );
+
+        if (!repairRes.ok) {
+          return NextResponse.json(
+            { error: `Payment intent consistency error: ${repairRes.error}` },
+            { status: 409 },
+          );
+        }
+
+        return NextResponse.json({
+          id: resResult.existingOrder.orderId,
+          amount: Math.round(resResult.existingOrder.amount * 100),
+          currency: resResult.existingOrder.currency || currency,
+          receipt: authoritativeReceipt,
+          status: "created",
+          intentId: resResult.existingOrder.intentId,
+          notes: { ...notes, intentId: resResult.existingOrder.intentId, reusedExistingOrder: true },
+        });
       }
 
       if (resResult.isWaiting) {
@@ -398,13 +397,17 @@ export async function POST(req: Request) {
             });
           }
 
-          if (!recResult.canRetry) {
+          if (recResult.superseded && recResult.canRetry && recResult.reservationToken) {
+            reservationAcquired = true;
+            reservationToken = recResult.reservationToken;
+          } else if (!recResult.canRetry) {
             return NextResponse.json(
               { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
               { status: 503 },
             );
+          } else {
+            reservationFailed = true;
           }
-          reservationFailed = true;
         }
 
         if (reservationFailed) {

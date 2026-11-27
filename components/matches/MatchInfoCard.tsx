@@ -73,8 +73,8 @@ export function MatchInfoCard({
   const typeLabel = match.matchType === "Practice" ? "Friendly" : match.matchType;
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-3 sm:p-4" data-testid="match-info-card" aria-label="Match information">
-      <div className="flex items-center justify-between gap-2 mb-2">
+    <section className="rounded-2xl border border-border bg-surface p-2.5 sm:p-3.5" data-testid="match-info-card" aria-label="Match information">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-xs font-bold ${STATUS_TONE[status]}`} data-testid="match-status-badge">
           {status}
         </span>
@@ -115,16 +115,16 @@ export function MatchInfoCard({
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <div className="hidden min-[380px]:flex w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-xl bg-brand-surface items-center justify-center" aria-hidden="true">
-          <span className="text-2xl sm:text-3xl">🏏</span>
+      <div className="flex gap-2.5">
+        <div className="hidden min-[380px]:flex w-14 h-14 sm:w-20 sm:h-20 shrink-0 rounded-xl bg-brand-surface items-center justify-center" aria-hidden="true">
+          <span className="text-xl sm:text-3xl">🏏</span>
         </div>
-        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-start gap-3">
+        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-start gap-2">
           <div className="min-w-0 flex-1">
             <h2 className="text-base sm:text-xl font-black font-heading text-text-primary leading-tight" data-testid="match-info-title">
               KAvach XI vs {match.opponent || "TBD"}
             </h2>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="rounded-lg bg-brand-surface px-2 py-0.5 text-xs font-bold text-brand">{typeLabel}</span>
               <span className="rounded-lg bg-surface-hover px-2 py-0.5 text-xs font-bold text-text-secondary">{match.format}</span>
               {tournamentName && (
@@ -134,29 +134,29 @@ export function MatchInfoCard({
                 </span>
               )}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-text-secondary">
-              <span className="inline-flex items-center gap-1.5">
-                <CalendarDays className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] sm:text-[13px] text-text-secondary">
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                 {formatInfoDate(match.date)}
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                 {formatMatchDisplayTime(match.time) || "Time TBD"}
               </span>
               {directions ? (
-                <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 min-w-0 hover:text-brand">
-                  <MapPin className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 min-w-0 hover:text-brand">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="truncate">{venue}</span>
                 </a>
               ) : (
-                <span className="inline-flex items-center gap-1.5 min-w-0">
-                  <MapPin className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span className="inline-flex items-center gap-1 min-w-0">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="truncate">{venue}</span>
                 </span>
               )}
             </div>
             {(cricHeroesHref(match.matchUrl) || match.streamingUrl) && (
-              <div className="mt-1.5 flex flex-wrap gap-3">
+              <div className="mt-1 flex flex-wrap gap-3">
                 {cricHeroesHref(match.matchUrl) && (
                   <a href={cricHeroesHref(match.matchUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
                     <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Match Centre
@@ -171,10 +171,12 @@ export function MatchInfoCard({
             )}
           </div>
 
-          <div className="flex items-center justify-between sm:justify-start gap-3 sm:pl-4 sm:border-l sm:border-border shrink-0" data-testid="match-info-fee">
+          <div className="flex items-center justify-between sm:justify-start gap-2 sm:pl-4 sm:border-l sm:border-border shrink-0" data-testid="match-info-fee">
             <div>
-              <p className="text-xs text-text-secondary">Match Fee</p>
-              <p className="text-2xl font-black font-heading text-text-primary tabular-nums">₹{Number(match.fee || 0).toLocaleString("en-IN")}</p>
+              <div className="flex items-baseline gap-1.5 sm:block">
+                <p className="text-xs text-text-secondary">Match Fee</p>
+                <p className="text-xl sm:text-2xl font-black font-heading text-text-primary tabular-nums">₹{Number(match.fee || 0).toLocaleString("en-IN")}</p>
+              </div>
               <p className="text-[11px] text-text-muted">per player · {match.jerseyColor} · max {match.maxSquadSize}</p>
             </div>
             {onEdit && (

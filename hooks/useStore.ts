@@ -78,6 +78,19 @@ import { createNotification } from "@/lib/notifications";
 import { normalizeIndianMobile } from "@/lib/utils";
 import { logAudit, diffChanges, AuditActorType } from "@/lib/auditLog";
 
+export class PartialMatchCreationError extends Error {
+  matchId: string;
+  failedStep: "payments";
+  causeError: unknown;
+  constructor(matchId: string, failedStep: "payments", causeError: unknown) {
+    super(`Match ${matchId} was created, but initializing ${failedStep} failed.`);
+    this.name = "PartialMatchCreationError";
+    this.matchId = matchId;
+    this.failedStep = failedStep;
+    this.causeError = causeError;
+  }
+}
+
 const SYNCED_PROFILE_FIELDS: (keyof Player & keyof AppUser)[] = [
   "name",
   "email",
@@ -1611,6 +1624,39 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     })();
   };
 
+  const initializeMatchPayments = async (matchId: string) => {
+    const existingSnap = await getDocs(collection(db, "matches", matchId, "payments"));
+    const existingPlayerIds = new Set(
+      existingSnap.docs.map((d) => String(d.data()?.playerId || "")).filter(Boolean),
+    );
+    const chargeablePlayers = players.filter(
+      (p) =>
+        !p.disabled &&
+        !p.mergedInto &&
+        p.mergeStatus !== "in_progress" &&
+        p.inviteStatus !== "Rejected" &&
+        p.inviteStatus !== "Pending" &&
+        !existingPlayerIds.has(p.id),
+    );
+    const BATCH_LIMIT = 400;
+    for (let i = 0; i < chargeablePlayers.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      for (const p of chargeablePlayers.slice(i, i + BATCH_LIMIT)) {
+        const payId = crypto.randomUUID();
+        batch.set(doc(db, "matches", matchId, "payments", payId), {
+          id: payId,
+          matchId,
+          playerId: p.id,
+          status: "Not Playing",
+          availability: "Pending",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+  };
+
   const addMatch = async (
     match: Omit<Match, "id" | "createdAt" | "updatedAt">,
   ) => {
@@ -1622,56 +1668,41 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
-      // Notify all verified/active players in-app. Fire-and-forget so a
-      // notification-write failure doesn't fail the whole match creation.
-      const notifyRecipients = players.filter(
-        (p) => !p.disabled && p.inviteStatus === "Verified",
-      );
-      for (const p of notifyRecipients) {
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `matches/${id}`);
+      throw err;
+    }
+
+    // Notify all verified/active players in-app. Fire-and-forget so a
+    // notification-write failure doesn't fail the whole match creation.
+    const notifyRecipients = players.filter(
+      (p) => !p.disabled && p.inviteStatus === "Verified",
+    );
+    for (const p of notifyRecipients) {
+      try {
         createNotification(
           p.id,
           "New Match Scheduled",
           `A new ${match.format} match against ${match.opponent} on ${match.date} has been added.`,
           "in_app",
         );
+      } catch (notifyErr) {
+        console.warn("[addMatch] Notification dispatch failed:", notifyErr);
       }
-
-      // Batched payment doc creation. Previously we did 99 sequential
-      // setDocs — one HTTP round-trip per player. writeBatch commits up to
-      // 500 ops in a single round-trip.
-      // Skip trashed / rejected / still-pending signups so admins don't
-      // see rows for people who can never pay.
-      const chargeablePlayers = players.filter(
-        (p) =>
-          !p.disabled &&
-          !p.mergedInto &&
-          p.mergeStatus !== "in_progress" &&
-          p.inviteStatus !== "Rejected" &&
-          p.inviteStatus !== "Pending",
-      );
-      const BATCH_LIMIT = 400;
-      for (let i = 0; i < chargeablePlayers.length; i += BATCH_LIMIT) {
-        const batch = writeBatch(db);
-        for (const p of chargeablePlayers.slice(i, i + BATCH_LIMIT)) {
-          const payId = crypto.randomUUID();
-          batch.set(doc(db, "matches", id, "payments", payId), {
-            id: payId,
-            matchId: id,
-            playerId: p.id,
-            status: "Not Playing",
-            availability: "Pending",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
-        await batch.commit();
-      }
-      logAudit({ ...getActor(), action: "created", entity: "match", entityId: id, entityLabel: `vs ${match.opponent}`, changes: [], summary: `Created ${match.matchType} match vs ${match.opponent} on ${match.date}` });
-      syncMatchToCalendar("upsert", id);
-      return id;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `matches/${id}`);
     }
+
+    // Batched payment doc creation. Idempotent via initializeMatchPayments so
+    // a retry after partial failure never duplicates player payment rows.
+    try {
+      await initializeMatchPayments(id);
+    } catch (batchErr) {
+      console.error("[addMatch] Match created, but payment subcollection initialization failed:", batchErr);
+      throw new PartialMatchCreationError(id, "payments", batchErr);
+    }
+
+    logAudit({ ...getActor(), action: "created", entity: "match", entityId: id, entityLabel: `vs ${match.opponent}`, changes: [], summary: `Created ${match.matchType} match vs ${match.opponent} on ${match.date}` });
+    syncMatchToCalendar("upsert", id);
+    return id;
   };
 
   const updateMatch = async (matchOrId: Match | string, partialChanges?: Partial<Match>) => {
@@ -3267,6 +3298,7 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     updateBadgeTypeDef,
     deleteBadgeTypeDef,
     recordCatch,
+    initializeMatchPayments,
     leads,
     ensureLeads,
     addLead,

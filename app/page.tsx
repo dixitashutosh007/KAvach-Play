@@ -10,6 +10,7 @@
 "use client";
 
 import { useStore } from "@/hooks/useStore";
+import { filterVisibleNotifications } from "@/lib/historical-activity-filter";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -853,11 +854,9 @@ export default function Home() {
   // Find membership text
   const isStudioUser = appUser?.isStudioMember || player?.isStudioMember;
 
-  const myNotifications = store.notifications.filter((n) => {
-    if (isAdmin && persona === "admin") {
-      return n.userId === "admin" || n.userId === "all";
-    }
-    return n.userId === user?.uid || n.userId === "all";
+  const myNotifications = filterVisibleNotifications(store.notifications, {
+    isAdmin: isAdmin && persona === "admin",
+    uid: user?.uid,
   });
   const unreadCount = myNotifications.filter((n) => !n.isRead).length;
 

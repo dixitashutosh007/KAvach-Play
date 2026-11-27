@@ -39,12 +39,28 @@ describe("Phase C: Historical Administrative Prompt Filtering", () => {
     assert.deepEqual(visiblePlayer.map((n) => n.id), ["p1", "p2"]);
   });
 
-  it("wires filterVisibleNotifications in NotificationsTab and removes obsolete historical POTW/fee prompts in WeekendPrompts", () => {
+  it("wires filterVisibleNotifications in NotificationsTab and app/page.tsx, preserves Previous Weeks History, removes obsolete historical prompts", () => {
     const notifSrc = fs.readFileSync(path.resolve("components/NotificationsTab.tsx"), "utf8");
+    const pageSrc = fs.readFileSync(path.resolve("app/page.tsx"), "utf8");
+    const actionCentreSrc = fs.readFileSync(path.resolve("components/action-centre/ClubActionCentre.tsx"), "utf8");
     const promptsSrc = fs.readFileSync(path.resolve("components/weekend-ops/WeekendPrompts.tsx"), "utf8");
     assert.match(notifSrc, /filterVisibleNotifications/);
+    assert.match(pageSrc, /filterVisibleNotifications/);
+    assert.match(actionCentreSrc, /Previous Weeks History/);
     assert.doesNotMatch(promptsSrc, /data-testid="history-fees"|testId="history-fees"/);
     assert.doesNotMatch(promptsSrc, /data-testid="history-potw"|testId="history-potw"/);
     assert.match(promptsSrc, /testId="history-results"/);
+  });
+
+  it("filters action-centre & weekend-ops historical shapes with _seconds timestamps", () => {
+    const prevWeekAdminTs = { _seconds: Math.floor(Date.parse("2026-11-20T18:00:00+05:30") / 1000) };
+    const notifications = [
+      { id: "a1", userId: "admin", title: "Club Admin Reminder", message: "Add Players to the Squad", createdAt: prevWeekAdminTs },
+      { id: "a2", userId: "admin", title: "Weekend Operations", message: "Enter Match Results", createdAt: prevWeekAdminTs, metadata: { type: "weekend_ops" } },
+      { id: "a3", userId: "admin", title: "Share Match Details", message: "Share Match Details in the Group", createdAt: prevWeekAdminTs, metadata: { type: "action_centre_reminder" } },
+      { id: "a4", userId: "admin", title: "Studio Subscription Purchased", message: "Rohan bought Pro", createdAt: prevWeekAdminTs },
+    ];
+    const visible = filterVisibleNotifications(notifications, { isAdmin: true, nowMs });
+    assert.deepEqual(visible.map((n) => n.id), ["a4"]);
   });
 });

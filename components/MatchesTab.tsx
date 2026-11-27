@@ -155,6 +155,9 @@ export function MatchesTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultAction]);
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
+  const [isSubmittingMatch, setIsSubmittingMatch] = useState(false);
+  const [matchFormError, setMatchFormError] = useState<string | null>(null);
+  const [partialCreatedMatchId, setPartialCreatedMatchId] = useState<string | null>(null);
   const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useSessionState(
     "matches:isLaterScheduledCollapsed",
     true,
@@ -313,13 +316,15 @@ export function MatchesTab({
   // (also enforced by Firestore rules); other match details stay editable.
   const editingFinanceClosed = !!editingId && store.matches.find((m) => m.id === editingId)?.financeStatus === "closed";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Only the Review step saves; Enter on earlier steps moves forward.
     if (formStep < 4) {
       goToFormStep((formStep + 1) as MatchFormStep);
       return;
     }
+    if (isSubmittingMatch) return;
+
     const { captainId: selectedCaptainId, ...matchFields } = formData;
     const processedData = {
       ...matchFields,
@@ -330,13 +335,17 @@ export function MatchesTab({
       // Remember the margin used, so editing reopens with it.
       feeMarginPct: clampMargin(feeMarginPct),
     };
-    if (editingId) {
-      const before = store.matches.find((m) => m.id === editingId);
-      if (before && before.financeStatus === "closed") processedData.fee = Number(before.fee) || 0;
-      const matchId = editingId;
-      const feeOrDateChanged = !!before && (Number(before.fee) !== processedData.fee || before.date !== processedData.date);
-      const captainChanged = (selectedCaptainId || "") !== (before?.captainId || "");
-      Promise.resolve(store.updateMatch({ ...processedData, id: editingId } as Match)).then(async () => {
+
+    setIsSubmittingMatch(true);
+    setMatchFormError(null);
+    try {
+      if (editingId) {
+        const before = store.matches.find((m) => m.id === editingId);
+        if (before && before.financeStatus === "closed") processedData.fee = Number(before.fee) || 0;
+        const matchId = editingId;
+        const feeOrDateChanged = !!before && (Number(before.fee) !== processedData.fee || before.date !== processedData.date);
+        const captainChanged = (selectedCaptainId || "") !== (before?.captainId || "");
+        await Promise.resolve(store.updateMatch({ ...processedData, id: editingId } as Match));
         if (captainChanged) {
           try {
             await store.assignMatchCaptain(matchId, selectedCaptainId || null);
@@ -347,17 +356,33 @@ export function MatchesTab({
         // Keep automatically applied Finance Plans in step with the new fee /
         // date. Only payments still exactly as the last automatic application
         // left them change; paid, overridden or hand-edited ones never do.
-        if (!feeOrDateChanged) return;
-        const r = await callMatchPlans({ action: "apply", matchId, scope: "refresh" });
-        if (r.ok && "written" in r.data && r.data.written) {
-          toast(`Finance Plans updated for ${r.data.written} player${r.data.written === 1 ? "" : "s"} after the fee/date change`, "success");
-        } else if (!r.ok && r.status !== 403 && r.status !== 409) {
-          toast("Match saved, but Finance Plans could not be updated. Open the match and use Finance Plans.", "error");
+        if (feeOrDateChanged) {
+          const r = await callMatchPlans({ action: "apply", matchId, scope: "refresh" });
+          if (r.ok && "written" in r.data && r.data.written) {
+            toast(`Finance Plans updated for ${r.data.written} player${r.data.written === 1 ? "" : "s"} after the fee/date change`, "success");
+          } else if (!r.ok && r.status !== 403 && r.status !== 409) {
+            toast("Match saved, but Finance Plans could not be updated. Open the match and use Finance Plans.", "error");
+          }
         }
-      });
-      setEditingId(null);
-    } else {
-      Promise.resolve(store.addMatch(processedData)).then(async (newMatchId) => {
+        toast("Match updated successfully.", "success");
+        setEditingId(null);
+      } else if (partialCreatedMatchId) {
+        // Recover from an earlier partial creation: update the retained match ID
+        // and idempotently initialize any missing player payment rows without
+        // creating a duplicate match.
+        await Promise.resolve(store.updateMatch({ ...processedData, id: partialCreatedMatchId } as Match));
+        await Promise.resolve(store.initializeMatchPayments(partialCreatedMatchId));
+        if (selectedCaptainId) {
+          try {
+            await store.assignMatchCaptain(partialCreatedMatchId, selectedCaptainId);
+          } catch (err: any) {
+            toast(err?.message || "Match created, but captain assignment failed.", "error");
+          }
+        }
+        setPartialCreatedMatchId(null);
+        toast("Match created successfully.", "success");
+      } else {
+        const newMatchId = await Promise.resolve(store.addMatch(processedData));
         if (newMatchId && selectedCaptainId) {
           try {
             await store.assignMatchCaptain(newMatchId, selectedCaptainId);
@@ -365,16 +390,39 @@ export function MatchesTab({
             toast(err?.message || "Match created, but captain assignment failed.", "error");
           }
         }
-      });
+        toast("Match created successfully.", "success");
+      }
+      setIsAdding(false);
+      resetForm();
+    } catch (err: any) {
+      if (err?.name === "PartialMatchCreationError" && err?.matchId) {
+        // Match document was created, but payment subcollection initialization failed.
+        // Retain the created matchId so retrying recovers payments without duplicating the match.
+        setPartialCreatedMatchId(err.matchId);
+        const msg =
+          "Match document was created, but player payment rows failed to initialize. Click Save Match to retry payment initialization without creating a duplicate match.";
+        setMatchFormError(msg);
+        toast(msg, "error");
+      } else {
+        const msg =
+          err?.message ||
+          (editingId
+            ? "Failed to update match. Please check permissions and try again."
+            : "Failed to create match. Please check permissions and try again.");
+        setMatchFormError(msg);
+        toast(msg, "error");
+      }
+    } finally {
+      setIsSubmittingMatch(false);
     }
-    setIsAdding(false);
-    resetForm();
   };
 
   const resetForm = () => {
     setFeeMarginPct(DEFAULT_MARGIN_PCT);
     setFormStep(1);
     setFormStepError(null);
+    setMatchFormError(null);
+    setPartialCreatedMatchId(null);
     setFormData({
       groundId: store.grounds[0]?.id || "",
       format: "T30",
@@ -1027,20 +1075,31 @@ export function MatchesTab({
         </div>
 
         {/* Footer: in the form's own scroll container, so it never hides a field */}
+        {matchFormError && (
+          <div
+            role="alert"
+            data-testid="match-form-error"
+            className="mx-3 sm:mx-4 mb-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+          >
+            {matchFormError}
+          </div>
+        )}
         <div className="sticky bottom-0 z-10 bg-surface border-t border-border px-3 sm:px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2">
           {formStep > 1 ? (
             <button
               type="button"
+              disabled={isSubmittingMatch}
               onClick={() => goToFormStep((formStep - 1) as MatchFormStep)}
-              className="min-h-[48px] px-5 rounded-xl border-2 border-brand/50 bg-surface text-sm font-black text-brand hover:bg-brand-surface cursor-pointer"
+              className="min-h-[48px] px-5 rounded-xl border-2 border-brand/50 bg-surface text-sm font-black text-brand hover:bg-brand-surface cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Back
             </button>
           ) : (
             <button
               type="button"
+              disabled={isSubmittingMatch}
               onClick={closeMatchForm}
-              className="min-h-[48px] px-5 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary hover:bg-surface-hover cursor-pointer"
+              className="min-h-[48px] px-5 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary hover:bg-surface-hover cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -1056,7 +1115,8 @@ export function MatchesTab({
                 goToFormStep((formStep + 1) as MatchFormStep);
               }}
               data-testid="match-form-next"
-              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
+              disabled={isSubmittingMatch}
+              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next: {MATCH_FORM_STEPS[formStep as 1 | 2 | 3]}
             </button>
@@ -1065,9 +1125,10 @@ export function MatchesTab({
               key="wizard-save"
               type="submit"
               data-testid="match-form-submit"
-              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer"
+              disabled={isSubmittingMatch}
+              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingId ? "Save Changes" : "Save Match"}
+              {isSubmittingMatch ? "Saving..." : editingId ? "Save Changes" : "Save Match"}
             </button>
           )}
         </div>
@@ -2315,7 +2376,7 @@ export function MatchPayments({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
       {planDialogOpen && (
         <FeePlanApplyDialog
           matchId={match.id}
