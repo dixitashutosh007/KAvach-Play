@@ -118,14 +118,6 @@ export async function PATCH(req: Request) {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(playerRef);
       if (!snap.exists) throw new Error("PLAYER_NOT_FOUND");
-      const [paymentsSnap, feesSnap, ordersSnap] = await Promise.all([
-        tx.get(db.collectionGroup("payments").where("playerId", "==", playerId).limit(1)),
-        tx.get(playerRef.collection("otherFees").limit(1)),
-        tx.get(db.collection("merchOrders").where("playerId", "==", playerId).limit(1)),
-      ]);
-      if (!paymentsSnap.empty || !feesSnap.empty || !ordersSnap.empty) {
-        throw new Error("PLAYER_HAS_HISTORY");
-      }
       const data = snap.data() || {};
       const wasDisabled = data.disabled === true;
       tx.update(playerRef, {
@@ -154,12 +146,6 @@ export async function PATCH(req: Request) {
   } catch (err) {
     if (err instanceof Error && err.message === "PLAYER_NOT_FOUND") {
       return NextResponse.json({ error: "Player not found." }, { status: 404 });
-    }
-    if (err instanceof Error && err.message === "PLAYER_HAS_HISTORY") {
-      return NextResponse.json(
-        { error: "Player has historical financial or match records; disable instead of deleting." },
-        { status: 409 },
-      );
     }
     console.error("[admin/players] PATCH failed:", err instanceof Error ? err.message : "unknown");
     return NextResponse.json({ error: "Could not update player status." }, { status: 500 });
