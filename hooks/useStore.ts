@@ -1625,36 +1625,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const initializeMatchPayments = async (matchId: string) => {
-    const existingSnap = await getDocs(collection(db, "matches", matchId, "payments"));
-    const existingPlayerIds = new Set(
-      existingSnap.docs.map((d) => String(d.data()?.playerId || "")).filter(Boolean),
-    );
-    const chargeablePlayers = players.filter(
-      (p) =>
-        !p.disabled &&
-        !p.mergedInto &&
-        p.mergeStatus !== "in_progress" &&
-        p.inviteStatus !== "Rejected" &&
-        p.inviteStatus !== "Pending" &&
-        !existingPlayerIds.has(p.id),
-    );
-    const BATCH_LIMIT = 400;
-    for (let i = 0; i < chargeablePlayers.length; i += BATCH_LIMIT) {
-      const batch = writeBatch(db);
-      for (const p of chargeablePlayers.slice(i, i + BATCH_LIMIT)) {
-        const payId = crypto.randomUUID();
-        batch.set(doc(db, "matches", matchId, "payments", payId), {
-          id: payId,
-          matchId,
-          playerId: p.id,
-          status: "Not Playing",
-          availability: "Pending",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-      await batch.commit();
+    const res = await authedFetch("/api/admin/matches/initialize-payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Failed to initialize player payment rows (${res.status}).`);
     }
+    return data as { ok: true; matchId: string; createdCount: number; alreadyInitializedCount: number };
   };
 
   const addMatch = async (
@@ -1691,10 +1671,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       }
     }
 
-    // Batched payment doc creation. Idempotent via initializeMatchPayments so
-    // a retry after partial failure never duplicates player payment rows.
+    // Batched payment doc creation on fresh match (zero existing docs, so no
+    // client getDocs() needed — Club Admins cannot list payments under ROSTER-R1).
+    const chargeablePlayers = players.filter(
+      (p) =>
+        !p.disabled &&
+        !p.mergedInto &&
+        p.mergeStatus !== "in_progress" &&
+        p.inviteStatus !== "Rejected" &&
+        p.inviteStatus !== "Pending",
+    );
+    const BATCH_LIMIT = 400;
     try {
-      await initializeMatchPayments(id);
+      for (let i = 0; i < chargeablePlayers.length; i += BATCH_LIMIT) {
+        const batch = writeBatch(db);
+        for (const p of chargeablePlayers.slice(i, i + BATCH_LIMIT)) {
+          const payId = crypto.randomUUID();
+          batch.set(doc(db, "matches", id, "payments", payId), {
+            id: payId,
+            matchId: id,
+            playerId: p.id,
+            status: "Not Playing",
+            availability: "Pending",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
+      }
     } catch (batchErr) {
       console.error("[addMatch] Match created, but payment subcollection initialization failed:", batchErr);
       throw new PartialMatchCreationError(id, "payments", batchErr);

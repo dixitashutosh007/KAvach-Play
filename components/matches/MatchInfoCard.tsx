@@ -73,112 +73,89 @@ export function MatchInfoCard({
   const typeLabel = match.matchType === "Practice" ? "Friendly" : match.matchType;
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-2.5 sm:p-3.5" data-testid="match-info-card" aria-label="Match information">
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-xs font-bold ${STATUS_TONE[status]}`} data-testid="match-status-badge">
-          {status}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {financeClosed && (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-surface-hover px-2 py-0.5 text-[11px] font-bold text-text-secondary" data-testid="match-finance-closed">
-              <Lock className="w-3 h-3" aria-hidden="true" /> Finance closed
+    <section
+      className="rounded-xl border border-border bg-surface/80 px-3 py-2 sm:px-3.5 sm:py-2.5"
+      data-testid="match-info-card"
+      aria-label="Match information"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span
+              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold ${STATUS_TONE[status]}`}
+              data-testid="match-status-badge"
+            >
+              {status}
             </span>
-          )}
-          {canArchive && onToggleArchive && (
-            <div className="relative" ref={menuRef}>
-              <button
-                type="button"
-                onClick={() => setMenuOpen((v) => !v)}
-                aria-label="More match actions"
-                aria-expanded={menuOpen}
-                className="w-11 h-11 rounded-xl border border-border flex items-center justify-center text-text-secondary hover:bg-surface-hover cursor-pointer"
-              >
-                <MoreHorizontal className="w-5 h-5" aria-hidden="true" />
-              </button>
-              {menuOpen && (
-                <div role="menu" className="absolute right-0 top-12 z-30 min-w-[180px] rounded-xl border border-border bg-surface shadow-lg py-1">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onToggleArchive(!match.isArchived);
-                    }}
-                    className="w-full min-h-[44px] px-3 text-left text-sm font-semibold text-text-primary hover:bg-surface-hover cursor-pointer"
-                  >
-                    {match.isArchived ? "Unarchive match" : "Archive match"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-2.5">
-        <div className="hidden min-[380px]:flex w-14 h-14 sm:w-20 sm:h-20 shrink-0 rounded-xl bg-brand-surface items-center justify-center" aria-hidden="true">
-          <span className="text-xl sm:text-3xl">🏏</span>
-        </div>
-        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base sm:text-xl font-black font-heading text-text-primary leading-tight" data-testid="match-info-title">
+            <h2
+              className="text-sm sm:text-base font-black font-heading text-text-primary leading-tight truncate"
+              data-testid="match-info-title"
+            >
               KAvach XI vs {match.opponent || "TBD"}
             </h2>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="rounded-lg bg-brand-surface px-2 py-0.5 text-xs font-bold text-brand">{typeLabel}</span>
-              <span className="rounded-lg bg-surface-hover px-2 py-0.5 text-xs font-bold text-text-secondary">{match.format}</span>
-              {tournamentName && (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-surface-hover px-2 py-0.5 text-xs font-bold text-text-secondary min-w-0">
-                  <Trophy className="w-3 h-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{tournamentName}</span>
-                </span>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] sm:text-[13px] text-text-secondary">
-              <span className="inline-flex items-center gap-1">
-                <CalendarDays className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                {formatInfoDate(match.date)}
+            <span className="rounded-md bg-brand-surface px-1.5 py-0.5 text-[11px] font-bold text-brand">
+              {typeLabel}
+            </span>
+            <span className="rounded-md bg-surface-hover px-1.5 py-0.5 text-[11px] font-bold text-text-secondary">
+              {match.format}
+            </span>
+            {tournamentName && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-surface-hover px-1.5 py-0.5 text-[11px] font-bold text-text-secondary min-w-0">
+                <Trophy className="w-3 h-3 shrink-0" aria-hidden="true" />
+                <span className="truncate">{tournamentName}</span>
               </span>
-              <span className="inline-flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                {formatMatchDisplayTime(match.time) || "Time TBD"}
+            )}
+            {financeClosed && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-surface-hover px-1.5 py-0.5 text-[11px] font-bold text-text-secondary"
+                data-testid="match-finance-closed"
+              >
+                <Lock className="w-3 h-3" aria-hidden="true" /> Finance closed
               </span>
-              {directions ? (
-                <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 min-w-0 hover:text-brand">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{venue}</span>
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-1 min-w-0">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{venue}</span>
-                </span>
-              )}
-            </div>
-            {(cricHeroesHref(match.matchUrl) || match.streamingUrl) && (
-              <div className="mt-1 flex flex-wrap gap-3">
-                {cricHeroesHref(match.matchUrl) && (
-                  <a href={cricHeroesHref(match.matchUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
-                    <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Match Centre
-                  </a>
-                )}
-                {match.streamingUrl && (
-                  <a href={match.streamingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
-                    <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> Live stream
-                  </a>
-                )}
-              </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between sm:justify-start gap-2 sm:pl-4 sm:border-l sm:border-border shrink-0" data-testid="match-info-fee">
-            <div>
-              <div className="flex items-baseline gap-1.5 sm:block">
-                <p className="text-xs text-text-secondary">Match Fee</p>
-                <p className="text-xl sm:text-2xl font-black font-heading text-text-primary tabular-nums">₹{Number(match.fee || 0).toLocaleString("en-IN")}</p>
-              </div>
-              <p className="text-[11px] text-text-muted">per player · {match.jerseyColor} · max {match.maxSquadSize}</p>
-            </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-secondary">
+            <span className="inline-flex items-center gap-1">
+              <CalendarDays className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              {formatInfoDate(match.date)}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              {formatMatchDisplayTime(match.time) || "Time TBD"}
+            </span>
+            {directions ? (
+              <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 min-w-0 hover:text-brand">
+                <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">{venue}</span>
+              </a>
+            ) : (
+              <span className="inline-flex items-center gap-1 min-w-0">
+                <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">{venue}</span>
+              </span>
+            )}
+            {cricHeroesHref(match.matchUrl) && (
+              <a href={cricHeroesHref(match.matchUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-brand hover:underline">
+                <ExternalLink className="w-3 h-3" aria-hidden="true" /> Match Centre
+              </a>
+            )}
+            {match.streamingUrl && (
+              <a href={match.streamingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-brand hover:underline">
+                <ExternalLink className="w-3 h-3" aria-hidden="true" /> Live stream
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between sm:justify-end gap-2 sm:pl-3 sm:border-l sm:border-border shrink-0" data-testid="match-info-fee">
+          <div className="flex items-baseline gap-1.5 sm:text-right sm:block">
+            <p className="text-[11px] font-semibold text-text-secondary">
+              Match Fee <span className="text-sm sm:text-base font-black font-heading text-text-primary tabular-nums">₹{Number(match.fee || 0).toLocaleString("en-IN")}</span>
+            </p>
+            <p className="text-[11px] text-text-muted">{match.jerseyColor} · max {match.maxSquadSize}</p>
+          </div>
+          <div className="flex items-center gap-1">
             {onEdit && (
               <button
                 type="button"
@@ -189,6 +166,34 @@ export function MatchInfoCard({
               >
                 <Pencil className="w-4 h-4" aria-hidden="true" />
               </button>
+            )}
+            {canArchive && onToggleArchive && (
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label="More match actions"
+                  aria-expanded={menuOpen}
+                  className="w-11 h-11 rounded-xl border border-border flex items-center justify-center text-text-secondary hover:bg-surface-hover cursor-pointer"
+                >
+                  <MoreHorizontal className="w-5 h-5" aria-hidden="true" />
+                </button>
+                {menuOpen && (
+                  <div role="menu" className="absolute right-0 top-12 z-30 min-w-[180px] rounded-xl border border-border bg-surface shadow-lg py-1">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onToggleArchive(!match.isArchived);
+                      }}
+                      className="w-full min-h-[44px] px-3 text-left text-sm font-semibold text-text-primary hover:bg-surface-hover cursor-pointer"
+                    >
+                      {match.isArchived ? "Unarchive match" : "Archive match"}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

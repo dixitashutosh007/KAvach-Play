@@ -307,25 +307,36 @@ describe("Wizard step validation", () => {
     assert.match(src2, /if \(step === 3 && \(data\.fee === "" \|\| data\.fee === undefined \|\| Number\(data\.fee\) < 0\)\) \{\s*return "Enter the match fee per player \(0 if there is no fee\)\.";/);
   });
 
-  it("Issue 3 regression: awaits save, disables submit while saving, shows success toast, preserves form & recovers partial creation without duplicates", () => {
+  it("Issue 3 regression: awaits save, disables submit while saving, shows confirmation before closing, preserves form & recovers partial creation without duplicates", () => {
     const storeSrc = fs.readFileSync(path.resolve("hooks/useStore.ts"), "utf-8");
     assert.match(storeSrc, /export class PartialMatchCreationError extends Error/);
     assert.match(storeSrc, /const initializeMatchPayments = async \(matchId: string\)/);
-    assert.match(storeSrc, /!existingPlayerIds\.has\(p\.id\)/);
-    assert.match(src2, /const handleSubmit = async \(e: React\.FormEvent\)/);
+    assert.match(storeSrc, /\/api\/admin\/matches\/initialize-payments/);
+    assert.match(src2, /const executeMatchSave = async \(bypassDuplicateCheck = false\)/);
     assert.match(src2, /if \(isSubmittingMatch\) return;/);
     assert.match(src2, /await Promise\.resolve\(store\.addMatch\(processedData\)\)/);
-    assert.match(src2, /toast\("Match created successfully\.", "success"\)/);
+    assert.match(src2, /data-testid="match-save-confirmation"/);
+    assert.match(src2, /data-testid="match-save-done"/);
     assert.match(src2, /partialCreatedMatchId/);
     assert.match(src2, /store\.initializeMatchPayments\(partialCreatedMatchId\)/);
     assert.match(src2, /data-testid="match-form-error"/);
-    assert.match(src2, /isSubmittingMatch \? "Saving\.\.\."/);
+    assert.match(src2, /isSubmittingMatch\s*\?\s*"Saving\.\.\."/);
   });
 
-  it("Issue 2 regression: MatchInfoCard keeps compact vertical spacing above manage-match tabs", () => {
+  it("Add Match defaults (₹8,000 fee and first eligible player captain) and duplicate warning UI", () => {
+    assert.match(src2, /const getInitialFee = \(\) => 8000;/);
+    assert.match(src2, /const getDefaultCaptainId = \(\) =>/);
+    assert.match(src2, /findDuplicateMatches\(processedData, store\.matches, partialCreatedMatchId\)/);
+    assert.match(src2, /data-testid="match-duplicate-warning"/);
+    assert.match(src2, /data-testid="match-duplicate-edit"/);
+    assert.match(src2, /data-testid="match-duplicate-continue"/);
+    assert.match(src2, /data-testid=\{`admin-match-card-fee-\$\{match\.id\}`\}/);
+  });
+
+  it("Issue 2 regression: MatchInfoCard keeps compact secondary header above manage-match tabs", () => {
     const infoCardSrc = fs.readFileSync(path.resolve("components/matches/MatchInfoCard.tsx"), "utf-8");
-    assert.match(infoCardSrc, /p-2\.5 sm:p-3\.5/);
-    assert.match(infoCardSrc, /flex items-baseline gap-1\.5 sm:block/);
+    assert.match(infoCardSrc, /px-3 py-2 sm:px-3\.5 sm:py-2\.5/);
+    assert.ok(!infoCardSrc.includes("🏏"), "Oversized emoji box removed from MatchInfoCard");
     assert.ok(src2.indexOf("<MatchInfoCard") < src2.indexOf('data-testid="manage-match"'));
   });
 });

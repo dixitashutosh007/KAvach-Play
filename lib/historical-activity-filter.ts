@@ -52,8 +52,13 @@ function toMillis(ts: unknown): number | null {
 export function isObsoleteAdminActivityNotification(
   notif: ActivityNotificationLike,
   nowMs: number = Date.now(),
+  adminUid?: string | null,
 ): boolean {
-  if (notif.userId !== "admin" && notif.userId !== "all") return false;
+  const isAdminTarget =
+    notif.userId === "admin" ||
+    notif.userId === "all" ||
+    (Boolean(adminUid) && notif.userId === adminUid);
+  if (!isAdminTarget) return false;
   const metaType = String(notif.metadata?.type || "").toLowerCase();
   if (metaType === "potw_award" || metaType === "payment_receipt" || metaType === "player_request") {
     return false;
@@ -86,8 +91,12 @@ export function filterVisibleNotifications<T extends ActivityNotificationLike>(
   const nowMs = opts.nowMs ?? Date.now();
   return notifications.filter((n) => {
     if (opts.isAdmin) {
-      if (n.userId !== "admin" && n.userId !== "all") return false;
-      return !isObsoleteAdminActivityNotification(n, nowMs);
+      const isAdminRecipient =
+        n.userId === "admin" ||
+        n.userId === "all" ||
+        (Boolean(opts.uid) && n.userId === opts.uid);
+      if (!isAdminRecipient) return false;
+      return !isObsoleteAdminActivityNotification(n, nowMs, opts.uid);
     }
     return n.userId === opts.uid || n.userId === "all";
   });

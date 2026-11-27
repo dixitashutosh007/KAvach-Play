@@ -130,8 +130,6 @@ export interface WeekendPromptsProps {
 export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, grounds, onPendingChange }: WeekendPromptsProps) {
   const { toast } = useToast();
   const [data, setData] = useState<PromptsResponse | null>(null);
-  const [history, setHistory] = useState<HistoryResponse | null>(null);
-  const [historyError, setHistoryError] = useState(false);
   const [open, setOpen] = useState<Kind | null>(null);
   const shownRef = useRef<Record<string, boolean>>({});
 
@@ -143,16 +141,6 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
       /* keep the last known state */
     }
   }, []);
-  const loadHistory = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/admin/weekend-prompts?view=history");
-      if (!res.ok) throw new Error();
-      setHistory((await res.json()) as HistoryResponse);
-      setHistoryError(false);
-    } catch {
-      setHistoryError(true);
-    }
-  }, []);
 
   useEffect(() => {
     if (!isAdmin || !uid) return;
@@ -161,9 +149,6 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
   }, [isAdmin, uid, load]);
 
   const inMatchCenter = active && activeTab === "matches";
-  useEffect(() => {
-    if (inMatchCenter) loadHistory();
-  }, [inMatchCenter, loadHistory]);
 
   const pending = data?.pending ?? { results: 0, potw: 0, fees: 0 };
   const total = pending.results + pending.potw + pending.fees;
@@ -207,27 +192,9 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
         }
         return n;
       });
-      setHistory((h) => {
-        if (!h) return h;
-        const n = { ...h };
-        if (kind === "results" && h.results) {
-          const items = drop(h.results.items);
-          n.results = { ...h.results, items, count: items.length };
-        }
-        if (kind === "fees" && h.fees) {
-          const items = drop(h.fees.items);
-          n.fees = { ...h.fees, items, count: items.length };
-        }
-        if (kind === "potw" && h.potw) {
-          const items = h.potw.items.filter((w) => !savedIds.includes(w.weekendId));
-          n.potw = { ...h.potw, items, count: items.length };
-        }
-        return n;
-      });
       void load();
-      if (inMatchCenter) void loadHistory();
     },
-    [load, loadHistory, inMatchCenter],
+    [load],
   );
 
   if (!active || !data) return null;
@@ -255,32 +222,6 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
             <span className="text-xs font-bold uppercase tracking-wider text-text-secondary mr-1">Weekend tasks</span>
             {total > 0 ? recurringChips : <span className="text-xs text-text-secondary" data-testid="weekend-tasks-none">Nothing pending this week</span>}
           </div>
-          {(canResults || canFees || canPotw) && (
-            <div className="mt-3 pt-3 border-t border-border" data-testid="historical-completion">
-              <div className="flex items-center gap-2 mb-2">
-                <History className="w-4 h-4 text-brand" aria-hidden="true" />
-                <h2 className="text-sm font-black text-text-primary">Historical Data Completion</h2>
-              </div>
-              {historyError && !history ? (
-                <p className="text-xs text-red-600">
-                  Could not load historical tasks.{" "}
-                  <button type="button" className="underline font-bold cursor-pointer" onClick={loadHistory}>
-                    Retry
-                  </button>
-                </p>
-              ) : !history ? (
-                <p className="text-xs text-text-secondary">
-                  <Loader2 className="inline w-3.5 h-3.5 animate-spin mr-1" /> Counting outstanding records…
-                </p>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {history.results && (
-                    <HistoryRow testId="history-results" label="Match Results" count={history.results.count} unit="pending" onOpen={() => setOpen("h-results")} />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </section>
       ) : (
         total > 0 && (
@@ -306,38 +247,10 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
           }}
         />
       )}
-      {open === "h-results" && history?.results && (
-        <ResultsModal
-          title="Historical results"
-          intro="Completed matches without a result. Nothing is filled in automatically — choose only the results you know, then Save. Saved matches leave this list."
-          items={history.results.items}
-          exceptions={history.results.exceptions.length}
-          exceptionList={history.results.exceptions}
-          source="backfill"
-          groundName={groundName}
-          onClose={close}
-          onSaved={(ids) => {
-            afterSave("results", ids);
-            toast(`${ids.length} historical result${ids.length === 1 ? "" : "s"} saved`, "success");
-          }}
-        />
-      )}
       {open === "potw" && data.potw && !data.potw.awarded && (
         <PotwModal
           weekends={[{ weekendId: data.potw.weekendId, label: data.potw.label, matches: data.potw.matches }]}
           source="prompt"
-          players={players}
-          onClose={close}
-          onSaved={(weekendId, name) => {
-            afterSave("potw", [weekendId]);
-            toast(`Player of the Weekend awarded to ${name}`, "success");
-          }}
-        />
-      )}
-      {open === "h-potw" && history?.potw && (
-        <PotwModal
-          weekends={history.potw.items}
-          source="history"
           players={players}
           onClose={close}
           onSaved={(weekendId, name) => {
@@ -351,19 +264,6 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
           title="Enter Actual Match Fee"
           items={data.fees.items}
           source="prompt"
-          groundName={groundName}
-          onClose={close}
-          onSaved={(ids) => {
-            afterSave("fees", ids);
-            toast(`Actual fee saved for ${ids.length} match${ids.length === 1 ? "" : "es"}`, "success");
-          }}
-        />
-      )}
-      {open === "h-fees" && history?.fees && (
-        <FeesModal
-          title="Historical actual match fees"
-          items={history.fees.items}
-          source="history"
           groundName={groundName}
           onClose={close}
           onSaved={(ids) => {

@@ -9,6 +9,7 @@
  */
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
+import { findDuplicateMatches } from "@/lib/match-duplicate";
 import { Match, MatchPayment } from "@/lib/types";
 import { isMatchBillable } from "@/lib/matchBillable";
 
@@ -158,6 +159,13 @@ export function MatchesTab({
   const [isSubmittingMatch, setIsSubmittingMatch] = useState(false);
   const [matchFormError, setMatchFormError] = useState<string | null>(null);
   const [partialCreatedMatchId, setPartialCreatedMatchId] = useState<string | null>(null);
+  const [duplicateMatchesWarning, setDuplicateMatchesWarning] = useState<Match[]>([]);
+  const [saveSuccessInfo, setSaveSuccessInfo] = useState<{
+    matchId: string;
+    mode: "created" | "updated";
+    opponent: string;
+    date: string;
+  } | null>(null);
   const [isLaterScheduledCollapsed, setIsLaterScheduledCollapsed] = useSessionState(
     "matches:isLaterScheduledCollapsed",
     true,
@@ -238,15 +246,18 @@ export function MatchesTab({
     }
   }, [defaultAction, store.matches, store.tournaments]);
 
-  // Default per-player fee for a new (Practice) match on the first ground:
-  // the existing rule, round(practiceFee / 12 × 1.05) — see lib/match-fee.
-  const getInitialFee = () => {
-     const ground = store.grounds[0];
-     if (ground && ground.practiceFee) {
-        return computeMatchFee(ground.practiceFee, DEFAULT_MARGIN_PCT).feePerPlayer;
-     }
-     return "";
-  };
+  // Default per-player fee (₹8,000) and default captain (first eligible active player)
+  // for Add Match only; never overwrites values when editing an existing match.
+  const getInitialFee = () => 8000;
+  const getDefaultCaptainId = () =>
+    store.players.find(
+      (p) =>
+        !p.disabled &&
+        !p.mergedInto &&
+        p.mergeStatus !== "in_progress" &&
+        p.inviteStatus !== "Rejected" &&
+        p.inviteStatus !== "Pending",
+    )?.id || "";
 
   const [formData, setFormData] = useState<
     Omit<Match, "id" | "createdAt" | "updatedAt" | "fee"> & { fee: number | "" }
@@ -273,7 +284,7 @@ export function MatchesTab({
     isTentative: false,
     tentativelyBlockedBy: "",
     tournamentId: "",
-    captainId: "",
+    captainId: getDefaultCaptainId(),
   });
 
   // Margin for the fee calculator. A form control only (the match stores just
@@ -290,9 +301,19 @@ export function MatchesTab({
   useEffect(() => {
     if (store.grounds.length > 0 && !formData.groundId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormData((prev) => ({ ...prev, groundId: store.grounds[0].id, fee: getInitialFee() }));
+      setFormData((prev) => ({ ...prev, groundId: store.grounds[0].id }));
     }
   }, [store.grounds, formData.groundId]);
+
+  useEffect(() => {
+    if (!editingId && !partialCreatedMatchId && !formData.captainId && store.players.length > 0) {
+      const defCap = getDefaultCaptainId();
+      if (defCap) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setFormData((prev) => (prev.captainId ? prev : { ...prev, captainId: defCap }));
+      }
+    }
+  }, [store.players, editingId, partialCreatedMatchId, formData.captainId]);
 
   const [notifyModalMatch, setNotifyModalMatch] = useState<Match | null>(null);
   const [kolkataNowMs, setKolkataNowMs] = useState<number>(() => Date.now());
@@ -316,13 +337,7 @@ export function MatchesTab({
   // (also enforced by Firestore rules); other match details stay editable.
   const editingFinanceClosed = !!editingId && store.matches.find((m) => m.id === editingId)?.financeStatus === "closed";
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // Only the Review step saves; Enter on earlier steps moves forward.
-    if (formStep < 4) {
-      goToFormStep((formStep + 1) as MatchFormStep);
-      return;
-    }
+  const executeMatchSave = async (bypassDuplicateCheck = false) => {
     if (isSubmittingMatch) return;
 
     const { captainId: selectedCaptainId, ...matchFields } = formData;
@@ -335,6 +350,15 @@ export function MatchesTab({
       // Remember the margin used, so editing reopens with it.
       feeMarginPct: clampMargin(feeMarginPct),
     };
+
+    if (!editingId && !partialCreatedMatchId && !bypassDuplicateCheck) {
+      const dups = findDuplicateMatches(processedData, store.matches, partialCreatedMatchId);
+      if (dups.length > 0) {
+        setDuplicateMatchesWarning(dups);
+        return;
+      }
+    }
+    setDuplicateMatchesWarning([]);
 
     setIsSubmittingMatch(true);
     setMatchFormError(null);
@@ -365,7 +389,12 @@ export function MatchesTab({
           }
         }
         toast("Match updated successfully.", "success");
-        setEditingId(null);
+        setSaveSuccessInfo({
+          matchId,
+          mode: "updated",
+          opponent: processedData.opponent,
+          date: processedData.date,
+        });
       } else if (partialCreatedMatchId) {
         // Recover from an earlier partial creation: update the retained match ID
         // and idempotently initialize any missing player payment rows without
@@ -379,8 +408,15 @@ export function MatchesTab({
             toast(err?.message || "Match created, but captain assignment failed.", "error");
           }
         }
+        const recoveredId = partialCreatedMatchId;
         setPartialCreatedMatchId(null);
         toast("Match created successfully.", "success");
+        setSaveSuccessInfo({
+          matchId: recoveredId,
+          mode: "created",
+          opponent: processedData.opponent,
+          date: processedData.date,
+        });
       } else {
         const newMatchId = await Promise.resolve(store.addMatch(processedData));
         if (newMatchId && selectedCaptainId) {
@@ -391,16 +427,20 @@ export function MatchesTab({
           }
         }
         toast("Match created successfully.", "success");
+        setSaveSuccessInfo({
+          matchId: newMatchId || "",
+          mode: "created",
+          opponent: processedData.opponent,
+          date: processedData.date,
+        });
       }
-      setIsAdding(false);
-      resetForm();
     } catch (err: any) {
       if (err?.name === "PartialMatchCreationError" && err?.matchId) {
         // Match document was created, but payment subcollection initialization failed.
         // Retain the created matchId so retrying recovers payments without duplicating the match.
         setPartialCreatedMatchId(err.matchId);
         const msg =
-          "Match document was created, but player payment rows failed to initialize. Click Save Match to retry payment initialization without creating a duplicate match.";
+          "Match document was created, but player payment rows failed to initialize. Click Retry to recover the existing match's payment rows without creating a duplicate match.";
         setMatchFormError(msg);
         toast(msg, "error");
       } else {
@@ -417,12 +457,24 @@ export function MatchesTab({
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Only the Review step saves; Enter on earlier steps moves forward.
+    if (formStep < 4) {
+      goToFormStep((formStep + 1) as MatchFormStep);
+      return;
+    }
+    await executeMatchSave(false);
+  };
+
   const resetForm = () => {
     setFeeMarginPct(DEFAULT_MARGIN_PCT);
     setFormStep(1);
     setFormStepError(null);
     setMatchFormError(null);
     setPartialCreatedMatchId(null);
+    setDuplicateMatchesWarning([]);
+    setSaveSuccessInfo(null);
     setFormData({
       groundId: store.grounds[0]?.id || "",
       format: "T30",
@@ -446,7 +498,7 @@ export function MatchesTab({
       isTentative: false,
       tentativelyBlockedBy: "",
       tournamentId: "",
-      captainId: "",
+      captainId: getDefaultCaptainId(),
     });
   };
 
@@ -1075,63 +1127,144 @@ export function MatchesTab({
         </div>
 
         {/* Footer: in the form's own scroll container, so it never hides a field */}
-        {matchFormError && (
+        {saveSuccessInfo ? (
           <div
-            role="alert"
-            data-testid="match-form-error"
-            className="mx-3 sm:mx-4 mb-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+            data-testid="match-save-confirmation"
+            className="mx-3 sm:mx-4 mb-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 space-y-2.5"
           >
-            {matchFormError}
+            <p className="text-sm font-black text-emerald-900">
+              {saveSuccessInfo.mode === "updated"
+                ? "Match updated successfully."
+                : "Match created & player payments initialized successfully."}
+            </p>
+            <p className="text-xs text-emerald-800">
+              KAvach XI vs {saveSuccessInfo.opponent} on {formatDate(saveSuccessInfo.date)} is saved.
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                data-testid="match-save-done"
+                onClick={() => {
+                  setEditingId(null);
+                  setIsAdding(false);
+                  resetForm();
+                }}
+                className="min-h-[44px] px-5 rounded-xl bg-emerald-700 text-white text-sm font-black hover:bg-emerald-800 cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            {duplicateMatchesWarning.length > 0 && (
+              <div
+                role="alert"
+                data-testid="match-duplicate-warning"
+                className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"
+              >
+                <p className="text-xs font-black text-amber-900">
+                  Possible duplicate match detected (fee is not part of duplicate check)
+                </p>
+                <ul className="space-y-1 text-xs text-amber-900">
+                  {duplicateMatchesWarning.slice(0, 3).map((dup) => {
+                    const gName = store.grounds.find((g) => g.id === dup.groundId)?.name || dup.groundId;
+                    return (
+                      <li key={dup.id} className="rounded-lg bg-white/70 px-2.5 py-1.5 border border-amber-200">
+                        <span className="font-bold">vs {dup.opponent || "TBD"}</span> · {formatDate(dup.date)} {dup.time || ""} · {gName} · {dup.format} ({dup.matchType}) · ₹{Number(dup.fee || 0).toLocaleString("en-IN")}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    data-testid="match-duplicate-edit"
+                    onClick={() => {
+                      setDuplicateMatchesWarning([]);
+                      setFormStep(1);
+                    }}
+                    className="min-h-[40px] px-3 rounded-lg border border-amber-400 bg-white text-xs font-bold text-amber-900 hover:bg-amber-100 cursor-pointer"
+                  >
+                    Go Back &amp; Edit
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="match-duplicate-continue"
+                    disabled={isSubmittingMatch}
+                    onClick={() => executeMatchSave(true)}
+                    className="min-h-[40px] px-3 rounded-lg bg-brand text-xs font-black text-white hover:opacity-90 cursor-pointer disabled:opacity-50"
+                  >
+                    Continue Anyway
+                  </button>
+                </div>
+              </div>
+            )}
+            {matchFormError && (
+              <div
+                role="alert"
+                data-testid="match-form-error"
+                className="mx-3 sm:mx-4 mb-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+              >
+                {matchFormError}
+              </div>
+            )}
+            <div className="sticky bottom-0 z-10 bg-surface border-t border-border px-3 sm:px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2">
+              {formStep > 1 ? (
+                <button
+                  type="button"
+                  disabled={isSubmittingMatch}
+                  onClick={() => goToFormStep((formStep - 1) as MatchFormStep)}
+                  className="min-h-[48px] px-5 rounded-xl border-2 border-brand/50 bg-surface text-sm font-black text-brand hover:bg-brand-surface cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Back
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isSubmittingMatch}
+                  onClick={closeMatchForm}
+                  className="min-h-[48px] px-5 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary hover:bg-surface-hover cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              )}
+              {formStep < 4 ? (
+                <button
+                  key="wizard-next"
+                  type="button"
+                  onClick={(e) => {
+                    // Never submit from Next: React would otherwise reuse this
+                    // element as the Save (submit) button mid-click on step 2.
+                    e.preventDefault();
+                    goToFormStep((formStep + 1) as MatchFormStep);
+                  }}
+                  data-testid="match-form-next"
+                  disabled={isSubmittingMatch}
+                  className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next: {MATCH_FORM_STEPS[formStep as 1 | 2 | 3]}
+                </button>
+              ) : (
+                <button
+                  key="wizard-save"
+                  type="submit"
+                  data-testid="match-form-submit"
+                  className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmittingMatch}
+                >
+                  {isSubmittingMatch
+                    ? "Saving..."
+                    : matchFormError
+                      ? "Retry"
+                      : editingId
+                        ? "Save Changes"
+                        : "Save Match"}
+                </button>
+              )}
+            </div>
+          </>
         )}
-        <div className="sticky bottom-0 z-10 bg-surface border-t border-border px-3 sm:px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2">
-          {formStep > 1 ? (
-            <button
-              type="button"
-              disabled={isSubmittingMatch}
-              onClick={() => goToFormStep((formStep - 1) as MatchFormStep)}
-              className="min-h-[48px] px-5 rounded-xl border-2 border-brand/50 bg-surface text-sm font-black text-brand hover:bg-brand-surface cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Back
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={isSubmittingMatch}
-              onClick={closeMatchForm}
-              className="min-h-[48px] px-5 rounded-xl border border-border bg-surface text-sm font-bold text-text-primary hover:bg-surface-hover cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-          )}
-          {formStep < 4 ? (
-            <button
-              key="wizard-next"
-              type="button"
-              onClick={(e) => {
-                // Never submit from Next: React would otherwise reuse this
-                // element as the Save (submit) button mid-click on step 2.
-                e.preventDefault();
-                goToFormStep((formStep + 1) as MatchFormStep);
-              }}
-              data-testid="match-form-next"
-              disabled={isSubmittingMatch}
-              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next: {MATCH_FORM_STEPS[formStep as 1 | 2 | 3]}
-            </button>
-          ) : (
-            <button
-              key="wizard-save"
-              type="submit"
-              data-testid="match-form-submit"
-              disabled={isSubmittingMatch}
-              className="flex-1 min-h-[48px] rounded-xl bg-brand text-white text-sm font-black hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmittingMatch ? "Saving..." : editingId ? "Save Changes" : "Save Match"}
-            </button>
-          )}
-        </div>
       </form>
     </div>
   ) : null;
@@ -1498,11 +1631,19 @@ export function MatchesTab({
                       {/* Ground fee comes from the match document itself (no payment
                           query). Player payment balances live in the lazily
                           loaded "Payment Details" panel below. */}
-                      {isAdmin && match.isGroundFeePaid && (
-                        <div className="mt-2 flex items-center gap-1.5 text-xs flex-wrap">
-                          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
-                            Ground Fee Paid (₹{match.groundFeePaidAmount})
-                          </div>
+                      {isAdmin && (
+                        <div className="mt-2.5 flex items-center gap-2 text-xs flex-wrap">
+                          <span
+                            data-testid={`admin-match-card-fee-${match.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg bg-brand-surface border border-brand/20 px-2.5 py-1 text-xs font-black text-brand tabular-nums"
+                          >
+                            Match Fee: ₹{Number(match.fee || 0).toLocaleString("en-IN")} / player
+                          </span>
+                          {match.isGroundFeePaid && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
+                              Ground Fee Paid (₹{match.groundFeePaidAmount})
+                            </div>
+                          )}
                         </div>
                       )}
 
