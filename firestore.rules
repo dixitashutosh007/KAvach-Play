@@ -179,6 +179,14 @@ service cloud.firestore {
       allow read, write: if false; // Server Admin SDK only
     }
 
+    match /roleTransitions/{transitionId} {
+      allow read, write: if false; // Server Admin SDK only (P2-ID-04)
+    }
+
+    match /migrationRuns/{runId} {
+      allow read, write: if false; // Server Admin SDK only
+    }
+
     function isValidGround(data) {
       return data.keys().hasAll(['name', 'mapUrl', 'organiserName', 'gpayNumber', 'updatedAt'])
         && data.name is string && data.name.size() <= 100

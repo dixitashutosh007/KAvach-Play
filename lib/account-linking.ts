@@ -670,3 +670,141 @@ export async function linkPlayerAccount(
   };
 }
 }
+
+export interface UnlinkIdentityResult {
+  hadIdentityLinks: boolean;
+  unlinkedAppUsers: string[];
+  deletedUidIndexes: string[];
+  deletedPhoneIndexes: string[];
+}
+
+/**
+ * Validates and optionally unlinks all identity/account-linking records
+ * (`appUsers`, `uidIndex`, `phoneIndex`) for a player inside a Firestore transaction.
+ *
+ * P2-DEL-01:
+ * - Never leaves stale `phoneIndex` or `uidIndex` reservations pointing to a deleted player.
+ * - Fails closed (409) if any index or `appUsers` record belongs to a different player.
+ * - Preserves `appUsers` login records by clearing `playerId: null` rather than blindly deleting accounts.
+ * - Refuses removal unless `allowUnlink` is explicitly true.
+ */
+export async function inspectAndUnlinkPlayerIdentityInTx(
+  db: FirebaseFirestore.Firestore,
+  tx: FirebaseFirestore.Transaction,
+  opts: {
+    playerId: string;
+    playerData: Record<string, unknown>;
+    allowUnlink: boolean;
+    actorUid: string;
+    actorName: string;
+    auditId: string;
+  },
+): Promise<UnlinkIdentityResult> {
+  const { playerId, playerData, allowUnlink, actorUid, actorName, auditId } = opts;
+  const authUid = typeof playerData.authUid === "string" && playerData.authUid ? playerData.authUid : null;
+  const parsedPhone = parseStrictIndianMobile(playerData.mobile);
+  const canonicalPhone = parsedPhone.ok ? parsedPhone.canonical : null;
+
+  const [usersByPlayerSnap, uidIdxByPlayerSnap, phoneIdxByPlayerSnap, authUserSnap, authUidIdxSnap, phoneIdxSnap] =
+    await Promise.all([
+      tx.get(db.collection("appUsers").where("playerId", "==", playerId)),
+      tx.get(db.collection("uidIndex").where("playerId", "==", playerId)),
+      tx.get(db.collection("phoneIndex").where("playerId", "==", playerId)),
+      authUid ? tx.get(db.collection("appUsers").doc(authUid)) : Promise.resolve(null),
+      authUid ? tx.get(db.collection("uidIndex").doc(authUid)) : Promise.resolve(null),
+      canonicalPhone ? tx.get(db.collection("phoneIndex").doc(canonicalPhone)) : Promise.resolve(null),
+    ]);
+
+  if (authUidIdxSnap?.exists) {
+    const d = authUidIdxSnap.data() || {};
+    if (d.playerId && d.playerId !== playerId) {
+      throw new LinkingError(409, "Identity conflict: uidIndex belongs to a different player.");
+    }
+  }
+  if (phoneIdxSnap?.exists) {
+    const d = phoneIdxSnap.data() || {};
+    if (d.playerId && d.playerId !== playerId) {
+      throw new LinkingError(409, "Identity conflict: phoneIndex belongs to a different player.");
+    }
+  }
+  if (authUserSnap?.exists) {
+    const d = authUserSnap.data() || {};
+    if (d.playerId && d.playerId !== playerId) {
+      throw new LinkingError(409, "Identity conflict: appUsers account is linked to a different player.");
+    }
+  }
+
+  const appUserRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  for (const d of usersByPlayerSnap.docs) appUserRefs.set(d.id, d.ref);
+  if (authUserSnap?.exists && authUserSnap.data()?.playerId === playerId) {
+    appUserRefs.set(authUserSnap.id, authUserSnap.ref);
+  }
+
+  const uidIndexRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  for (const d of uidIdxByPlayerSnap.docs) uidIndexRefs.set(d.id, d.ref);
+  if (authUidIdxSnap?.exists && authUidIdxSnap.data()?.playerId === playerId) {
+    uidIndexRefs.set(authUidIdxSnap.id, authUidIdxSnap.ref);
+  }
+
+  const phoneIndexRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  for (const d of phoneIdxByPlayerSnap.docs) phoneIndexRefs.set(d.id, d.ref);
+  if (phoneIdxSnap?.exists && phoneIdxSnap.data()?.playerId === playerId) {
+    phoneIndexRefs.set(phoneIdxSnap.id, phoneIdxSnap.ref);
+  }
+
+  const hadIdentityLinks =
+    Boolean(authUid) || appUserRefs.size > 0 || uidIndexRefs.size > 0 || phoneIndexRefs.size > 0;
+
+  if (hadIdentityLinks && !allowUnlink) {
+    throw new LinkingError(
+      409,
+      "Player has linked account or identity-index records; disable the player or perform a validated unlink first.",
+    );
+  }
+
+  if (!hadIdentityLinks) {
+    return {
+      hadIdentityLinks: false,
+      unlinkedAppUsers: [],
+      deletedUidIndexes: [],
+      deletedPhoneIndexes: [],
+    };
+  }
+
+  for (const ref of phoneIndexRefs.values()) tx.delete(ref);
+  for (const ref of uidIndexRefs.values()) tx.delete(ref);
+  for (const ref of appUserRefs.values()) {
+    tx.update(ref, {
+      playerId: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  await writeServerAudit(
+    db,
+    {
+      actorId: actorUid,
+      actorName,
+      actorType: "admin",
+      action: "updated",
+      entity: "player",
+      entityId: playerId,
+      entityLabel: String(playerData.name || playerId),
+      changes: [
+        { field: "appUsersUnlinked", oldValue: String(appUserRefs.size), newValue: "0" },
+        { field: "uidIndexRemoved", oldValue: String(uidIndexRefs.size), newValue: "0" },
+        { field: "phoneIndexRemoved", oldValue: String(phoneIndexRefs.size), newValue: "0" },
+      ],
+      summary: `Validated unlink of identity records before deleting player "${String(playerData.name || playerId)}"`,
+      id: auditId,
+    },
+    tx as any,
+  );
+
+  return {
+    hadIdentityLinks: true,
+    unlinkedAppUsers: [...appUserRefs.keys()],
+    deletedUidIndexes: [...uidIndexRefs.keys()],
+    deletedPhoneIndexes: [...phoneIndexRefs.keys()],
+  };
+}

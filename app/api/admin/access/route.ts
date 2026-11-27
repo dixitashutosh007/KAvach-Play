@@ -16,7 +16,7 @@ import { getAuth } from "firebase-admin/auth";
 import { ensureAdminApp, getServerFirestore, requireSuperAdmin } from "../../../../lib/server-auth.ts";
 import { actorNameFor } from "../../../../lib/server-audit.ts";
 import { ACTIVE_ROLES, ROLE_DEFINITIONS, isActiveRole, summariseConsolidation, type ActiveRole, type AppUserRoleDoc } from "../../../../lib/role-consolidation.ts";
-import { AccessError, accessHistory, loadDirectory, queryDirectory, roleCounts, setAccountRoles, type DirectoryFilter } from "../../../../lib/access-control-server.ts";
+import { AccessError, accessHistory, listPendingRoleTransitions, loadDirectory, queryDirectory, reconcileRoleTransition, roleCounts, setAccountRoles, type DirectoryFilter } from "../../../../lib/access-control-server.ts";
 
 const FILTERS: DirectoryFilter[] = ["all", "superAdmin", "clubAdmin", "financeAdmin", "multiple", "none"];
 const authFor = () => getAuth(ensureAdminApp());
@@ -30,12 +30,17 @@ export async function GET(req: Request) {
   try {
     if (view === "history") return NextResponse.json({ items: await accessHistory(db) });
     if (view === "overview") {
-      const [dir, users] = await Promise.all([loadDirectory(db, authFor()), db.collection("appUsers").get()]);
+      const [dir, users, pendingTransitions] = await Promise.all([
+        loadDirectory(db, authFor()),
+        db.collection("appUsers").get(),
+        listPendingRoleTransitions(db),
+      ]);
       const migration = summariseConsolidation(users.docs.map((d) => ({ uid: d.id, doc: d.data() as AppUserRoleDoc })));
       return NextResponse.json({
         roles: ACTIVE_ROLES.map((id) => ({ ...ROLE_DEFINITIONS[id], count: roleCounts(dir.rows)[id] })),
         totalAccounts: dir.rows.filter((r) => r.uid).length,
         migration,
+        pendingTransitions,
       });
     }
     if (view === "directory") {
@@ -62,6 +67,25 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
+  const db = getServerFirestore();
+  if (body?.action === "reconcile") {
+    const transitionId = typeof body?.transitionId === "string" ? body.transitionId.trim() : "";
+    if (!transitionId || transitionId.length > 128 || transitionId.includes("/")) {
+      return NextResponse.json({ error: "Invalid transitionId." }, { status: 400 });
+    }
+    try {
+      const result = await reconcileRoleTransition(db, authFor(), {
+        transitionId,
+        actorUid: guard.uid,
+        actorName: await actorNameFor(db, guard.uid),
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      if (err instanceof AccessError) return NextResponse.json({ error: err.message, ...err.extra }, { status: err.status });
+      console.error("[access] reconcile failed");
+      return NextResponse.json({ error: "Could not reconcile role transition." }, { status: 500 });
+    }
+  }
   const uid = body?.uid;
   if (typeof uid !== "string" || !uid || uid.length > 128 || uid.includes("/")) return NextResponse.json({ error: "Invalid account." }, { status: 400 });
   const list = (v: unknown): ActiveRole[] | null =>
@@ -71,9 +95,9 @@ export async function POST(req: Request) {
   if (!roles || !expected) {
     return NextResponse.json({ error: `Roles must be from: ${ACTIVE_ROLES.join(", ")}. Match Admin, Studio Admin and Designer are retired.` }, { status: 400 });
   }
-  const db = getServerFirestore();
+  const idempotencyKey = typeof body?.idempotencyKey === "string" ? body.idempotencyKey.trim() : undefined;
   try {
-    const result = await setAccountRoles(db, authFor(), { actorUid: guard.uid, actorName: await actorNameFor(db, guard.uid), uid, roles, expected });
+    const result = await setAccountRoles(db, authFor(), { actorUid: guard.uid, actorName: await actorNameFor(db, guard.uid), uid, roles, expected, idempotencyKey });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof AccessError) return NextResponse.json({ error: err.message, ...err.extra }, { status: err.status });

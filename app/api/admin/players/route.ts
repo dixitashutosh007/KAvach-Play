@@ -5,6 +5,7 @@ import { requireClubAdmin } from "../../../../lib/server-auth.ts";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
 import { actorNameFor, writeServerAudit } from "../../../../lib/server-audit.ts";
 import { allocateNextKavachId } from "../../../../lib/kavach-id.ts";
+import { inspectAndUnlinkPlayerIdentityInTx, LinkingError } from "../../../../lib/account-linking.ts";
 
 /**
  * Authoritative Club Admin player lifecycle API (`POST` create, `PATCH` disable/restore, `DELETE` delete).
@@ -158,6 +159,7 @@ export async function DELETE(req: Request) {
 
   const url = new URL(req.url);
   const playerId = (url.searchParams.get("playerId") || "").trim();
+  const allowUnlink = url.searchParams.get("unlink") === "true";
   if (!playerId || playerId.includes("/")) {
     return NextResponse.json({ error: "Valid playerId is required." }, { status: 400 });
   }
@@ -171,19 +173,59 @@ export async function DELETE(req: Request) {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(playerRef);
       if (!snap.exists) throw new Error("PLAYER_NOT_FOUND");
-      const [paymentsSnap, feesSnap, ordersSnap] = await Promise.all([
+      const [
+        paymentsSnap,
+        feesSnap,
+        ordersSnap,
+        subHistorySnap,
+        statsSnap,
+        badgesSnap,
+        catchSnap,
+        outOfPlaySnap,
+        captainMatchesSnap,
+        potmMatchesSnap,
+        topPerfMatchesSnap,
+        reservationsSnap,
+      ] = await Promise.all([
         tx.get(db.collectionGroup("payments").where("playerId", "==", playerId).limit(1)),
         tx.get(playerRef.collection("otherFees").limit(1)),
         tx.get(db.collection("merchOrders").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("subscriptionHistory").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("playerStats").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("badges").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("catchLog").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("outOfPlays").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("matches").where("captainId", "==", playerId).limit(1)),
+        tx.get(db.collection("matches").where("potmId", "==", playerId).limit(1)),
+        tx.get(db.collection("matches").where("topPerformerIds", "array-contains", playerId).limit(1)),
+        tx.get(db.collection("paymentReservations").where("playerId", "==", playerId).limit(1)),
       ]);
-      if (!paymentsSnap.empty || !feesSnap.empty || !ordersSnap.empty) {
+      if (
+        !paymentsSnap.empty ||
+        !feesSnap.empty ||
+        !ordersSnap.empty ||
+        !subHistorySnap.empty ||
+        !statsSnap.empty ||
+        !badgesSnap.empty ||
+        !catchSnap.empty ||
+        !outOfPlaySnap.empty ||
+        !captainMatchesSnap.empty ||
+        !potmMatchesSnap.empty ||
+        !topPerfMatchesSnap.empty ||
+        !reservationsSnap.empty
+      ) {
         throw new Error("PLAYER_HAS_HISTORY");
       }
       const data = snap.data() || {};
+      await inspectAndUnlinkPlayerIdentityInTx(db, tx as any, {
+        playerId,
+        playerData: data,
+        allowUnlink,
+        actorUid: auth.uid,
+        actorName,
+        auditId: `player_unlink_${playerId}_${opNonce}`,
+      });
       tx.delete(playerRef);
-      if (typeof data.authUid === "string" && data.authUid) {
-        tx.delete(db.collection("appUsers").doc(data.authUid));
-      }
       await writeServerAudit(
         db,
         {
@@ -203,6 +245,9 @@ export async function DELETE(req: Request) {
     });
     return NextResponse.json({ ok: true, playerId });
   } catch (err) {
+    if (err instanceof LinkingError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     if (err instanceof Error && err.message === "PLAYER_NOT_FOUND") {
       return NextResponse.json({ error: "Player not found." }, { status: 404 });
     }
