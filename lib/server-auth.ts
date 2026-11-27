@@ -135,9 +135,32 @@ export async function getUserAccount(
   let docExists = false;
 
   // 1. Authoritative Firestore lookup on /appUsers/{uid}
+  let hasPendingSuperRevoke = false;
   try {
     const db = getEffectiveDb(app);
-    const userDoc = await db.collection("appUsers").doc(uid).get();
+    const isClaimAdmin = decodedToken?.admin === true;
+    const roleTransCol = isClaimAdmin ? db.collection("roleTransitions") : null;
+    const [userDoc, lockDoc, pendingRevokeSnap] = await Promise.all([
+      db.collection("appUsers").doc(uid).get(),
+      isClaimAdmin ? db.collection("accessControl").doc("superAdmins").get() : Promise.resolve(null),
+      roleTransCol && typeof roleTransCol.where === "function"
+        ? roleTransCol
+            .where("uid", "==", uid)
+            .where("superChange", "==", "revoke")
+            .where("status", "in", ["pending", "failed"])
+            .limit(1)
+            .get()
+        : Promise.resolve(null),
+    ]);
+    if (lockDoc?.exists) {
+      const pendingRevokes = lockDoc.data()?.pendingRevokes;
+      if (Array.isArray(pendingRevokes) && pendingRevokes.includes(uid)) {
+        hasPendingSuperRevoke = true;
+      }
+    }
+    if (pendingRevokeSnap && !pendingRevokeSnap.empty) {
+      hasPendingSuperRevoke = true;
+    }
     if (userDoc.exists) {
       docExists = true;
       const data = userDoc.data() || {};
@@ -168,8 +191,9 @@ export async function getUserAccount(
   }
 
   // 2. Super Admin authority: granted strictly via verified custom claim { admin: true } (SEC-001)
-  // Super Admin inherits all admin roles, BUT disabled status is still strictly enforced.
-  if (decodedToken?.admin === true && status !== "Disabled") {
+  // Fail-closed: if a Super Admin revocation is pending or failed, do NOT grant Super Admin
+  // or inherited admin privileges even if the Auth token still carries `admin: true`.
+  if (decodedToken?.admin === true && status !== "Disabled" && !hasPendingSuperRevoke) {
     roles.add("superAdmin");
     addClubAdmin(roles);
     roles.add("financeAdmin");

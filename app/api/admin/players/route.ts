@@ -176,47 +176,70 @@ export async function DELETE(req: Request) {
       const [
         paymentsSnap,
         feesSnap,
+        groupFeesSnap,
         ordersSnap,
         subHistorySnap,
         statsSnap,
         badgesSnap,
         catchSnap,
         outOfPlaySnap,
+        commentsSnap,
         captainMatchesSnap,
         potmMatchesSnap,
         topPerfMatchesSnap,
+        potmStringMatchesSnap,
+        bestBatMatchesSnap,
+        bestBowlMatchesSnap,
+        potwPostsSnap,
+        pollResponsesSnap,
         reservationsSnap,
       ] = await Promise.all([
         tx.get(db.collectionGroup("payments").where("playerId", "==", playerId).limit(1)),
         tx.get(playerRef.collection("otherFees").limit(1)),
+        tx.get(db.collectionGroup("otherFees").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("merchOrders").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("subscriptionHistory").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("playerStats").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("badges").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("catchLog").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("outOfPlays").where("playerId", "==", playerId).limit(1)),
+        tx.get(db.collectionGroup("comments").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("matches").where("captainId", "==", playerId).limit(1)),
         tx.get(db.collection("matches").where("potmId", "==", playerId).limit(1)),
         tx.get(db.collection("matches").where("topPerformerIds", "array-contains", playerId).limit(1)),
+        tx.get(db.collection("matches").where("playerOfTheMatch", "==", playerId).limit(1)),
+        tx.get(db.collection("matches").where("bestBatsman", "==", playerId).limit(1)),
+        tx.get(db.collection("matches").where("bestBowler", "==", playerId).limit(1)),
+        tx.get(db.collection("posts").where("potw.playerId", "==", playerId).limit(1)),
+        tx.get(db.collection("pollResponses").where("playerId", "==", playerId).limit(1)),
         tx.get(db.collection("paymentReservations").where("playerId", "==", playerId).limit(1)),
       ]);
+      const data = snap.data() || {};
+      const hasPlanAssignments = Array.isArray(data.feePlanIds) && data.feePlanIds.length > 0;
       if (
         !paymentsSnap.empty ||
         !feesSnap.empty ||
+        !groupFeesSnap.empty ||
         !ordersSnap.empty ||
         !subHistorySnap.empty ||
         !statsSnap.empty ||
         !badgesSnap.empty ||
         !catchSnap.empty ||
         !outOfPlaySnap.empty ||
+        !commentsSnap.empty ||
         !captainMatchesSnap.empty ||
         !potmMatchesSnap.empty ||
         !topPerfMatchesSnap.empty ||
-        !reservationsSnap.empty
+        !potmStringMatchesSnap.empty ||
+        !bestBatMatchesSnap.empty ||
+        !bestBowlMatchesSnap.empty ||
+        !potwPostsSnap.empty ||
+        !pollResponsesSnap.empty ||
+        !reservationsSnap.empty ||
+        hasPlanAssignments
       ) {
         throw new Error("PLAYER_HAS_HISTORY");
       }
-      const data = snap.data() || {};
       await inspectAndUnlinkPlayerIdentityInTx(db, tx as any, {
         playerId,
         playerData: data,

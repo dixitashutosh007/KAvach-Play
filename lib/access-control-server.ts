@@ -625,7 +625,12 @@ export async function listPendingRoleTransitions(db: Firestore) {
       claimSynced: t.claimSynced,
       tokensRevoked: t.tokensRevoked,
       attempts: t.attempts,
-      lastError: t.lastError,
+      errorSummary:
+        t.status === "failed"
+          ? t.superChange === "revoke"
+            ? "Firebase Auth claim or session revocation requires reconciliation."
+            : "Firebase Auth claim grant requires reconciliation."
+          : null,
       updatedAt: iso(t.updatedAt),
     };
   });
@@ -660,6 +665,9 @@ export async function accessHistory(db: Firestore, limit = 100) {
  *   - Writes one create-only `auditLogs` entry (`role_consolidation_${migrationId}_${uid}`) per changed account.
  *   - Persists batch checkpoints so partial failures never lose progress and retries skip migrated accounts.
  */
+const TRUSTED_MIGRATION_ACTORS = new Set(["system:role-consolidation", "migration"]);
+const MIGRATION_LEASE_MS = 5 * 60_000;
+
 export async function runRoleConsolidation(
   db: Firestore,
   opts: {
@@ -669,43 +677,85 @@ export async function runRoleConsolidation(
     migrationId?: string;
     batchSize?: number;
     onBeforeCommitBatch?: (batchIndex: number, batchUids: string[]) => Promise<void> | void;
+    onBeforeCheckpoint?: (batchIndex: number) => Promise<void> | void;
   } = {},
 ) {
+  const migrationId = opts.migrationId || `role-consolidation-${new Date().toISOString().slice(0, 10)}`;
+  if (!migrationId || migrationId.includes("/") || migrationId.length > 128) {
+    throw new AccessError(400, "Invalid migrationId.");
+  }
+
+  const rawActorId = typeof opts.actorId === "string" ? opts.actorId.trim() : "";
+  if (opts.execute && rawActorId && !TRUSTED_MIGRATION_ACTORS.has(rawActorId)) {
+    throw new AccessError(403, "Unauthorized migration actor; execution requires a trusted operational context.");
+  }
+  const actorId = rawActorId && TRUSTED_MIGRATION_ACTORS.has(rawActorId) ? rawActorId : "system:role-consolidation";
+  const actorName = "Role consolidation migration";
+
   const snap = await db.collection("appUsers").get();
   const docs = snap.docs
     .map((d) => ({ uid: d.id, doc: d.data() as AppUserRoleDoc }))
     .sort((a, b) => a.uid.localeCompare(b.uid));
   const summary = summariseConsolidation(docs);
-  const migrationId = opts.migrationId || `role-consolidation-${new Date().toISOString().slice(0, 10)}`;
-  const actorId = opts.actorId || "system:role-consolidation";
-  const actorName = opts.actorName || "Role consolidation migration";
   const maxAccountsPerBatch = Math.min(Math.max(opts.batchSize || 200, 1), 200);
   const changed: { uid: string; retired: string[]; grantsClubAdmin: boolean }[] = [];
 
   if (opts.execute) {
-    const runRef = db.collection("migrationRuns").doc(migrationId);
-    const runSnap = await runRef.get();
-    const prevBatches = runSnap.exists ? Number(runSnap.get("batchesCommitted") || 0) : 0;
-    const prevMigratedCount = runSnap.exists ? Number(runSnap.get("migratedCount") || 0) : 0;
-
-    await runRef.set(
-      {
-        migrationId,
-        status: "in_progress",
-        actorId,
-        actorName,
-        batchesCommitted: prevBatches,
-        migratedCount: prevMigratedCount,
-        lastError: null,
-        startedAt: runSnap.exists ? runSnap.get("startedAt") || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
     const pendingPlans = docs
       .map(({ uid, doc }) => ({ uid, doc, plan: planRoleConsolidation(doc) }))
       .filter((x) => x.plan.needsChange);
+
+    const runRef = db.collection("migrationRuns").doc(migrationId);
+    const leaseOwner = `${actorId}_${crypto.randomUUID().slice(0, 8)}`;
+    const nowMs = Date.now();
+    let prevBatches = 0;
+    let prevMigratedCount = 0;
+    let alreadyCompleted = false;
+
+    await db.runTransaction(async (tx) => {
+      const runSnap = await tx.get(runRef);
+      if (runSnap.exists) {
+        const status = runSnap.get("status");
+        const leaseExpiresAt = Number(runSnap.get("leaseExpiresAt") || 0);
+        if (status === "completed") {
+          if (pendingPlans.length > 0) {
+            throw new AccessError(
+              409,
+              "Migration ID is already completed; cannot restart under the same ID with unconsolidated accounts.",
+            );
+          }
+          alreadyCompleted = true;
+          return;
+        }
+        if (status === "in_progress" && leaseExpiresAt > nowMs) {
+          throw new AccessError(409, "Migration is already in progress under this migrationId.");
+        }
+        prevBatches = Number(runSnap.get("batchesCommitted") || 0);
+        prevMigratedCount = Number(runSnap.get("migratedCount") || 0);
+      }
+
+      tx.set(
+        runRef,
+        {
+          migrationId,
+          status: "in_progress",
+          actorId,
+          actorName,
+          leaseOwner,
+          leaseExpiresAt: nowMs + MIGRATION_LEASE_MS,
+          batchesCommitted: prevBatches,
+          migratedCount: prevMigratedCount,
+          lastError: null,
+          startedAt: runSnap.exists ? runSnap.get("startedAt") || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
+
+    if (alreadyCompleted) {
+      return { migrationId, executed: true, alreadyCompleted: true, summary, changed: [] };
+    }
 
     let batchesCommitted = prevBatches;
     let migratedCount = prevMigratedCount;
@@ -771,10 +821,15 @@ export async function runRoleConsolidation(
         batchesCommitted += 1;
         migratedCount += batchChanged.length;
 
+        if (opts.onBeforeCheckpoint) {
+          await opts.onBeforeCheckpoint(batchIndex);
+        }
+
         await runRef.set(
           {
             batchesCommitted,
             migratedCount,
+            leaseExpiresAt: Date.now() + MIGRATION_LEASE_MS,
             updatedAt: FieldValue.serverTimestamp(),
           },
           { merge: true },
@@ -786,6 +841,7 @@ export async function runRoleConsolidation(
           status: "completed",
           batchesCommitted,
           migratedCount,
+          leaseExpiresAt: null,
           lastError: null,
           completedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
@@ -799,6 +855,7 @@ export async function runRoleConsolidation(
           status: "failed",
           batchesCommitted,
           migratedCount,
+          leaseExpiresAt: null,
           lastError: errMsg.slice(0, 300),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -807,5 +864,5 @@ export async function runRoleConsolidation(
       throw err;
     }
   }
-  return { migrationId, executed: Boolean(opts.execute), summary, changed };
+  return { migrationId, executed: Boolean(opts.execute), alreadyCompleted: false, summary, changed };
 }

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { setServerDbForTesting } from "../lib/server-db.ts";
+import { getUserAccount } from "../lib/server-auth.ts";
 import {
   setAccountRoles,
   reconcileRoleTransition,
@@ -117,7 +118,7 @@ describe(
     beforeEach(async () => {
       if (!testEnv) return;
       await testEnv.clearFirestore();
-      for (const col of ["appUsers", "players", "accessControl", "roleTransitions", "migrationRuns", "auditLogs", "phoneIndex", "uidIndex", "matches", "badges", "playerStats", "subscriptionHistory", "outOfPlays"]) {
+      for (const col of ["appUsers", "players", "accessControl", "roleTransitions", "migrationRuns", "auditLogs", "phoneIndex", "uidIndex", "matches", "badges", "playerStats", "subscriptionHistory", "outOfPlays", "posts", "pollResponses", "catchLog", "paymentReservations"]) {
         const snap = await adminDb.collection(col).get();
         if (!snap.empty) {
           const b = adminDb.batch();
@@ -455,6 +456,199 @@ describe(
       await rut.assertFails(supDb.doc("roleTransitions/rt_forged").set({ status: "completed" }));
       await rut.assertFails(supDb.doc("migrationRuns/mig_forged").set({ status: "completed" }));
       await rut.assertFails(supDb.doc("auditLogs/aud_forged").set({ action: "updated" }));
+    });
+
+    it("P2-ID-04: pending & failed revocations fail-closed in getUserAccount + Firestore rules, preserve unrelated claims, and block concurrent last-2 revokes", async () => {
+      await adminDb.doc("appUsers/uid_s1").set({ name: "S1", role: "player", status: "Active" });
+      await adminDb.doc("appUsers/uid_s2").set({ name: "S2", role: "player", status: "Active" });
+      const { auth, users } = createMockAuth({
+        uid_s1: { customClaims: { admin: true, customFlag: "keep-s1" } },
+        uid_s2: { customClaims: { admin: true, customFlag: "keep-s2" } },
+      });
+
+      // 1. Fail setCustomUserClaims during revocation -> failed state, fail-closed in getUserAccount & Firestore rules
+      auth.setFailNextSetClaims(new Error("AUTH_SET_CLAIMS_FAILED"));
+      await assert.rejects(
+        () =>
+          setAccountRoles(adminDb, auth, {
+            actorUid: "uid_s1",
+            actorName: "S1",
+            uid: "uid_s2",
+            roles: [],
+            expected: ["superAdmin"],
+            idempotencyKey: "rev_fail_claims_1",
+          }),
+        (err) => err.status === 502 && err.extra.reconciliationRequired === true,
+      );
+
+      // Normal authorization path denies superAdmin even though token still has admin: true
+      const acctFailed = await getUserAccount(null, "uid_s2", { admin: true });
+      assert.equal(acctFailed.ok, true);
+      assert.equal(acctFailed.roles.has("superAdmin"), false);
+      assert.equal(acctFailed.roles.has("clubAdmin"), false);
+      assert.equal(acctFailed.roles.has("financeAdmin"), false);
+
+      // Firestore rules also deny superAdmin during pending/failed revocation
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().doc("accessControl/superAdmins").set({ uids: ["uid_s1", "uid_s2"], pendingRevokes: ["uid_s2"] });
+        await ctx.firestore().doc("players/p_rules_check").set({ id: "p_rules_check", name: "Rules Check" });
+      });
+      const s2RulesDb = testEnv.authenticatedContext("uid_s2", { admin: true }).firestore();
+      await rut.assertFails(s2RulesDb.collection("players").get());
+
+      // Pending-only revocation state also fails closed in getUserAccount
+      await adminDb.doc("roleTransitions/rt_pending_check").set({
+        transitionId: "rt_pending_check",
+        uid: "uid_s2",
+        superChange: "revoke",
+        status: "pending",
+      });
+      const acctPending = await getUserAccount(null, "uid_s2", { admin: true });
+      assert.equal(acctPending.ok, true);
+      assert.equal(acctPending.roles.has("superAdmin"), false);
+      await adminDb.doc("roleTransitions/rt_pending_check").delete();
+
+      // Reconcile succeeds and preserves unrelated custom claims
+      const rec = await reconcileRoleTransition(adminDb, auth, {
+        transitionId: "rev_fail_claims_1",
+        actorUid: "uid_s1",
+        actorName: "S1",
+      });
+      assert.equal(rec.status, "completed");
+      assert.equal(users.get("uid_s2").customClaims.admin, undefined);
+      assert.equal(users.get("uid_s2").customClaims.customFlag, "keep-s2");
+
+      // 2. Concurrent revocations of the last 2 Super Admins -> exactly 1 succeeds, 1 fails with 409
+      await adminDb.doc("appUsers/uid_s3").set({ name: "S3", role: "player", status: "Active" });
+      await adminDb.doc("appUsers/uid_s4").set({ name: "S4", role: "player", status: "Active" });
+      const { auth: auth2 } = createMockAuth({
+        uid_s3: { customClaims: { admin: true } },
+        uid_s4: { customClaims: { admin: true } },
+        uid_actor: { customClaims: { admin: true } },
+      });
+      await adminDb.doc("accessControl/superAdmins").set({ uids: ["uid_s3", "uid_s4"], pendingRevokes: [] });
+      const results = await Promise.allSettled([
+        setAccountRoles(adminDb, auth2, {
+          actorUid: "uid_actor",
+          actorName: "Actor",
+          uid: "uid_s3",
+          roles: [],
+          expected: ["superAdmin"],
+        }),
+        setAccountRoles(adminDb, auth2, {
+          actorUid: "uid_actor",
+          actorName: "Actor",
+          uid: "uid_s4",
+          roles: [],
+          expected: ["superAdmin"],
+        }),
+      ]);
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assert.equal(rejected[0].reason.status, 409);
+    });
+
+    it("Role consolidation: rejects unauthorized actor, blocks concurrent same-ID execution, resumes after checkpoint failure, and blocks restarting completed ID", async () => {
+      await adminDb.doc("appUsers/u_rc_1").set({ name: "RC1", isMatchAdmin: true, status: "Active" });
+      await adminDb.doc("appUsers/u_rc_2").set({ name: "RC2", isStudioAdmin: true, status: "Active" });
+
+      // 1. Unauthorized actor rejected
+      await assert.rejects(
+        () => runRoleConsolidation(adminDb, { execute: true, actorId: "untrusted_user", migrationId: "mig_unauth" }),
+        (err) => err.status === 403,
+      );
+
+      // 2. Checkpoint failure after batch 1 commits -> batch 1 is persisted and resume finishes batch 2 without duplicating audits
+      await assert.rejects(
+        () =>
+          runRoleConsolidation(adminDb, {
+            execute: true,
+            migrationId: "mig_ckpt_1",
+            batchSize: 1,
+            onBeforeCheckpoint(batchIndex) {
+              if (batchIndex === 1) throw new Error("CHECKPOINT_WRITE_FAILED");
+            },
+          }),
+        /CHECKPOINT_WRITE_FAILED/,
+      );
+      assert.equal((await adminDb.doc("appUsers/u_rc_1").get()).data().isClubAdmin, true);
+      const resumed = await runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_ckpt_1", batchSize: 1 });
+      assert.equal(resumed.changed.length, 1);
+      assert.equal(resumed.changed[0].uid, "u_rc_2");
+      assert.equal((await adminDb.doc("migrationRuns/mig_ckpt_1").get()).data().status, "completed");
+
+      // 3. Completed migration cannot restart under same ID when new unconsolidated accounts appear
+      await adminDb.doc("appUsers/u_rc_3").set({ name: "RC3", isDesigner: true, status: "Active" });
+      await assert.rejects(
+        () => runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_ckpt_1" }),
+        (err) => err.status === 409,
+      );
+
+      // 4. Concurrent executions with the same migrationId -> 1 wins lease, 1 gets 409
+      await adminDb.doc("appUsers/u_rc_4").set({ name: "RC4", isMatchAdmin: true, status: "Active" });
+      const conc = await Promise.allSettled([
+        runRoleConsolidation(adminDb, {
+          execute: true,
+          migrationId: "mig_conc_1",
+          onBeforeCommitBatch: () => new Promise((r) => setTimeout(r, 80)),
+        }),
+        runRoleConsolidation(adminDb, { execute: true, migrationId: "mig_conc_1" }),
+      ]);
+      assert.equal(conc.filter((r) => r.status === "fulfilled").length, 1);
+      assert.equal(conc.filter((r) => r.status === "rejected" && r.reason?.status === 409).length, 1);
+    });
+
+    it("P2-DEL-01: blocks DELETE on comments, posts.potw, pollResponses, matches.playerOfTheMatch, feePlanIds, catchLog, paymentReservations, and cross-player collisions", async () => {
+      const clubHeaders = { "content-type": "application/json", "x-test-uid": "uid_club", "x-test-role": "clubAdmin" };
+
+      // Non-Club-Admin cannot call DELETE ?unlink=true
+      for (const role of ["player", "financeAdmin"]) {
+        const denied = await deleteAdminPlayer(
+          new Request("https://play.kavachcricket.com/api/admin/players?playerId=any_p&unlink=true", {
+            method: "DELETE",
+            headers: { "x-test-uid": "uid_other", "x-test-role": role },
+          }),
+        );
+        assert.equal(denied.status, 403);
+      }
+
+      // Newly covered historical reference categories
+      const cases = [
+        ["comments_sub", async (pid) => adminDb.doc(`matches/m_c1/comments/c_${pid}`).set({ id: `c_${pid}`, playerId: pid, text: "hi" })],
+        ["posts_potw", async (pid) => adminDb.doc(`posts/post_${pid}`).set({ id: `post_${pid}`, potw: { playerId: pid } })],
+        ["pollResponses", async (pid) => adminDb.doc(`pollResponses/pr_${pid}`).set({ id: `pr_${pid}`, playerId: pid })],
+        ["match_potm_str", async (pid) => adminDb.doc(`matches/m_potm_${pid}`).set({ id: `m_potm_${pid}`, playerOfTheMatch: pid })],
+        ["catchLog", async (pid) => adminDb.doc(`catchLog/cl_${pid}`).set({ id: `cl_${pid}`, playerId: pid })],
+        ["paymentReservations", async (pid) => adminDb.doc(`paymentReservations/res_${pid}`).set({ id: `res_${pid}`, playerId: pid })],
+      ];
+      for (const [label, seed] of cases) {
+        const pid = `p_cov_${label}`;
+        await adminDb.doc(`players/${pid}`).set({ id: pid, name: label, mobile: "9876543210" });
+        await seed(pid);
+        const res = await deleteAdminPlayer(
+          new Request(`https://play.kavachcricket.com/api/admin/players?playerId=${pid}`, { method: "DELETE", headers: clubHeaders }),
+        );
+        assert.equal(res.status, 409, `Expected 409 for ${label}`);
+      }
+
+      // feePlanIds on player doc
+      await adminDb.doc("players/p_cov_plans").set({ id: "p_cov_plans", name: "Plans", mobile: "9876543210", feePlanIds: ["plan_1"] });
+      const planDel = await deleteAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players?playerId=p_cov_plans", { method: "DELETE", headers: clubHeaders }),
+      );
+      assert.equal(planDel.status, 409);
+
+      // Cross-player identity collision: phoneIndex belongs to p_other -> DELETE ?unlink=true fails closed (409)
+      await adminDb.doc("players/p_collide_target").set({ id: "p_collide_target", name: "Collide", mobile: "9876509988" });
+      await adminDb.doc("phoneIndex/+919876509988").set({ canonicalPhone: "+919876509988", playerId: "p_other_owner", authUid: "uid_other_owner" });
+      const collideDel = await deleteAdminPlayer(
+        new Request("https://play.kavachcricket.com/api/admin/players?playerId=p_collide_target&unlink=true", { method: "DELETE", headers: clubHeaders }),
+      );
+      assert.equal(collideDel.status, 409);
+      assert.equal((await adminDb.doc("phoneIndex/+919876509988").get()).data().playerId, "p_other_owner");
+      assert.equal((await adminDb.doc("players/p_collide_target").get()).exists, true);
     });
   },
 );

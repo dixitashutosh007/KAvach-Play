@@ -31,10 +31,20 @@ type Row = {
   lastUpdated: string | null;
   legacy: string[];
 };
+type PendingTransition = {
+  transitionId: string;
+  uid: string;
+  superChange: "grant" | "revoke";
+  status: "pending" | "failed";
+  attempts: number;
+  errorSummary: string | null;
+  updatedAt: string | null;
+};
 type Overview = {
   roles: { id: ActiveRole; label: string; summary: string; capabilities: string[]; count: number }[];
   totalAccounts: number;
   migration: { matchAdmin: number; studioAdmin: number; designer: number; changes: number; receiveClubAdmin: number; flagged: unknown[] };
+  pendingTransitions?: PendingTransition[];
 };
 type Filter = "all" | ActiveRole | "multiple" | "none";
 type HistoryItem = { id: string; user: string; before: string | null; after: string | null; summary: string; actor: string; at: string | null };
@@ -102,6 +112,8 @@ export function AccessControlCentre({ currentUid, onBack }: { currentUid: string
   const [dirError, setDirError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[] | null>(null);
   const [managing, setManaging] = useState<Row | null>(null);
+  const [reconcilingId, setReconcilingId] = useState<string | null>(null);
+  const reconcileInFlight = useRef(false);
   const reqId = useRef(0);
 
   const loadOverview = useCallback(async () => {
@@ -166,7 +178,31 @@ export function AccessControlCentre({ currentUid, onBack }: { currentUid: string
     loadHistory();
   };
 
+  const handleReconcile = async (transitionId: string) => {
+    if (reconcileInFlight.current) return;
+    reconcileInFlight.current = true;
+    setReconcilingId(transitionId);
+    try {
+      const res = await apiFetch("/api/admin/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reconcile", transitionId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Reconciliation failed.");
+      toast("Super Admin claim transition reconciled.", "success");
+      await Promise.all([loadOverview(), loadDirectory(), loadHistory()]);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not reconcile transition.", "error");
+      await loadOverview();
+    } finally {
+      reconcileInFlight.current = false;
+      setReconcilingId(null);
+    }
+  };
+
   const m = overview?.migration;
+  const pendingTransitions = overview?.pendingTransitions ?? [];
   return (
     <div className="space-y-5" data-testid="access-control-centre">
       <div className="flex items-start gap-3">
@@ -191,6 +227,51 @@ export function AccessControlCentre({ currentUid, onBack }: { currentUid: string
               {m.receiveClubAdmin} account(s) will become Club Admin when the approved migration runs.
             </p>
           </div>
+        </div>
+      )}
+
+      {pendingTransitions.length > 0 && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 space-y-3" data-testid="access-pending-transitions">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
+            <div className="text-sm text-rose-900">
+              <p className="font-bold">Pending or failed Super Admin claim transitions</p>
+              <p className="text-xs text-rose-800">
+                These Super Admin role changes require Auth claim synchronization. Affected revocations remain blocked from privileged access until reconciled.
+              </p>
+            </div>
+          </div>
+          <ul className="space-y-2">
+            {pendingTransitions.map((t) => {
+              const busy = reconcilingId === t.transitionId;
+              return (
+                <li
+                  key={t.transitionId}
+                  data-testid={`pending-transition-${t.transitionId}`}
+                  className="rounded-xl bg-white border border-rose-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                >
+                  <div className="text-xs space-y-0.5">
+                    <p className="font-bold text-text-primary">
+                      {t.superChange === "revoke" ? "Revoke Super Admin" : "Grant Super Admin"} ·{" "}
+                      <span className="uppercase">{t.status}</span> (Attempts: {t.attempts})
+                    </p>
+                    <p className="font-mono text-text-secondary">UID: {t.uid}</p>
+                    {t.errorSummary && <p className="text-rose-700">{t.errorSummary}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={Boolean(reconcilingId)}
+                    onClick={() => handleReconcile(t.transitionId)}
+                    data-testid={`reconcile-transition-${t.transitionId}`}
+                    className="min-h-[40px] px-4 rounded-xl bg-[#D51F43] text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 cursor-pointer shrink-0 inline-flex items-center gap-1.5"
+                  >
+                    {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {busy ? "Reconciling..." : "Reconcile"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

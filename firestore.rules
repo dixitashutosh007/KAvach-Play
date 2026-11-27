@@ -36,11 +36,18 @@ service cloud.firestore {
         );
     }
 
+    function hasPendingSuperRevoke() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/accessControl/superAdmins)
+        && request.auth.uid in get(/databases/$(database)/documents/accessControl/superAdmins).data.get('pendingRevokes', []);
+    }
+
     function isSuperAdmin() {
       // Super-admin authority is granted strictly via the `admin: true` Firebase Auth custom claim (SEC-001)
-      // and requires an active (non-disabled) account status once the appUsers document exists (Bootstrap Policy).
+      // and requires an active (non-disabled) account status and no pending/failed revocation (P2-ID-04).
       return isSignedIn()
         && isAccountActive()
+        && !hasPendingSuperRevoke()
         && request.auth.token.get('admin', false) == true;
     }
 
@@ -58,17 +65,19 @@ service cloud.firestore {
 
     function isFinanceAdmin() {
       return isAccountActive()
-        && (request.auth.token.get('admin', false) == true || getUserData().get('isFinanceAdmin', false) == true);
+        && ((request.auth.token.get('admin', false) == true && !hasPendingSuperRevoke())
+            || getUserData().get('isFinanceAdmin', false) == true);
     }
 
     function isClubAdmin() {
       return isAccountActive()
-        && (request.auth.token.get('admin', false) == true || getUserData().get('isClubAdmin', false) == true);
+        && ((request.auth.token.get('admin', false) == true && !hasPendingSuperRevoke())
+            || getUserData().get('isClubAdmin', false) == true);
     }
 
     function isAnyAdmin() {
       return isAccountActive()
-        && (request.auth.token.get('admin', false) == true
+        && ((request.auth.token.get('admin', false) == true && !hasPendingSuperRevoke())
             || getUserData().get('isFinanceAdmin', false) == true
             || getUserData().get('isClubAdmin', false) == true);
     }
