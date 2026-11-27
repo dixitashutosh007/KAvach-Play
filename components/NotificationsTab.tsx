@@ -5,6 +5,7 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/lib/errorHandling";
 import { ClubActionCentre } from "@/components/action-centre/ClubActionCentre";
+import { filterVisibleNotifications } from "@/lib/historical-activity-filter";
 
 export function NotificationsTab({
   store,
@@ -23,12 +24,10 @@ export function NotificationsTab({
     Boolean(currentAppUser?.isClubAdmin || currentAppUser?.role === "admin");
   const { notifications, loadMoreNotifications, notificationsHasMore, notificationsLoadingMore } = store;
 
-  // Filter notifications based on role
-  const myNotifications = notifications.filter((n) => {
-    if (isAdmin) {
-      return n.userId === "admin" || n.userId === "all";
-    }
-    return n.userId === user?.uid || n.userId === "all";
+  // Filter notifications based on role, hiding obsolete pre-week admin prompts
+  const myNotifications = filterVisibleNotifications(notifications, {
+    isAdmin,
+    uid: user?.uid,
   });
 
   const unreadCount = myNotifications.filter((n) => !n.isRead).length;

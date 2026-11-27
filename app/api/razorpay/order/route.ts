@@ -132,7 +132,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (resResult.conflict) {
+      if (resResult.conflict && !resResult.needsReconciliation) {
         return NextResponse.json(
           { error: resResult.error || "Payment reservation conflict." },
           { status: 409 },
@@ -239,10 +239,15 @@ export async function POST(req: Request) {
           });
         }
 
-        return NextResponse.json(
-          { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
-          { status: 503 },
-        );
+        if (recResult.superseded && recResult.canRetry && recResult.reservationToken) {
+          reservationAcquired = true;
+          reservationToken = recResult.reservationToken;
+        } else {
+          return NextResponse.json(
+            { error: recResult.error || "Order reconciliation pending with payment gateway. Please retry." },
+            { status: 503 },
+          );
+        }
       }
 
       if (resResult.isWaiting) {

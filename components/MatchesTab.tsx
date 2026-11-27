@@ -189,6 +189,9 @@ export function MatchesTab({
         ? window.scrollY || document.documentElement.scrollTop || 0
         : 0;
     setSelectedMatch(m);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+    }
   };
   useEffect(() => {
     // Restore only on the match → list transition, and only if we
@@ -212,6 +215,9 @@ export function MatchesTab({
       const match = store.matches.find(m => m.id === targetMatchId);
       if (match) {
         setSelectedMatch(match);
+        if (typeof window !== "undefined") {
+          requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+        }
       }
     } else if (defaultAction && defaultAction.startsWith("tournament_")) {
       const targetTournId = defaultAction.replace("tournament_", "");
@@ -1083,6 +1089,7 @@ export function MatchesTab({
     return (
       <>
         <MatchPayments
+          key={selectedMatch.id}
           match={store.matches.find((m) => m.id === selectedMatch.id) || selectedMatch}
           store={store}
           persona={persona}

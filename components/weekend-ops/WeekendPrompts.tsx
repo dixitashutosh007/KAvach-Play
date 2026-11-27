@@ -277,18 +277,6 @@ export function WeekendPrompts({ uid, isAdmin, active, activeTab, players, groun
                   {history.results && (
                     <HistoryRow testId="history-results" label="Match Results" count={history.results.count} unit="pending" onOpen={() => setOpen("h-results")} />
                   )}
-                  {history.fees && (
-                    <HistoryRow testId="history-fees" label="Actual Match Fee Paid" count={history.fees.count} unit="pending" onOpen={() => setOpen("h-fees")} />
-                  )}
-                  {history.potw && (
-                    <HistoryRow
-                      testId="history-potw"
-                      label="Player of the Weekend"
-                      count={history.potw.count}
-                      unit={history.potw.count === 1 ? "weekend pending" : "weekends pending"}
-                      onOpen={() => setOpen("h-potw")}
-                    />
-                  )}
                 </div>
               )}
             </div>

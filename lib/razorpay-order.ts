@@ -384,6 +384,35 @@ export async function acquirePaymentReservation(
           );
 
           if (!validation.valid) {
+            // If the reservation is for the same user, currency, and valid order,
+            // but the authoritative payable amount changed (e.g. admin updated match fee),
+            // route through authoritative Razorpay reconciliation instead of failing immediately.
+            const storedCurrency = String(data.currency || "INR").toUpperCase();
+            const requestedCurrency = String(currency || "INR").toUpperCase();
+            if (
+              !validation.isPaid &&
+              data.userId === authUid &&
+              typeof data.orderId === "string" &&
+              data.orderId.startsWith("order_") &&
+              typeof data.intentId === "string" &&
+              data.intentId.length > 0 &&
+              storedCurrency === requestedCurrency &&
+              Number(data.amount) !== Number(payableAmount)
+            ) {
+              return {
+                acquired: false,
+                conflict: true,
+                needsReconciliation: true,
+                existingOrder: {
+                  orderId: data.orderId,
+                  intentId: data.intentId,
+                  amount: data.amount,
+                  currency: data.currency || currency,
+                },
+                error: validation.reason,
+              };
+            }
+
             return {
               acquired: false,
               conflict: true,
@@ -675,7 +704,7 @@ export async function reconcileAmbiguousReservation(
   authUid: string,
   payableAmount: number,
   currency: string,
-): Promise<{ reconciled: boolean; existingOrder?: any; canRetry?: boolean; isPaid?: boolean; isExpired?: boolean; error?: string }> {
+): Promise<{ reconciled: boolean; existingOrder?: any; canRetry?: boolean; superseded?: boolean; reservationToken?: string; fenceVersion?: number; isPaid?: boolean; isExpired?: boolean; error?: string }> {
   const reservationRef = db.collection("paymentReservations").doc(reservationKey);
 
   // 1. Snapshot reservation to obtain token, fenceVersion, receipt, intentId, orderId
@@ -750,28 +779,27 @@ export async function reconcileAmbiguousReservation(
         return { reconciled: false, error: `Currency mismatch in fetched order: expected ${expectedCurrency}, found ${foundCurrency}` };
       }
 
-      // Strict amount validation
       const expectedPaise = Math.round(payableAmount * 100);
-      if (Number(foundOrder.amount) !== expectedPaise) {
-        await db.runTransaction(async (transaction: any) => {
-          const freshSnap = await transaction.get(reservationRef);
-          if (!freshSnap.exists) return;
-          const fresh = freshSnap.data() || {};
-          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
-          transaction.update(reservationRef, {
-            status: "reconciliation_failed",
-            reconciliationError: `Amount mismatch in fetched order: expected ${expectedPaise} paise, found ${foundOrder.amount} paise`,
-            updatedAt: new Date(),
-          });
-        });
-        return { reconciled: false, error: "Amount mismatch in fetched order." };
-      }
-
+      const amountMatches = Number(foundOrder.amount) === expectedPaise;
       const now = new Date();
 
       // Case A.1: Order already PAID at Razorpay (Finding 1)
-      // A paid order must NEVER be replaced with a new order!
+      // A paid order must NEVER be replaced or superseded!
       if (foundOrder.status === "paid") {
+        if (!amountMatches) {
+          await db.runTransaction(async (transaction: any) => {
+            const freshSnap = await transaction.get(reservationRef);
+            if (!freshSnap.exists) return;
+            const fresh = freshSnap.data() || {};
+            if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+            transaction.update(reservationRef, {
+              status: "reconciliation_failed",
+              reconciliationError: `Amount mismatch in paid order: expected ${expectedPaise} paise, found ${foundOrder.amount} paise`,
+              updatedAt: now,
+            });
+          });
+          return { reconciled: false, canRetry: false, error: "Amount mismatch in fetched order." };
+        }
         await db.runTransaction(async (transaction: any) => {
           const freshSnap = await transaction.get(reservationRef);
           if (!freshSnap.exists) return;
@@ -797,27 +825,131 @@ export async function reconcileAmbiguousReservation(
       }
 
       // Case A.2: Order still PAYABLE at Razorpay (created or attempted)
-      // Refresh local expiry by 15 minutes, retain status active, and reuse order.
       if (foundOrder.status === "created" || foundOrder.status === "attempted") {
+        if (amountMatches) {
+          // Refresh local expiry by 15 minutes, retain status active, and reuse order.
+          await db.runTransaction(async (transaction: any) => {
+            const freshSnap = await transaction.get(reservationRef);
+            if (!freshSnap.exists) return;
+            const fresh = freshSnap.data() || {};
+            if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+            transaction.update(reservationRef, {
+              status: "active",
+              expiresAt: new Date(now.getTime() + 15 * 60 * 1000),
+              updatedAt: now,
+            });
+          });
+          return {
+            reconciled: true,
+            existingOrder: {
+              orderId: foundOrder.id,
+              intentId: intentId || data.intentId || "",
+              amount: data.amount || payableAmount,
+              currency: foundCurrency,
+            },
+          };
+        }
+
+        // Amount changed (e.g. admin set a custom match fee).
+        // Never reuse an order for a different amount; verify NO active/ambiguous
+        // payment attempt exists at Razorpay before superseding the stale reservation.
+        const markBlocked = async (msg: string) => {
+          await db.runTransaction(async (transaction: any) => {
+            const freshSnap = await transaction.get(reservationRef);
+            if (!freshSnap.exists) return;
+            const fresh = freshSnap.data() || {};
+            if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+            transaction.update(reservationRef, {
+              status: "reconciliation_failed",
+              reconciliationError: msg,
+              updatedAt: new Date(),
+            });
+          });
+        };
+
+        if (typeof razorpayInstance.orders?.fetchPayments !== "function") {
+          await markBlocked("Unable to verify order payment attempts; fetchPayments unavailable.");
+          return { reconciled: false, canRetry: false, error: "Amount mismatch in fetched order." };
+        }
+
+        const PAGE_SIZE = 100;
+        const MAX_PAYMENT_PAGES = 10;
+        const allPaymentItems: any[] = [];
+        try {
+          let skip = 0;
+          let page = 0;
+          while (true) {
+            if (page >= MAX_PAYMENT_PAGES) {
+              await markBlocked(`Stale order ${data.orderId} exceeded ${MAX_PAYMENT_PAGES * PAGE_SIZE} payment attempts; manual reconciliation required.`);
+              return { reconciled: false, canRetry: false, error: "Unable to verify all payment attempts; reconciliation required." };
+            }
+            const paymentsResp = await razorpayInstance.orders.fetchPayments(data.orderId, { count: PAGE_SIZE, skip });
+            const pageItems = Array.isArray(paymentsResp?.items) ? paymentsResp.items : null;
+            if (!pageItems) {
+              await markBlocked(`Malformed payment-attempts response for stale order ${data.orderId}.`);
+              return { reconciled: false, canRetry: false, error: "Unable to verify stale order payment status; reconciliation required." };
+            }
+            allPaymentItems.push(...pageItems);
+            if (pageItems.length < PAGE_SIZE) break;
+            skip += pageItems.length;
+            page += 1;
+          }
+        } catch (payFetchErr: any) {
+          await markBlocked(`Failed to fetch payment attempts for stale order ${data.orderId}: ${payFetchErr?.message || "unknown"}`);
+          return { reconciled: false, canRetry: false, error: "Unable to verify stale order payment status; reconciliation required." };
+        }
+
+        if (foundOrder.status === "created" && allPaymentItems.length > 0) {
+          await markBlocked(`Order ${data.orderId} reported 'created' but has ${allPaymentItems.length} payment attempt(s).`);
+          return { reconciled: false, canRetry: false, error: "Order has unexpected payment attempts; reconciliation required." };
+        }
+
+        const hasNonFailedPayment = allPaymentItems.some(
+          (p: any) => String(p?.status || "").trim().toLowerCase() !== "failed",
+        );
+        if (hasNonFailedPayment) {
+          await markBlocked(`Stale order ${data.orderId} has an authorized, captured, pending, or ambiguous payment attempt.`);
+          return { reconciled: false, canRetry: false, error: "Previous order has an active or ambiguous payment; reconciliation required." };
+        }
+
+        // Confirmed unpaid: atomically supersede stale reservation under fencing token
+        const newToken = `${authUid}_${crypto.randomUUID()}`;
+        let newFenceVersion = 0;
         await db.runTransaction(async (transaction: any) => {
           const freshSnap = await transaction.get(reservationRef);
-          if (!freshSnap.exists) return;
+          if (!freshSnap.exists) {
+            throw new Error("Fencing conflict: reservation no longer exists.");
+          }
           const fresh = freshSnap.data() || {};
-          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) return;
+          if (fresh.isPaid === true || fresh.status === "paid") {
+            throw new Error("Fencing conflict: reservation became paid.");
+          }
+          if (fresh.reservationToken !== token || fresh.fenceVersion !== fence) {
+            throw new Error("Fencing conflict during stale reservation supersession.");
+          }
+          newFenceVersion = Number(fresh.fenceVersion || 0) + 1;
           transaction.update(reservationRef, {
-            status: "active",
-            expiresAt: new Date(now.getTime() + 15 * 60 * 1000),
+            status: "reserving",
+            reservationToken: newToken,
+            fenceVersion: newFenceVersion,
+            amount: payableAmount,
+            currency: expectedCurrency,
+            supersededOrderId: data.orderId,
+            supersededAmount: data.amount,
+            orderId: null,
+            intentId: null,
+            heartbeatAt: now,
+            expiresAt: new Date(now.getTime() + 60 * 1000),
             updatedAt: now,
           });
         });
+
         return {
           reconciled: true,
-          existingOrder: {
-            orderId: foundOrder.id,
-            intentId: intentId || data.intentId || "",
-            amount: data.amount || payableAmount,
-            currency: foundCurrency,
-          },
+          canRetry: true,
+          superseded: true,
+          reservationToken: newToken,
+          fenceVersion: newFenceVersion,
         };
       }
 
