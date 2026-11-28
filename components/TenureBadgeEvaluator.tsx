@@ -1,11 +1,16 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { serverTimestamp } from "firebase/firestore";
 import { useStore } from "@/hooks/useStore";
 import { Badge } from "@/lib/types";
 import { getBadgeMeta, DEFAULT_BADGE_DEFS } from "./BadgeIcon";
 import { Award, Calendar, CheckCircle, X, AlertTriangle } from "lucide-react";
+import { authedFetch } from "@/lib/authed-fetch";
+import {
+  computeTenureYears as computeTenureYearsShared,
+  evaluateCumulativeMilestones,
+  TENURE_MILESTONES,
+} from "@/lib/badge-milestones";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -68,24 +73,12 @@ function yearOptions(): string[] {
  * If the joining string is invalid, returns 0.
  */
 function computeTenureYears(joiningStr: string): number {
-  const parts = joiningStr.split("/");
-  if (parts.length !== 2) return 0;
-  const month = parseInt(parts[0], 10);
-  const year = parseInt(parts[1], 10);
-  if (!month || !year || month < 1 || month > 12) return 0;
-
-  const now = new Date();
-  let years = now.getFullYear() - year;
-  // If we haven't reached the joining month this year, subtract one
-  if (now.getMonth() + 1 < month) {
-    years -= 1;
-  }
-  return Math.max(0, years);
+  return computeTenureYearsShared(joiningStr);
 }
 
 /**
- * Evaluate a single player: which year badge they should have (only the
- * highest applicable), and which existing year badges should be revoked.
+ * Evaluate a single player cumulatively: grant all newly qualified year
+ * milestones while preserving lower milestones and historical awards.
  */
 function evaluatePlayer(
   playerId: string,
@@ -93,36 +86,11 @@ function evaluatePlayer(
   badges: Badge[],
   tenureYears: number,
 ): PlayerChange {
-  const playerBadges = badges.filter((b) => b.playerId === playerId);
-  const existingYearBadges = playerBadges.filter((b) =>
-    YEAR_BADGE_KEYS.includes(b.badgeType as any),
+  const existing = new Set(
+    badges.filter((b) => b.playerId === playerId).map((b) => b.badgeType),
   );
-
-  const cappedYears = Math.min(tenureYears, MAX_YEAR_BADGE);
-
-  const grant: string[] = [];
-  const revoke: Badge[] = [];
-
-  if (cappedYears === 0) {
-    // No year badge deserved — revoke all existing year badges
-    revoke.push(...existingYearBadges);
-  } else {
-    const targetKey = `year_${cappedYears}`;
-    const hasTarget = existingYearBadges.some((b) => b.badgeType === targetKey);
-
-    if (!hasTarget) {
-      grant.push(targetKey);
-    }
-
-    // Revoke every year badge that is NOT the target
-    for (const b of existingYearBadges) {
-      if (b.badgeType !== targetKey) {
-        revoke.push(b);
-      }
-    }
-  }
-
-  return { playerId, playerName, tenureYears, grant, revoke };
+  const { missing } = evaluateCumulativeMilestones(tenureYears, TENURE_MILESTONES, existing);
+  return { playerId, playerName, tenureYears, grant: missing, revoke: [] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -260,42 +228,31 @@ export default function TenureBadgeEvaluator({
     setPhase("preview");
   }
 
-  /** Apply all grants and revokes */
+  /** Apply cumulative tenure milestone grants via server-authoritative evaluation */
   async function handleApply() {
     setApplying(true);
-    let totalGrants = 0;
-    let totalRevokes = 0;
-
     try {
-      for (const change of changes) {
-        // Grants
-        for (const badgeKey of change.grant) {
-          await store.addBadge({
-            playerId: change.playerId,
-            playerName: change.playerName,
-            badgeType: badgeKey,
-            awardedBy: currentUserId,
-            awardedByName: currentUserName,
-            awardedAt: serverTimestamp(),
-            redeemed: false,
-          });
-          totalGrants++;
-        }
-
-        // Revokes
-        for (const badge of change.revoke) {
-          await store.deleteBadge(badge.id);
-          totalRevokes++;
-        }
+      const res = await authedFetch("/api/admin/badges/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: "tenure" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Evaluation failed (${res.status}).`);
       }
-
+      const grantedCount = typeof data?.grantedCount === "number" ? data.grantedCount : 0;
+      const skippedCount = typeof data?.skippedCount === "number" ? data.skippedCount : 0;
+      const failedCount = typeof data?.failedCount === "number" ? data.failedCount : 0;
       setApplySummary(
-        `Applied ${totalGrants} grant${totalGrants !== 1 ? "s" : ""} and ${totalRevokes} revoke${totalRevokes !== 1 ? "s" : ""} across ${changes.length} player${changes.length !== 1 ? "s" : ""}.`,
+        `Granted ${grantedCount} cumulative tenure milestone${grantedCount !== 1 ? "s" : ""}${
+          skippedCount > 0 ? ` (${skippedCount} already awarded)` : ""
+        }${failedCount > 0 ? ` · ${failedCount} failed (safe to retry)` : ""}. Historical awards preserved.`,
       );
       setPhase("done");
     } catch (err) {
-      console.error("Failed to apply changes", err);
-      setApplySummary("An error occurred while applying changes. Some changes may have been partially applied.");
+      console.error("Failed to apply tenure milestones", err);
+      setApplySummary(err instanceof Error ? err.message : "An error occurred while applying changes.");
       setPhase("done");
     } finally {
       setApplying(false);

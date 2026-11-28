@@ -15,6 +15,7 @@ const FINANCE_PLAYER_SELECT = [
   "jerseyNumber",
   "inviteStatus",
   "disabled",
+  "mergedInto",
   "isStudioMember",
   "studioPlan",
   "studioExpiryDate",
@@ -30,6 +31,7 @@ const CLUB_PLAYER_SELECT = [
   "locality",
   "inviteStatus",
   "disabled",
+  "mergedInto",
   "isStudioMember",
   "studioPlan",
   "studioExpiryDate",
@@ -312,7 +314,7 @@ export async function GET(req: Request) {
               }),
             );
             tasks.push(
-              fetchAllProjected(db.collection("badgeTypeDefs").select(...CLUB_BADGE_DEF_SELECT)).then((rows) => {
+              fetchAllProjected(db.collection("badgeTypes").select(...CLUB_BADGE_DEF_SELECT)).then((rows) => {
                 nextDataset.badgeTypeDefs = rows;
               }),
             );

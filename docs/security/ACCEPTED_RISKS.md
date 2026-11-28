@@ -75,13 +75,14 @@
 
 ---
 
-### AR-06: Production Cutover & Staging Environment Confirmation (`OD-01`)
-- **Risk Description:** `https://play.kavachcricket.com` is production, and a separate permanent staging URL/Firebase project mapping remains pending explicit owner confirmation (`OD-01`).
-- **Severity:** **P1** (Pre-deployment Operational Gate)
-- **Reason for Acceptance / Deferral:** Local validation uses the Firebase Emulator Suite (`npm run test:emulator`) and isolated non-production database guards (`arePaymentOperationsEnabled()`), avoiding any production writes during development.
-- **Business Impact:** Live staging browser E2E against a deployed cloud preview cannot be safely executed until `OD-01` is confirmed.
+### AR-06: Single Firebase Project (`gen-lang-client-0004191483`) for Production & `mig-mov` Dev/Staging
+- **Risk Description:** Production (`ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412`) and `mig-mov` development/staging (`kavach-play-db-ext`) share Firebase project `gen-lang-client-0004191483` and the same Firebase Authentication user pool / service account.
+- **Severity:** **P1** (Owner-Accepted Operational Architecture)
+- **Reason for Acceptance / Deferral:** Explicit owner decision (`2026-11-27`): KAvach Play continues using `gen-lang-client-0004191483` with `kavach-play-db-ext` for `mig-mov` dev/staging and `ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412` for production; no separate staging Firebase project is required.
+- **Business Impact:** An operator running a CLI script with `serviceAccountKey.json` and `--database=ai-studio-cae01507-23c3-4ee4-92c8-848c4cf7d412` could target production if the wrong `--database=` flag is supplied.
 - **Compensating Controls:**
-  - `arePaymentOperationsEnabled()` blocks live Razorpay order creation on non-production databases.
-  - `AGENTS.md` §3 forbids production writes, migrations, or deployments without explicit owner approval.
-- **Review Trigger:** Before any production deployment of `mig-mov` or execution of `scripts/migrate-role-consolidation.mjs --execute`.
-- **Status:** Deferred (Pre-Deployment Gate)
+  - `resolveFirestoreDatabaseId()` (`lib/database-config.ts`) and `amplify.yml` strictly bind `mig-mov` → `kavach-play-db-ext` and fail closed on mismatch.
+  - `arePaymentOperationsEnabled()` blocks live Razorpay orders on `mig-mov` / `kavach-play-db-ext`.
+  - `scripts/migrate-role-consolidation.mjs` defaults to read-only dry-run and requires explicit `--database=` + `--execute`.
+- **Review Trigger:** Any future multi-club expansion or decision to provision a separate GCP/Firebase staging project.
+- **Status:** Accepted by Product Owner (`2026-11-27`)

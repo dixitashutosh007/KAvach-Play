@@ -81,5 +81,6 @@ test("POTW and Catches API routes enforce D-22 RBAC, transactions, idempotency, 
   assert.match(catchesSrc, /entity:\s*"catch"/);
 
   const clubTabSrc = fs.readFileSync(path.join(root, "components/ClubTab.tsx"), "utf8");
-  assert.match(clubTabSrc, /show\("badges"\) && isClubAdmin[\s\S]*<ClubRecognitionAdmin store=\{store\} \/>/);
+  assert.match(clubTabSrc, /show\("badges"\) && isClubAdmin[\s\S]*<ClubRecognitionAdmin\b/);
+  assert.match(clubTabSrc, /club-activity-log-toggle[\s\S]*<AuditLogTab/);
 });

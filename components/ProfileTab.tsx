@@ -22,7 +22,7 @@ import { PlayerProfileHub } from "./profile/PlayerProfileHub";
 import { ClubActionCentre } from "@/components/action-centre/ClubActionCentre";
 import { PollInteraction, PollResults } from "./OpinionTab";
 import { AuthProviderBadges } from "./AuthProviderBadges";
-import { BadgeIcon, getBadgeMeta, getBadgeTierColors, getStackableSet, BadgeShowcase } from "./BadgeIcon";
+import { PlayerBadgeCollection } from "./badges/PlayerBadgeCollection";
 import { Award } from "lucide-react";
 import type { Badge } from "@/lib/types";
 import { db } from "@/lib/firebase";
@@ -723,6 +723,7 @@ export function ProfileTab({
           badges={store.badges}
           playerId={linkedPlayer.id}
           badgeTypeDefs={store.badgeTypeDefs}
+          player={linkedPlayer}
         />
       )}
 
@@ -1067,66 +1068,21 @@ export function MyBadgesSection({
   badges,
   playerId,
   badgeTypeDefs,
+  player,
 }: {
   badges: Badge[];
   playerId: string;
   badgeTypeDefs: import("@/lib/types").BadgeTypeDef[];
+  player?: import("@/lib/types").Player | null;
 }) {
-  const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
-
-  const myBadges = badges.filter(b => b.playerId === playerId);
-  if (!myBadges.length) return null;
-
-  const grouped = new Map<string, Badge[]>();
-  myBadges.forEach(b => {
-    const arr = grouped.get(b.badgeType) || [];
-    arr.push(b);
-    grouped.set(b.badgeType, arr);
-  });
-  const stackable = getStackableSet(badgeTypeDefs);
-
   return (
     <div className="pt-2">
-      <div className="bg-surface rounded-xl p-4 border border-border">
-        <h3 className="font-bold text-text-primary flex items-center gap-2 mb-3">
-          <Award className="w-5 h-5 text-accent" />
-          My Badges
-          <span className="text-xs text-text-muted font-normal ml-auto">{myBadges.length} earned</span>
-        </h3>
-        <div className="flex flex-wrap gap-3">
-          {Array.from(grouped.entries()).map(([badgeType, bList]) => {
-            const meta = getBadgeMeta(badgeType, badgeTypeDefs);
-            const colors = getBadgeTierColors(meta.tier);
-            const count = stackable.has(badgeType) ? bList.length : undefined;
-            return (
-              <button
-                key={badgeType}
-                onClick={() => setShowcaseBadge(bList[0])}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-border bg-surface-hover min-w-[72px] hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition cursor-pointer"
-              >
-                <div className="relative">
-                  <BadgeIcon badgeType={badgeType} size={48} customDefs={badgeTypeDefs} />
-                  {count && count > 1 && (
-                    <span className="absolute -top-1 -right-1 text-[9px] font-bold rounded-full px-1 min-w-[16px] text-center" style={{ background: colors.bg, color: "#000" }}>
-                      x{count}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[9px] text-text-secondary text-center leading-tight">{meta.short}</span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-[10px] text-text-primary/25 mt-3 text-center">Tap a badge to view &amp; share</p>
-      </div>
-
-      {showcaseBadge && (
-        <BadgeShowcase
-          badge={showcaseBadge}
-          customDefs={badgeTypeDefs}
-          onClose={() => setShowcaseBadge(null)}
-        />
-      )}
+      <PlayerBadgeCollection
+        badges={badges}
+        playerId={playerId}
+        badgeTypeDefs={badgeTypeDefs}
+        player={player}
+      />
     </div>
   );
 }

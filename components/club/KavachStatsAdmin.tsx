@@ -22,6 +22,8 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
   const [runs, setRuns] = useState("0");
   const [wickets, setWickets] = useState("0");
   const [editingStatId, setEditingStatId] = useState<string | null>(null);
+  const [editingUpdatedAtMs, setEditingUpdatedAtMs] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [yearFilter, setYearFilter] = useState<"all" | number>("all");
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -73,6 +75,7 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
 
   const resetForm = () => {
     setEditingStatId(null);
+    setEditingUpdatedAtMs(null);
     setPlayerId("");
     setYear(String(currentYear));
     setRuns("0");
@@ -82,6 +85,14 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
 
   const handleEdit = (row: PlayerStat) => {
     setEditingStatId(row.id);
+    const updatedAt: any = row.updatedAt;
+    const ms =
+      typeof updatedAt?.toMillis === "function"
+        ? updatedAt.toMillis()
+        : typeof updatedAt === "number"
+          ? updatedAt
+          : null;
+    setEditingUpdatedAtMs(ms);
     setPlayerId(row.playerId);
     setYear(String(row.year));
     setRuns(String(row.runs ?? 0));
@@ -112,12 +123,15 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
         body: JSON.stringify({
           ...parsed.value,
           ...(editingStatId ? { statId: editingStatId } : {}),
+          ...(editingStatId && editingUpdatedAtMs !== null ? { expectedUpdatedAt: editingUpdatedAtMs } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save KAvach Stats.");
       if (data.stat?.duplicateWarning) {
         toast(data.stat.duplicateWarning, "error");
+      } else if (data.stat?.action === "unchanged") {
+        toast("No changes to save.", "info");
       } else {
         toast(
           editingStatId ? "Player statistics updated." : "Player statistics saved.",
@@ -143,6 +157,7 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete stat record.");
       toast("Stat record deleted.", "success");
+      setConfirmDeleteId(null);
       if (editingStatId === statId) resetForm();
     } catch (err: any) {
       toast(err?.message || "Could not delete stat record.", "error");
@@ -320,7 +335,9 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
         <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
           {filteredRows.map((row) => {
             const p = playerMap.get(row.playerId);
+            const missingPlayer = !p;
             const inactive = !isEligibleForNewStats(p);
+            const isConfirming = confirmDeleteId === row.id;
             return (
               <div
                 key={row.id}
@@ -333,11 +350,15 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
                     <span className="ml-2 px-1.5 py-0.5 rounded bg-surface-hover font-mono text-[10px] text-text-secondary">
                       {row.year}
                     </span>
-                    {inactive && (
+                    {missingPlayer ? (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-semibold">
+                        Orphaned
+                      </span>
+                    ) : inactive ? (
                       <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold">
                         Inactive
                       </span>
-                    )}
+                    ) : null}
                   </p>
                   <p className="text-[11px] text-text-secondary mt-0.5 tabular-nums">
                     {row.runs} runs · {row.wickets} wickets
@@ -354,15 +375,37 @@ export function KavachStatsAdmin({ store }: { store: ReturnType<typeof useStore>
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button
-                    type="button"
-                    disabled={deletingId === row.id}
-                    onClick={() => handleDelete(row.id)}
-                    aria-label={`Delete stats for ${p?.name || row.playerId}`}
-                    className="min-w-[36px] min-h-[36px] rounded-lg border border-border hover:bg-red-50 text-red-600 flex items-center justify-center cursor-pointer disabled:opacity-50"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {isConfirming ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={deletingId === row.id}
+                        data-testid={`kavach-stat-confirm-delete-${row.id}`}
+                        onClick={() => handleDelete(row.id)}
+                        className="min-h-[36px] px-2.5 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-700 cursor-pointer disabled:opacity-50"
+                      >
+                        {deletingId === row.id ? "Deleting…" : "Confirm"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === row.id}
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="min-h-[36px] px-2 rounded-lg border border-border text-[11px] font-semibold text-text-secondary hover:text-text-primary cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={deletingId === row.id}
+                      onClick={() => setConfirmDeleteId(row.id)}
+                      aria-label={`Delete stats for ${p?.name || row.playerId}`}
+                      className="min-w-[36px] min-h-[36px] rounded-lg border border-border hover:bg-red-50 text-red-600 flex items-center justify-center cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

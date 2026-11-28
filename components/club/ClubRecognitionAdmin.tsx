@@ -63,9 +63,15 @@ export function ClubRecognitionAdmin({
   const [catchMatchId, setCatchMatchId] = useState("");
   const [catchComment, setCatchComment] = useState("");
   const [editingCatchId, setEditingCatchId] = useState<string | null>(initialCatchId || null);
+  const [savingCatch, setSavingCatch] = useState(false);
+  const [deletingCatchId, setDeletingCatchId] = useState<string | null>(null);
+  const [catchError, setCatchError] = useState<string | null>(null);
+  const pendingCatchKeyRef = useRef<string | null>(null);
+  const catchInFlightRef = useRef(false);
   useEffect(() => {
     if (!initialCatchId) return;
     setSubSection("catches");
+    if (loadingCatches) return;
     const target = catchEntries.find((c) => c.id === initialCatchId);
     if (target) {
       setEditingCatchId(target.id);
@@ -74,13 +80,12 @@ export function ClubRecognitionAdmin({
       setCatchCount(String(target.count));
       setCatchMatchId(target.matchId || "");
       setCatchComment(target.comment || "");
+      setCatchError(null);
+    } else {
+      setEditingCatchId(null);
+      setCatchError("The selected catch record was not found or has been removed.");
     }
-  }, [initialCatchId, catchEntries]);
-  const [savingCatch, setSavingCatch] = useState(false);
-  const [deletingCatchId, setDeletingCatchId] = useState<string | null>(null);
-  const [catchError, setCatchError] = useState<string | null>(null);
-  const pendingCatchKeyRef = useRef<string | null>(null);
-  const catchInFlightRef = useRef(false);
+  }, [initialCatchId, catchEntries, loadingCatches]);
 
   const openWindow = useMemo(() => potwWindow(Date.now()), []);
 

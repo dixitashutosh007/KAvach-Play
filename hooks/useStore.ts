@@ -974,8 +974,12 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     };
   };
 
-  const addBadge = async (badge: Omit<Badge, "id">) => {
-    const id = crypto.randomUUID();
+  const addBadge = async (
+    badge: Omit<Badge, "id">,
+    options?: { id?: string; idempotencyKey?: string; throwOnError?: boolean },
+  ) => {
+    const id = options?.id || crypto.randomUUID();
+    const idempotencyKey = options?.idempotencyKey || `badge_add_${id}`;
     try {
       const res = await authedFetch("/api/admin/badges", {
         method: "POST",
@@ -983,16 +987,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         body: JSON.stringify({
           target: "badge",
           badge: { ...badge, id },
-          idempotencyKey: `badge_add_${id}`,
+          idempotencyKey,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `Failed to award badge (${res.status}).`);
+        const err = new Error(data?.error || `Failed to award badge (${res.status}).`) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
       }
-      return id;
+      return (typeof data?.id === "string" && data.id) || id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `badges/${id}`);
+      if (options?.throwOnError) throw err;
     }
   };
 

@@ -1,0 +1,77 @@
+{
+  "grantApiResponse": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "id": "65dbb674-85c6-4a94-9c15-b8a5702718b8"
+    }
+  },
+  "firestoreBadgeDoc": {
+    "id": "65dbb674-85c6-4a94-9c15-b8a5702718b8",
+    "data": {
+      "playerId": "player-release-gate",
+      "playerName": "Release Gate Player",
+      "badgeType": "year_1",
+      "awardedBy": "club-admin-gate",
+      "awardedByName": "Club Admin Gate",
+      "redeemed": false,
+      "awardedAt": {
+        "_seconds": 1795872704,
+        "_nanoseconds": 229000000
+      }
+    }
+  },
+  "firestoreAuditDocs": {
+    "count": 1,
+    "id": "bdg_aud_30041e8d83cf0089db4887b9706ec734",
+    "data": {
+      "actorId": "club-admin-gate",
+      "actorName": "Club Admin Gate",
+      "action": "created",
+      "entity": "badge",
+      "entityId": "65dbb674-85c6-4a94-9c15-b8a5702718b8",
+      "entityLabel": "year_1 → Release Gate Player",
+      "changes": [
+        {
+          "field": "playerId",
+          "newValue": "player-release-gate"
+        },
+        {
+          "field": "playerName",
+          "newValue": "Release Gate Player"
+        },
+        {
+          "field": "badgeType",
+          "newValue": "year_1"
+        }
+      ],
+      "summary": "Awarded \"year_1\" badge to Release Gate Player",
+      "actorType": "admin",
+      "source": "server_authoritative",
+      "id": "bdg_aud_30041e8d83cf0089db4887b9706ec734",
+      "timestamp": {
+        "_seconds": 1795872704,
+        "_nanoseconds": 229000000
+      }
+    }
+  },
+  "duplicateGrantResponse": {
+    "status": 409,
+    "body": {
+      "error": "Player already holds this non-stackable badge."
+    }
+  },
+  "retryGrantVerification": {
+    "retryStatus": 200,
+    "retryBody": {
+      "ok": true,
+      "id": "ccef7246-a93d-403c-9afd-46d55075f166"
+    },
+    "badgeCount": 1,
+    "auditCount": 1
+  },
+  "cleanup": {
+    "playerExistsAfterDelete": false,
+    "badgesCountAfterDelete": 0
+  }
+}

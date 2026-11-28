@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/hooks/useStore";
-import { Users, ShoppingBag, PieChart, Trophy, Award, Video, Megaphone } from "lucide-react";
+import { Users, ShoppingBag, PieChart, Trophy, Award, Video, Megaphone, ScrollText, X } from "lucide-react";
 import { ClubShopPanel, type ShopAdminView } from "@/components/club/ClubShopPanel";
 import { AccessDenied } from "@/components/ui/AccessDenied";
 import dynamic from "next/dynamic";
@@ -31,6 +31,7 @@ const CircuitStandingsAdmin = dynamic(() => import("@/components/club/CircuitSta
 const KavachStatsAdmin = dynamic(() => import("@/components/club/KavachStatsAdmin").then(m => ({ default: m.KavachStatsAdmin })), { ssr: false });
 const ClubRecognitionAdmin = dynamic(() => import("@/components/club/ClubRecognitionAdmin").then(m => ({ default: m.ClubRecognitionAdmin })), { ssr: false });
 const AdminAnnouncementsManager = dynamic(() => import("@/components/home/AdminAnnouncementsManager").then(m => ({ default: m.AdminAnnouncementsManager })), { ssr: false });
+const AuditLogTab = dynamic(() => import("@/components/AuditLogTab").then(m => ({ default: m.AuditLogTab })), { ssr: false });
 
 const SECTION_ICONS: Record<ClubSection, typeof Users> = {
   players: Users,
@@ -111,6 +112,7 @@ export function ClubTab({
     a === "products" || a === "orders" || a === "reports" || a === "store" ? a : null;
   const [shopView, setShopView] = useState<ShopAdminView | null>(shopViewFromAction(initial.subAction));
   const [shopOpenCount, setShopOpenCount] = useState(0);
+  const [showActivityLog, setShowActivityLog] = useState(false);
   useEffect(() => {
     if (subTab === "shop") setShopView(shopViewFromAction(subAction));
   }, [subTab, subAction]);
@@ -119,7 +121,31 @@ export function ClubTab({
     <div className="space-y-4 min-w-0" data-testid="admin-club">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-black font-heading text-text-primary tracking-tight">Club</h1>
+        {isClubAdmin && (
+          <button
+            type="button"
+            data-testid="club-activity-log-toggle"
+            onClick={() => setShowActivityLog((v) => !v)}
+            className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+              showActivityLog
+                ? "bg-[#A30F2D] text-white border-[#A30F2D]"
+                : "bg-surface text-text-secondary border-border hover:text-text-primary hover:bg-surface-hover"
+            }`}
+          >
+            {showActivityLog ? <X className="w-3.5 h-3.5" /> : <ScrollText className="w-3.5 h-3.5" />}
+            {showActivityLog ? "Close Activity Log" : "Activity Log"}
+          </button>
+        )}
       </div>
+
+      {showActivityLog && isClubAdmin && (
+        <div
+          data-testid="club-activity-log-panel"
+          className="rounded-2xl border border-border bg-surface p-4 shadow-xs"
+        >
+          <AuditLogTab isSuperAdmin={isSuperAdmin} />
+        </div>
+      )}
 
       <div
         role="tablist"

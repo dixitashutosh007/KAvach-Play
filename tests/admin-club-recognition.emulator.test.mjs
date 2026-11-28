@@ -409,4 +409,89 @@ describe("Admin Club Recognition & KAvach Stats — Emulator transactions", { sk
     assert.equal(postSnap.exists, true);
     assert.equal(postSnap.data().potw.message, "Updated after unlink");
   });
+
+  it("KAvach Stats: skips redundant audit on unchanged save and rejects stale expectedUpdatedAt with 409", async () => {
+    const pId = uid("player");
+    await db.collection("players").doc(pId).set({ name: "Stats Concurrency Player" });
+
+    const createRes = await call(statsRoute.POST, "POST", {
+      body: { playerId: pId, year: 2026, runs: 500, wickets: 10 },
+    });
+    assert.equal(createRes.status, 200);
+    const statId = createRes.json.stat.id;
+
+    const statSnap1 = await db.collection("playerStats").doc(statId).get();
+    const updatedAt1 = statSnap1.data().updatedAt.toMillis();
+
+    // Unchanged save returns action: "unchanged" and writes no extra audit
+    const unchangedRes = await call(statsRoute.POST, "POST", {
+      body: { playerId: pId, year: 2026, runs: 500, wickets: 10, statId, expectedUpdatedAt: updatedAt1 },
+    });
+    assert.equal(unchangedRes.status, 200);
+    assert.equal(unchangedRes.json.stat.action, "unchanged");
+
+    const auditsAfterUnchanged = await db.collection("auditLogs").where("entityId", "==", statId).get();
+    assert.equal(auditsAfterUnchanged.size, 1);
+
+    // Concurrent edit by Admin A succeeds
+    const editRes = await call(statsRoute.POST, "POST", {
+      body: { playerId: pId, year: 2026, runs: 550, wickets: 12, statId, expectedUpdatedAt: updatedAt1 },
+    });
+    assert.equal(editRes.status, 200);
+
+    // Stale edit by Admin B using old expectedUpdatedAt is rejected with 409
+    const staleRes = await call(statsRoute.POST, "POST", {
+      body: { playerId: pId, year: 2026, runs: 600, wickets: 15, statId, expectedUpdatedAt: updatedAt1 },
+    });
+    assert.equal(staleRes.status, 409);
+  });
+
+  it("KAvach Stats: rejects expectedUpdatedAt with 409 when legacy stat record lacks updatedAt", async () => {
+    const pId = uid("player");
+    const statId = `${pId}_2024`;
+    await Promise.all([
+      db.collection("players").doc(pId).set({ name: "Legacy Stats Player" }),
+      db.collection("playerStats").doc(statId).set({
+        playerId: pId,
+        year: 2024,
+        runs: 320,
+        wickets: 7,
+      }),
+    ]);
+
+    const res = await call(statsRoute.POST, "POST", {
+      body: {
+        playerId: pId,
+        year: 2024,
+        runs: 400,
+        wickets: 9,
+        statId,
+        expectedUpdatedAt: Date.now(),
+      },
+    });
+    assert.equal(res.status, 409);
+
+    const afterSnap = await db.collection("playerStats").doc(statId).get();
+    assert.equal(afterSnap.data().runs, 320);
+    assert.equal(afterSnap.data().wickets, 7);
+
+    const audits = await db.collection("auditLogs").where("entityId", "==", statId).get();
+    assert.equal(audits.size, 0);
+  });
+
+  it("Catches: rejects malformed idempotencyKey with HTTP 400", async () => {
+    const pId = uid("player");
+    await db.collection("players").doc(pId).set({ name: "Catch Key Player" });
+
+    const badRes = await call(catchesRoute.POST, "POST", {
+      body: {
+        playerId: pId,
+        type: "stunning",
+        count: 1,
+        comment: "Practice",
+        idempotencyKey: "bad/key with spaces!",
+      },
+    });
+    assert.equal(badRes.status, 400);
+  });
 });

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { useStore } from "@/hooks/useStore";
-import { BadgeType, Badge, BadgeTier, BadgeTypeDef } from "@/lib/types";
+import { BadgeType, Badge, BadgeTier, BadgeCategory, BadgeTypeDef } from "@/lib/types";
 import {
   BadgeIcon,
   BadgeCard,
@@ -27,6 +27,14 @@ const ICON_LIBRARY: { cat: string; icons: string[] }[] = [
 import { serverTimestamp } from "firebase/firestore";
 import dynamic from "next/dynamic";
 import { useToast } from "@/components/ui/Toast";
+import {
+  awardBadgesBatch,
+  BUILTIN_BADGE_CATALOG,
+  getAvailableBadgesForPlayers,
+  getEligiblePlayersForBadge,
+  isBadgeTypeActive,
+  type BatchAwardResult,
+} from "@/lib/badge-awarding";
 const TenureBadgeEvaluator = dynamic(() => import("./TenureBadgeEvaluator"), { ssr: false });
 const StatsBadgeEvaluator = dynamic(() => import("./StatsBadgeEvaluator"), { ssr: false });
 
@@ -54,6 +62,8 @@ export function BadgesTab({
   const [awardNote, setAwardNote] = useState("");
   const [awardMatchId, setAwardMatchId] = useState("");
   const [isAwarding, setIsAwarding] = useState(false);
+  const [awardResult, setAwardResult] = useState<BatchAwardResult | null>(null);
+  const [lastAwardContext, setLastAwardContext] = useState<{ note: string; matchId: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
   useEffect(() => {
@@ -65,7 +75,17 @@ export function BadgesTab({
   const [showStatsEval, setShowStatsEval] = useState(false);
 
   const [editingDef, setEditingDef] = useState<BadgeTypeDef | null>(null);
-  const [defForm, setDefForm] = useState({ id: "", label: "", short: "", tier: "bronze" as BadgeTier, emoji: "", stackable: false });
+  const [defForm, setDefForm] = useState({
+    id: "",
+    label: "",
+    short: "",
+    tier: "bronze" as BadgeTier,
+    emoji: "",
+    stackable: false,
+    category: "custom" as BadgeCategory,
+    description: "",
+    criteria: "",
+  });
   const [isSavingDef, setIsSavingDef] = useState(false);
   const [confirmDeleteDef, setConfirmDeleteDef] = useState<string | null>(null);
   const [showDefForm, setShowDefForm] = useState(false);
@@ -112,49 +132,142 @@ export function BadgesTab({
     [activePlayers, search],
   );
 
+  const existingBadgesByPlayerMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const [pid, list] of badgesByPlayer.entries()) {
+      map.set(pid, new Set(list.map((b) => b.badgeType)));
+    }
+    return map;
+  }, [badgesByPlayer]);
+
+  const playersByIdMap = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const p of players) map.set(p.id, { id: p.id, name: p.name });
+    return map;
+  }, [players]);
+
+  const publishAwardPost = async (badgeType: string, names: string[]) => {
+    if (!names.length) return;
+    const meta = getBadgeMeta(badgeType, customDefs);
+    const nameStr =
+      names.length <= 3
+        ? names.join(", ")
+        : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
+    const postText = `🏆 BADGE UNLOCKED!\n\n${nameStr} earned the ✨ ${meta.label} ✨ badge!\n\n${meta.emoji}\n\n#KAvachPlay #CricketBadge`;
+    await store.addPost?.({
+      text: postText,
+      authorName: "KAvach Badges",
+      authorId: currentUserId,
+    });
+  };
+
   const handleAward = async () => {
     if (!awardPlayers.length || !awardBadge) return;
 
     setIsAwarding(true);
+    setAwardResult(null);
+    const note = awardNote;
+    const matchId = awardMatchId;
+    setLastAwardContext({ note, matchId });
     try {
-      const meta = getBadgeMeta(awardBadge, customDefs);
-      const names: string[] = [];
+      const result = await awardBadgesBatch({
+        playerIds: awardPlayers,
+        badgeType: awardBadge,
+        playersById: playersByIdMap,
+        existingBadgesByPlayer: existingBadgesByPlayerMap,
+        stackableSet,
+        awardOne: (player, idempotencyKey) =>
+          store.addBadge(
+            {
+              playerId: player.id,
+              playerName: player.name,
+              badgeType: awardBadge,
+              awardedBy: currentUserId,
+              awardedByName: currentUserName,
+              awardedAt: serverTimestamp(),
+              redeemed: false,
+              ...(note ? { note } : {}),
+              ...(matchId ? { matchId } : {}),
+            },
+            { idempotencyKey, throwOnError: true },
+          ),
+      });
 
-      for (const pid of awardPlayers) {
-        const player = players.find((p) => p.id === pid);
-        if (!player) continue;
-        names.push(player.name);
+      setAwardResult(result);
+      await publishAwardPost(
+        awardBadge,
+        result.succeeded.map((s) => s.playerName),
+      );
 
-        await store.addBadge({
-          playerId: pid,
-          playerName: player.name,
-          badgeType: awardBadge,
-          awardedBy: currentUserId,
-          awardedByName: currentUserName,
-          awardedAt: serverTimestamp(),
-          redeemed: false,
-          ...(awardNote ? { note: awardNote } : {}),
-          ...(awardMatchId ? { matchId: awardMatchId } : {}),
-        });
+      if (result.failed.length === 0) {
+        setAwardPlayers([]);
+        setAwardSearch("");
+        setAwardBadge(null);
+        setAwardNote("");
+        setAwardMatchId("");
+      } else {
+        setAwardPlayers(result.failed.map((f) => f.playerId));
       }
+    } finally {
+      setIsAwarding(false);
+    }
+  };
 
-      if (names.length) {
-        const nameStr = names.length <= 3
-          ? names.join(", ")
-          : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
-        const postText = `🏆 BADGE UNLOCKED!\n\n${nameStr} earned the ✨ ${meta.label} ✨ badge!\n\n${meta.emoji}\n\n#KAvachPlay #CricketBadge`;
-        await store.addPost?.({
-          text: postText,
-          authorName: "KAvach Badges",
-          authorId: currentUserId,
-        });
+  const handleRetryFailed = async () => {
+    if (!awardResult || !awardResult.failed.length) return;
+    setIsAwarding(true);
+    try {
+      const retryKeys = new Map<string, string>();
+      for (const item of awardResult.failed) {
+        if (item.idempotencyKey) retryKeys.set(item.playerId, item.idempotencyKey);
       }
+      const note = lastAwardContext?.note || "";
+      const matchId = lastAwardContext?.matchId || "";
+      const retryOutcome = await awardBadgesBatch({
+        playerIds: awardResult.failed.map((f) => f.playerId),
+        badgeType: awardResult.badgeType,
+        playersById: playersByIdMap,
+        existingBadgesByPlayer: existingBadgesByPlayerMap,
+        stackableSet,
+        idempotencyKeys: retryKeys,
+        awardOne: (player, idempotencyKey) =>
+          store.addBadge(
+            {
+              playerId: player.id,
+              playerName: player.name,
+              badgeType: awardResult.badgeType,
+              awardedBy: currentUserId,
+              awardedByName: currentUserName,
+              awardedAt: serverTimestamp(),
+              redeemed: false,
+              ...(note ? { note } : {}),
+              ...(matchId ? { matchId } : {}),
+            },
+            { idempotencyKey, throwOnError: true },
+          ),
+      });
 
-      setAwardPlayers([]);
-      setAwardSearch("");
-      setAwardBadge(null);
-      setAwardNote("");
-      setAwardMatchId("");
+      const merged: BatchAwardResult = {
+        badgeType: awardResult.badgeType,
+        succeeded: [...awardResult.succeeded, ...retryOutcome.succeeded],
+        skipped: [...awardResult.skipped, ...retryOutcome.skipped],
+        failed: retryOutcome.failed,
+      };
+      setAwardResult(merged);
+      await publishAwardPost(
+        awardResult.badgeType,
+        retryOutcome.succeeded.map((s) => s.playerName),
+      );
+
+      if (merged.failed.length === 0) {
+        setAwardPlayers([]);
+        setAwardSearch("");
+        setAwardBadge(null);
+        setAwardNote("");
+        setAwardMatchId("");
+      } else {
+        setAwardPlayers(merged.failed.map((f) => f.playerId));
+      }
     } finally {
       setIsAwarding(false);
     }
@@ -186,32 +299,50 @@ export function BadgesTab({
     }
   };
 
-  const existingBadgeTypes = (playerId: string): Set<BadgeType> => {
-    const playerBadges = badgesByPlayer.get(playerId) || [];
-    return new Set(playerBadges.map((b) => b.badgeType));
-  };
+  const inactiveBadgeTypes = useMemo(() => {
+    const set = new Set<string>();
+    for (const def of customDefs) {
+      if (!isBadgeTypeActive(def) && !Object.prototype.hasOwnProperty.call(BUILTIN_BADGE_CATALOG, def.id)) {
+        set.add(def.id);
+      }
+    }
+    return set;
+  }, [customDefs]);
 
-  const availableBadgesForPlayers = (playerIds: string[]): BadgeType[] => {
-    return allBadgeTypes.filter((bt) => {
-      // Player of the Weekend is granted only through its weekly workflow (one per weekend).
+  const availableBadgesForPlayers = (playerIds: string[]): BadgeType[] =>
+    getAvailableBadgesForPlayers(
+      allBadgeTypes,
+      playerIds,
+      existingBadgesByPlayerMap,
+      stackableSet,
+      inactiveBadgeTypes,
+    ).filter((bt) => {
       if (SYSTEM_AWARDED_BADGES.has(bt)) return false;
-      if (stackableSet.has(bt)) return true;
-      return playerIds.some(pid => !existingBadgeTypes(pid).has(bt));
+      return true;
     });
-  };
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
   const openNewDefForm = () => {
     setEditingDef(null);
-    setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false });
+    setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false, category: "custom", description: "", criteria: "" });
     setShowDefForm(true);
     setShowIconPicker(false);
   };
 
   const openEditDefForm = (def: BadgeTypeDef) => {
     setEditingDef(def);
-    setDefForm({ id: def.id, label: def.label, short: def.short, tier: def.tier, emoji: def.emoji, stackable: def.stackable });
+    setDefForm({
+      id: def.id,
+      label: def.label,
+      short: def.short,
+      tier: def.tier,
+      emoji: def.emoji,
+      stackable: def.stackable,
+      category: def.category || "custom",
+      description: def.description || "",
+      criteria: def.criteria || "",
+    });
     setShowDefForm(true);
     setShowIconPicker(false);
   };
@@ -223,6 +354,8 @@ export function BadgesTab({
 
     setIsSavingDef(true);
     try {
+      const description = defForm.description.trim();
+      const criteria = defForm.criteria.trim();
       if (editingDef) {
         await store.updateBadgeTypeDef(id, {
           label: defForm.label.trim(),
@@ -230,6 +363,9 @@ export function BadgesTab({
           tier: defForm.tier,
           emoji: defForm.emoji.trim(),
           stackable: defForm.stackable,
+          category: defForm.category,
+          ...(description ? { description } : {}),
+          ...(criteria ? { criteria } : {}),
         });
       } else {
         await store.addBadgeTypeDef({
@@ -239,11 +375,14 @@ export function BadgesTab({
           tier: defForm.tier,
           emoji: defForm.emoji.trim(),
           stackable: defForm.stackable,
+          category: defForm.category,
+          ...(description ? { description } : {}),
+          ...(criteria ? { criteria } : {}),
           order: customDefs.length + 100,
         });
       }
       setEditingDef(null);
-      setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false });
+      setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false, category: "custom", description: "", criteria: "" });
       setShowDefForm(false);
       setShowIconPicker(false);
     } finally {
@@ -254,6 +393,10 @@ export function BadgesTab({
   const handleDeleteDef = async (defId: string) => {
     await store.deleteBadgeTypeDef(defId);
     setConfirmDeleteDef(null);
+  };
+
+  const handleToggleActiveDef = async (def: BadgeTypeDef) => {
+    await store.updateBadgeTypeDef(def.id, { active: !isBadgeTypeActive(def) });
   };
 
   const badgesExistForType = (typeId: string) => badges.some(b => b.badgeType === typeId);
@@ -578,16 +721,69 @@ export function BadgesTab({
                 />
               </div>
 
-              <button
-                onClick={handleAward}
-                disabled={isAwarding || !awardPlayers.length}
-                className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-lg hover:brightness-110 transition disabled:opacity-50"
-              >
-                {isAwarding
-                  ? "Awarding..."
-                  : `Award ${getBadgeMeta(awardBadge, customDefs).label} to ${awardPlayers.length} player${awardPlayers.length > 1 ? "s" : ""}`}
-              </button>
+              {(() => {
+                const { eligible, skipped } = getEligiblePlayersForBadge(
+                  awardPlayers,
+                  awardBadge,
+                  existingBadgesByPlayerMap,
+                  stackableSet,
+                );
+                return (
+                  <button
+                    onClick={handleAward}
+                    disabled={isAwarding || eligible.length === 0}
+                    className="w-full bg-accent text-text-accent font-bold py-2.5 rounded-lg hover:brightness-110 transition disabled:opacity-50"
+                  >
+                    {isAwarding
+                      ? "Awarding..."
+                      : `Award ${getBadgeMeta(awardBadge, customDefs).label} to ${eligible.length} player${eligible.length !== 1 ? "s" : ""}${
+                          skipped.length > 0 ? ` (${skipped.length} skipped)` : ""
+                        }`}
+                  </button>
+                );
+              })()}
             </>
+          )}
+
+          {awardResult && (
+            <div className="rounded-lg border border-border bg-surface-hover p-3 space-y-2 text-xs" data-testid="badge-award-outcome">
+              <div className="flex items-center justify-between font-bold text-text-primary">
+                <span>Award Summary ({getBadgeMeta(awardResult.badgeType, customDefs).label})</span>
+                <button
+                  type="button"
+                  onClick={() => setAwardResult(null)}
+                  className="text-text-muted hover:text-text-primary"
+                  aria-label="Dismiss award summary"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {awardResult.succeeded.length > 0 && (
+                <p className="text-emerald-600 font-semibold">
+                  Succeeded ({awardResult.succeeded.length}): {awardResult.succeeded.map((s) => s.playerName).join(", ")}
+                </p>
+              )}
+              {awardResult.skipped.length > 0 && (
+                <p className="text-amber-600 font-semibold">
+                  Skipped ({awardResult.skipped.length}): {awardResult.skipped.map((s) => `${s.playerName}${s.reason ? ` (${s.reason})` : ""}`).join(", ")}
+                </p>
+              )}
+              {awardResult.failed.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-red-600 font-semibold">
+                    Failed ({awardResult.failed.length}): {awardResult.failed.map((f) => `${f.playerName}${f.reason ? ` (${f.reason})` : ""}`).join(", ")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRetryFailed}
+                    disabled={isAwarding}
+                    className="px-3 py-1.5 rounded-md bg-scarlet text-white font-bold hover:brightness-110 disabled:opacity-50"
+                  >
+                    {isAwarding ? "Retrying..." : `Retry Failed (${awardResult.failed.length})`}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -721,6 +917,44 @@ export function BadgesTab({
                   </div>
                 )}
 
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Category</label>
+                    <select
+                      value={defForm.category}
+                      onChange={(e) => setDefForm((f) => ({ ...f, category: e.target.value as BadgeCategory }))}
+                      className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary"
+                    >
+                      <option value="custom">Custom</option>
+                      <option value="performance">Performance</option>
+                      <option value="milestone">Milestone</option>
+                      <option value="club">Club</option>
+                      <option value="tenure">Tenure</option>
+                      <option value="special">Special</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Description</label>
+                    <input
+                      type="text"
+                      value={defForm.description}
+                      onChange={(e) => setDefForm((f) => ({ ...f, description: e.target.value }))}
+                      placeholder="What this badge recognises"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary placeholder:text-text-primary/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest mb-0.5 block">Criteria</label>
+                    <input
+                      type="text"
+                      value={defForm.criteria}
+                      onChange={(e) => setDefForm((f) => ({ ...f, criteria: e.target.value }))}
+                      placeholder="How a player earns it"
+                      className="w-full bg-surface-hover border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary placeholder:text-text-primary/30"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
                     <input
@@ -747,7 +981,7 @@ export function BadgesTab({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { setShowDefForm(false); setShowIconPicker(false); setEditingDef(null); setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false }); }}
+                    onClick={() => { setShowDefForm(false); setShowIconPicker(false); setEditingDef(null); setDefForm({ id: "", label: "", short: "", tier: "bronze", emoji: "", stackable: false, category: "custom", description: "", criteria: "" }); }}
                     className="flex-1 py-2 border border-border rounded-lg text-text-secondary text-sm hover:bg-surface-hover"
                   >
                     Cancel
@@ -769,8 +1003,9 @@ export function BadgesTab({
               <div className="space-y-2">
                 <h4 className="text-xs text-text-muted uppercase tracking-widest">Custom Badges ({customDefs.length})</h4>
                 {customDefs.map((def) => {
-                  const colors = getBadgeTierColors(def.tier);
                   const hasAwards = badgesExistForType(def.id);
+                  const active = isBadgeTypeActive(def);
+                  const isBuiltin = Object.prototype.hasOwnProperty.call(BUILTIN_BADGE_CATALOG, def.id);
                   return (
                     <div
                       key={def.id}
@@ -778,12 +1013,31 @@ export function BadgesTab({
                     >
                       <BadgeIcon badgeType={def.id} size={36} customDefs={customDefs} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-text-primary truncate">{def.label}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold text-text-primary truncate">{def.label}</p>
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                              active ? "bg-emerald-500/15 text-emerald-700" : "bg-amber-500/15 text-amber-700"
+                            }`}
+                          >
+                            {active ? "Active" : "Archived"}
+                          </span>
+                        </div>
                         <p className="text-[10px] text-text-muted">
                           {def.short}{def.stackable && " · stackable"}
                         </p>
                       </div>
                       <div className="flex gap-1">
+                        {!isBuiltin && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActiveDef(def)}
+                            className="px-2 py-1 rounded-lg border border-border text-[10px] font-bold text-text-secondary hover:text-text-primary hover:bg-surface transition"
+                            title={active ? "Archive badge type" : "Restore badge type"}
+                          >
+                            {active ? "Archive" : "Restore"}
+                          </button>
+                        )}
                         <button
                           onClick={() => openEditDefForm(def)}
                           className="p-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:bg-surface-hover transition"
@@ -793,8 +1047,9 @@ export function BadgesTab({
                         </button>
                         <button
                           onClick={() => setConfirmDeleteDef(def.id)}
-                          className="p-1.5 rounded-lg border border-red-500/30 text-red-400/50 hover:text-red-400 hover:bg-red-500/10 transition"
-                          title="Delete"
+                          disabled={hasAwards}
+                          className="p-1.5 rounded-lg border border-red-500/30 text-red-400/50 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={hasAwards ? "Archive instead — historical awards exist" : "Delete"}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

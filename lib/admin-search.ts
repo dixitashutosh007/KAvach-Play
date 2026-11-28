@@ -471,10 +471,13 @@ export function executeAdminSearch(
   if (permitted.has("badges")) {
     const items: AdminSearchResultItem[] = [];
     for (const b of dataset.badges || []) {
+      const pid = str(b.playerId);
+      const linkedPlayer = pid ? playerById.get(pid) : undefined;
+      if (players.length > 0 && pid && (!linkedPlayer || linkedPlayer.mergedInto)) continue;
       const def = b.badgeType ? badgeDefById.get(str(b.badgeType)) : undefined;
       const badgeName = def ? str(def.label) : str(b.badgeType);
       const awardedDate = formatTimestamp(b.awardedAt);
-      const recipient = str(b.playerName) || str(playerById.get(str(b.playerId))?.name);
+      const recipient = str(linkedPlayer?.name) || str(b.playerName);
       if (!matchesQuery(q, badgeName, recipient, awardedDate, b.note)) continue;
 
       items.push({
@@ -493,7 +496,10 @@ export function executeAdminSearch(
   if (permitted.has("catches")) {
     const items: AdminSearchResultItem[] = [];
     for (const c of dataset.catches || []) {
-      const playerName = str(c.playerName) || str(playerById.get(str(c.playerId))?.name);
+      const pid = str(c.playerId);
+      const linkedPlayer = pid ? playerById.get(pid) : undefined;
+      if (players.length > 0 && pid && (!linkedPlayer || linkedPlayer.mergedInto)) continue;
+      const playerName = str(linkedPlayer?.name) || str(c.playerName);
       const m = c.matchId ? matchById.get(str(c.matchId)) : undefined;
       const matchLabel = m ? `vs ${str(m.opponent)} (${str(m.date)})` : "";
       const catchTypeLabel = c.type === "dropped" ? "Dropped Catch" : "Stunning Catch";

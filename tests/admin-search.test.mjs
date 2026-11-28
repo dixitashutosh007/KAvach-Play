@@ -692,3 +692,33 @@ test("Header and page integration preserve PlayerGlobalSearch and wire AdminGlob
   assert.equal(pageSrc.includes("<AdminGlobalSearchModal"), true);
   assert.equal(pageSrc.includes('e.key.toLowerCase() === "k"'), true);
 });
+
+test("executeAdminSearch excludes orphaned badges and catches referencing deleted or merged players", () => {
+  const roles = { isSuperAdmin: false, isClubAdmin: true, isFinanceAdmin: false };
+  const dataset = {
+    players: [
+      { id: "p-active", name: "Active Player" },
+      { id: "p-merged", name: "Merged Player", mergedInto: "p-active" },
+    ],
+    badges: [
+      { id: "b-ok", playerId: "p-active", playerName: "Active Player", badgeType: "century", note: "OrphanCheck" },
+      { id: "b-deleted", playerId: "p-deleted", playerName: "Deleted Player", badgeType: "century", note: "OrphanCheck" },
+      { id: "b-merged", playerId: "p-merged", playerName: "Merged Player", badgeType: "century", note: "OrphanCheck" },
+    ],
+    catches: [
+      { id: "c-ok", playerId: "p-active", playerName: "Active Player", type: "stunning", count: 1, comment: "OrphanCheck" },
+      { id: "c-deleted", playerId: "p-deleted", playerName: "Deleted Player", type: "stunning", count: 1, comment: "OrphanCheck" },
+    ],
+  };
+
+  const res = executeAdminSearch(dataset, "OrphanCheck", roles);
+  const byCat = new Map(res.groups.map((g) => [g.category, g]));
+  assert.deepEqual(
+    byCat.get("badges").items.map((i) => i.id),
+    ["b-ok"],
+  );
+  assert.deepEqual(
+    byCat.get("catches").items.map((i) => i.id),
+    ["c-ok"],
+  );
+});

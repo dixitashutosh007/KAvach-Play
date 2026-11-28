@@ -39,6 +39,11 @@ export async function POST(req: Request) {
   if (requestedId && !isSafeId(requestedId)) {
     return NextResponse.json({ error: "Invalid stat record id." }, { status: 400 });
   }
+  const hasExpectedUpdatedAt = body?.expectedUpdatedAt !== undefined && body?.expectedUpdatedAt !== null;
+  const expectedUpdatedAt = hasExpectedUpdatedAt ? Number(body.expectedUpdatedAt) : null;
+  if (hasExpectedUpdatedAt && (!Number.isFinite(expectedUpdatedAt) || (expectedUpdatedAt as number) < 0)) {
+    return NextResponse.json({ error: "Invalid expectedUpdatedAt timestamp." }, { status: 400 });
+  }
 
   const db = getServerFirestore();
   try {
@@ -72,6 +77,37 @@ export async function POST(req: Request) {
         const old = existingSnap.data() || {};
         if (old.playerId !== playerId || Number(old.year) !== year) {
           throw new RequestError(409, "Stat record belongs to a different player or year.");
+        }
+        const currentUpdatedAtMs =
+          typeof old.updatedAt?.toMillis === "function"
+            ? old.updatedAt.toMillis()
+            : typeof old.updatedAt === "number" && Number.isFinite(old.updatedAt)
+              ? old.updatedAt
+              : null;
+        if (
+          expectedUpdatedAt !== null &&
+          (currentUpdatedAtMs === null || currentUpdatedAtMs !== expectedUpdatedAt)
+        ) {
+          throw new RequestError(
+            409,
+            "This stat record was modified by another admin. Please refresh and try again.",
+          );
+        }
+        if (Number(old.runs ?? 0) === runs && Number(old.wickets ?? 0) === wickets) {
+          return {
+            id: targetId,
+            playerId,
+            year,
+            runs,
+            wickets,
+            action: "unchanged" as const,
+            ...(duplicateIds.length > 0
+              ? {
+                  duplicateWarning: `${duplicateIds.length} other duplicate record(s) exist for ${year}.`,
+                  duplicateIds,
+                }
+              : {}),
+          };
         }
         tx.update(statRef, {
           runs,

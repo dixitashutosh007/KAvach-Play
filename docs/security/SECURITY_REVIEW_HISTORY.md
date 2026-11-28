@@ -65,16 +65,26 @@ The implementation agent (Antigravity) executed and reported the following resul
 - `npm run build`: passed (43/43 static pages).
 - `npx playwright test e2e/access-control-reconciliation.spec.ts --project="Desktop Chrome" --project="Mobile Chrome"`: 4 passed, 0 failed, 0 skipped.
 
-### 2.3 Independently Reviewed Controls
-- **ChatGPT (Independent Read-Only Reviewer):** Reviewed successive Phase 2 diffs (`962e1fb` through `e146be2`), confirming improvements across audit integrity, pagination, rate limiting, Super Admin claim consistency, fail-closed revocation, player delete/unlink guards, and migration runner isolation, and requested the `bf8e2c7` evidence package for final Phase 2 security sign-off.
-- **Pending Sign-Off:** Formal ChatGPT sign-off on `bf8e2c7` (`planFingerprint` & already-migrated tamper checks) has not yet been recorded as received in this repository.
+### 2.3 Independently Reviewed & Owner-Closed Controls
+- **ChatGPT (Independent Read-Only Reviewer):** Reviewed successive Phase 2 diffs (`962e1fb` through `e146be2`), confirming improvements across audit integrity, pagination, rate limiting, Super Admin claim consistency, fail-closed revocation, player delete/unlink guards, and migration runner isolation. ChatGPT did **not** independently execute local test suites; test execution was performed and reported by Antigravity.
+- **Phase 2 Formal Closure (`bf8e2c75735d27487e18892bd0a488efaa58b146`):** **CLOSED — Owner approved** based on verified source controls (runner isolation via `NEXT_RUNTIME` guard, `Symbol` + `WeakSet` execution authorization, atomic transaction lease fencing, SHA-256 `planFingerprint` + already-migrated tamper checks, and 20-query + identity-unlink `DELETE /api/admin/players` guards) and reported/re-verified functional (`1,284/1,284`) and Firebase Emulator (`562/562`) test suites.
+- **Phase 3 Formal Acceptance (`PHASE_3_PRODUCTION_READINESS_REPORT.md`):** **ACCEPTED — CONDITIONAL GO** (`P0: 0`, `P1: 2` operational gates `OPS-P1-01` and `OPS-P1-02`, `P2: 3` deferred improvements).
 
-### 2.4 Outstanding Verification Items
-1. **Formal Phase 2 Independent Sign-Off:** Reviewer acceptance of the `bf8e2c7` source-level evidence package.
-2. **Staging Environment Confirmation (`OD-01`):** Product owner confirmation of a dedicated staging URL / Firebase database mapping before running live deployment or staging E2E tests.
-3. **Pre-Deploy Role Consolidation Migration:** Running `node scripts/migrate-role-consolidation.mjs --database=<id>` (dry-run review, then `--execute` with owner approval) **before** deploying D-22 rules/app to production.
-4. **Residual Rule Alignment Check:** Confirming whether legacy `isMatchAdminPaymentCreate` / `isMatchAdminPaymentUpdate` (which now resolve to `isClubAdmin()` via `isMatchAdmin()` alias) should remain as-is for match-day collection or be further narrowed in a future release.
-5. **Production Deployment Approval:** Explicit product owner authorization (`AGENTS.md` §3).
+### 2.4 Formal Phase Closure Decisions
 
-### 2.5 Accepted Residual Risks
+| Phase | Decision | Basis / Reference |
+|---|---|---|
+| Phase 0 – Security Governance | **CLOSED** | Baseline & risk register established; superseded by Phase 1–3 governance docs |
+| Phase 1 – Core Security Remediation | **CLOSED** | Auth, Firestore rules, Razorpay & identity controls implemented and emulator-tested |
+| Phase 2 – Final Security Remediation | **CLOSED – Owner approved** | Final commit `bf8e2c75735d27487e18892bd0a488efaa58b146`; approved based on source & test evidence |
+| Phase 3 – Production Readiness | **ACCEPTED – CONDITIONAL GO** | [`PHASE_3_PRODUCTION_READINESS_REPORT.md`](PHASE_3_PRODUCTION_READINESS_REPORT.md) (`P0: 0`, `P1: 2`, `P2: 3`) |
+| Phase 4 – Operational Readiness | **AUTHORIZED TO PROCEED** | Pre-pilot operational gates (`OPS-P1-01`, `OPS-P1-02`) & staging validation |
+| Phase 5 – Controlled Pilot | **Pending Phase 4 completion** | Requires Phase 4 operational gates satisfied |
+| Phase 6 – Production Launch | **Pending successful pilot** | Requires pilot acceptance & explicit launch approval |
+
+### 2.5 Outstanding Operational Gates (Carried into Phase 4)
+1. **`OPS-P1-01` — D-22 Migration & Staging Mapping (`OD-01`):** Confirm staging environment mapping, review dry-run of `scripts/migrate-role-consolidation.mjs --database=<id>`, and execute with owner approval **before** deploying D-22 rules/app.
+2. **`OPS-P1-02` — Production Operations & Cloud Verification:** Verify GCP/Firestore backup/PITR, live Amplify/Firebase runtime secrets, Razorpay live/test mode isolation, admin Google 2SV, and recovery procedures.
+
+### 2.6 Accepted Residual Risks
 Tracked in [`docs/security/ACCEPTED_RISKS.md`](ACCEPTED_RISKS.md).

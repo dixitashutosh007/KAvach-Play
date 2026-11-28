@@ -14,6 +14,19 @@ export interface ValidatedPlayerStat {
   wickets: number;
 }
 
+function parseStrictWholeNumber(raw: unknown): number | null {
+  if (typeof raw === "number") {
+    return Number.isInteger(raw) ? raw : null;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isInteger(n) ? n : null;
+  }
+  return null;
+}
+
 export function validatePlayerStatInput(
   input: PlayerStatInput,
   currentYear: number = new Date().getFullYear(),
@@ -22,18 +35,18 @@ export function validatePlayerStatInput(
     return { ok: false, error: "Select a valid player." };
   }
 
-  const year = typeof input.year === "string" ? Number(input.year.trim()) : Number(input.year);
-  if (!Number.isInteger(year) || year < 1990 || year > currentYear + 1) {
+  const year = parseStrictWholeNumber(input.year);
+  if (year === null || year < 1990 || year > currentYear + 1) {
     return { ok: false, error: `Year must be a whole number between 1990 and ${currentYear + 1}.` };
   }
 
-  const runs = typeof input.runs === "string" ? Number(input.runs.trim()) : Number(input.runs);
-  if (!Number.isInteger(runs) || runs < 0 || runs > 100000) {
+  const runs = parseStrictWholeNumber(input.runs);
+  if (runs === null || runs < 0 || runs > 100000) {
     return { ok: false, error: "Runs must be a non-negative whole number." };
   }
 
-  const wickets = typeof input.wickets === "string" ? Number(input.wickets.trim()) : Number(input.wickets);
-  if (!Number.isInteger(wickets) || wickets < 0 || wickets > 10000) {
+  const wickets = parseStrictWholeNumber(input.wickets);
+  if (wickets === null || wickets < 0 || wickets > 10000) {
     return { ok: false, error: "Wickets must be a non-negative whole number." };
   }
 

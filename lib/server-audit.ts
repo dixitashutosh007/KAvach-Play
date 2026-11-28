@@ -18,6 +18,7 @@ export interface ServerAuditEntry {
   changes: { field: string; oldValue?: string; newValue?: string }[];
   summary: string;
   id?: string;
+  requestHash?: string;
 }
 
 export async function writeServerAudit(

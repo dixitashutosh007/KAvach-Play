@@ -546,6 +546,10 @@ export type BadgeType = string;
 
 export type BadgeTier = "bronze" | "silver" | "gold" | "diamond";
 
+export type BadgeCategory = "tenure" | "milestone" | "performance" | "club" | "special" | "custom";
+
+export type BadgeAwardMode = "manual" | "auto_tenure" | "auto_stats" | "system_potw";
+
 export type BadgeTypeDef = {
   id: string;
   label: string;
@@ -554,6 +558,17 @@ export type BadgeTypeDef = {
   emoji: string;
   stackable: boolean;
   order: number;
+  category?: BadgeCategory;
+  description?: string;
+  criteria?: string;
+  artworkKey?: string;
+  /**
+   * Lifecycle flag:
+   * - `true` or `undefined` (legacy definitions): active and available for new awards.
+   * - `false`: archived/inactive — blocked for new awards, while historical `badges` remain visible.
+   */
+  active?: boolean;
+  awardMode?: BadgeAwardMode;
   createdAt?: any;
   updatedAt?: any;
 };

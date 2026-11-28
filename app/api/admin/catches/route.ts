@@ -74,10 +74,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
   const { playerId, type, count, matchId, comment } = parsed.value;
-  const idempotencyKey =
-    typeof body?.idempotencyKey === "string" && isSafeId(body.idempotencyKey.trim())
-      ? `catch_${body.idempotencyKey.trim()}`
-      : null;
+  let idempotencyKey: string | null = null;
+  if (body?.idempotencyKey !== undefined && body?.idempotencyKey !== null) {
+    if (typeof body.idempotencyKey !== "string" || !isSafeId(body.idempotencyKey.trim())) {
+      return NextResponse.json({ error: "Invalid idempotencyKey." }, { status: 400 });
+    }
+    idempotencyKey = `catch_${body.idempotencyKey.trim()}`;
+  }
 
   const db = getServerFirestore();
   try {

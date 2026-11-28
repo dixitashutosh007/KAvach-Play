@@ -12,9 +12,16 @@ export function createCatchBatchState(): CatchBatchState {
   };
 }
 
+export interface CatchBatchFailure {
+  playerId: string;
+  playerName?: string;
+  reason: string;
+}
+
 export interface CatchBatchResult {
   allSucceeded: boolean;
   succeededCount: number;
+  failedPlayers: CatchBatchFailure[];
   failedPlayerId?: string;
   errorMessage?: string;
 }
@@ -57,6 +64,8 @@ export async function executeCatchBatch({
   }
 
   let succeededCount = 0;
+  const failedPlayers: CatchBatchFailure[] = [];
+
   for (const pid of selectedPlayers) {
     if (state.succeededPlayerIds.has(pid)) {
       continue;
@@ -64,12 +73,11 @@ export async function executeCatchBatch({
     const rawName = getPlayerName(pid);
     const playerName = typeof rawName === "string" ? rawName.trim() : "";
     if (!playerName) {
-      return {
-        allSucceeded: false,
-        succeededCount,
-        failedPlayerId: pid,
-        errorMessage: `Selected player (${pid}) is no longer available. Remove them or retry once active.`,
-      };
+      failedPlayers.push({
+        playerId: pid,
+        reason: `Selected player (${pid}) is no longer available.`,
+      });
+      continue;
     }
     const idempotencyKey = state.pendingKeys[pid];
     try {
@@ -87,14 +95,30 @@ export async function executeCatchBatch({
       delete state.pendingKeys[pid];
       succeededCount += 1;
     } catch (err: any) {
-      return {
-        allSucceeded: false,
-        succeededCount,
-        failedPlayerId: pid,
-        errorMessage: err?.message || `Failed to record catch for ${playerName}. Please retry.`,
-      };
+      failedPlayers.push({
+        playerId: pid,
+        playerName,
+        reason: err?.message || `Failed to record catch for ${playerName}.`,
+      });
     }
   }
 
-  return { allSucceeded: true, succeededCount };
+  if (failedPlayers.length > 0) {
+    const summary = failedPlayers
+      .map((f) => `${f.playerName || f.playerId}: ${f.reason}`)
+      .join("; ");
+    const prefix =
+      succeededCount > 0
+        ? `${succeededCount} catch${succeededCount === 1 ? "" : "es"} saved; ${failedPlayers.length} failed: `
+        : "";
+    return {
+      allSucceeded: false,
+      succeededCount,
+      failedPlayers,
+      failedPlayerId: failedPlayers[0].playerId,
+      errorMessage: `${prefix}${summary} Please retry.`,
+    };
+  }
+
+  return { allSucceeded: true, succeededCount, failedPlayers: [] };
 }

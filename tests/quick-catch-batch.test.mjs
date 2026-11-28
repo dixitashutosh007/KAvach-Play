@@ -61,14 +61,16 @@ test("partial success followed by failure preserves failed/pending keys and retr
   });
 
   assert.equal(firstAttempt.allSucceeded, false);
-  assert.equal(firstAttempt.succeededCount, 1);
+  assert.equal(firstAttempt.succeededCount, 2);
+  assert.equal(firstAttempt.failedPlayers.length, 1);
   assert.equal(firstAttempt.failedPlayerId, "p2");
-  assert.equal(firstAttempt.errorMessage, "Network timeout");
-  // p1 key cleared; p2 and p3 keys preserved
+  assert.match(firstAttempt.errorMessage || "", /Network timeout/);
+  // p1 and p3 succeeded and had their keys cleared; only p2 key preserved
   assert.equal("p1" in state.pendingKeys, false);
+  assert.equal("p3" in state.pendingKeys, false);
   assert.equal(state.pendingKeys.p2, "key-2");
-  assert.equal(state.pendingKeys.p3, "key-3");
   assert.equal(state.succeededPlayerIds.has("p1"), true);
+  assert.equal(state.succeededPlayerIds.has("p3"), true);
 
   // Retry after transient failure
   shouldFailP2 = false;
@@ -86,15 +88,15 @@ test("partial success followed by failure preserves failed/pending keys and retr
   });
 
   assert.equal(retryAttempt.allSucceeded, true);
-  assert.equal(retryAttempt.succeededCount, 2);
-  // p1 was NOT re-submitted; p2 reused key-2; p3 used key-3
+  assert.equal(retryAttempt.succeededCount, 1);
+  // p1 and p3 were NOT re-submitted; only p2 retried with key-2
   assert.deepEqual(
     calls.map((c) => [c.playerId, c.idempotencyKey]),
     [
       ["p1", "key-1"],
       ["p2", "key-2"],
-      ["p2", "key-2"],
       ["p3", "key-3"],
+      ["p2", "key-2"],
     ],
   );
   assert.deepEqual(state.pendingKeys, {});
@@ -149,17 +151,19 @@ test("unresolved selected player returns failure, preserves pending keys and suc
     },
   });
 
-  // Never reports allSucceeded: true when p2 could not be resolved
+  // Never reports allSucceeded: true when p2 could not be resolved; p1 and p3 still persist once
   assert.equal(firstAttempt.allSucceeded, false);
-  assert.equal(firstAttempt.succeededCount, 1);
+  assert.equal(firstAttempt.succeededCount, 2);
+  assert.equal(firstAttempt.failedPlayers.length, 1);
   assert.equal(firstAttempt.failedPlayerId, "p2");
   assert.match(firstAttempt.errorMessage || "", /p2/);
   assert.equal(state.succeededPlayerIds.has("p1"), true);
+  assert.equal(state.succeededPlayerIds.has("p3"), true);
   assert.equal("p1" in state.pendingKeys, false);
+  assert.equal("p3" in state.pendingKeys, false);
   assert.equal(state.pendingKeys.p2, "key-2");
-  assert.equal(state.pendingKeys.p3, "key-3");
 
-  // Retry once p2 becomes active again: p1 is NOT re-submitted, p2 reuses key-2
+  // Retry once p2 becomes active again: p1 and p3 are NOT re-submitted, p2 reuses key-2
   p2Available = true;
   const retryAttempt = await executeCatchBatch({
     selectedPlayers: ["p1", "p2", "p3"],
@@ -175,13 +179,13 @@ test("unresolved selected player returns failure, preserves pending keys and suc
   });
 
   assert.equal(retryAttempt.allSucceeded, true);
-  assert.equal(retryAttempt.succeededCount, 2);
+  assert.equal(retryAttempt.succeededCount, 1);
   assert.deepEqual(
     calls.map((c) => [c.playerId, c.idempotencyKey]),
     [
       ["p1", "key-1"],
-      ["p2", "key-2"],
       ["p3", "key-3"],
+      ["p2", "key-2"],
     ],
   );
   assert.deepEqual(state.pendingKeys, {});

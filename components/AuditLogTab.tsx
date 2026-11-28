@@ -164,7 +164,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       : ENTITY_OPTIONS.filter((o) => permittedEntities.includes(o.value));
 
   if (accessDenied) {
-    return <AccessDenied feature="the Activity Log" requiredRole="Finance Admins and Super Admins" />;
+    return <AccessDenied feature="the Activity Log" requiredRole="Super Admins, Club Admins, and Finance Admins" />;
   }
 
   return (

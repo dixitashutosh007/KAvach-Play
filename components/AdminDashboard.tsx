@@ -1649,6 +1649,21 @@ function RecordCatchesModal({
     onClose();
   };
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isSavingRef.current || isSaving) {
+          e.preventDefault();
+          return;
+        }
+        resetBatchState();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isSaving, onClose]);
+
   const activePlayers = useMemo(
     () =>
       store.players
@@ -1721,6 +1736,7 @@ function RecordCatchesModal({
       onClick={handleClose}
     >
       <div
+        data-testid="quick-catch-modal"
         className="bg-surface rounded-2xl p-5 max-w-md w-full border border-border space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1730,8 +1746,10 @@ function RecordCatchesModal({
             Record Catches
           </h3>
           <button
+            data-testid="quick-catch-close-btn"
             onClick={handleClose}
             disabled={isSaving}
+            aria-label="Close catch modal"
             className="text-text-muted hover:text-text-primary p-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <X className="w-4 h-4" />
@@ -1900,6 +1918,7 @@ function RecordCatchesModal({
         )}
 
         <button
+          data-testid="quick-catch-save-btn"
           onClick={handleSave}
           disabled={isSaving || !isValid}
           className={`w-full font-bold py-2.5 rounded-xl transition shadow flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${

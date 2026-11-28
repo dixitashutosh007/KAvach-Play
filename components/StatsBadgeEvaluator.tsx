@@ -1,11 +1,16 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { serverTimestamp } from "firebase/firestore";
 import { useStore } from "@/hooks/useStore";
 import { Badge } from "@/lib/types";
 import { getBadgeMeta } from "./BadgeIcon";
 import { Award, CheckCircle, X, AlertTriangle } from "lucide-react";
+import { authedFetch } from "@/lib/authed-fetch";
+import {
+  evaluateCumulativeMilestones,
+  RUNS_MILESTONES,
+  WICKETS_MILESTONES,
+} from "@/lib/badge-milestones";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -33,110 +38,22 @@ type PlayerChange = {
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-const RUNS_MILESTONES = [
-  { key: "runs_1k",  threshold: 1000 },
-  { key: "runs_2k",  threshold: 2000 },
-  { key: "runs_5k",  threshold: 5000 },
-  { key: "runs_10k", threshold: 10000 },
-] as const;
-
-const WICKETS_MILESTONES = [
-  { key: "wickets_100", threshold: 100 },
-  { key: "wickets_200", threshold: 200 },
-  { key: "wickets_300", threshold: 300 },
-  { key: "wickets_500", threshold: 500 },
-] as const;
-
-const RUNS_BADGE_KEYS = RUNS_MILESTONES.map((m) => m.key);
-const WICKETS_BADGE_KEYS = WICKETS_MILESTONES.map((m) => m.key);
-
-/* ------------------------------------------------------------------ */
-/*  Core logic                                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Find the highest runs milestone the player qualifies for.
- * Grant only that one (if not already present).
- * Revoke all lower milestone badges that exist.
- */
 function evaluateRunsBadges(
   totalRuns: number,
   existingBadges: Badge[],
 ): { grant: string[]; revoke: Badge[] } {
-  const runsBadges = existingBadges.filter((b) =>
-    (RUNS_BADGE_KEYS as readonly string[]).includes(b.badgeType),
-  );
-
-  // Find the highest qualifying milestone (iterate from highest to lowest)
-  let targetKey: string | null = null;
-  for (let i = RUNS_MILESTONES.length - 1; i >= 0; i--) {
-    if (totalRuns >= RUNS_MILESTONES[i].threshold) {
-      targetKey = RUNS_MILESTONES[i].key;
-      break;
-    }
-  }
-
-  const grant: string[] = [];
-  const revoke: Badge[] = [];
-
-  if (targetKey === null) {
-    // No milestone reached -- revoke all existing runs badges
-    revoke.push(...runsBadges);
-  } else {
-    const hasTarget = runsBadges.some((b) => b.badgeType === targetKey);
-    if (!hasTarget) {
-      grant.push(targetKey);
-    }
-    // Revoke every runs badge that is NOT the target
-    for (const b of runsBadges) {
-      if (b.badgeType !== targetKey) {
-        revoke.push(b);
-      }
-    }
-  }
-
-  return { grant, revoke };
+  const existing = new Set(existingBadges.map((b) => b.badgeType));
+  const { missing } = evaluateCumulativeMilestones(totalRuns, RUNS_MILESTONES, existing);
+  return { grant: missing, revoke: [] };
 }
 
-/**
- * Find the highest wickets milestone the player qualifies for.
- * Grant only that one (if not already present).
- * Revoke all lower milestone badges that exist.
- */
 function evaluateWicketsBadges(
   totalWickets: number,
   existingBadges: Badge[],
 ): { grant: string[]; revoke: Badge[] } {
-  const wicketsBadges = existingBadges.filter((b) =>
-    (WICKETS_BADGE_KEYS as readonly string[]).includes(b.badgeType),
-  );
-
-  let targetKey: string | null = null;
-  for (let i = WICKETS_MILESTONES.length - 1; i >= 0; i--) {
-    if (totalWickets >= WICKETS_MILESTONES[i].threshold) {
-      targetKey = WICKETS_MILESTONES[i].key;
-      break;
-    }
-  }
-
-  const grant: string[] = [];
-  const revoke: Badge[] = [];
-
-  if (targetKey === null) {
-    revoke.push(...wicketsBadges);
-  } else {
-    const hasTarget = wicketsBadges.some((b) => b.badgeType === targetKey);
-    if (!hasTarget) {
-      grant.push(targetKey);
-    }
-    for (const b of wicketsBadges) {
-      if (b.badgeType !== targetKey) {
-        revoke.push(b);
-      }
-    }
-  }
-
-  return { grant, revoke };
+  const existing = new Set(existingBadges.map((b) => b.badgeType));
+  const { missing } = evaluateCumulativeMilestones(totalWickets, WICKETS_MILESTONES, existing);
+  return { grant: missing, revoke: [] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -267,42 +184,31 @@ export default function StatsBadgeEvaluator({
     setPhase("preview");
   }
 
-  /** Apply all grants and revokes */
+  /** Apply cumulative runs & wickets milestone grants via server-authoritative evaluation */
   async function handleApply() {
     setApplying(true);
-    let totalGrants = 0;
-    let totalRevokes = 0;
-
     try {
-      for (const change of changes) {
-        // Grants
-        for (const badgeKey of change.grant) {
-          await store.addBadge({
-            playerId: change.playerId,
-            playerName: change.playerName,
-            badgeType: badgeKey,
-            awardedBy: currentUserId,
-            awardedByName: currentUserName,
-            awardedAt: serverTimestamp(),
-            redeemed: false,
-          });
-          totalGrants++;
-        }
-
-        // Revokes
-        for (const badge of change.revoke) {
-          await store.deleteBadge(badge.id);
-          totalRevokes++;
-        }
+      const res = await authedFetch("/api/admin/badges/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: "stats" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Evaluation failed (${res.status}).`);
       }
-
+      const grantedCount = typeof data?.grantedCount === "number" ? data.grantedCount : 0;
+      const skippedCount = typeof data?.skippedCount === "number" ? data.skippedCount : 0;
+      const failedCount = typeof data?.failedCount === "number" ? data.failedCount : 0;
       setApplySummary(
-        `Applied ${totalGrants} grant${totalGrants !== 1 ? "s" : ""} and ${totalRevokes} revoke${totalRevokes !== 1 ? "s" : ""} across ${changes.length} player${changes.length !== 1 ? "s" : ""}.`,
+        `Granted ${grantedCount} cumulative stats milestone${grantedCount !== 1 ? "s" : ""}${
+          skippedCount > 0 ? ` (${skippedCount} already awarded)` : ""
+        }${failedCount > 0 ? ` · ${failedCount} failed (safe to retry)` : ""}. Historical awards preserved.`,
       );
       setPhase("done");
     } catch (err) {
-      console.error("Failed to apply changes", err);
-      setApplySummary("An error occurred while applying changes. Some changes may have been partially applied.");
+      console.error("Failed to apply stats milestones", err);
+      setApplySummary(err instanceof Error ? err.message : "An error occurred while applying changes.");
       setPhase("done");
     } finally {
       setApplying(false);

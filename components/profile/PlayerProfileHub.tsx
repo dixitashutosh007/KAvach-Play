@@ -103,11 +103,12 @@ export function PlayerProfileHub({
         </button>
         {panel === "personal" && <PersonalInfo player={player} appUser={appUser} onEdit={onEdit} />}
         {panel === "badges" && player && (
-          myBadges.length ? (
-            <MyBadgesSection badges={store.badges} playerId={player.id} badgeTypeDefs={store.badgeTypeDefs} />
-          ) : (
-            <Empty text="You haven't earned any badges yet." />
-          )
+          <MyBadgesSection
+            badges={store.badges}
+            playerId={player.id}
+            badgeTypeDefs={store.badgeTypeDefs}
+            player={player}
+          />
         )}
         {panel === "history" && <PaymentHistory store={store} playerId={player?.id} uid={user?.uid} />}
         {panel === "calendar" && player && <OutOfPlayPanel store={store} playerId={player.id} />}
@@ -291,11 +292,9 @@ function BadgesPreview({ badges, defs, onViewAll }: { badges: any[]; defs: any[]
         <h2 className="flex items-center gap-2 text-sm font-bold text-text-primary">
           <Award className="w-5 h-5 text-scarlet" aria-hidden="true" /> Your Badges ({badges.length})
         </h2>
-        {badges.length > 0 && (
-          <button type="button" onClick={onViewAll} data-testid="profile-badges-all" className="min-h-[44px] px-1 text-sm font-semibold text-scarlet hover:underline cursor-pointer">
-            View All
-          </button>
-        )}
+        <button type="button" onClick={onViewAll} data-testid="profile-badges-all" className="min-h-[44px] px-1 text-sm font-semibold text-scarlet hover:underline cursor-pointer">
+          {badges.length > 0 ? "View All" : "Explore Badges"}
+        </button>
       </div>
       {types.length === 0 ? (
         <p className="text-sm text-text-secondary">No badges yet — they appear here as you earn them.</p>
