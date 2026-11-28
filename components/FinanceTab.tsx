@@ -1103,8 +1103,13 @@ function AdminFinanceView({
   const { confirm: confirmAction } = useConfirm();
   type FinanceSubTab = "overview" | "matches" | "dues" | "razor" | "plans" | "fee" | "activity";
   const normalizeSubTab = (a?: string | null): FinanceSubTab => {
-    if (a === "overview" || a === "matches" || a === "dues" || a === "razor" || a === "plans" || a === "fee" || a === "activity") {
-      return a;
+    if (!a) return "overview";
+    const head = a.split(":")[0];
+    if (head === "dues_unpaid" || head === "dues") return "dues";
+    if (head === "matches" || head.startsWith("matches_date_")) return "matches";
+    if (head === "plans") return "plans";
+    if (head === "overview" || head === "razor" || head === "fee" || head === "activity") {
+      return head;
     }
     return "overview";
   };
@@ -1112,8 +1117,18 @@ function AdminFinanceView({
   // Follow quick actions / deep links while Finance is already open (D-19:
   // Reminders = "dues", Activity Log = "activity").
   useEffect(() => {
-    if (defaultAction) {
-      setSubTab(normalizeSubTab(defaultAction));
+    if (!defaultAction) return;
+    setSubTab(normalizeSubTab(defaultAction));
+    const parts = defaultAction.split(":");
+    if (parts[0] === "dues" && parts[1]?.startsWith("player_")) {
+      setSelectedProfilePlayerId(parts[1].replace("player_", ""));
+    } else if (parts[0] === "matches" && parts[1]) {
+      setFilterMatchId(parts[1]);
+      setExpandedMatchId(parts[1]);
+    } else if (parts[0].startsWith("matches_date_")) {
+      const dateStr = parts[0].replace("matches_date_", "");
+      setFilterStartDate(dateStr);
+      setFilterEndDate(dateStr);
     }
   }, [defaultAction]);
   const [searchPlayer, setSearchPlayer] = useState("");

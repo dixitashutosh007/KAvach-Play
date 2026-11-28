@@ -1,14 +1,16 @@
 import { useStore } from "@/hooks/useStore";
 import { Copy, MapPin, Plus, Edit2, Trash2, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export function GroundsTab({
   store,
   persona,
+  initialGroundId,
 }: {
   store: ReturnType<typeof useStore>;
   persona: string;
+  initialGroundId?: string | null;
 }) {
   const { confirm: confirmAction } = useConfirm();
   const isAdmin = persona === "admin";
@@ -50,6 +52,12 @@ export function GroundsTab({
     setIsAdding(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  useEffect(() => {
+    if (!initialGroundId) return;
+    const target = (store.grounds || []).find((g) => g.id === initialGroundId);
+    if (target) handleEdit(target);
+  }, [initialGroundId, store.grounds]);
 
   const handleDuplicate = (ground: any) => {
     store.addGround({

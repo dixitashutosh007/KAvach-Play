@@ -37,7 +37,7 @@ import { ProfileTab } from "@/components/ProfileTab";
 import { ProfileLinkNotice } from "@/components/ProfileLinkNotice";
 import { ProfileSyncDialog, profileSyncDismissKey } from "@/components/ProfileSyncDialog";
 import { PlayerGlobalSearchModal } from "@/components/search/PlayerGlobalSearch";
-import { AdminGlobalSearchModal } from "@/components/search/AdminGlobalSearch";
+import { AdminGlobalSearchModal, type SavedAdminSearchState } from "@/components/search/AdminGlobalSearch";
 import { validateMatchNavigation } from "@/lib/match-eligibility";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "@/components/ui/PullToRefreshIndicator";
@@ -132,6 +132,20 @@ export default function Home() {
   const { toast } = useToast();
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [adminSearchSavedState, setAdminSearchSavedState] = useState<SavedAdminSearchState | null>(null);
+  const [adminSearchReturnReady, setAdminSearchReturnReady] = useState(false);
+  const effectiveIsAdminModeRef = useRef(false);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (effectiveIsAdminModeRef.current && adminSearchSavedState && adminSearchReturnReady) {
+        setAdminSearchReturnReady(false);
+        setGlobalSearchOpen(true);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [adminSearchSavedState, adminSearchReturnReady]);
 
   useEffect(() => {
     if (!user) return;
@@ -777,6 +791,7 @@ export default function Home() {
   const isAuthorizedAdmin = isSuperAdmin || isFinanceAdmin || isClubAdmin;
   const isAdmin = isAuthorizedAdmin;
   const effectiveIsAdminMode = persona === "admin" && isAuthorizedAdmin;
+  effectiveIsAdminModeRef.current = effectiveIsAdminMode;
   // Mandatory profile fields every non-admin player must have populated
   // before they can use the app. If any of these are missing on next
   // open (even for existing users), we force them through the completion
@@ -903,7 +918,10 @@ export default function Home() {
         }}
         unreadCount={unreadCount}
         adminPendingCount={weekendPending}
-        onOpenSearch={persona === "player" || effectiveIsAdminMode ? () => setGlobalSearchOpen(true) : undefined}
+        onOpenSearch={persona === "player" || effectiveIsAdminMode ? () => {
+          if (effectiveIsAdminMode) setAdminSearchReturnReady(false);
+          setGlobalSearchOpen(true);
+        } : undefined}
         onSignOut={logOut}
       />
 
@@ -914,7 +932,15 @@ export default function Home() {
           isSuperAdmin={Boolean(isSuperAdmin)}
           isClubAdmin={Boolean(isClubAdmin)}
           isFinanceAdmin={Boolean(isFinanceAdmin)}
-          onNavigate={(tab, action) => setActiveTab(tab, action)}
+          preservedState={adminSearchSavedState}
+          onSaveState={(st) => setAdminSearchSavedState(st)}
+          onNavigate={(tab, action) => {
+            setAdminSearchReturnReady(true);
+            if (typeof window !== "undefined") {
+              window.history.pushState({ kavachAdminSearchReturn: true, tab, action }, "");
+            }
+            setActiveTab(tab, action);
+          }}
         />
       )}
 
@@ -1419,6 +1445,22 @@ export default function Home() {
               </AnimatePresence>
             ) : (
               <div className="space-y-6">
+                {adminSearchReturnReady && adminSearchSavedState && (
+                  <div className="flex items-center justify-between gap-2" data-testid="admin-back-to-search-bar">
+                    <button
+                      type="button"
+                      data-testid="admin-back-to-search"
+                      onClick={() => {
+                        setAdminSearchReturnReady(false);
+                        setGlobalSearchOpen(true);
+                      }}
+                      className="min-h-[40px] inline-flex items-center gap-1.5 px-3 rounded-xl bg-surface border border-border text-xs font-bold text-[#A30F2D] hover:bg-[#FCE8ED]/60 transition cursor-pointer shadow-xs"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 rotate-180" aria-hidden="true" />
+                      Back to Search (&ldquo;{adminSearchSavedState.query}&rdquo;)
+                    </button>
+                  </div>
+                )}
                 {/* The "Admin Console · <hub>" context banner was removed: the header
                     already shows the persona toggle (Player View) for admins, so the
                     banner only repeated it and cost vertical space on every admin page. */}
@@ -1442,6 +1484,7 @@ export default function Home() {
                           isFinanceAdmin={isFinanceAdmin}
                           isClubAdmin={isClubAdmin}
                           weekendPending={weekendPending}
+                          defaultAction={tabAction}
                         />
                       ) : (
                         <AccessDenied feature="Admin Home" requiredRole="administrators" />

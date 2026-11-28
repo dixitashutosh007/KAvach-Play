@@ -1,7 +1,18 @@
 import { FieldPath } from "firebase-admin/firestore";
+import type { AdminSearchDataset, AdminSearchRoleContext } from "./admin-search.ts";
 
 const PRODUCTION_PAGE_SIZE = 500;
+const CACHE_TTL_MS = 30_000;
+
 let testingPageSizeOverride: number | null = null;
+
+interface CacheEntry {
+  dataset: AdminSearchDataset;
+  expiresAt: number;
+}
+
+const datasetCache = new Map<string, CacheEntry>();
+const inFlightLoads = new Map<string, Promise<AdminSearchDataset>>();
 
 /**
  * Test-only override for cursor page size (disabled in production).
@@ -11,11 +22,65 @@ export function setSearchPageSizeForTesting(size: number | null) {
   testingPageSizeOverride = size;
 }
 
+export function clearAdminSearchCacheForTesting() {
+  datasetCache.clear();
+  inFlightLoads.clear();
+}
+
 export function getEffectiveSearchPageSize(): number {
   if (process.env.NODE_ENV !== "production" && testingPageSizeOverride && testingPageSizeOverride > 0) {
     return testingPageSizeOverride;
   }
   return PRODUCTION_PAGE_SIZE;
+}
+
+export function getRoleCacheKey(roles: AdminSearchRoleContext): string {
+  if (roles.isSuperAdmin) return "super";
+  if (roles.isClubAdmin && roles.isFinanceAdmin) return "club_finance";
+  if (roles.isClubAdmin) return "club";
+  if (roles.isFinanceAdmin) return "finance";
+  return "none";
+}
+
+/**
+ * Role-scoped short-TTL dataset cache with in-flight promise deduplication.
+ * Ensures Club Admin, Finance Admin, and Super Admin never share cached projections.
+ */
+export async function getOrLoadRoleScopedDataset(
+  roles: AdminSearchRoleContext,
+  loader: () => Promise<AdminSearchDataset>,
+  bypassCache = false,
+): Promise<{ dataset: AdminSearchDataset; cacheHit: boolean }> {
+  const key = getRoleCacheKey(roles);
+  const now = Date.now();
+
+  if (!bypassCache) {
+    const cached = datasetCache.get(key);
+    if (cached && cached.expiresAt > now) {
+      return { dataset: cached.dataset, cacheHit: true };
+    }
+
+    const pending = inFlightLoads.get(key);
+    if (pending) {
+      const dataset = await pending;
+      return { dataset, cacheHit: true };
+    }
+  }
+
+  const loadPromise = loader()
+    .then((dataset) => {
+      datasetCache.set(key, { dataset, expiresAt: Date.now() + CACHE_TTL_MS });
+      inFlightLoads.delete(key);
+      return dataset;
+    })
+    .catch((err) => {
+      inFlightLoads.delete(key);
+      throw err;
+    });
+
+  inFlightLoads.set(key, loadPromise);
+  const dataset = await loadPromise;
+  return { dataset, cacheHit: false };
 }
 
 /**

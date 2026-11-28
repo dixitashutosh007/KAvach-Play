@@ -6,6 +6,11 @@ import {
   executeAdminSearch,
   getPermittedAdminSearchCategories,
 } from "../lib/admin-search.ts";
+import { parseAdminDateQuery, resolveAdminCommands } from "../lib/admin-commands.ts";
+import {
+  clearAdminSearchCacheForTesting,
+  getOrLoadRoleScopedDataset,
+} from "../lib/admin-search-server.ts";
 import { isAdminDestinationVisible } from "../lib/admin-navigation.ts";
 import { setAuthDbForTesting } from "../lib/server-auth.ts";
 import { GET as adminSearchGET } from "../app/api/admin/search/route.ts";
@@ -202,6 +207,17 @@ test("Super Admin receives all 12 categories with valid destinations", () => {
     "studio",
     "tournaments",
   ]);
+
+  // Verify direct object IDs are preserved in destination.action
+  const byCat = new Map(res.groups.map((g) => [g.category, g]));
+  assert.equal(byCat.get("players").items[0].destination.action, "players:player_p-1");
+  assert.equal(byCat.get("matches").items[0].destination.action, "match_m-1");
+  assert.equal(byCat.get("grounds").items[0].destination.action, "grounds:g-1");
+  assert.equal(byCat.get("announcements").items[0].destination.action, "announcements:open:a-1");
+  assert.equal(byCat.get("badges").items[0].destination.action, "badges:open:b-1");
+  assert.equal(byCat.get("catches").items[0].destination.action, "badges:catch:c-1");
+  assert.equal(byCat.get("tournaments").items[0].destination.action, "tournaments:t-1");
+  assert.equal(byCat.get("noShows").items[0].destination.action, "dues:player_p-1:noshow_noshow-1");
 
   for (const group of res.groups) {
     for (const item of group.items) {
@@ -598,6 +614,73 @@ test("GET /api/admin/search enforces per-UID shared rate limit (429 + Retry-Afte
     process.env.KAVACH_TEST_AUTH_BYPASS = prevBypass;
     process.env.NODE_ENV = prevEnv || "test";
   }
+});
+
+test("resolveAdminCommands enforces role boundaries, synonyms, and date parsing", () => {
+  const fixedNow = new Date("2026-11-27T10:00:00Z");
+
+  // Date parsing: upcoming occurrence & invalid date handling
+  assert.equal(parseAdminDateQuery("29 Dec", fixedNow)?.isoDate, "2026-12-29");
+  assert.equal(parseAdminDateQuery("Matches on 29 December", fixedNow)?.isoDate, "2026-12-29");
+  assert.equal(parseAdminDateQuery("15 Jan", fixedNow)?.isoDate, "2027-01-15");
+  assert.equal(parseAdminDateQuery("31 Feb", fixedNow), null);
+
+  const superRoles = { isSuperAdmin: true, isClubAdmin: true, isFinanceAdmin: true };
+  const clubRoles = { isSuperAdmin: false, isClubAdmin: true, isFinanceAdmin: false };
+  const finRoles = { isSuperAdmin: false, isClubAdmin: false, isFinanceAdmin: true };
+
+  // Super Admin sees all 7 commands
+  assert.equal(resolveAdminCommands("New Match", superRoles, fixedNow).commands[0].id, "cmd-add-match");
+  assert.equal(resolveAdminCommands("Players Pending Payment", superRoles, fixedNow).commands[0].id, "cmd-unpaid-players");
+  assert.equal(resolveAdminCommands("Outstanding", superRoles, fixedNow).commands[0].id, "cmd-view-dues");
+  assert.equal(resolveAdminCommands("Record No Show", superRoles, fixedNow).commands[0].id, "cmd-add-noshow");
+  assert.equal(resolveAdminCommands("Create Announcement", superRoles, fixedNow).commands[0].id, "cmd-announcement");
+  assert.equal(resolveAdminCommands("Award Badge", superRoles, fixedNow).commands[0].id, "cmd-badge");
+  assert.equal(resolveAdminCommands("29 Dec", superRoles, fixedNow).dateResults[0].resolvedDate, "2026-12-29");
+
+  // Club Admin does NOT see financial commands
+  assert.equal(resolveAdminCommands("Unpaid Players", clubRoles, fixedNow).commands.length, 0);
+  assert.equal(resolveAdminCommands("View Dues", clubRoles, fixedNow).commands.length, 0);
+  assert.equal(resolveAdminCommands("Add No Show", clubRoles, fixedNow).commands.length, 0);
+  assert.equal(resolveAdminCommands("Add Match", clubRoles, fixedNow).commands.length, 1);
+
+  // Finance Admin does NOT see club commands
+  assert.equal(resolveAdminCommands("Add Match", finRoles, fixedNow).commands.length, 0);
+  assert.equal(resolveAdminCommands("Announcement", finRoles, fixedNow).commands.length, 0);
+  assert.equal(resolveAdminCommands("Grant Badge", finRoles, fixedNow).commands.length, 0);
+  assert.equal(resolveAdminCommands("Unpaid", finRoles, fixedNow).commands.length, 1);
+});
+
+test("getOrLoadRoleScopedDataset isolates role caches and serves cache hits without extra reads", async () => {
+  clearAdminSearchCacheForTesting();
+  let clubLoads = 0;
+  let finLoads = 0;
+
+  const clubRoles = { isSuperAdmin: false, isClubAdmin: true, isFinanceAdmin: false };
+  const finRoles = { isSuperAdmin: false, isClubAdmin: false, isFinanceAdmin: true };
+
+  const firstClub = await getOrLoadRoleScopedDataset(clubRoles, async () => {
+    clubLoads += 1;
+    return { players: [{ id: "p-club", name: "Club Only" }] };
+  });
+  assert.equal(firstClub.cacheHit, false);
+  assert.equal(clubLoads, 1);
+
+  const secondClub = await getOrLoadRoleScopedDataset(clubRoles, async () => {
+    clubLoads += 1;
+    return { players: [] };
+  });
+  assert.equal(secondClub.cacheHit, true);
+  assert.equal(clubLoads, 1);
+
+  const firstFin = await getOrLoadRoleScopedDataset(finRoles, async () => {
+    finLoads += 1;
+    return { feePlans: [{ id: "fp-1", name: "Finance Only" }] };
+  });
+  assert.equal(firstFin.cacheHit, false);
+  assert.equal(finLoads, 1);
+  assert.equal(firstFin.dataset.players, undefined);
+  clearAdminSearchCacheForTesting();
 });
 
 test("Header and page integration preserve PlayerGlobalSearch and wire AdminGlobalSearch", () => {

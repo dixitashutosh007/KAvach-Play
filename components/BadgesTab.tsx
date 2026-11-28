@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useStore } from "@/hooks/useStore";
 import { BadgeType, Badge, BadgeTier, BadgeTypeDef } from "@/lib/types";
 import {
@@ -36,12 +36,14 @@ export function BadgesTab({
   currentUserId,
   currentUserName,
   defaultView,
+  initialBadgeId,
 }: {
   store: ReturnType<typeof useStore>;
   isClubAdmin: boolean;
   currentUserId: string;
   currentUserName: string;
   defaultView?: "gallery" | "award" | "hall" | "manage";
+  initialBadgeId?: string | null;
 }) {
   const { toast } = useToast();
   const [view, setView] = useState<"gallery" | "award" | "hall" | "manage">(defaultView || "gallery");
@@ -54,6 +56,11 @@ export function BadgesTab({
   const [isAwarding, setIsAwarding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showcaseBadge, setShowcaseBadge] = useState<Badge | null>(null);
+  useEffect(() => {
+    if (!initialBadgeId) return;
+    const target = (store.badges || []).find((b) => b.id === initialBadgeId);
+    if (target) setShowcaseBadge(target);
+  }, [initialBadgeId, store.badges]);
   const [showTenureEval, setShowTenureEval] = useState(false);
   const [showStatsEval, setShowStatsEval] = useState(false);
 

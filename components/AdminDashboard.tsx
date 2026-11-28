@@ -63,6 +63,7 @@ export function AdminDashboard({
   isFinanceAdmin = false,
   isClubAdmin = false,
   weekendPending = 0,
+  defaultAction,
 }: {
   store: ReturnType<typeof useStore>;
   setActiveTab: (tab: any, action?: string) => void;
@@ -70,6 +71,7 @@ export function AdminDashboard({
   isFinanceAdmin?: boolean;
   isClubAdmin?: boolean;
   weekendPending?: number;
+  defaultAction?: string | null;
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
@@ -357,7 +359,14 @@ export function AdminDashboard({
     };
   }, []);
 
-  const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(false);
+  const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(
+    Boolean(defaultAction === "add_noshow" && canSeeFinance),
+  );
+  useEffect(() => {
+    if (defaultAction === "add_noshow" && canSeeFinance) {
+      setIsNoShowModalOpen(true);
+    }
+  }, [defaultAction, canSeeFinance]);
   const [noShowAmount, setNoShowAmount] = useState<number>(0);
   const [noShowComment, setNoShowComment] = useState("");
   const [noShowSearch, setNoShowSearch] = useState("");

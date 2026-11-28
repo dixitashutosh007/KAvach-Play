@@ -28,7 +28,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { runBulkOperations } from "@/lib/bulk-operations";
 import { DuplicatePlayersReport } from "./DuplicatePlayersReport";
 import { PlayerBadgeRow } from "./BadgeIcon";
@@ -56,12 +56,14 @@ export function PlayersTab({
   isStudioAdmin,
   isFinanceAdmin,
   autoOpenInvite,
+  initialPlayerId,
 }: {
   store: ReturnType<typeof useStore>;
   persona: string;
   isStudioAdmin?: boolean;
   isFinanceAdmin?: boolean;
   autoOpenInvite?: boolean;
+  initialPlayerId?: string | null;
 }) {
   const { toast } = useToast();
   const { confirm: confirmAction } = useConfirm();
@@ -74,6 +76,12 @@ export function PlayersTab({
   const [statusFilter, setStatusFilter] = useState<RosterStatusFilter>("all");
   const [membershipFilter, setMembershipFilter] = useState<RosterMembershipFilter>("all");
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+
+  useEffect(() => {
+    if (!initialPlayerId) return;
+    const target = (store.players || []).find((p) => p.id === initialPlayerId);
+    if (target) setSelectedPlayer(target);
+  }, [initialPlayerId, store.players]);
   const [visibleCount, setVisibleCount] = useState(25);
   // Current Finance Plan per player (Finance/Super Admins only).
   const { assignments: planAssignments, loading: plansLoading, error: plansError } = useFinancePlanAssignments(canViewFinance);

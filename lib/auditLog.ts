@@ -1,16 +1,5 @@
-import { auth, db } from "@/lib/firebase";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  limit,
-  startAfter,
-  getCountFromServer,
-  QueryDocumentSnapshot,
-  DocumentData,
-} from "firebase/firestore";
+import { auth } from "@/lib/firebase";
+import { authedFetch } from "@/lib/authed-fetch";
 
 export type AuditAction = "created" | "updated" | "deleted" | "paid" | "sent" | "status_change";
 
@@ -38,7 +27,10 @@ export type AuditEntity =
   | "catch"
   | "comment"
   | "user_role"
-  | "lead";
+  | "lead"
+  | "player_stat"
+  | "club_stats"
+  | "shop";
 
 export type AuditActorType = "admin" | "player" | "system";
 
@@ -205,39 +197,46 @@ export async function logAuditStrict(
   }
 }
 
-export async function getAuditLogCount(): Promise<number> {
-  const coll = collection(db, AUDIT_COLLECTION);
-  const snapshot = await getCountFromServer(coll);
-  return snapshot.data().count;
+export async function getAuditLogCount(): Promise<number | null> {
+  const res = await authedFetch("/api/audit/log?limit=1");
+  if (!res.ok) return null;
+  const data = await res.json();
+  return typeof data?.totalCount === "number" ? data.totalCount : null;
 }
 
 export async function fetchAuditLogs(options: {
   entityFilter?: AuditEntity;
   actionFilter?: AuditAction;
   actorTypeFilter?: AuditActorType;
+  actorQuery?: string;
   pageSize?: number;
-  lastDoc?: QueryDocumentSnapshot<DocumentData> | null;
-}): Promise<{ logs: AuditLogEntry[]; lastDoc: QueryDocumentSnapshot<DocumentData> | null; hasMore: boolean }> {
-  const { entityFilter, actionFilter, actorTypeFilter, pageSize = 30, lastDoc } = options;
-  const coll = collection(db, AUDIT_COLLECTION);
+  cursor?: string | null;
+}): Promise<{
+  logs: AuditLogEntry[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  permittedEntities: string[] | "ALL";
+  totalCount: number | null;
+}> {
+  const { entityFilter, actionFilter, actorTypeFilter, actorQuery, pageSize = 30, cursor } = options;
+  const params = new URLSearchParams();
+  params.set("limit", String(pageSize));
+  if (entityFilter) params.set("entity", entityFilter);
+  if (actionFilter) params.set("action", actionFilter);
+  if (actorTypeFilter) params.set("actorType", actorTypeFilter);
+  if (actorQuery?.trim()) params.set("actorQuery", actorQuery.trim());
+  if (cursor) params.set("cursor", cursor);
 
-  const constraints: any[] = [];
-  if (entityFilter) constraints.push(where("entity", "==", entityFilter));
-  if (actionFilter) constraints.push(where("action", "==", actionFilter));
-  if (actorTypeFilter) constraints.push(where("actorType", "==", actorTypeFilter));
-  constraints.push(orderBy("timestamp", "desc"));
-  constraints.push(limit(pageSize + 1));
-  if (lastDoc) constraints.push(startAfter(lastDoc));
-
-  const q = query(coll, ...constraints);
-  const snapshot = await getDocs(q);
-
-  const hasMore = snapshot.docs.length > pageSize;
-  const docs = hasMore ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
-
+  const res = await authedFetch(`/api/audit/log?${params.toString()}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  }
   return {
-    logs: docs.map(d => d.data() as AuditLogEntry),
-    lastDoc: docs.length > 0 ? docs[docs.length - 1] : null,
-    hasMore,
+    logs: Array.isArray(data.logs) ? (data.logs as AuditLogEntry[]) : [],
+    nextCursor: typeof data.nextCursor === "string" ? data.nextCursor : null,
+    hasMore: Boolean(data.hasMore),
+    permittedEntities: data.permittedEntities === "ALL" || Array.isArray(data.permittedEntities) ? data.permittedEntities : [],
+    totalCount: typeof data.totalCount === "number" ? data.totalCount : null,
   };
 }

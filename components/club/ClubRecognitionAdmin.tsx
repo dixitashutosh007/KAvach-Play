@@ -33,9 +33,15 @@ interface CatchLogItem {
   recordedBy: string;
 }
 
-export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useStore> }) {
+export function ClubRecognitionAdmin({
+  store,
+  initialCatchId,
+}: {
+  store: ReturnType<typeof useStore>;
+  initialCatchId?: string | null;
+}) {
   const { toast } = useToast();
-  const [subSection, setSubSection] = useState<"potw" | "catches">("potw");
+  const [subSection, setSubSection] = useState<"potw" | "catches">(initialCatchId ? "catches" : "potw");
 
   // POTW state
   const [awards, setAwards] = useState<PotwAwardItem[]>([]);
@@ -56,7 +62,20 @@ export function ClubRecognitionAdmin({ store }: { store: ReturnType<typeof useSt
   const [catchCount, setCatchCount] = useState("1");
   const [catchMatchId, setCatchMatchId] = useState("");
   const [catchComment, setCatchComment] = useState("");
-  const [editingCatchId, setEditingCatchId] = useState<string | null>(null);
+  const [editingCatchId, setEditingCatchId] = useState<string | null>(initialCatchId || null);
+  useEffect(() => {
+    if (!initialCatchId) return;
+    setSubSection("catches");
+    const target = catchEntries.find((c) => c.id === initialCatchId);
+    if (target) {
+      setEditingCatchId(target.id);
+      setCatchPlayerId(target.playerId);
+      setCatchType(target.type);
+      setCatchCount(String(target.count));
+      setCatchMatchId(target.matchId || "");
+      setCatchComment(target.comment || "");
+    }
+  }, [initialCatchId, catchEntries]);
   const [savingCatch, setSavingCatch] = useState(false);
   const [deletingCatchId, setDeletingCatchId] = useState<string | null>(null);
   const [catchError, setCatchError] = useState<string | null>(null);

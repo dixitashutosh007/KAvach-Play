@@ -17,7 +17,7 @@
  * Same 5% markup used everywhere else in the app.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { JerseyInfographic } from "./matches/JerseyInfographic";
 import {
   ArrowLeft,
@@ -59,12 +59,17 @@ const isPastMatch = (m: Match) => {
 
 export function TournamentsTab({
   store,
+  initialTournamentId,
 }: {
   store: ReturnType<typeof useStore>;
+  initialTournamentId?: string | null;
 }) {
   const { confirm: confirmAction } = useConfirm();
   const { toast } = useToast();
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(initialTournamentId || null);
+  useEffect(() => {
+    if (initialTournamentId) setDetailId(initialTournamentId);
+  }, [initialTournamentId]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);

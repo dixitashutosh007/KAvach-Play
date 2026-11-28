@@ -976,10 +976,20 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const addBadge = async (badge: Omit<Badge, "id">) => {
     const id = crypto.randomUUID();
-    const docRef = doc(db, "badges", id);
     try {
-      await setDoc(docRef, cleanPayload({ ...badge }));
-      logAudit({ ...getActor(), action: "created", entity: "badge", entityId: id, entityLabel: badge.badgeType, changes: [], summary: `Awarded "${badge.badgeType}" badge to ${badge.playerName}` });
+      const res = await authedFetch("/api/admin/badges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "badge",
+          badge: { ...badge, id },
+          idempotencyKey: `badge_add_${id}`,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to award badge (${res.status}).`);
+      }
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `badges/${id}`);
@@ -988,11 +998,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updateBadge = async (badgeId: string, updates: Partial<Badge>) => {
     try {
-      const oldBadge = badges.find(b => b.id === badgeId);
-      await updateDoc(doc(db, "badges", badgeId), cleanPayload({
-        ...updates,
-      }));
-      logAudit({ ...getActor(), action: "updated", entity: "badge", entityId: badgeId, entityLabel: oldBadge?.badgeType || badgeId, changes: diffChanges(oldBadge, updates), summary: `Updated badge "${oldBadge?.badgeType || badgeId}"` });
+      const res = await authedFetch("/api/admin/badges", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "badge",
+          id: badgeId,
+          updates: cleanPayload({ ...updates }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to update badge (${res.status}).`);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `badges/${badgeId}`);
     }
@@ -1026,9 +1044,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         },
         deleteDirectDoc: async () => {
           try {
-            await deleteDoc(doc(db, "badges", badgeId));
+            const res = await authedFetch(
+              `/api/admin/badges?target=badge&id=${encodeURIComponent(badgeId)}&idempotencyKey=${encodeURIComponent(`badge_del_${badgeId}`)}`,
+              { method: "DELETE" },
+            );
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data?.error || `Failed to delete badge (${res.status}).`);
+            }
             setBadges((prev) => prev.filter((b) => b.id !== badgeId));
-            logAudit({ ...getActor(), action: "deleted", entity: "badge", entityId: badgeId, entityLabel: oldBadge?.badgeType || badgeId, changes: [], summary: `Removed "${oldBadge?.badgeType || ""}" badge from ${oldBadge?.playerName || "player"}` });
             return true;
           } catch (err) {
             handleFirestoreError(err, OperationType.DELETE, `badges/${badgeId}`);
@@ -1056,10 +1080,20 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   }, [user]);
 
   const addBadgeTypeDef = async (def: Omit<BadgeTypeDef, "createdAt" | "updatedAt">) => {
-    const docRef = doc(db, "badgeTypes", def.id);
     try {
-      await setDoc(docRef, cleanPayload({ ...def, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
-      logAudit({ ...getActor(), action: "created", entity: "badge_type", entityId: def.id, entityLabel: def.label, changes: [], summary: `Created badge type "${def.label}"` });
+      const res = await authedFetch("/api/admin/badges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "badgeType",
+          badgeTypeDef: cleanPayload({ ...def }),
+          idempotencyKey: `badgetype_add_${def.id}`,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to create badge type (${res.status}).`);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `badgeTypes/${def.id}`);
     }
@@ -1067,19 +1101,34 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updateBadgeTypeDef = async (defId: string, updates: Partial<BadgeTypeDef>) => {
     try {
-      const oldDef = badgeTypeDefs.find(d => d.id === defId);
-      await updateDoc(doc(db, "badgeTypes", defId), cleanPayload({ ...updates, updatedAt: serverTimestamp() }));
-      logAudit({ ...getActor(), action: "updated", entity: "badge_type", entityId: defId, entityLabel: oldDef?.label || defId, changes: diffChanges(oldDef, updates), summary: `Updated badge type "${oldDef?.label || defId}"` });
+      const res = await authedFetch("/api/admin/badges", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "badgeType",
+          id: defId,
+          updates: cleanPayload({ ...updates }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to update badge type (${res.status}).`);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `badgeTypes/${defId}`);
     }
   };
 
   const deleteBadgeTypeDef = async (defId: string) => {
-    const oldDef = badgeTypeDefs.find(d => d.id === defId);
     try {
-      await deleteDoc(doc(db, "badgeTypes", defId));
-      logAudit({ ...getActor(), action: "deleted", entity: "badge_type", entityId: defId, entityLabel: oldDef?.label || defId, changes: [], summary: `Deleted badge type "${oldDef?.label || defId}"` });
+      const res = await authedFetch(
+        `/api/admin/badges?target=badgeType&id=${encodeURIComponent(defId)}&idempotencyKey=${encodeURIComponent(`badgetype_del_${defId}`)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to delete badge type (${res.status}).`);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `badgeTypes/${defId}`);
     }
@@ -1641,13 +1690,19 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     match: Omit<Match, "id" | "createdAt" | "updatedAt">,
   ) => {
     const id = crypto.randomUUID();
-    const docRef = doc(db, "matches", id);
     try {
-      await setDoc(docRef, cleanPayload({
-        ...match,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }));
+      const res = await authedFetch("/api/admin/matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          match: cleanPayload({ ...match, id }),
+          idempotencyKey: `match_add_${id}`,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to create match (${res.status}).`);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `matches/${id}`);
       throw err;
@@ -1704,7 +1759,6 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       throw new PartialMatchCreationError(id, "payments", batchErr);
     }
 
-    logAudit({ ...getActor(), action: "created", entity: "match", entityId: id, entityLabel: `vs ${match.opponent}`, changes: [], summary: `Created ${match.matchType} match vs ${match.opponent} on ${match.date}` });
     syncMatchToCalendar("upsert", id);
     return id;
   };
@@ -1730,29 +1784,24 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       throw new Error("Invalid match ID");
     }
 
-    const docRef = doc(db, "matches", matchId);
     try {
-      await updateDoc(
-        docRef,
-        cleanPayload({ ...dataToUpdate, updatedAt: serverTimestamp() }),
-      );
+      const res = await authedFetch("/api/admin/matches", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          matchId,
+          updates: cleanPayload({ ...dataToUpdate }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to update match (${res.status}).`);
+      }
 
       // Immediately update local state
       setMatches((prev) =>
         prev.map((m) => (m.id === matchId ? { ...m, ...dataToUpdate } : m))
       );
-
-      logAudit({
-        ...getActor(),
-        action: "updated",
-        entity: "match",
-        entityId: matchId,
-        entityLabel: `vs ${oldMatch?.opponent || "Match"}`,
-        changes: diffChanges(oldMatch, dataToUpdate),
-        summary: dataToUpdate.matchFeeBudget !== undefined
-          ? `Updated match fee budget to ₹${dataToUpdate.matchFeeBudget} for match vs ${oldMatch?.opponent || matchId}`
-          : `Updated match vs ${oldMatch?.opponent || matchId} on ${oldMatch?.date || ""}`,
-      });
 
       // Only notify players and sync calendar if this is a general match edit,
       // not an internal financial budget-only tweak
@@ -1783,19 +1832,23 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     opts?: { skipCalendarSync?: boolean },
   ) => {
     if (updates.length === 0) return;
-    const BATCH_LIMIT = 400;
-    for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
-      const chunk = updates.slice(i, i + BATCH_LIMIT);
-      const batch = writeBatch(db);
-      for (const { match, changes } of chunk) {
-        const { id, createdAt, updatedAt, ...existing } = match;
-        batch.update(doc(db, "matches", id), cleanPayload({ ...changes, updatedAt: serverTimestamp() }));
-      }
-      await batch.commit();
+    const idempotencyKey = `bulk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const res = await authedFetch("/api/admin/matches", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        updates: updates.map(({ match, changes }) => ({
+          matchId: match.id,
+          updates: cleanPayload({ ...changes }),
+        })),
+        idempotencyKey,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data?.error || `Failed to bulk update matches (${res.status}).`);
     }
-    for (const { match, changes } of updates) {
-      const oldMatch = matches.find(m => m.id === match.id);
-      logAudit({ ...getActor(), action: "updated", entity: "match", entityId: match.id, entityLabel: `vs ${match.opponent}`, changes: diffChanges(oldMatch, changes), summary: `Updated match vs ${match.opponent} on ${match.date}` });
+    for (const { match } of updates) {
       if (!opts?.skipCalendarSync) {
         syncMatchToCalendar("upsert", match.id);
       }
@@ -2056,20 +2109,42 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       prev.map((p) => (p.id === paymentId ? { ...p, status, ...(availability ? { availability } : {}), ...(paymentMethod ? { paymentMethod } : {}), ...(manualBy ? { manualBy } : {}), ...(manualMethod ? { manualMethod } : {}), ...(resolvedCollected !== undefined ? { feeCollectedAmount: resolvedCollected } : {}), ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}) } : p)),
     );
     const docRef = doc(db, "matches", matchId, "payments", paymentId);
+    const currentActor = getActor();
     try {
-      const updateData: any = { status, updatedAt: serverTimestamp() };
-      if (availability) updateData.availability = availability;
-      if (paymentMethod) updateData.paymentMethod = paymentMethod;
-      if (manualBy) updateData.manualBy = manualBy;
-      if (manualMethod) updateData.manualMethod = manualMethod;
-      if (resolvedCollected !== undefined) updateData.feeCollectedAmount = resolvedCollected;
-      if (feeOffsetAmount !== undefined) updateData.feeOffsetAmount = feeOffsetAmount;
-      await updateDoc(docRef, updateData);
+      if (currentActor.actorType === "admin") {
+        const res = await authedFetch("/api/admin/matches/payment-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "updatePaymentStatus",
+            matchId,
+            paymentId,
+            status,
+            ...(availability ? { availability } : {}),
+            ...(paymentMethod ? { paymentMethod } : {}),
+            ...(manualBy ? { manualBy } : {}),
+            ...(manualMethod ? { manualMethod } : {}),
+            ...(resolvedCollected !== undefined ? { feeCollectedAmount: resolvedCollected } : {}),
+            ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}),
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        });
+        const resData = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(resData?.error || `Failed to update payment status (${res.status}).`);
+        }
+      } else {
+        const updateData: any = { status, updatedAt: serverTimestamp() };
+        if (availability) updateData.availability = availability;
+        if (paymentMethod) updateData.paymentMethod = paymentMethod;
+        if (manualBy) updateData.manualBy = manualBy;
+        if (manualMethod) updateData.manualMethod = manualMethod;
+        if (resolvedCollected !== undefined) updateData.feeCollectedAmount = resolvedCollected;
+        if (feeOffsetAmount !== undefined) updateData.feeOffsetAmount = feeOffsetAmount;
+        await updateDoc(docRef, updateData);
+      }
 
       const player = players.find((p) => p.id === payment?.playerId);
-
-      const auditAction = status === "Paid" ? "paid" as const : "status_change" as const;
-      logAudit({ ...getActor(), action: auditAction, entity: "payment", entityId: paymentId, entityLabel: `${player?.name || "Player"} - ${match?.opponent || matchId}`, changes: [{ field: "status", oldValue: payment?.status, newValue: status }, ...(availability ? [{ field: "availability", oldValue: payment?.availability, newValue: availability }] : [])], summary: `${player?.name || "Player"} ${status === "Paid" ? "paid" : `status → ${status}`} for match vs ${match?.opponent || ""}` });
       if (status === "Paid" && match && player) {
         createNotification(
           player.id,
@@ -2408,52 +2483,51 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     manualMethod?: ManualPaymentMethod,
     manualBy?: string,
   ) => {
-    const docRef = doc(db, "matches", matchId, "payments", paymentId);
     try {
-      const updates: any = {
-        feeOverride,
-        planTag,
-        updatedAt: serverTimestamp(),
-      };
-      if (feeOffsetAmount !== undefined) updates.feeOffsetAmount = feeOffsetAmount;
-      if (feeCollectedAmount !== undefined) updates.feeCollectedAmount = feeCollectedAmount;
-      if (status) updates.status = status;
-      if (paymentMethod) updates.paymentMethod = paymentMethod;
-      if (manualMethod) updates.manualMethod = manualMethod;
-      if (manualBy) updates.manualBy = manualBy;
-
-      await updateDoc(docRef, cleanPayload(updates));
-      const pmt = payments.find(p => p.id === paymentId);
-      const playerName = players.find(p => p.id === pmt?.playerId)?.name || "Player";
-
-      const changes = [
-        { field: "feeOverride", newValue: `₹${feeOverride}` },
-        { field: "planTag", newValue: planTag },
-      ];
-      if (feeOffsetAmount !== undefined) changes.push({ field: "feeOffsetAmount", newValue: `₹${feeOffsetAmount}` });
-      if (feeCollectedAmount !== undefined) changes.push({ field: "feeCollectedAmount", newValue: `₹${feeCollectedAmount}` });
-      if (status) changes.push({ field: "status", newValue: status });
-      if (manualMethod) changes.push({ field: "manualMethod", newValue: manualMethod });
-
-      logAudit({
-        ...getActor(),
-        action: "updated",
-        entity: "payment",
-        entityId: paymentId,
-        entityLabel: `${playerName} fee plan`,
-        changes,
-        summary: `Applied fee plan "${planTag}" (Fee: ₹${feeOverride}, Offset: ₹${feeOffsetAmount || 0}, Collected: ₹${feeCollectedAmount || 0}, Status: ${status || "Unpaid"}) to ${playerName}`,
+      const res = await authedFetch("/api/admin/matches/payment-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "applyLegacyPlan",
+          matchId,
+          paymentId,
+          feeOverride,
+          planTag,
+          ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}),
+          ...(feeCollectedAmount !== undefined ? { feeCollectedAmount } : {}),
+          ...(status ? { status } : {}),
+          ...(paymentMethod ? { paymentMethod } : {}),
+          ...(manualMethod ? { manualMethod } : {}),
+          ...(manualBy ? { manualBy } : {}),
+          idempotencyKey: crypto.randomUUID(),
+        }),
       });
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(resData?.error || `Failed to apply fee plan (${res.status}).`);
+      }
 
       setPayments((prev) =>
         prev.map((p) =>
           p.id === paymentId && p.matchId === matchId
-            ? { ...p, ...updates, updatedAt: Timestamp.now() }
+            ? {
+                ...p,
+                feeOverride,
+                planTag,
+                ...(feeOffsetAmount !== undefined ? { feeOffsetAmount } : {}),
+                ...(feeCollectedAmount !== undefined ? { feeCollectedAmount } : {}),
+                ...(status ? { status } : {}),
+                ...(paymentMethod ? { paymentMethod } : {}),
+                ...(manualMethod ? { manualMethod } : {}),
+                ...(manualBy ? { manualBy } : {}),
+                updatedAt: Timestamp.now(),
+              }
             : p,
         ),
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `payments/${paymentId}`);
+      throw err;
     }
   };
 
@@ -2462,87 +2536,32 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       (p) => p.id === paymentId && p.matchId === matchId,
     );
     if (!payment) return;
-    const docRef = doc(db, "matches", matchId, "payments", paymentId);
 
-    // If marked Paid via plan or sponsorship, revert status to Unpaid
     const shouldRevertToUnpaid =
       payment.status === "Paid" &&
       (payment.manualMethod === "club_sponsored" ||
         payment.manualMethod === "part_of_plan" ||
         !!payment.sponsoredBy);
 
-    const clearFields: any = {
-      feeOverride: deleteField(),
-      planTag: deleteField(),
-      feeOffsetAmount: deleteField(),
-      feeCollectedAmount: deleteField(),
-      sponsoredBy: deleteField(),
-      sponsoring: deleteField(),
-      updatedAt: serverTimestamp(),
-    };
-
-    if (shouldRevertToUnpaid) {
-      clearFields.status = "Unpaid";
-      clearFields.paymentMethod = deleteField();
-      clearFields.manualMethod = deleteField();
-      clearFields.manualBy = deleteField();
-    }
-
-    if (payment.sponsoredBy) {
-      const sponsorPayment = payments.find(
-        (p) => p.matchId === matchId && p.playerId === payment.sponsoredBy,
-      );
-      if (sponsorPayment) {
-        const sponsorRef = doc(db, "matches", matchId, "payments", sponsorPayment.id);
-        const batch = writeBatch(db);
-        batch.update(docRef, clearFields);
-        batch.update(sponsorRef, {
-          feeOverride: deleteField(),
-          sponsoring: deleteField(),
-          updatedAt: serverTimestamp(),
-        });
-        await batch.commit();
-        setPayments((prev) =>
-          prev.map((p) => {
-            if (p.id === paymentId && p.matchId === matchId) {
-              const {
-                feeOverride,
-                planTag,
-                sponsoredBy,
-                sponsoring,
-                feeOffsetAmount,
-                feeCollectedAmount,
-                paymentMethod,
-                manualMethod,
-                manualBy,
-                ...rest
-              } = p;
-              return { ...rest, status: "Unpaid" as const, updatedAt: Timestamp.now() };
-            }
-            if (p.id === sponsorPayment.id && p.matchId === matchId) {
-              const { feeOverride, sponsoring, ...rest } = p;
-              return { ...rest, updatedAt: Timestamp.now() };
-            }
-            return p;
-          }),
-        );
-        return;
-      }
-    }
-
     try {
-      await updateDoc(docRef, clearFields);
-      const pmt = payments.find((p) => p.id === paymentId);
-      const playerName = players.find((p) => p.id === pmt?.playerId)?.name || "Player";
-      logAudit({
-        ...getActor(),
-        action: "updated",
-        entity: "payment",
-        entityId: paymentId,
-        entityLabel: `${playerName} fee reset`,
-        changes: [{ field: "feeOverride", newValue: "standard" }],
-        summary: `Reset fee to standard for ${playerName}`,
+      const res = await authedFetch("/api/admin/matches/payment-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "clearFeeOverride",
+          matchId,
+          paymentId,
+          idempotencyKey: crypto.randomUUID(),
+        }),
       });
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(resData?.error || `Failed to clear fee override (${res.status}).`);
+      }
+
+      const sponsorPayment = payment.sponsoredBy
+        ? payments.find((p) => p.matchId === matchId && p.playerId === payment.sponsoredBy)
+        : undefined;
 
       setPayments((prev) =>
         prev.map((p) => {
@@ -2562,11 +2581,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
             }
             return { ...rest, updatedAt: Timestamp.now() };
           }
+          if (sponsorPayment && p.id === sponsorPayment.id && p.matchId === matchId) {
+            const { feeOverride, sponsoring, ...rest } = p;
+            return { ...rest, updatedAt: Timestamp.now() };
+          }
           return p;
         }),
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `payments/${paymentId}`);
+      throw err;
     }
   };
 
@@ -2579,42 +2603,43 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     sourceFee: number,
     matchFee: number,
   ) => {
-    const sourceRef = doc(db, "matches", matchId, "payments", sourcePaymentId);
     const targetPayment = payments.find(
       (p) => p.matchId === matchId && p.playerId === targetPlayerId,
     );
     if (!targetPayment) return;
-    const targetRef = doc(db, "matches", matchId, "payments", targetPayment.id);
     const newTargetFee = (targetPayment.feeOverride ?? matchFee) + sourceFee;
-    const batch = writeBatch(db);
-    batch.update(sourceRef, {
-      feeOverride: 0,
-      planTag: `Sponsored by ${targetPlayerName}`,
-      sponsoredBy: targetPlayerId,
-      status: "Paid",
-      updatedAt: serverTimestamp(),
-    });
-    batch.update(targetRef, {
-      feeOverride: newTargetFee,
-      sponsoring: `Paying for ${sourcePlayerName}`,
-      updatedAt: serverTimestamp(),
-    });
     try {
-      await batch.commit();
-      logAudit({ ...getActor(), action: "updated", entity: "payment", entityId: sourcePaymentId, entityLabel: `${sourcePlayerName} sponsored`, changes: [{ field: "sponsoredBy", newValue: targetPlayerName }, { field: "feeOverride", newValue: "₹0" }], summary: `${targetPlayerName} is now sponsoring ${sourcePlayerName}'s match fee` });
+      const res = await authedFetch("/api/admin/matches/payment-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assignProxyPayment",
+          matchId,
+          sourcePaymentId,
+          targetPlayerId,
+          sourceFee,
+          matchFee,
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(resData?.error || `Failed to assign proxy payment (${res.status}).`);
+      }
       setPayments((prev) =>
         prev.map((p) => {
           if (p.id === sourcePaymentId && p.matchId === matchId) {
             return { ...p, feeOverride: 0, planTag: `Sponsored by ${targetPlayerName}`, sponsoredBy: targetPlayerId, status: "Paid" as const };
           }
           if (p.id === targetPayment.id && p.matchId === matchId) {
-            return { ...p, feeOverride: newTargetFee, sponsoring: `Paying for ${sourcePlayerName}` };
+            return { ...p, feeOverride: resData.newTargetFee ?? newTargetFee, sponsoring: `Paying for ${sourcePlayerName}` };
           }
           return p;
         }),
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `payments/proxy`);
+      throw err;
     }
   };
 
@@ -2638,21 +2663,40 @@ export function useStore(user: User | null, readOnly: boolean = false) {
       } as MatchPayment,
     ]);
     const docRef = doc(db, "matches", matchId, "payments", id);
+    const currentActor = getActor();
     try {
-      const data: any = {
-        id,
-        matchId,
-        playerId,
-        status,
-        availability,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      if (guestName) data.guestName = guestName;
-      await setDoc(docRef, data);
-      const pName = players.find(pl => pl.id === playerId)?.name || playerId;
-      const mOpponent = matches.find(m => m.id === matchId)?.opponent || matchId;
-      logAudit({ ...getActor(), action: "created", entity: "payment", entityId: id, entityLabel: `${pName} - ${mOpponent}`, changes: [{ field: "status", newValue: status }, { field: "availability", newValue: availability }, ...(guestName ? [{ field: "guestName", newValue: guestName }] : [])], summary: `Added ${guestName ? `guest "${guestName}"` : pName} to match vs ${mOpponent}` });
+      if (currentActor.actorType === "admin") {
+        const res = await authedFetch("/api/admin/matches/payment-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "addSquadPlayer",
+            matchId,
+            paymentId: id,
+            playerId,
+            status,
+            availability,
+            ...(guestName ? { guestName } : {}),
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        });
+        const resData = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(resData?.error || `Failed to add squad player (${res.status}).`);
+        }
+      } else {
+        const data: any = {
+          id,
+          matchId,
+          playerId,
+          status,
+          availability,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        if (guestName) data.guestName = guestName;
+        await setDoc(docRef, data);
+      }
       if (status === "Unpaid") {
         createNotification(
           playerId,
@@ -2717,15 +2761,41 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     post: Omit<Post, "id" | "createdAt" | "updatedAt" | "comments">,
   ) => {
     const id = crypto.randomUUID();
-    const docRef = doc(db, "posts", id);
+    if (post.isAnnouncement === true) {
+      try {
+        const res = await authedFetch("/api/admin/announcements", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...cleanPayload({ ...post }),
+            id,
+            idempotencyKey: `ann_add_${id}`,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || `Failed to publish announcement (${res.status}).`);
+        }
+        return id;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `posts/${id}`);
+        return undefined;
+      }
+    }
     try {
-      await setDoc(docRef, cleanPayload({
-        ...post,
-        comments: [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }));
-      logAudit({ ...getActor(), action: "created", entity: "post", entityId: id, entityLabel: (post.text || "").slice(0, 40), changes: [], summary: `Created post: "${(post.text || "").slice(0, 60)}"` });
+      const res = await authedFetch("/api/admin/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...cleanPayload({ ...post }),
+          id,
+          idempotencyKey: `post_add_${id}`,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to create post (${res.status}).`);
+      }
       return id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `posts/${id}`);
@@ -2734,12 +2804,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
 
   const updatePost = async (postId: string, text: string) => {
     try {
-      const oldPost = posts.find(p => p.id === postId);
-      await updateDoc(doc(db, "posts", postId), {
-        text,
-        updatedAt: serverTimestamp(),
+      const res = await authedFetch("/api/admin/posts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, text }),
       });
-      logAudit({ ...getActor(), action: "updated", entity: "post", entityId: postId, entityLabel: (text || "").slice(0, 40), changes: [{ field: "text", oldValue: (oldPost?.text || "").slice(0, 60), newValue: text.slice(0, 60) }], summary: `Updated post` });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to update post (${res.status}).`);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `posts/${postId}`);
     }
@@ -2754,26 +2827,15 @@ export function useStore(user: User | null, readOnly: boolean = false) {
     fields: Partial<Pick<Post, "text" | "title" | "isPinned" | "imageUrl" | "linkUrl" | "displayDurationSec">>,
   ): Promise<boolean> => {
     try {
-      const oldPost = posts.find((p) => p.id === postId);
-      const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
-      for (const [k, v] of Object.entries(fields)) {
-        if (k === "kind" || k === "potw") continue;
-        payload[k] = v === undefined ? deleteField() : v;
-      }
-      await updateDoc(doc(db, "posts", postId), payload);
-      logAudit({
-        ...getActor(),
-        action: "updated",
-        entity: "post",
-        entityId: postId,
-        entityLabel: (fields.text ?? oldPost?.text ?? "").slice(0, 40),
-        changes: Object.keys(fields).map((field) => ({
-          field,
-          oldValue: field === "imageUrl" ? (oldPost?.imageUrl ? "[image]" : "") : String((oldPost as any)?.[field] ?? "").slice(0, 60),
-          newValue: field === "imageUrl" ? ((fields as any)[field] ? "[image]" : "") : String((fields as any)[field] ?? "").slice(0, 60),
-        })),
-        summary: `Updated announcement`,
+      const res = await authedFetch("/api/admin/announcements", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, fields }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to update announcement (${res.status}).`);
+      }
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `posts/${postId}`);
@@ -2809,10 +2871,16 @@ export function useStore(user: User | null, readOnly: boolean = false) {
         },
         deleteDirectDoc: async () => {
           try {
-            await deleteDoc(doc(db, "posts", postId));
+            const res = await authedFetch(
+              `/api/admin/announcements?postId=${encodeURIComponent(postId)}&idempotencyKey=${encodeURIComponent(`ann_del_${postId}`)}`,
+              { method: "DELETE" },
+            );
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data?.error || `Failed to delete announcement (${res.status}).`);
+            }
             setPosts((prev) => prev.filter((p) => p.id !== postId));
             invalidateClubPostsCache();
-            logAudit({ ...getActor(), action: "deleted", entity: "post", entityId: postId, entityLabel: (oldPost?.text || "").slice(0, 40), changes: [], summary: `Deleted announcement` });
             return true;
           } catch (err) {
             handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
@@ -2826,7 +2894,25 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   };
 
   const deletePost = async (postId: string) => {
-    await deleteAnnouncement(postId);
+    const oldPost = posts.find((p) => p.id === postId);
+    if (oldPost?.isAnnouncement === true || oldPost?.kind === "potw") {
+      await deleteAnnouncement(postId);
+      return;
+    }
+    try {
+      const res = await authedFetch(
+        `/api/admin/posts?postId=${encodeURIComponent(postId)}&idempotencyKey=${encodeURIComponent(`post_del_${postId}`)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to delete post (${res.status}).`);
+      }
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      invalidateClubPostsCache();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`);
+    }
   };
 
   const addComment = async (
@@ -3021,18 +3107,23 @@ export function useStore(user: User | null, readOnly: boolean = false) {
   const addMerchOrder = async (
     order: Omit<MerchOrder, "id" | "createdAt" | "updatedAt">,
   ) => {
-    const id = crypto.randomUUID();
-    const docRef = doc(db, "merchOrders", id);
     try {
-      await setDoc(docRef, cleanPayload({
-        ...order,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }));
-      logAudit({ ...getActor(), action: "created", entity: "merch_order", entityId: id, entityLabel: `${order.playerName} - ${order.merchName}`, changes: [], summary: `${order.playerName} ordered "${order.merchName}" (₹${order.price})` });
-      return id;
+      const res = await authedFetch("/api/shop/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...order,
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(resData?.error || `Failed to place shop order (${res.status}).`);
+      }
+      return String(resData.id || "");
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `merchOrders/${id}`);
+      handleFirestoreError(err, OperationType.CREATE, "merchOrders");
+      throw err;
     }
   };
 

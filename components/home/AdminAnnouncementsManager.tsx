@@ -9,7 +9,8 @@
  * Every action is gated by the original `canPublishAnnouncements` check
  * (Super Admin claim or Club Admin) in addition to the Club section guard.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/components/AuthProvider";
@@ -22,13 +23,31 @@ export function AdminAnnouncementsManager({
   store,
   currentUserId,
   currentUserName,
+  defaultAction,
 }: {
   store: ReturnType<typeof useStore>;
   currentUserId: string;
   currentUserName: string;
+  defaultAction?: string | null;
 }) {
   const { toast } = useToast();
   const { posts = [], players = [], appConfig } = store;
+  const [selectedFeedPostId, setSelectedFeedPostId] = useState<string | null>(null);
+  useEffect(() => {
+    if (defaultAction?.startsWith("post:")) {
+      setSelectedFeedPostId(defaultAction.replace("post:", ""));
+    } else {
+      setSelectedFeedPostId(null);
+    }
+  }, [defaultAction]);
+  const selectedFeedPost = useMemo(
+    () => (selectedFeedPostId ? posts.find((p) => p.id === selectedFeedPostId) || null : null),
+    [selectedFeedPostId, posts],
+  );
+  const openAnnouncementId = defaultAction?.startsWith("open:")
+    ? defaultAction.replace("open:", "")
+    : null;
+  const autoOpenComposer = defaultAction === "create";
   const appUser = store.appUsers.find((u) => u.id === currentUserId);
   const mePlayer = useMemo(
     () => resolveMyPlayers(players, currentUserId, appUser)[0] || null,
@@ -95,7 +114,40 @@ export function AdminAnnouncementsManager({
         onPublish={handlePublishAnnouncement}
         onUpdate={handleUpdateAnnouncement}
         onDelete={handleDeleteAnnouncement}
+        openAnnouncementId={openAnnouncementId}
+        autoOpenComposer={autoOpenComposer}
       />
+
+      {selectedFeedPost && (
+        <div
+          data-testid="admin-feed-post-detail-modal"
+          className="fixed inset-0 z-[170] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setSelectedFeedPostId(null)}
+        >
+          <div
+            className="w-full max-w-lg bg-surface border border-border rounded-2xl p-5 shadow-xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border pb-2.5">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary">Feed Post</h3>
+                <p className="text-xs text-text-secondary">{selectedFeedPost.authorName || "Club"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedFeedPostId(null)}
+                aria-label="Close post detail"
+                className="min-w-[40px] min-h-[40px] rounded-xl border border-border flex items-center justify-center text-text-secondary hover:bg-surface-hover cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">
+              {selectedFeedPost.text}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

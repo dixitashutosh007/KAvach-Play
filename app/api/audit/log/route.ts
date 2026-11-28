@@ -3,6 +3,11 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requireRole } from "../../../../lib/server-auth.ts";
 import { getServerFirestore } from "../../../../lib/server-db.ts";
 import { actorNameFor } from "../../../../lib/server-audit.ts";
+import {
+  filterAndSanitizeAuditEntries,
+  getPermittedAuditEntities,
+  type AuditRoleContext,
+} from "../../../../lib/audit-access.ts";
 
 const ALLOWED_ACTIONS = new Set([
   "created",
@@ -38,6 +43,9 @@ const ALLOWED_ENTITIES = new Set([
   "comment",
   "user_role",
   "lead",
+  "player_stat",
+  "club_stats",
+  "shop",
 ]);
 
 const REDACTED_CHANGE_FIELDS = new Set([
@@ -62,6 +70,9 @@ const SERVER_AUTHORITATIVE_ONLY_ENTITIES = new Set([
   "payment",
   "subscription_period",
   "fee_plan_assignment",
+  "player_stat",
+  "club_stats",
+  "shop",
 ]);
 
 function sanitizeChangeVal(field: string, val: unknown): string | undefined {
@@ -169,5 +180,166 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("[audit/log] POST failed:", err instanceof Error ? err.message : "unknown");
     return NextResponse.json({ error: "Could not record audit log." }, { status: 500 });
+  }
+}
+
+function serializeTimestamp(val: unknown): number | string | null {
+  if (!val) return null;
+  if (typeof val === "number") return val;
+  if (typeof val === "string") return val;
+  if (typeof val === "object" && val !== null) {
+    const maybe = val as { toMillis?: () => number; seconds?: number; _seconds?: number };
+    if (typeof maybe.toMillis === "function") return maybe.toMillis();
+    const secs = maybe.seconds ?? maybe._seconds;
+    if (typeof secs === "number") return secs * 1000;
+  }
+  return null;
+}
+
+/**
+ * GET /api/audit/log
+ *
+ * Server-authoritative, role-filtered audit log viewer endpoint.
+ * - Super Admin: all audit entities.
+ * - Club Admin: operational entities only (no financial entities or financial field diffs).
+ * - Finance Admin: financial & permitted entities only (no club-operational entities).
+ */
+export async function GET(req: Request) {
+  const auth = await requireRole(req, ["superAdmin", "clubAdmin", "financeAdmin"]);
+  if (!auth.ok) return auth.response;
+
+  const url = new URL(req.url);
+  const entityFilter = (url.searchParams.get("entity") || "").trim();
+  const actionFilter = (url.searchParams.get("action") || "").trim();
+  const actorTypeFilter = (url.searchParams.get("actorType") || "").trim();
+  const actorQuery = (url.searchParams.get("actorQuery") || "").trim().toLowerCase();
+  const cursorId = (url.searchParams.get("cursor") || "").trim();
+  const rawLimit = url.searchParams.get("limit");
+
+  let pageSize = 30;
+  if (rawLimit !== null) {
+    const parsed = Number(rawLimit);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+      return NextResponse.json(
+        { error: "Invalid limit parameter (must be 1–100)." },
+        { status: 400 },
+      );
+    }
+    pageSize = parsed;
+  }
+
+  if (entityFilter && !ALLOWED_ENTITIES.has(entityFilter)) {
+    return NextResponse.json({ error: "Invalid entity filter." }, { status: 400 });
+  }
+  if (actionFilter && !ALLOWED_ACTIONS.has(actionFilter)) {
+    return NextResponse.json({ error: "Invalid action filter." }, { status: 400 });
+  }
+
+  const roles: AuditRoleContext = {
+    isSuperAdmin: auth.roles.has("superAdmin"),
+    isClubAdmin: auth.roles.has("clubAdmin"),
+    isFinanceAdmin: auth.roles.has("financeAdmin"),
+  };
+  const permitted = getPermittedAuditEntities(roles);
+  if (entityFilter && permitted !== "ALL" && !permitted.includes(entityFilter)) {
+    return NextResponse.json(
+      { error: "Access forbidden for this audit entity." },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const db = getServerFirestore();
+    let baseQuery: FirebaseFirestore.Query = db.collection("auditLogs");
+    if (entityFilter) baseQuery = baseQuery.where("entity", "==", entityFilter);
+    if (actionFilter) baseQuery = baseQuery.where("action", "==", actionFilter);
+    if (actorTypeFilter) baseQuery = baseQuery.where("actorType", "==", actorTypeFilter);
+    baseQuery = baseQuery.orderBy("timestamp", "desc");
+
+    let lastSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    if (cursorId) {
+      const cursorSnap = await db.collection("auditLogs").doc(cursorId).get();
+      if (!cursorSnap.exists) {
+        return NextResponse.json({ error: "Cursor not found." }, { status: 400 });
+      }
+      lastSnap = cursorSnap;
+    }
+
+    const collected: Record<string, unknown>[] = [];
+    let hasMore = false;
+    let nextCursor: string | null = null;
+    const batchSize = Math.min(100, Math.max(pageSize * 2, 50));
+    let pagesScanned = 0;
+
+    while (collected.length < pageSize && pagesScanned < 6) {
+      pagesScanned += 1;
+      let q = baseQuery.limit(batchSize);
+      if (lastSnap) q = q.startAfter(lastSnap);
+      const snap = await q.get();
+      if (snap.empty || snap.docs.length === 0) break;
+
+      const rawDocs: Array<
+        Record<string, unknown> & {
+          id: string;
+          entity?: string;
+          changes?: Array<{ field: string; oldValue?: unknown; newValue?: unknown }>;
+          summary?: string;
+          timestamp: number | string | null;
+        }
+      > = snap.docs.map((d) => {
+        const data = (d.data() || {}) as Record<string, unknown>;
+        return {
+          ...data,
+          id: d.id,
+          timestamp: serializeTimestamp(data.timestamp),
+        };
+      });
+
+      const roleFiltered = filterAndSanitizeAuditEntries(rawDocs, roles).filter((entry) => {
+        if (!actorQuery) return true;
+        const name = String((entry as Record<string, unknown>).actorName || "").toLowerCase();
+        const id = String((entry as Record<string, unknown>).actorId || "").toLowerCase();
+        return name.includes(actorQuery) || id.includes(actorQuery);
+      });
+
+      for (const item of roleFiltered) {
+        if (collected.length < pageSize) {
+          collected.push(item);
+          nextCursor = String(item.id);
+        } else {
+          hasMore = true;
+          break;
+        }
+      }
+
+      if (hasMore) break;
+      if (collected.length === pageSize && snap.docs.length === batchSize) {
+        hasMore = true;
+        break;
+      }
+      if (snap.docs.length < batchSize) break;
+      lastSnap = snap.docs[snap.docs.length - 1];
+    }
+
+    let totalCount: number | null = null;
+    if (!entityFilter && !actionFilter && !actorTypeFilter && !actorQuery && permitted === "ALL") {
+      try {
+        const countSnap = await db.collection("auditLogs").count().get();
+        totalCount = countSnap.data().count;
+      } catch {
+        totalCount = null;
+      }
+    }
+
+    return NextResponse.json({
+      logs: collected,
+      nextCursor: hasMore ? nextCursor : null,
+      hasMore,
+      permittedEntities: permitted,
+      totalCount,
+    });
+  } catch (err) {
+    console.error("[audit/log] GET failed:", err instanceof Error ? err.message : "unknown");
+    return NextResponse.json({ error: "Could not load audit logs." }, { status: 500 });
   }
 }

@@ -27,6 +27,7 @@ export function ClubAnnouncementsSection({
   onUpdate,
   onDelete,
   openAnnouncementId,
+  autoOpenComposer,
   onOpenHandled,
   onCloseDetail,
 }: {
@@ -40,12 +41,16 @@ export function ClubAnnouncementsSection({
   onDelete?: (postId: string) => Promise<boolean>;
   /** When set (e.g. from the top banner), scroll here and open that announcement. */
   openAnnouncementId?: string | null;
+  autoOpenComposer?: boolean;
   onOpenHandled?: () => void;
   onCloseDetail?: () => void;
 }) {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(Boolean(autoOpenComposer));
+  useEffect(() => {
+    if (autoOpenComposer) setComposerOpen(true);
+  }, [autoOpenComposer]);
   const [editing, setEditing] = useState<Post | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -156,6 +156,9 @@ export function MatchesTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultAction]);
   const [isAdding, setIsAdding] = useState(defaultAction === "add_match");
+  const [filterDate, setFilterDate] = useState<string>(
+    defaultAction?.startsWith("date_") ? defaultAction.replace("date_", "") : "",
+  );
   const [isSubmittingMatch, setIsSubmittingMatch] = useState(false);
   const [matchFormError, setMatchFormError] = useState<string | null>(null);
   const [partialCreatedMatchId, setPartialCreatedMatchId] = useState<string | null>(null);
@@ -243,6 +246,12 @@ export function MatchesTab({
         setSelectedMatch(null);
         startEdit(match);
       }
+    } else if (defaultAction === "add_match") {
+      setSelectedMatch(null);
+      setIsAdding(true);
+    } else if (defaultAction && defaultAction.startsWith("date_")) {
+      setSelectedMatch(null);
+      setFilterDate(defaultAction.replace("date_", ""));
     }
   }, [defaultAction, store.matches, store.tournaments]);
 
@@ -1327,9 +1336,26 @@ export function MatchesTab({
       )}
 
       {subTab === "grounds" && isAdmin && (
-        <GroundsTab store={store} persona={persona || "player"} />
+        <GroundsTab
+          store={store}
+          persona={persona || "player"}
+          initialGroundId={
+            defaultAction?.startsWith("grounds:")
+              ? defaultAction.replace("grounds:", "")
+              : null
+          }
+        />
       )}
-      {subTab === "tournaments" && isAdmin && <TournamentsTab store={store} />}
+      {subTab === "tournaments" && isAdmin && (
+        <TournamentsTab
+          store={store}
+          initialTournamentId={
+            defaultAction?.startsWith("tournaments:")
+              ? defaultAction.replace("tournaments:", "")
+              : null
+          }
+        />
+      )}
 
       {subTab === "matches" && (
         <>
@@ -1389,6 +1415,22 @@ export function MatchesTab({
             </div>
 
             <MatchesLoadError message={store.matchesError} />
+
+            {filterDate && !isAdding && (
+              <div
+                data-testid="matches-date-filter"
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#FCE8ED] border border-[#A30F2D]/20 text-xs font-bold text-[#A30F2D]"
+              >
+                <span>Showing matches on {filterDate}</span>
+                <button
+                  type="button"
+                  onClick={() => setFilterDate("")}
+                  className="underline cursor-pointer"
+                >
+                  Clear date
+                </button>
+              </div>
+            )}
 
             {isAdmin && !isAdding && (
               <MatchToolbar store={store} />
@@ -1513,7 +1555,9 @@ export function MatchesTab({
                 return d;
               };
 
-              const allMatches = store.matches.filter(m => !m.isArchived && (isAdmin || !m.isTentative));
+              const allMatches = store.matches.filter(
+                (m) => !m.isArchived && (isAdmin || !m.isTentative) && (!filterDate || m.date === filterDate),
+              );
 
               const renderMatchCard = (match: Match, cardIndex: number = 0) => {
                 const ground = store.grounds.find(

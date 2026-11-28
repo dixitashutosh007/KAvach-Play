@@ -6,10 +6,8 @@ import {
   AuditAction,
   AuditActorType,
   fetchAuditLogs,
-  getAuditLogCount,
   formatFieldName,
 } from "@/lib/auditLog";
-import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { AccessDenied } from "@/components/ui/AccessDenied";
 
 const ENTITY_OPTIONS: { value: AuditEntity; label: string }[] = [
@@ -33,6 +31,9 @@ const ENTITY_OPTIONS: { value: AuditEntity; label: string }[] = [
   { value: "post", label: "Posts" },
   { value: "out_of_play", label: "PNA" },
   { value: "catch", label: "Catches" },
+  { value: "player_stat", label: "Player Stats" },
+  { value: "club_stats", label: "Club Statistics" },
+  { value: "shop", label: "Club Shop" },
   { value: "user_role", label: "User Roles" },
 ];
 
@@ -81,6 +82,9 @@ const ENTITY_EMOJI: Record<string, string> = {
   out_of_play: "🚫",
   catch: "🧤",
   comment: "💭",
+  player_stat: "📈",
+  club_stats: "🏆",
+  shop: "🏪",
   user_role: "🔑",
 };
 
@@ -101,23 +105,25 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [permittedEntities, setPermittedEntities] = useState<string[] | "ALL">("ALL");
 
   const [entityFilter, setEntityFilter] = useState<AuditEntity | "">("");
   const [actionFilter, setActionFilter] = useState<AuditAction | "">("");
   const [actorTypeFilter, setActorTypeFilter] = useState<AuditActorType | "">("");
+  const [actorQuery, setActorQuery] = useState("");
 
   const [logCount, setLogCount] = useState<number | null>(null);
-  // D-19: show a polite denial when Firestore rules refuse to read the audit log.
+  // D-19: show a polite denial when server RBAC refuses to read the audit log.
   const [accessDenied, setAccessDenied] = useState(false);
 
   const loadLogs = useCallback(async (reset: boolean = true) => {
     if (reset) {
       setLoading(true);
       setLogs([]);
-      setLastDoc(null);
+      setNextCursor(null);
     } else {
       setLoadingMore(true);
     }
@@ -126,37 +132,36 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         entityFilter: entityFilter || undefined,
         actionFilter: actionFilter || undefined,
         actorTypeFilter: actorTypeFilter || undefined,
-        lastDoc: reset ? null : lastDoc,
+        actorQuery: actorQuery || undefined,
+        cursor: reset ? null : nextCursor,
       });
       setLogs(prev => reset ? result.logs : [...prev, ...result.logs]);
-      setLastDoc(result.lastDoc);
+      setNextCursor(result.nextCursor);
       setHasMore(result.hasMore);
+      setPermittedEntities(result.permittedEntities);
+      if (reset) setLogCount(result.totalCount);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (/insufficient permissions|permission-denied/i.test(msg)) setAccessDenied(true);
+      if (/insufficient permissions|permission-denied|forbidden|403/i.test(msg)) setAccessDenied(true);
       console.error("Failed to load audit logs:", e);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [entityFilter, actionFilter, actorTypeFilter, lastDoc]);
+  }, [entityFilter, actionFilter, actorTypeFilter, actorQuery, nextCursor]);
 
   useEffect(() => {
-    loadLogs(true);
-  }, [entityFilter, actionFilter, actorTypeFilter]);
+    const timer = setTimeout(() => {
+      loadLogs(true);
+    }, actorQuery ? 250 : 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityFilter, actionFilter, actorTypeFilter, actorQuery]);
 
-  const refreshCount = async () => {
-    try {
-      const count = await getAuditLogCount();
-      setLogCount(count);
-    } catch (e) {
-      console.error("Failed to get log count:", e);
-    }
-  };
-
-  useEffect(() => {
-    refreshCount();
-  }, []);
+  const visibleEntityOptions =
+    permittedEntities === "ALL"
+      ? ENTITY_OPTIONS
+      : ENTITY_OPTIONS.filter((o) => permittedEntities.includes(o.value));
 
   if (accessDenied) {
     return <AccessDenied feature="the Activity Log" requiredRole="Finance Admins and Super Admins" />;
@@ -176,7 +181,8 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </span>
           )}
           <button
-            onClick={() => { loadLogs(true); refreshCount(); }}
+            onClick={() => loadLogs(true)}
+            aria-label="Refresh activity log"
             className="p-1.5 rounded-lg bg-surface-hover border border-border text-text-muted hover:text-text-primary transition"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -189,16 +195,18 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={entityFilter}
           onChange={e => setEntityFilter(e.target.value as AuditEntity | "")}
+          aria-label="Filter by entity"
           className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           <option value="">All Types</option>
-          {ENTITY_OPTIONS.map(o => (
+          {visibleEntityOptions.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
         <select
           value={actionFilter}
           onChange={e => setActionFilter(e.target.value as AuditAction | "")}
+          aria-label="Filter by action"
           className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           <option value="">All Actions</option>
@@ -209,6 +217,7 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <select
           value={actorTypeFilter}
           onChange={e => setActorTypeFilter(e.target.value as AuditActorType | "")}
+          aria-label="Filter by actor type"
           className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs font-bold text-text-primary focus:border-accent focus:outline-none [&>option]:bg-surface"
         >
           <option value="">All Actors</option>
@@ -216,6 +225,14 @@ export function AuditLogTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <input
+          type="text"
+          value={actorQuery}
+          onChange={e => setActorQuery(e.target.value)}
+          placeholder="Filter by actor name or ID..."
+          aria-label="Filter by actor name or ID"
+          className="rounded-lg border border-border bg-surface-hover px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none min-w-[180px]"
+        />
       </div>
 
       <div className="bg-surface rounded-xl border border-border overflow-hidden divide-y divide-border">

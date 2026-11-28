@@ -1,4 +1,5 @@
 import type { AdminDestination } from "./admin-navigation.ts";
+import { resolveAdminCommands, type AdminSearchCommandItem } from "./admin-commands.ts";
 
 export type AdminSearchCategory =
   | "players"
@@ -6,6 +7,7 @@ export type AdminSearchCategory =
   | "grounds"
   | "finance"
   | "announcements"
+  | "feedPosts"
   | "pulse"
   | "badges"
   | "catches"
@@ -44,8 +46,11 @@ export interface AdminSearchGroup {
 
 export interface AdminSearchResponse {
   query: string;
+  commands?: AdminSearchCommandItem[];
+  dateResults?: AdminSearchCommandItem[];
   groups: AdminSearchGroup[];
   totalCount: number;
+  meta?: { cacheHit?: boolean; durationMs?: number };
 }
 
 export const ADMIN_SEARCH_CATEGORY_LABELS: Readonly<Record<AdminSearchCategory, string>> = {
@@ -54,6 +59,7 @@ export const ADMIN_SEARCH_CATEGORY_LABELS: Readonly<Record<AdminSearchCategory, 
   grounds: "Grounds",
   finance: "Finance & Dues",
   announcements: "Announcements",
+  feedPosts: "Feed Posts",
   pulse: "Pulse",
   badges: "Badges",
   catches: "Catches",
@@ -69,6 +75,7 @@ const ALL_CATEGORIES: readonly AdminSearchCategory[] = [
   "grounds",
   "finance",
   "announcements",
+  "feedPosts",
   "pulse",
   "badges",
   "catches",
@@ -83,6 +90,7 @@ const CLUB_ADMIN_CATEGORIES: readonly AdminSearchCategory[] = [
   "matches",
   "grounds",
   "announcements",
+  "feedPosts",
   "pulse",
   "badges",
   "catches",
@@ -189,8 +197,11 @@ export function executeAdminSearch(
   const q = query.toLowerCase();
   const permitted = new Set(getPermittedAdminSearchCategories(roles));
 
+  const { commands, dateResults } = resolveAdminCommands(query, roles);
+  const resolvedIsoDate = dateResults[0]?.resolvedDate;
+
   if (!q || permitted.size === 0) {
-    return { query, groups: [], totalCount: 0 };
+    return { query, commands: [], dateResults: [], groups: [], totalCount: 0 };
   }
 
   const canSeeClub = roles.isSuperAdmin || roles.isClubAdmin;
@@ -252,7 +263,7 @@ export function executeAdminSearch(
         title: name,
         subtitle: subtitleParts.join(" • ") || undefined,
         badges: badges.length ? badges : undefined,
-        destination: canSeeClub ? { tab: "club", action: "players" } : { tab: "finance", action: "dues" },
+        destination: canSeeClub ? { tab: "club", action: `players:player_${p.id}` } : { tab: "finance", action: `dues:player_${p.id}` },
       });
     }
     pushGroup("players", items);
@@ -269,7 +280,8 @@ export function executeAdminSearch(
         .filter(Boolean)
         .join(" ");
 
-      if (!matchesQuery(q, opponent, m.date, gName, m.format, m.matchType, resultText, tName)) {
+      const dateMatched = Boolean(resolvedIsoDate && str(m.date) === resolvedIsoDate);
+      if (!dateMatched && !matchesQuery(q, opponent, m.date, gName, m.format, m.matchType, resultText, tName)) {
         continue;
       }
 
@@ -287,7 +299,7 @@ export function executeAdminSearch(
         subtitle: subtitleParts.filter(Boolean).join(" • "),
         badges: badges.length ? badges : undefined,
         meta: canSeeFinance && num(m.fee) !== null ? formatInr(num(m.fee)) : undefined,
-        destination: canSeeClub ? { tab: "matches", action: `match_${m.id}` } : { tab: "finance", action: "matches" },
+        destination: canSeeClub ? { tab: "matches", action: `match_${m.id}` } : { tab: "finance", action: `matches:${m.id}` },
       });
     }
     pushGroup("matches", items);
@@ -304,7 +316,7 @@ export function executeAdminSearch(
         category: "grounds",
         title: str(g.name) || "Ground",
         subtitle: [location, str(g.organiserName)].filter(Boolean).join(" • ") || undefined,
-        destination: { tab: "matches", action: "grounds" },
+        destination: { tab: "matches", action: `grounds:${g.id}` },
       });
     }
     pushGroup("grounds", items);
@@ -347,7 +359,7 @@ export function executeAdminSearch(
         subtitle: [matchDate, str(pay.manualMethod || pay.paymentMethod)].filter(Boolean).join(" • ") || undefined,
         badges: ["Match Fee", status],
         meta: formatInr(amount),
-        destination: { tab: "finance", action: "matches" },
+        destination: { tab: "finance", action: pay.matchId ? `matches:${pay.matchId}` : "matches" },
       });
     }
 
@@ -368,7 +380,7 @@ export function executeAdminSearch(
         subtitle: str(fee.comment) || undefined,
         badges: ["Other Fee", status],
         meta: formatInr(num(fee.amount)),
-        destination: { tab: "finance", action: "dues" },
+        destination: { tab: "finance", action: fee.playerId ? `dues:player_${fee.playerId}` : "dues" },
       });
     }
 
@@ -382,7 +394,7 @@ export function executeAdminSearch(
         subtitle: [str(plan.type), str(plan.description)].filter(Boolean).join(" • ") || undefined,
         badges: ["Fee Plan", plan.isActive === false ? "Inactive" : "Active"],
         meta: amt !== null ? formatInr(amt) : plan.discountPct != null ? `${plan.discountPct}% off` : undefined,
-        destination: { tab: "finance", action: "plans" },
+        destination: { tab: "finance", action: `plans:${plan.id}` },
       });
     }
 
@@ -396,32 +408,44 @@ export function executeAdminSearch(
         title: `${playerName} — ${str(asgn.planName)}`,
         subtitle: [str(asgn.startDate) || "Legacy", str(asgn.endDate) || "Ongoing"].join(" → "),
         badges: ["Plan Assignment", asgn.cancelled ? "Cancelled" : "Active"],
-        destination: { tab: "finance", action: "plans" },
+        destination: { tab: "finance", action: asgn.playerId ? `dues:player_${asgn.playerId}` : "plans" },
       });
     }
 
     pushGroup("finance", items);
   }
 
-  // 5. Announcements
-  if (permitted.has("announcements")) {
-    const items: AdminSearchResultItem[] = [];
+  // 5. Announcements & Regular Feed Posts
+  if (permitted.has("announcements") || permitted.has("feedPosts")) {
+    const annItems: AdminSearchResultItem[] = [];
+    const postItems: AdminSearchResultItem[] = [];
     for (const a of dataset.announcements || []) {
-      if (a.isAnnouncement !== true) continue;
       if (!matchesQuery(q, a.title, a.text, a.authorName)) continue;
-      const title = str(a.title) || str(a.text).slice(0, 60) || "Announcement";
-      items.push({
-        id: a.id,
-        category: "announcements",
-        title,
-        subtitle: [str(a.authorName), formatTimestamp(a.createdAt), str(a.text).slice(0, 80)]
-          .filter(Boolean)
-          .join(" • "),
-        badges: a.isPinned === true ? ["Pinned"] : undefined,
-        destination: { tab: "club", action: "announcements" },
-      });
+      if (a.isAnnouncement === true) {
+        const title = str(a.title) || str(a.text).slice(0, 60) || "Announcement";
+        annItems.push({
+          id: a.id,
+          category: "announcements",
+          title,
+          subtitle: [str(a.authorName), formatTimestamp(a.createdAt), str(a.text).slice(0, 80)]
+            .filter(Boolean)
+            .join(" • "),
+          badges: a.isPinned === true ? ["Pinned"] : undefined,
+          destination: { tab: "club", action: `announcements:open:${a.id}` },
+        });
+      } else {
+        const title = str(a.text).slice(0, 60) || "Feed Post";
+        postItems.push({
+          id: a.id,
+          category: "feedPosts",
+          title,
+          subtitle: [str(a.authorName), formatTimestamp(a.createdAt)].filter(Boolean).join(" • "),
+          destination: { tab: "club", action: `announcements:post:${a.id}` },
+        });
+      }
     }
-    pushGroup("announcements", items);
+    pushGroup("announcements", annItems);
+    pushGroup("feedPosts", postItems);
   }
 
   // 6. Pulse (polls only; never pollResponses)
@@ -459,7 +483,7 @@ export function executeAdminSearch(
         title: `${badgeName} — ${recipient || "Player"}`,
         subtitle: [awardedDate, str(b.note)].filter(Boolean).join(" • ") || undefined,
         badges: def?.tier ? [str(def.tier)] : undefined,
-        destination: { tab: "club", action: "badges" },
+        destination: { tab: "club", action: `badges:open:${b.id}` },
       });
     }
     pushGroup("badges", items);
@@ -481,7 +505,7 @@ export function executeAdminSearch(
         title: `${playerName || "Player"} — ${catchTypeLabel} (×${num(c.count) ?? 1})`,
         subtitle: [matchLabel, str(c.comment), formatTimestamp(c.recordedAt)].filter(Boolean).join(" • ") || undefined,
         badges: [c.type === "dropped" ? "Dropped" : "Stunning"],
-        destination: { tab: "club", action: "badges" },
+        destination: { tab: "club", action: `badges:catch:${c.id}` },
       });
     }
     pushGroup("catches", items);
@@ -506,7 +530,7 @@ export function executeAdminSearch(
         subtitle: [dateStr, str(fee.comment)].filter(Boolean).join(" • ") || undefined,
         badges: [status],
         meta: formatInr(num(fee.amount)),
-        destination: { tab: "finance", action: "dues" },
+        destination: { tab: "finance", action: fee.playerId ? `dues:player_${fee.playerId}:noshow_${fee.id}` : "dues" },
       });
     }
     pushGroup("noShows", items);
@@ -526,7 +550,7 @@ export function executeAdminSearch(
         title: str(t.name) || "Tournament",
         subtitle: [gName, dates, str(t.format)].filter(Boolean).join(" • ") || undefined,
         badges: str(t.status) ? [str(t.status)] : undefined,
-        destination: { tab: "matches", action: "tournaments" },
+        destination: { tab: "matches", action: `tournaments:${t.id}` },
       });
     }
     pushGroup("tournaments", items);
@@ -535,9 +559,6 @@ export function executeAdminSearch(
   // 11. Studio (memberships & subscriptions; paidAmount restricted to Finance/Super Admin)
   if (permitted.has("studio")) {
     const items: AdminSearchResultItem[] = [];
-    const studioDest: AdminSearchDestination = canSeeClub
-      ? { tab: "club", action: "studio" }
-      : { tab: "finance", action: "razor" };
 
     for (const p of players) {
       if (!p.isStudioMember && !p.studioPlan && !p.studioExpiryDate) continue;
@@ -550,7 +571,7 @@ export function executeAdminSearch(
           .filter(Boolean)
           .join(" • ") || undefined,
         badges: [p.isStudioMember ? "Active Member" : "Past Member"],
-        destination: studioDest,
+        destination: canSeeClub ? { tab: "club", action: `studio:player_${p.id}` } : { tab: "finance", action: `dues:player_${p.id}` },
       });
     }
 
@@ -565,7 +586,9 @@ export function executeAdminSearch(
         subtitle: sub.newExpiryDate ? `Valid until ${str(sub.newExpiryDate)}` : undefined,
         badges: ["Subscription"],
         meta: canSeeFinance ? formatInr(num(sub.paidAmount)) : undefined,
-        destination: studioDest,
+        destination: canSeeClub
+          ? { tab: "club", action: sub.playerId ? `studio:player_${sub.playerId}` : "studio" }
+          : { tab: "finance", action: sub.playerId ? `dues:player_${sub.playerId}` : "razor" },
       });
     }
 
@@ -606,5 +629,5 @@ export function executeAdminSearch(
   }
 
   const totalCount = groups.reduce((sum, g) => sum + g.totalMatched, 0);
-  return { query, groups, totalCount };
+  return { query, commands, dateResults, groups, totalCount };
 }

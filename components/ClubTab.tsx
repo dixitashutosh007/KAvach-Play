@@ -168,6 +168,7 @@ export function ClubTab({
           isStudioAdmin={true}
           isFinanceAdmin={Boolean(isFinanceAdmin || isSuperAdmin)}
           autoOpenInvite={subAction === "invite"}
+          initialPlayerId={subAction?.startsWith("player_") ? subAction.replace("player_", "") : null}
         />
       )}
       {show("studio") && (isClubAdmin || isStudioAdmin) && (
@@ -187,6 +188,7 @@ export function ClubTab({
           store={store}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
+          defaultAction={subAction}
         />
       )}
       {show("pulse") && isClubAdmin && <OpinionTab store={store} persona="admin" />}
@@ -200,13 +202,17 @@ export function ClubTab({
       )}
       {show("badges") && isClubAdmin && (
         <div className="space-y-6">
-          <ClubRecognitionAdmin store={store} />
+          <ClubRecognitionAdmin
+            store={store}
+            initialCatchId={subAction?.startsWith("catch:") ? subAction.replace("catch:", "") : null}
+          />
           <BadgesTab
             store={store}
             isClubAdmin={isClubAdmin}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
             defaultView={subAction === "grant" ? "award" : undefined}
+            initialBadgeId={subAction?.startsWith("open:") ? subAction.replace("open:", "") : null}
           />
         </div>
       )}

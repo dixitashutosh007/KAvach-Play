@@ -1,6 +1,6 @@
 import { useStore } from "@/hooks/useStore";
 import { authedFetch } from "@/lib/authed-fetch";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Video,
   Edit2,
@@ -386,8 +386,15 @@ function MembersView({
   const [sortOption, setSortOption] = useState<"name" | "expiry" | "plan">(
     "name",
   );
-  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(
+    defaultAction?.startsWith("player_") ? defaultAction.replace("player_", "") : null,
+  );
   const [addingNew, setAddingNew] = useState(defaultAction === "add_player");
+  useEffect(() => {
+    if (defaultAction?.startsWith("player_")) {
+      setEditingPlayerId(defaultAction.replace("player_", ""));
+    }
+  }, [defaultAction]);
 
   // Form states
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
